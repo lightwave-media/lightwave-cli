@@ -1,0 +1,36 @@
+{
+  "name": "@lightwave-media/cli",
+  "version": "0.0.1",
+  "description": "LightWave workspace CLI - deterministic scaffolding and build tools",
+  "type": "module",
+  "bin": {
+    "lw": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm --dts",
+    "dev": "tsup src/index.ts --format esm --watch",
+    "typecheck": "tsc --noEmit",
+    "link": "pnpm build && pnpm link --global"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ssm": "^3.965.0",
+    "@notionhq/client": "^5.6.0",
+    "chalk": "^5.3.0",
+    "commander": "^12.1.0",
+    "handlebars": "^4.7.8",
+    "inquirer": "^9.2.12",
+    "ora": "^8.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "tsup": "^8.0.1",
+    "typescript": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ]
+}
