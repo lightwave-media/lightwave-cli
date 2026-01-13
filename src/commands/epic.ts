@@ -18,6 +18,8 @@ import {
   querySprints,
   generateEpicBranchName,
   updateEpicStatus,
+  createEpic,
+  findLifeDomainByName,
 } from "../utils/notion.js";
 import { exec } from "../utils/exec.js";
 import type { EpicStatus, NotionEpic } from "../types/notion.js";
@@ -127,6 +129,108 @@ epicCommand
       console.log(chalk.gray(`\n${epics.length} epic(s) shown`));
     } catch (err) {
       spinner.fail("Failed to fetch epics");
+      console.error(chalk.red((err as Error).message));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// lw epic create <name>
+// =============================================================================
+
+epicCommand
+  .command("create <name>")
+  .description("Create a new epic/project in Notion")
+  .option("--subtitle <text>", "Epic subtitle")
+  .option("--log-line <text>", "Epic log line / description")
+  .option(
+    "--type <type>",
+    "Project type (Software, Creative, Business, Personal)",
+  )
+  .option(
+    "--priority <priority>",
+    "Priority (1st Priority, 2nd Priority, 3rd Priority)",
+  )
+  .option("--domain <name>", "Life Domain to link to")
+  .option("--start <date>", "Start date (YYYY-MM-DD)")
+  .option("--end <date>", "End date (YYYY-MM-DD)")
+  .option("--dry-run", "Preview what would be created")
+  .option("--start-work", "Also create branch and set to In Progress")
+  .action(async (name: string, options) => {
+    const spinner = ora("Creating epic in Notion...").start();
+
+    try {
+      // Resolve life domain if provided
+      let lifeDomainId: string | undefined;
+      if (options.domain) {
+        spinner.text = "Resolving life domain...";
+        const domain = await findLifeDomainByName(options.domain);
+        if (!domain) {
+          spinner.fail(`Life domain not found: ${options.domain}`);
+          process.exit(1);
+        }
+        lifeDomainId = domain.id;
+      }
+
+      if (options.dryRun) {
+        spinner.stop();
+        console.log(chalk.blue("\n=== Preview Epic ===\n"));
+        console.log(chalk.yellow("Name:"), name);
+        if (options.subtitle)
+          console.log(chalk.yellow("Subtitle:"), options.subtitle);
+        if (options.logLine)
+          console.log(chalk.yellow("Log Line:"), options.logLine);
+        if (options.type) console.log(chalk.yellow("Type:"), options.type);
+        if (options.priority)
+          console.log(chalk.yellow("Priority:"), options.priority);
+        if (options.domain)
+          console.log(chalk.yellow("Domain:"), options.domain);
+        if (options.start) console.log(chalk.yellow("Start:"), options.start);
+        if (options.end) console.log(chalk.yellow("End:"), options.end);
+        console.log(chalk.gray("\n(dry run - no changes made)"));
+        return;
+      }
+
+      const epic = await createEpic(name, {
+        subtitle: options.subtitle,
+        logLine: options.logLine,
+        projectType: options.type,
+        priority: options.priority,
+        lifeDomainId,
+        startDate: options.start,
+        endDate: options.end,
+      });
+
+      spinner.succeed("Epic created!");
+
+      console.log(chalk.blue("\n=== Epic Created ===\n"));
+      console.log(chalk.yellow("ID:"), chalk.cyan(epic.shortId));
+      console.log(chalk.yellow("Name:"), epic.name);
+      console.log(
+        chalk.yellow("Status:"),
+        getStatusColor(epic.status)(epic.status),
+      );
+      console.log(chalk.yellow("URL:"), epic.url);
+
+      // Optionally start work on the epic
+      if (options.startWork) {
+        const branchName = generateEpicBranchName(epic);
+
+        spinner.start("Creating epic branch...");
+        await exec("git checkout main && git pull");
+        await exec(`git checkout -b ${branchName}`);
+        await exec(`git push -u origin ${branchName}`);
+        await updateEpicStatus(epic.id, "In Progress");
+        spinner.succeed(`Branch created: ${branchName}`);
+
+        console.log(chalk.yellow("\nBranch:"), chalk.cyan(branchName));
+      } else {
+        console.log(
+          chalk.gray(`\nTo start work: lw epic start ${epic.shortId}`),
+        );
+      }
+    } catch (err) {
+      spinner.fail("Failed to create epic");
       console.error(chalk.red((err as Error).message));
       process.exit(1);
     }

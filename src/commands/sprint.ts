@@ -21,6 +21,9 @@ import {
   generateSprintBranchName,
   generateEpicBranchName,
   updateSprintStatus,
+  createSprint,
+  findEpicByName,
+  findLifeDomainByName,
 } from "../utils/notion.js";
 import { exec } from "../utils/exec.js";
 import type { SprintStatus, NotionSprint } from "../types/notion.js";
@@ -126,6 +129,110 @@ sprintCommand
       console.log(chalk.gray(`\n${sprints.length} sprint(s) shown`));
     } catch (err) {
       spinner.fail("Failed to fetch sprints");
+      console.error(chalk.red((err as Error).message));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// lw sprint create <name>
+// =============================================================================
+
+sprintCommand
+  .command("create <name>")
+  .description("Create a new sprint in Notion")
+  .option("--objectives <text>", "Sprint objectives")
+  .option("--start <date>", "Start date (YYYY-MM-DD)")
+  .option("--end <date>", "End date (YYYY-MM-DD)")
+  .option("--epic <name-or-id>", "Link to epic")
+  .option("--domain <name>", "Life Domain to link to")
+  .option("--dry-run", "Preview what would be created")
+  .option("--start-work", "Also create branch and set to In Progress")
+  .action(async (name: string, options) => {
+    const spinner = ora("Creating sprint in Notion...").start();
+
+    try {
+      // Resolve epic if provided
+      let epicId: string | undefined;
+      let epic = null;
+      if (options.epic) {
+        spinner.text = "Resolving epic...";
+        epic = await findEpicByName(options.epic);
+        if (!epic) {
+          spinner.fail(`Epic not found: ${options.epic}`);
+          process.exit(1);
+        }
+        epicId = epic.id;
+      }
+
+      // Resolve life domain if provided
+      let lifeDomainId: string | undefined;
+      if (options.domain) {
+        spinner.text = "Resolving life domain...";
+        const domain = await findLifeDomainByName(options.domain);
+        if (!domain) {
+          spinner.fail(`Life domain not found: ${options.domain}`);
+          process.exit(1);
+        }
+        lifeDomainId = domain.id;
+      }
+
+      if (options.dryRun) {
+        spinner.stop();
+        console.log(chalk.blue("\n=== Preview Sprint ===\n"));
+        console.log(chalk.yellow("Name:"), name);
+        if (options.objectives)
+          console.log(chalk.yellow("Objectives:"), options.objectives);
+        if (options.start) console.log(chalk.yellow("Start:"), options.start);
+        if (options.end) console.log(chalk.yellow("End:"), options.end);
+        if (epic) console.log(chalk.yellow("Epic:"), epic.name);
+        if (options.domain)
+          console.log(chalk.yellow("Domain:"), options.domain);
+        console.log(chalk.gray("\n(dry run - no changes made)"));
+        return;
+      }
+
+      spinner.text = "Creating sprint...";
+      const sprint = await createSprint(name, {
+        objectives: options.objectives,
+        startDate: options.start,
+        endDate: options.end,
+        epicId,
+        lifeDomainId,
+      });
+
+      spinner.succeed("Sprint created!");
+
+      console.log(chalk.blue("\n=== Sprint Created ===\n"));
+      console.log(chalk.yellow("ID:"), chalk.cyan(sprint.shortId));
+      console.log(chalk.yellow("Name:"), sprint.name);
+      console.log(
+        chalk.yellow("Status:"),
+        getStatusColor(sprint.status)(sprint.status),
+      );
+      if (epic) console.log(chalk.yellow("Epic:"), epic.name);
+      console.log(chalk.yellow("URL:"), sprint.url);
+
+      // Optionally start work on the sprint
+      if (options.startWork) {
+        const branchName = generateSprintBranchName(sprint, epic);
+        const baseBranch = epic ? generateEpicBranchName(epic) : "main";
+
+        spinner.start("Creating sprint branch...");
+        await exec(`git checkout ${baseBranch} && git pull`);
+        await exec(`git checkout -b ${branchName}`);
+        await exec(`git push -u origin ${branchName}`);
+        await updateSprintStatus(sprint.id, "In Progress");
+        spinner.succeed(`Branch created: ${branchName}`);
+
+        console.log(chalk.yellow("\nBranch:"), chalk.cyan(branchName));
+      } else {
+        console.log(
+          chalk.gray(`\nTo start work: lw sprint start ${sprint.shortId}`),
+        );
+      }
+    } catch (err) {
+      spinner.fail("Failed to create sprint");
       console.error(chalk.red((err as Error).message));
       process.exit(1);
     }

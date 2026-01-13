@@ -17,7 +17,7 @@ export function exec(
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, {
       cwd: options.cwd || process.cwd(),
-      shell: true,
+      shell: false,
       stdio: options.silent ? "pipe" : "inherit",
     });
 

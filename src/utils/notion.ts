@@ -670,6 +670,78 @@ export async function updateEpicStatus(
   });
 }
 
+/**
+ * Create a new Epic in Notion
+ */
+export async function createEpic(
+  name: string,
+  options?: {
+    subtitle?: string;
+    logLine?: string;
+    projectType?: string;
+    priority?: string;
+    lifeDomainId?: string;
+    startDate?: string;
+    endDate?: string;
+  },
+): Promise<NotionEpic> {
+  const { client, config } = await getNotionClient();
+
+  // Build properties object
+  const properties: Record<string, unknown> = {
+    Name: {
+      title: [{ text: { content: name } }],
+    },
+  };
+
+  if (options?.subtitle) {
+    properties["Subtitle "] = {
+      rich_text: [{ text: { content: options.subtitle } }],
+    };
+  }
+
+  if (options?.logLine) {
+    properties["Log Line"] = {
+      rich_text: [{ text: { content: options.logLine } }],
+    };
+  }
+
+  if (options?.projectType) {
+    properties["Type of Project"] = {
+      select: { name: options.projectType },
+    };
+  }
+
+  if (options?.priority) {
+    properties["Priority"] = {
+      select: { name: options.priority },
+    };
+  }
+
+  if (options?.lifeDomainId) {
+    properties["🌐 Life Domains DB"] = {
+      relation: [{ id: options.lifeDomainId }],
+    };
+  }
+
+  if (options?.startDate || options?.endDate) {
+    properties["Timeline Dates"] = {
+      date: {
+        start: options.startDate || new Date().toISOString().split("T")[0],
+        end: options.endDate || null,
+      },
+    };
+  }
+
+  const response = await client.pages.create({
+    parent: { database_id: config.epicsDbId },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    properties: properties as any,
+  });
+
+  return pageToEpic(response as Record<string, unknown>);
+}
+
 // =============================================================================
 // User Stories
 // =============================================================================
@@ -940,6 +1012,188 @@ export async function updateSprintStatus(
       Status: { status: { name: status } },
     },
   });
+}
+
+/**
+ * Create a new Sprint in Notion
+ */
+export async function createSprint(
+  name: string,
+  options?: {
+    objectives?: string;
+    startDate?: string;
+    endDate?: string;
+    epicId?: string;
+    lifeDomainId?: string;
+  },
+): Promise<NotionSprint> {
+  const { client, config } = await getNotionClient();
+
+  // Build properties object
+  const properties: Record<string, unknown> = {
+    Name: {
+      title: [{ text: { content: name } }],
+    },
+  };
+
+  if (options?.objectives) {
+    properties["📋 Sprint Objectives"] = {
+      rich_text: [{ text: { content: options.objectives } }],
+    };
+  }
+
+  if (options?.startDate || options?.endDate) {
+    properties["Sprint Dates"] = {
+      date: {
+        start: options.startDate || new Date().toISOString().split("T")[0],
+        end: options.endDate || null,
+      },
+    };
+  }
+
+  if (options?.epicId) {
+    properties["🌐 Global Projects & Epics DB "] = {
+      relation: [{ id: options.epicId }],
+    };
+  }
+
+  if (options?.lifeDomainId) {
+    properties[
+      "🌐  Life Buckets DB  (ID: b1e7c26b-7b52-4f60-9885-d73bcf1b76df) "
+    ] = {
+      relation: [{ id: options.lifeDomainId }],
+    };
+  }
+
+  const response = await client.pages.create({
+    parent: { database_id: config.sprintsDbId },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    properties: properties as any,
+  });
+
+  return pageToSprint(response as Record<string, unknown>);
+}
+
+/**
+ * Query User Stories from Notion
+ */
+export async function queryUserStories(
+  options: {
+    status?: string | string[];
+    epicId?: string;
+    sprintId?: string;
+    limit?: number;
+  } = {},
+): Promise<NotionUserStory[]> {
+  const { client, config } = await getNotionClient();
+
+  const conditions: Array<Record<string, unknown>> = [];
+
+  // Status filter
+  if (options.status) {
+    const statuses = Array.isArray(options.status)
+      ? options.status
+      : [options.status];
+    if (statuses.length === 1) {
+      conditions.push({ property: "Status", status: { equals: statuses[0] } });
+    } else {
+      conditions.push({
+        or: statuses.map((s) => ({
+          property: "Status",
+          status: { equals: s },
+        })),
+      });
+    }
+  }
+
+  // Epic filter
+  if (options.epicId) {
+    conditions.push({
+      property: "🌐 Global Projects & Epics DB ",
+      relation: { contains: options.epicId },
+    });
+  }
+
+  // Sprint filter
+  if (options.sprintId) {
+    conditions.push({
+      property: "🛠️  Global Sprints DB",
+      relation: { contains: options.sprintId },
+    });
+  }
+
+  let filter: Record<string, unknown> | undefined;
+  if (conditions.length === 1) {
+    filter = conditions[0];
+  } else if (conditions.length > 1) {
+    filter = { and: conditions };
+  }
+
+  const response = await client.request<DatabaseQueryResponse>({
+    path: `databases/${config.userStoriesDbId}/query`,
+    method: "post",
+    body: {
+      filter,
+      page_size: options.limit || 100,
+      sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
+    },
+  });
+
+  return response.results.map(pageToUserStory);
+}
+
+/**
+ * Create a new User Story in Notion
+ */
+export async function createUserStory(
+  name: string,
+  options?: {
+    userType?: string;
+    priority?: string;
+    epicId?: string;
+    sprintId?: string;
+  },
+): Promise<NotionUserStory> {
+  const { client, config } = await getNotionClient();
+
+  // Build properties object
+  const properties: Record<string, unknown> = {
+    Name: {
+      title: [{ text: { content: name } }],
+    },
+  };
+
+  if (options?.userType) {
+    properties["User Type"] = {
+      select: { name: options.userType },
+    };
+  }
+
+  if (options?.priority) {
+    properties["Priority"] = {
+      select: { name: options.priority },
+    };
+  }
+
+  if (options?.epicId) {
+    properties["🌐 Global Projects & Epics DB "] = {
+      relation: [{ id: options.epicId }],
+    };
+  }
+
+  if (options?.sprintId) {
+    properties["🛠️  Global Sprints DB"] = {
+      relation: [{ id: options.sprintId }],
+    };
+  }
+
+  const response = await client.pages.create({
+    parent: { database_id: config.userStoriesDbId },
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    properties: properties as any,
+  });
+
+  return pageToUserStory(response as Record<string, unknown>);
 }
 
 // =============================================================================

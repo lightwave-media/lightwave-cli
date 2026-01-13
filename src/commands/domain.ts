@@ -207,3 +207,58 @@ domainCommand
       console.log(chalk.red(`Failed to list zones: ${err.message}`));
     }
   });
+
+// =============================================================================
+// lw domain scaffold <zone>
+// =============================================================================
+
+domainCommand
+  .command("scaffold <zone>")
+  .description("Scaffold complete site with pages, components, and navigation")
+  .option("--brand-name <name>", "Brand name (default: derived from domain)")
+  .option(
+    "--brand-color <color>",
+    "Theme color (blue-dark, indigo, violet, etc.)",
+  )
+  .option("--auth-mode <mode>", "Auth mode (subscription, ecommerce, private)")
+  .option("--dry-run", "Preview without creating")
+  .option("--tenant <schema>", "Tenant schema name")
+  .action(async (zone: string, options) => {
+    const args: string[] = [zone, "--scaffold"];
+
+    if (options.tenant) args.push("--tenant", options.tenant);
+    if (options.brandName) args.push("--brand-name", options.brandName);
+    if (options.brandColor) args.push("--brand-color", options.brandColor);
+    if (options.authMode) args.push("--auth-mode", options.authMode);
+    if (options.dryRun) args.push("--dry-run");
+
+    console.log(chalk.blue(`\nScaffolding site from zone: ${zone}\n`));
+
+    try {
+      await runSetupDomain(args, { silent: false });
+      if (!options.dryRun) {
+        console.log(
+          chalk.gray("\nNext: Run copywriting agent to populate content"),
+        );
+      }
+    } catch (err: any) {
+      console.log(chalk.red(`Failed to scaffold: ${err.message}`));
+    }
+  });
+
+// =============================================================================
+// lw domain scaffold-candidates
+// =============================================================================
+
+domainCommand
+  .command("scaffold-candidates")
+  .description("List Cloudflare zones available for scaffolding")
+  .action(async () => {
+    console.log(chalk.blue("\n=== Scaffold Candidates ===\n"));
+
+    try {
+      await runSetupDomain(["--scaffold-candidates"], { silent: false });
+    } catch (err: any) {
+      console.log(chalk.red(`Failed to list candidates: ${err.message}`));
+    }
+  });

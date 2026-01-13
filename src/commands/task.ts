@@ -1,15 +1,19 @@
 /**
- * Task management commands - bridges Notion (SoT) with Git workflow
+ * Task management commands - bridges Notion/Django with Git workflow
  *
  * Commands:
- *   lw task list              List tasks from Notion
+ *   lw task list              List tasks (from Notion or Django)
  *   lw task info <id>         Show task details
- *   lw task create <title>    Create new task in Notion
+ *   lw task create <title>    Create new task
  *   lw task start <id>        Create branch, update status -> "Active (In progress)"
  *   lw task status <id> <s>   Update task status
  *   lw task done <id>         Mark task as Archived
- *   lw task pr <id>           Create PR with Notion links
+ *   lw task pr <id>           Create PR with task links
  *   lw task commit <id>       Stage and commit with formatted message
+ *
+ * Backend Selection:
+ *   --backend django|notion   Select backend (default: from LW_BACKEND env or notion)
+ *   LW_BACKEND=django         Environment variable to set default backend
  */
 
 import { Command } from "commander";
@@ -37,6 +41,22 @@ import {
   querySprints,
   getTaskContext,
 } from "../utils/notion.js";
+import {
+  getBackend,
+  queryTasksDjango,
+  getTaskDjango,
+  updateTaskStatusDjango,
+  updateTaskDjango,
+  createTaskDjango,
+  startTaskDjango,
+  doneTaskDjango,
+  deleteTaskDjango,
+  updateTaskPriorityDjango,
+  assignTaskToEpicDjango,
+  assignTaskToSprintDjango,
+  getEpicDjango,
+  getSprintDjango,
+} from "../utils/createos.js";
 import { getViewByName, queryViews } from "../utils/views.js";
 import {
   VALID_STATUSES,
@@ -50,9 +70,24 @@ import type {
   AgentStatus,
   AssignedAgent,
   NotionTaskType,
+  NotionTask,
 } from "../types/notion.js";
 
 import { pushTaskUpdate } from "../utils/taskSync.js";
+
+/**
+ * Resolve backend from command option or environment
+ */
+function resolveBackend(optionBackend?: string): "django" | "notion" {
+  if (optionBackend) {
+    if (optionBackend === "django" || optionBackend === "createos") {
+      return "django";
+    }
+    return "notion";
+  }
+  const envBackend = getBackend();
+  return envBackend === "both" ? "notion" : envBackend;
+}
 
 /**
  * Resolve status alias to actual Notion status
@@ -87,7 +122,7 @@ function resolvePriority(input: string): TaskPriority | null {
 }
 
 export const taskCommand = new Command("task").description(
-  "Notion task management - bridges Notion tasks with Git workflow",
+  "Task management - bridges Notion/Django with Git workflow",
 );
 
 /**
@@ -113,8 +148,10 @@ function getStatusColor(status: NotionTaskStatus) {
 
 taskCommand
   .command("list")
-  .description(
-    "List tasks from Notion (filterable by status, domain, epic, view)",
+  .description("List tasks (filterable by status, domain, epic, view)")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
   )
   .option(
     "--status <status>",
@@ -155,7 +192,9 @@ taskCommand
   .option("--limit <n>", "Max number of tasks", "20")
   .option("--format <format>", "Output format: table, json", "table")
   .action(async (options) => {
-    const spinner = ora("Fetching tasks from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Fetching tasks from ${backendLabel}...`).start();
 
     try {
       // Handle view-based filtering
@@ -210,7 +249,7 @@ taskCommand
         priorityFilter = resolved || options.priority;
       }
 
-      const tasks = await queryTasks({
+      const queryOptions = {
         status: statusFilter,
         limit: parseInt(options.limit, 10),
         domain: options.domain,
@@ -232,7 +271,13 @@ taskCommand
         parentTask: options.parent,
         // View filter (if configured)
         view: options.view,
-      });
+      };
+
+      // Use appropriate backend
+      const tasks: NotionTask[] =
+        backend === "django"
+          ? await queryTasksDjango(queryOptions)
+          : await queryTasks(queryOptions);
 
       spinner.stop();
 
@@ -247,7 +292,7 @@ taskCommand
       }
 
       // Table format
-      console.log(chalk.blue("\n=== Tasks ===\n"));
+      console.log(chalk.blue(`\n=== Tasks (${backendLabel}) ===\n`));
       console.log(
         chalk.gray(
           `${"ID".padEnd(10)} ${"Status".padEnd(18)} ${"Title".padEnd(50)}`,
@@ -356,13 +401,22 @@ taskCommand
 taskCommand
   .command("info <task-id>")
   .description("Show detailed task information")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .option("--format <format>", "Output format: text, json", "text")
   .option("--context", "Show Epic, Sprint, and Document context")
   .action(async (taskId: string, options) => {
-    const spinner = ora("Loading task from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading task from ${backendLabel}...`).start();
 
     try {
-      const task = await getTask(taskId);
+      const task =
+        backend === "django"
+          ? await getTaskDjango(taskId)
+          : await getTask(taskId);
       if (!task) {
         spinner.fail(`Task not found: ${taskId}`);
         process.exit(1);
@@ -375,7 +429,7 @@ taskCommand
         return;
       }
 
-      console.log(chalk.blue("\n=== Task Details ===\n"));
+      console.log(chalk.blue(`\n=== Task Details (${backendLabel}) ===\n`));
       console.log(chalk.yellow("ID:"), task.shortId);
       console.log(chalk.yellow("Full ID:"), task.id);
       console.log(chalk.yellow("Title:"), task.title);
@@ -409,7 +463,10 @@ taskCommand
         if (task.epicId) {
           const epicSpinner = ora("Loading epic...").start();
           try {
-            const epic = await getEpic(task.epicId);
+            const epic =
+              backend === "django"
+                ? await getEpicDjango(task.epicId)
+                : await getEpic(task.epicId);
             epicSpinner.stop();
             if (epic) {
               console.log(chalk.yellow("Epic:"), chalk.cyan(epic.name));
@@ -430,7 +487,10 @@ taskCommand
         if (task.sprintId) {
           const sprintSpinner = ora("Loading sprint...").start();
           try {
-            const sprint = await getSprint(task.sprintId);
+            const sprint =
+              backend === "django"
+                ? await getSprintDjango(task.sprintId)
+                : await getSprint(task.sprintId);
             sprintSpinner.stop();
             if (sprint) {
               console.log(chalk.yellow("Sprint:"), chalk.cyan(sprint.name));
@@ -634,26 +694,37 @@ taskCommand
 
 taskCommand
   .command("create <title>")
-  .description("Create a new task in Notion")
+  .description("Create a new task")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .option("--dry-run", "Preview what would be created")
   .option("--start", "Immediately start the task after creation")
   .action(async (title: string, options) => {
-    const spinner = ora("Creating task in Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Creating task in ${backendLabel}...`).start();
 
     try {
       if (options.dryRun) {
         spinner.stop();
-        console.log(chalk.blue("\n=== Task Creation Preview ===\n"));
+        console.log(
+          chalk.blue(`\n=== Task Creation Preview (${backendLabel}) ===\n`),
+        );
         console.log(chalk.gray("Title:"), title);
         console.log(chalk.yellow("\n(dry run - no task created)"));
         return;
       }
 
       // Create the task
-      const task = await createTask(title);
+      const task =
+        backend === "django"
+          ? await createTaskDjango(title)
+          : await createTask(title);
       spinner.succeed("Task created");
 
-      console.log(chalk.blue("\n=== New Task ===\n"));
+      console.log(chalk.blue(`\n=== New Task (${backendLabel}) ===\n`));
       console.log(chalk.yellow("ID:"), task.shortId);
       console.log(chalk.yellow("Full ID:"), task.id);
       console.log(chalk.yellow("Title:"), task.title);
@@ -682,8 +753,12 @@ taskCommand
         // Push to remote
         await exec("git", ["push", "-u", "origin", branchName]);
 
-        // Update Notion status
-        await updateTaskStatus(task.id, "Active (In progress)");
+        // Update status
+        if (backend === "django") {
+          await startTaskDjango(task.id);
+        } else {
+          await updateTaskStatus(task.id, "Active (In progress)");
+        }
         spinner.succeed("Task started");
 
         // Push updated status
@@ -718,17 +793,26 @@ taskCommand
 taskCommand
   .command("start <task-id>")
   .description(
-    "Start a task: creates branch, updates Notion status to 'Active (In progress)'",
+    "Start a task: creates branch, updates status to 'Active (In progress)'",
+  )
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
   )
   .option("--dry-run", "Preview what would happen")
   .option("--no-push", "Don't push branch to remote")
   .option("--branch <name>", "Override auto-generated branch name")
   .action(async (taskId: string, options) => {
-    const spinner = ora("Loading task from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading task from ${backendLabel}...`).start();
 
     try {
-      // 1. Fetch task from Notion
-      const task = await getTask(taskId);
+      // 1. Fetch task from backend
+      const task =
+        backend === "django"
+          ? await getTaskDjango(taskId)
+          : await getTask(taskId);
       if (!task) {
         spinner.fail(`Task not found: ${taskId}`);
         process.exit(1);
@@ -790,10 +874,16 @@ taskCommand
         }
       }
 
-      // 7. Update Notion status
-      spinner.start("Updating Notion status...");
-      await updateTaskStatus(task.id, "Active (In progress)");
-      spinner.succeed("Updated Notion status to 'Active (In progress)'");
+      // 7. Update status in backend
+      spinner.start(`Updating ${backendLabel} status...`);
+      if (backend === "django") {
+        await startTaskDjango(task.id);
+      } else {
+        await updateTaskStatus(task.id, "Active (In progress)");
+      }
+      spinner.succeed(
+        `Updated ${backendLabel} status to 'Active (In progress)'`,
+      );
 
       // 8. Push to backend for WebSocket broadcast
       await pushTaskUpdate({
@@ -823,6 +913,10 @@ taskCommand
 taskCommand
   .command("status <task-id> <status>")
   .description("Manually update task status")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .option("--dry-run", "Preview without updating")
   .action(async (taskId: string, newStatus: string, options) => {
     // Resolve status (supports aliases like "in-progress" -> "Active (In progress)")
@@ -837,17 +931,24 @@ taskCommand
       process.exit(1);
     }
 
-    const spinner = ora("Loading task from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading task from ${backendLabel}...`).start();
 
     try {
-      const task = await getTask(taskId);
+      const task =
+        backend === "django"
+          ? await getTaskDjango(taskId)
+          : await getTask(taskId);
       if (!task) {
         spinner.fail(`Task not found: ${taskId}`);
         process.exit(1);
       }
 
       spinner.stop();
-      console.log(chalk.blue("\n=== Update Task Status ===\n"));
+      console.log(
+        chalk.blue(`\n=== Update Task Status (${backendLabel}) ===\n`),
+      );
       console.log(chalk.gray("Task:"), task.title);
       console.log(chalk.gray("Current:"), task.status);
       console.log(chalk.gray("New:"), chalk.cyan(resolvedStatus));
@@ -857,8 +958,12 @@ taskCommand
         return;
       }
 
-      spinner.start("Updating status...");
-      await updateTaskStatus(task.id, resolvedStatus);
+      spinner.start(`Updating ${backendLabel} status...`);
+      if (backend === "django") {
+        await updateTaskStatusDjango(task.id, resolvedStatus);
+      } else {
+        await updateTaskStatus(task.id, resolvedStatus);
+      }
       spinner.succeed(`Status updated to "${resolvedStatus}"`);
 
       // Push to backend for WebSocket broadcast
@@ -883,20 +988,29 @@ taskCommand
 
 taskCommand
   .command("done <task-id>")
-  .description("Mark task as done in Notion")
+  .description("Mark task as done")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .option("--dry-run", "Preview without updating")
   .action(async (taskId: string, options) => {
-    const spinner = ora("Loading task from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading task from ${backendLabel}...`).start();
 
     try {
-      const task = await getTask(taskId);
+      const task =
+        backend === "django"
+          ? await getTaskDjango(taskId)
+          : await getTask(taskId);
       if (!task) {
         spinner.fail(`Task not found: ${taskId}`);
         process.exit(1);
       }
 
       spinner.stop();
-      console.log(chalk.blue("\n=== Mark Task Done ===\n"));
+      console.log(chalk.blue(`\n=== Mark Task Done (${backendLabel}) ===\n`));
       console.log(chalk.gray("Task:"), task.title);
       console.log(chalk.gray("Current Status:"), task.status);
       console.log(chalk.gray("New Status:"), chalk.green("Archived"));
@@ -906,8 +1020,12 @@ taskCommand
         return;
       }
 
-      spinner.start("Updating Notion status...");
-      await updateTaskStatus(task.id, "Archived");
+      spinner.start(`Updating ${backendLabel} status...`);
+      if (backend === "django") {
+        await doneTaskDjango(task.id);
+      } else {
+        await updateTaskStatus(task.id, "Archived");
+      }
       spinner.succeed("Task marked as done");
 
       // Push to backend for WebSocket broadcast
@@ -934,20 +1052,29 @@ taskCommand
 
 taskCommand
   .command("delete <task-id>")
-  .description("Delete (trash) a task in Notion")
+  .description("Delete (trash) a task")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .option("--dry-run", "Preview without deleting")
   .action(async (taskId: string, options) => {
-    const spinner = ora("Loading task from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading task from ${backendLabel}...`).start();
 
     try {
-      const task = await getTask(taskId);
+      const task =
+        backend === "django"
+          ? await getTaskDjango(taskId)
+          : await getTask(taskId);
       if (!task) {
         spinner.fail(`Task not found: ${taskId}`);
         process.exit(1);
       }
 
       spinner.stop();
-      console.log(chalk.blue("\n=== Delete Task ===\n"));
+      console.log(chalk.blue(`\n=== Delete Task (${backendLabel}) ===\n`));
       console.log(chalk.gray("Task:"), task.title);
       console.log(chalk.gray("ID:"), task.shortId);
       console.log(chalk.gray("Status:"), task.status);
@@ -957,8 +1084,12 @@ taskCommand
         return;
       }
 
-      spinner.start("Deleting task...");
-      await deleteTask(task.id);
+      spinner.start(`Deleting task from ${backendLabel}...`);
+      if (backend === "django") {
+        await deleteTaskDjango(task.id);
+      } else {
+        await deleteTask(task.id);
+      }
       spinner.succeed("Task deleted (moved to trash)");
 
       console.log(chalk.green(`\n✓ Task ${task.shortId} deleted!`));
@@ -975,16 +1106,25 @@ taskCommand
 
 taskCommand
   .command("pr <task-id>")
-  .description("Create a PR with Notion task details in body")
+  .description("Create a PR with task details in body")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .option("--dry-run", "Preview PR without creating")
   .option("--draft", "Create as draft PR")
   .option("--base <branch>", "Base branch (default: main)")
   .action(async (taskId: string, options) => {
-    const spinner = ora("Loading task from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading task from ${backendLabel}...`).start();
 
     try {
       // 1. Fetch task
-      const task = await getTask(taskId);
+      const task =
+        backend === "django"
+          ? await getTaskDjango(taskId)
+          : await getTask(taskId);
       if (!task) {
         spinner.fail(`Task not found: ${taskId}`);
         process.exit(1);
@@ -1006,7 +1146,7 @@ taskCommand
       const prBody = buildPrBody(task);
 
       spinner.stop();
-      console.log(chalk.blue("\n=== PR Preview ===\n"));
+      console.log(chalk.blue(`\n=== PR Preview (${backendLabel}) ===\n`));
       console.log(chalk.gray("Title:"), prTitle);
       console.log(
         chalk.gray("Branch:"),
@@ -1065,7 +1205,7 @@ taskCommand
         spinner.succeed("Pull request created");
 
         console.log(chalk.green(`\n✓ PR created: ${prUrl}`));
-        console.log(chalk.gray(`  Notion task: ${task.url}`));
+        console.log(chalk.gray(`  Task: ${task.url}`));
       } finally {
         // Clean up temp file
         try {
@@ -1115,12 +1255,21 @@ Generated with \`lw task pr\``;
 taskCommand
   .command("priority <task-id> <priority>")
   .description("Set task priority (1, 2, 3 or high, medium, low)")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .option("--dry-run", "Preview without updating")
   .action(async (taskId: string, priorityInput: string, options) => {
-    const spinner = ora("Loading task from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading task from ${backendLabel}...`).start();
 
     try {
-      const task = await getTask(taskId);
+      const task =
+        backend === "django"
+          ? await getTaskDjango(taskId)
+          : await getTask(taskId);
       if (!task) {
         spinner.fail(`Task not found: ${taskId}`);
         process.exit(1);
@@ -1138,7 +1287,9 @@ taskCommand
       }
 
       spinner.stop();
-      console.log(chalk.blue("\n=== Update Task Priority ===\n"));
+      console.log(
+        chalk.blue(`\n=== Update Task Priority (${backendLabel}) ===\n`),
+      );
       console.log(chalk.gray("Task:"), task.title);
       console.log(chalk.gray("Current:"), task.priority || "(none)");
       console.log(chalk.gray("New:"), chalk.cyan(resolvedPriority));
@@ -1148,8 +1299,12 @@ taskCommand
         return;
       }
 
-      spinner.start("Updating priority...");
-      await updateTaskPriority(task.id, resolvedPriority);
+      spinner.start(`Updating ${backendLabel} priority...`);
+      if (backend === "django") {
+        await updateTaskPriorityDjango(task.id, resolvedPriority);
+      } else {
+        await updateTaskPriority(task.id, resolvedPriority);
+      }
       spinner.succeed(`Priority updated to "${resolvedPriority}"`);
 
       console.log(chalk.green(`\n✓ Task ${task.shortId} priority set!`));
@@ -1167,12 +1322,21 @@ taskCommand
 taskCommand
   .command("epic <task-id> <epic-id>")
   .description("Assign task to an epic (use 'none' to clear)")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .option("--dry-run", "Preview without updating")
   .action(async (taskId: string, epicInput: string, options) => {
-    const spinner = ora("Loading task from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading task from ${backendLabel}...`).start();
 
     try {
-      const task = await getTask(taskId);
+      const task =
+        backend === "django"
+          ? await getTaskDjango(taskId)
+          : await getTask(taskId);
       if (!task) {
         spinner.fail(`Task not found: ${taskId}`);
         process.exit(1);
@@ -1183,8 +1347,11 @@ taskCommand
 
       if (epicInput.toLowerCase() !== "none") {
         // Look up epic
-        spinner.text = "Looking up epic...";
-        const epic = await getEpic(epicInput);
+        spinner.text = `Looking up epic in ${backendLabel}...`;
+        const epic =
+          backend === "django"
+            ? await getEpicDjango(epicInput)
+            : await getEpic(epicInput);
         if (!epic) {
           spinner.fail(`Epic not found: ${epicInput}`);
           process.exit(1);
@@ -1194,7 +1361,9 @@ taskCommand
       }
 
       spinner.stop();
-      console.log(chalk.blue("\n=== Assign Task to Epic ===\n"));
+      console.log(
+        chalk.blue(`\n=== Assign Task to Epic (${backendLabel}) ===\n`),
+      );
       console.log(chalk.gray("Task:"), task.title);
       console.log(chalk.gray("Current Epic:"), task.epicName || "(none)");
       console.log(chalk.gray("New Epic:"), chalk.cyan(epicName));
@@ -1204,8 +1373,12 @@ taskCommand
         return;
       }
 
-      spinner.start("Assigning to epic...");
-      await assignTaskToEpic(task.id, epicId);
+      spinner.start(`Assigning to epic in ${backendLabel}...`);
+      if (backend === "django") {
+        await assignTaskToEpicDjango(task.id, epicId);
+      } else {
+        await assignTaskToEpic(task.id, epicId);
+      }
       spinner.succeed(`Task assigned to "${epicName}"`);
 
       console.log(chalk.green(`\n✓ Task ${task.shortId} epic updated!`));
@@ -1223,12 +1396,21 @@ taskCommand
 taskCommand
   .command("sprint <task-id> <sprint-id>")
   .description("Assign task to a sprint (use 'none' to clear)")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .option("--dry-run", "Preview without updating")
   .action(async (taskId: string, sprintInput: string, options) => {
-    const spinner = ora("Loading task from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading task from ${backendLabel}...`).start();
 
     try {
-      const task = await getTask(taskId);
+      const task =
+        backend === "django"
+          ? await getTaskDjango(taskId)
+          : await getTask(taskId);
       if (!task) {
         spinner.fail(`Task not found: ${taskId}`);
         process.exit(1);
@@ -1239,8 +1421,11 @@ taskCommand
 
       if (sprintInput.toLowerCase() !== "none") {
         // Look up sprint
-        spinner.text = "Looking up sprint...";
-        const sprint = await getSprint(sprintInput);
+        spinner.text = `Looking up sprint in ${backendLabel}...`;
+        const sprint =
+          backend === "django"
+            ? await getSprintDjango(sprintInput)
+            : await getSprint(sprintInput);
         if (!sprint) {
           spinner.fail(`Sprint not found: ${sprintInput}`);
           process.exit(1);
@@ -1250,7 +1435,9 @@ taskCommand
       }
 
       spinner.stop();
-      console.log(chalk.blue("\n=== Assign Task to Sprint ===\n"));
+      console.log(
+        chalk.blue(`\n=== Assign Task to Sprint (${backendLabel}) ===\n`),
+      );
       console.log(chalk.gray("Task:"), task.title);
       console.log(chalk.gray("Current Sprint:"), task.sprintName || "(none)");
       console.log(chalk.gray("New Sprint:"), chalk.cyan(sprintName));
@@ -1260,8 +1447,12 @@ taskCommand
         return;
       }
 
-      spinner.start("Assigning to sprint...");
-      await assignTaskToSprint(task.id, sprintId);
+      spinner.start(`Assigning to sprint in ${backendLabel}...`);
+      if (backend === "django") {
+        await assignTaskToSprintDjango(task.id, sprintId);
+      } else {
+        await assignTaskToSprint(task.id, sprintId);
+      }
       spinner.succeed(`Task assigned to "${sprintName}"`);
 
       console.log(chalk.green(`\n✓ Task ${task.shortId} sprint updated!`));
@@ -1279,6 +1470,10 @@ taskCommand
 taskCommand
   .command("commit <task-id>")
   .description("Stage all changes and commit with formatted message")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .option("--dry-run", "Show commit message without committing")
   .option("--no-stage", "Skip git add, commit only staged changes")
   .option("--scope <scope>", "Override scope in commit message")
@@ -1288,10 +1483,15 @@ taskCommand
     "Override commit description (body still uses task)",
   )
   .action(async (taskId: string, options) => {
-    const spinner = ora("Loading task from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading task from ${backendLabel}...`).start();
 
     try {
-      const task = await getTask(taskId);
+      const task =
+        backend === "django"
+          ? await getTaskDjango(taskId)
+          : await getTask(taskId);
       if (!task) {
         spinner.fail(`Task not found: ${taskId}`);
         process.exit(1);
@@ -1310,7 +1510,7 @@ taskCommand
         ? commitMessage.replace(/^.+\n/, `${options.message}\n`)
         : commitMessage;
 
-      console.log(chalk.blue("\n=== Task Commit ===\n"));
+      console.log(chalk.blue(`\n=== Task Commit (${backendLabel}) ===\n`));
       console.log(chalk.yellow("Task:"), task.title);
       console.log(chalk.yellow("ID:"), task.shortId);
       console.log(chalk.yellow("\nCommit message:"));
