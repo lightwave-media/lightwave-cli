@@ -5,13 +5,14 @@ repos:
     hooks:
       - id: prettier
         types_or: [javascript, jsx, ts, tsx, json, yaml]
+        exclude: pnpm-lock\.yaml$
 
   # TypeScript type checking
   - repo: local
     hooks:
       - id: typescript-check
         name: TypeScript Check
-        entry: pnpm run type-check
+        entry: pnpm run typecheck
         language: system
         files: \.(ts|tsx)$
         pass_filenames: false

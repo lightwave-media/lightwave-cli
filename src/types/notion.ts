@@ -56,20 +56,20 @@ export const VALID_STATUSES: NotionTaskStatus[] = [
 
 // CLI-friendly aliases that map to actual Notion statuses
 export const STATUS_ALIASES: Record<string, NotionTaskStatus> = {
-  "hold": "On Hold",
+  hold: "On Hold",
   "on-hold": "On Hold",
-  "approved": "Active (Approved for work)",
-  "next": "Next Up",
+  approved: "Active (Approved for work)",
+  next: "Next Up",
   "next-up": "Next Up",
-  "future": "Future",
+  future: "Future",
   "in-progress": "Active (In progress)",
-  "progress": "Active (In progress)",
-  "review": "Active (In Review)",
+  progress: "Active (In progress)",
+  review: "Active (In Review)",
   "in-review": "Active (In Review)",
-  "archived": "Archived",
-  "done": "Archived",
-  "cancelled": "Cancelled",
-  "canceled": "Cancelled",
+  archived: "Archived",
+  done: "Archived",
+  cancelled: "Cancelled",
+  canceled: "Cancelled",
 };
 
 export type TaskType = "feature" | "fix" | "hotfix";
@@ -87,24 +87,24 @@ export const VALID_PRIORITIES: TaskPriority[] = [
 export const PRIORITY_ALIASES: Record<string, TaskPriority> = {
   "1": "1st Priority",
   "1st": "1st Priority",
-  "first": "1st Priority",
-  "high": "1st Priority",
+  first: "1st Priority",
+  high: "1st Priority",
   "2": "2nd Priority",
   "2nd": "2nd Priority",
-  "second": "2nd Priority",
-  "medium": "2nd Priority",
+  second: "2nd Priority",
+  medium: "2nd Priority",
   "3": "3rd Priority",
   "3rd": "3rd Priority",
-  "third": "3rd Priority",
-  "low": "3rd Priority",
+  third: "3rd Priority",
+  low: "3rd Priority",
 };
 
 // Task update options
 export interface TaskUpdateOptions {
   status?: NotionTaskStatus;
-  priority?: TaskPriority | null;  // null to clear
-  epicId?: string | null;          // null to clear
-  sprintId?: string | null;        // null to clear
+  priority?: TaskPriority | null; // null to clear
+  epicId?: string | null; // null to clear
+  sprintId?: string | null; // null to clear
 }
 
 /**
@@ -156,50 +156,54 @@ export interface NotionTask {
   description: string | null;
   acceptanceCriteria: string | null;
   url: string;
-  taskType: TaskType;  // Inferred from title (feature/fix/hotfix) for branch naming
+  taskType: TaskType; // Inferred from title (feature/fix/hotfix) for branch naming
   createdTime: string;
   lastEditedTime: string;
 
   // Priority & Scheduling
-  priority?: string | null;              // "1st Priority", "2nd Priority", etc.
-  dueDate?: string | null;               // Deadline
-  doDate?: string | null;                // Scheduled execution date
+  priority?: string | null; // "1st Priority", "2nd Priority", etc.
+  dueDate?: string | null; // Deadline
+  doDate?: string | null; // Scheduled execution date
 
   // Agent Workflow (NEW)
-  agentStatus?: AgentStatus | null;      // AI agent processing state
-  assignedAgent?: AssignedAgent | null;  // Which v_agent owns this task
-  assignee?: string | null;              // Human assignee (person field)
+  agentStatus?: AgentStatus | null; // AI agent processing state
+  assignedAgent?: AssignedAgent | null; // Which v_agent owns this task
+  assignee?: string | null; // Human assignee (person field)
 
   // Task Type from Notion (NEW)
   taskTypeSelect?: NotionTaskType | null; // Explicit type from select field
 
   // Notes & AI (NEW)
-  note?: string | null;                  // Additional notes
-  aiSummary?: string | null;             // AI-generated summary
+  note?: string | null; // Additional notes
+  aiSummary?: string | null; // AI-generated summary
 
   // Task Hierarchy (NEW)
-  parentTaskId?: string | null;          // Self-relation to parent task
-  subTaskIds?: string[];                 // Self-relation to child tasks
+  parentTaskId?: string | null; // Self-relation to parent task
+  subTaskIds?: string[]; // Self-relation to child tasks
 
   // Relations to other databases
   epicId?: string | null;
   epicName?: string | null;
   sprintId?: string | null;
   sprintName?: string | null;
-  userStoryIds?: string[];               // Can have multiple user stories
-  userStoryId?: string | null;           // First user story (deprecated, use userStoryIds)
+  userStoryIds?: string[]; // Can have multiple user stories
+  userStoryId?: string | null; // First user story (deprecated, use userStoryIds)
   userStoryName?: string | null;
   lifeDomainId?: string | null;
   lifeDomainName?: string | null;
   documentIds?: string[];
 
   // Metadata
-  isTemplate?: boolean;                  // Is a template checkbox
-  uniqueId?: string | null;              // Notion's unique_id field
+  isTemplate?: boolean; // Is a template checkbox
+  uniqueId?: string | null; // Notion's unique_id field
 }
 
 // Sprint status values
-export type SprintStatus = "Not Started" | "In Progress" | "Completed" | "Cancelled";
+export type SprintStatus =
+  | "Not Started"
+  | "In Progress"
+  | "Completed"
+  | "Cancelled";
 
 export interface NotionSprint {
   id: string;
@@ -220,7 +224,12 @@ export interface NotionSprint {
 }
 
 // Epic/Project status
-export type EpicStatus = "Not Started" | "In Progress" | "Completed" | "On Hold" | "Cancelled";
+export type EpicStatus =
+  | "Not Started"
+  | "In Progress"
+  | "Completed"
+  | "On Hold"
+  | "Cancelled";
 
 export interface NotionEpic {
   id: string;
@@ -273,11 +282,11 @@ export interface NotionDocument {
   id: string;
   shortId: string;
   name: string;
-  contentType: string | null;  // "Config", "SOP", "Spec", "Template", etc.
+  contentType: string | null; // "Config", "SOP", "Spec", "Template", etc.
   version: string | null;
-  status: string | null;       // "📢 Active/Live", "Draft", etc.
-  agentTags: string[];         // ["agent:v_speak", "agent:v_core"]
-  content?: string;            // Markdown content from blocks (populated on demand)
+  status: string | null; // "📢 Active/Live", "Draft", etc.
+  agentTags: string[]; // ["agent:v_speak", "agent:v_core"]
+  content?: string; // Markdown content from blocks (populated on demand)
   url: string;
   // Relations
   taskIds?: string[];
@@ -285,9 +294,9 @@ export interface NotionDocument {
 }
 
 export interface DocumentListOptions {
-  tags?: string[];             // Filter by Agent Tags
-  status?: string;             // Filter by Document Status
-  contentType?: string;        // Filter by Content Type
+  tags?: string[]; // Filter by Agent Tags
+  status?: string; // Filter by Document Status
+  contentType?: string; // Filter by Content Type
   limit?: number;
   format?: "table" | "json";
 }
@@ -326,27 +335,27 @@ export interface TaskListOptions {
   format?: "table" | "json";
 
   // Relation filters
-  domain?: string;              // Life Domain name
-  epic?: string;                // Epic name or ID
-  sprint?: string;              // Sprint name or ID
-  userStory?: string;           // User Story name or ID
+  domain?: string; // Life Domain name
+  epic?: string; // Epic name or ID
+  sprint?: string; // Sprint name or ID
+  userStory?: string; // User Story name or ID
 
   // Property filters (NEW)
-  priority?: string;            // Priority value
-  taskType?: NotionTaskType;    // Task Type select value
-  agentStatus?: AgentStatus;    // Agent workflow status
+  priority?: string; // Priority value
+  taskType?: NotionTaskType; // Task Type select value
+  agentStatus?: AgentStatus; // Agent workflow status
   assignedAgent?: AssignedAgent; // Which agent owns the task
-  assignee?: string;            // Human assignee name
+  assignee?: string; // Human assignee name
 
   // Date filters (NEW)
-  dueBefore?: string;           // Tasks due before this date (ISO 8601)
-  dueAfter?: string;            // Tasks due after this date
-  hasSubtasks?: boolean;        // Filter for tasks with/without subtasks
-  isParent?: boolean;           // Filter for parent tasks only
-  parentTask?: string;          // Filter by parent task ID
+  dueBefore?: string; // Tasks due before this date (ISO 8601)
+  dueAfter?: string; // Tasks due after this date
+  hasSubtasks?: boolean; // Filter for tasks with/without subtasks
+  isParent?: boolean; // Filter for parent tasks only
+  parentTask?: string; // Filter by parent task ID
 
   // View-based filtering (NEW)
-  view?: string;                // Named view from CLI Views database
+  view?: string; // Named view from CLI Views database
 }
 
 export interface SprintListOptions {
@@ -388,15 +397,15 @@ export interface CLIView {
   shortId: string;
   name: string;
   database: "Tasks" | "Epics" | "Sprints" | "Documents";
-  filterJson: Record<string, unknown>;  // Notion filter object
+  filterJson: Record<string, unknown>; // Notion filter object
   description: string | null;
   active: boolean;
   url: string;
 }
 
 export interface ViewListOptions {
-  database?: string;            // Filter by target database
-  activeOnly?: boolean;         // Only show active views
+  database?: string; // Filter by target database
+  activeOnly?: boolean; // Only show active views
   limit?: number;
   format?: "table" | "json";
 }

@@ -23,7 +23,7 @@ import { exec } from "../utils/exec.js";
 import type { EpicStatus, NotionEpic } from "../types/notion.js";
 
 export const epicCommand = new Command("epic").description(
-  "Epic/Project management - view and track epics from Notion"
+  "Epic/Project management - view and track epics from Notion",
 );
 
 /**
@@ -33,9 +33,9 @@ function getStatusColor(status: EpicStatus) {
   const colors: Record<EpicStatus, (s: string) => string> = {
     "Not Started": chalk.gray,
     "In Progress": chalk.magenta,
-    "Completed": chalk.green,
+    Completed: chalk.green,
     "On Hold": chalk.yellow,
-    "Cancelled": chalk.red,
+    Cancelled: chalk.red,
   };
   return colors[status] || chalk.white;
 }
@@ -58,10 +58,13 @@ epicCommand
   .description("List epics/projects from Notion")
   .option(
     "--status <status>",
-    "Filter by status (Not Started, In Progress, Completed, On Hold, Cancelled)"
+    "Filter by status (Not Started, In Progress, Completed, On Hold, Cancelled)",
   )
   .option("--all", "Show all statuses")
-  .option("--domain <name>", "Filter by Life Domain (e.g., 'Product Development')")
+  .option(
+    "--domain <name>",
+    "Filter by Life Domain (e.g., 'Product Development')",
+  )
   .option("--limit <n>", "Max number of epics", "20")
   .option("--format <format>", "Output format: table, json", "table")
   .action(async (options) => {
@@ -101,8 +104,8 @@ epicCommand
       console.log(chalk.blue("\n=== Epics/Projects ===\n"));
       console.log(
         chalk.gray(
-          `${"ID".padEnd(10)} ${"Status".padEnd(14)} ${"Type".padEnd(15)} ${"Name".padEnd(45)}`
-        )
+          `${"ID".padEnd(10)} ${"Status".padEnd(14)} ${"Type".padEnd(15)} ${"Name".padEnd(45)}`,
+        ),
       );
       console.log(chalk.gray("-".repeat(86)));
 
@@ -117,7 +120,7 @@ epicCommand
           `${chalk.cyan(epic.shortId.padEnd(10))} ` +
             `${statusColor(epic.status.padEnd(14))} ` +
             `${chalk.gray(projectType.padEnd(15))} ` +
-            `${truncatedName}`
+            `${truncatedName}`,
         );
       }
 
@@ -184,7 +187,7 @@ function displayEpicDetails(epic: NotionEpic): void {
   console.log(chalk.yellow("Name:"), epic.name);
   console.log(
     chalk.yellow("Status:"),
-    getStatusColor(epic.status)(epic.status)
+    getStatusColor(epic.status)(epic.status),
   );
 
   if (epic.subtitle) {
@@ -201,7 +204,7 @@ function displayEpicDetails(epic: NotionEpic): void {
 
   console.log(
     chalk.yellow("Timeline:"),
-    formatDateRange(epic.startDate, epic.endDate)
+    formatDateRange(epic.startDate, epic.endDate),
   );
 
   if (epic.totalStoryPoints !== null) {
@@ -244,8 +247,8 @@ async function displayEpicTasks(epic: NotionEpic): Promise<void> {
     console.log(chalk.blue(`\n=== Tasks in Epic (${tasks.length}) ===\n`));
     console.log(
       chalk.gray(
-        `${"ID".padEnd(10)} ${"Status".padEnd(18)} ${"Title".padEnd(50)}`
-      )
+        `${"ID".padEnd(10)} ${"Status".padEnd(18)} ${"Title".padEnd(50)}`,
+      ),
     );
     console.log(chalk.gray("-".repeat(80)));
 
@@ -257,7 +260,7 @@ async function displayEpicTasks(epic: NotionEpic): Promise<void> {
       console.log(
         `${chalk.cyan(task.shortId.padEnd(10))} ` +
           `${task.status.padEnd(18)} ` +
-          `${truncatedTitle}`
+          `${truncatedTitle}`,
       );
     }
   } catch (err) {
@@ -275,9 +278,7 @@ async function displayEpicSprints(epic: NotionEpic): Promise<void> {
   try {
     // Query sprints - we'll need to filter by those linked to this epic
     const allSprints = await querySprints({ limit: 100 });
-    const epicSprints = allSprints.filter((s) =>
-      s.epicIds.includes(epic.id)
-    );
+    const epicSprints = allSprints.filter((s) => s.epicIds.includes(epic.id));
 
     spinner.stop();
 
@@ -287,12 +288,12 @@ async function displayEpicSprints(epic: NotionEpic): Promise<void> {
     }
 
     console.log(
-      chalk.blue(`\n=== Sprints in Epic (${epicSprints.length}) ===\n`)
+      chalk.blue(`\n=== Sprints in Epic (${epicSprints.length}) ===\n`),
     );
     console.log(
       chalk.gray(
-        `${"ID".padEnd(10)} ${"Status".padEnd(14)} ${"Dates".padEnd(26)} ${"Name".padEnd(30)}`
-      )
+        `${"ID".padEnd(10)} ${"Status".padEnd(14)} ${"Dates".padEnd(26)} ${"Name".padEnd(30)}`,
+      ),
     );
     console.log(chalk.gray("-".repeat(82)));
 
@@ -306,7 +307,7 @@ async function displayEpicSprints(epic: NotionEpic): Promise<void> {
         `${chalk.cyan(sprint.shortId.padEnd(10))} ` +
           `${sprint.status.padEnd(14)} ` +
           `${chalk.gray(dateRange.padEnd(26))} ` +
-          `${truncatedName}`
+          `${truncatedName}`,
       );
     }
   } catch (err) {
@@ -378,7 +379,11 @@ epicCommand
       spinner.succeed("Epic status updated to In Progress");
 
       console.log(chalk.green("\nEpic started successfully!"));
-      console.log(chalk.gray(`\nNext: Create a sprint with 'lw sprint start <sprint-id>'`));
+      console.log(
+        chalk.gray(
+          `\nNext: Create a sprint with 'lw sprint start <sprint-id>'`,
+        ),
+      );
     } catch (err) {
       spinner.fail("Failed to start epic");
       console.error(chalk.red((err as Error).message));
@@ -429,7 +434,9 @@ epicCommand
         console.log(chalk.gray(`  2. git merge ${branchName} --no-ff`));
         console.log(chalk.gray("  3. git push origin main"));
         if (options.tag !== false) {
-          console.log(chalk.gray(`  4. git tag -a ${tagName} -m "Epic: ${epic.name}"`));
+          console.log(
+            chalk.gray(`  4. git tag -a ${tagName} -m "Epic: ${epic.name}"`),
+          );
           console.log(chalk.gray(`  5. git push origin ${tagName}`));
         }
         console.log(chalk.gray('  6. Update epic status to "Completed"'));
@@ -443,7 +450,9 @@ epicCommand
 
       // Merge epic branch
       spinner.start(`Merging ${branchName} to main...`);
-      await exec(`git merge ${branchName} --no-ff -m "Merge epic: ${epic.name}"`);
+      await exec(
+        `git merge ${branchName} --no-ff -m "Merge epic: ${epic.name}"`,
+      );
       spinner.succeed(`Merged ${branchName}`);
 
       // Push to main
@@ -465,7 +474,11 @@ epicCommand
       spinner.succeed("Epic status updated to Completed");
 
       console.log(chalk.green("\nEpic merged successfully!"));
-      console.log(chalk.gray(`\nThe epic branch '${branchName}' can now be deleted if desired.`));
+      console.log(
+        chalk.gray(
+          `\nThe epic branch '${branchName}' can now be deleted if desired.`,
+        ),
+      );
     } catch (err) {
       spinner.fail("Failed to merge epic");
       console.error(chalk.red((err as Error).message));

@@ -12,7 +12,7 @@ export interface ExecOptions {
 export function exec(
   command: string,
   args: string[] = [],
-  options: ExecOptions = {}
+  options: ExecOptions = {},
 ): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve, reject) => {
     const proc = spawn(command, args, {
@@ -45,7 +45,7 @@ export function exec(
 export async function make(
   target: string,
   cwd: string,
-  silent = false
+  silent = false,
 ): Promise<void> {
   if (!silent) {
     console.log(chalk.blue(`→ make ${target}`));

@@ -26,7 +26,7 @@ import { exec } from "../utils/exec.js";
 import type { SprintStatus, NotionSprint } from "../types/notion.js";
 
 export const sprintCommand = new Command("sprint").description(
-  "Sprint management - view and track sprints from Notion"
+  "Sprint management - view and track sprints from Notion",
 );
 
 /**
@@ -36,8 +36,8 @@ function getStatusColor(status: SprintStatus) {
   const colors: Record<SprintStatus, (s: string) => string> = {
     "Not Started": chalk.gray,
     "In Progress": chalk.magenta,
-    "Completed": chalk.green,
-    "Cancelled": chalk.red,
+    Completed: chalk.green,
+    Cancelled: chalk.red,
   };
   return colors[status] || chalk.white;
 }
@@ -60,7 +60,7 @@ sprintCommand
   .description("List sprints from Notion")
   .option(
     "--status <status>",
-    "Filter by status (Not Started, In Progress, Completed, Cancelled)"
+    "Filter by status (Not Started, In Progress, Completed, Cancelled)",
   )
   .option("--all", "Show all statuses")
   .option("--domain <name>", "Filter by Life Domain")
@@ -103,8 +103,8 @@ sprintCommand
       console.log(chalk.blue("\n=== Sprints ===\n"));
       console.log(
         chalk.gray(
-          `${"ID".padEnd(10)} ${"Status".padEnd(14)} ${"Dates".padEnd(26)} ${"Name".padEnd(40)}`
-        )
+          `${"ID".padEnd(10)} ${"Status".padEnd(14)} ${"Dates".padEnd(26)} ${"Name".padEnd(40)}`,
+        ),
       );
       console.log(chalk.gray("-".repeat(92)));
 
@@ -119,7 +119,7 @@ sprintCommand
           `${chalk.cyan(sprint.shortId.padEnd(10))} ` +
             `${statusColor(sprint.status.padEnd(14))} ` +
             `${chalk.gray(dateRange.padEnd(26))} ` +
-            `${truncatedName}`
+            `${truncatedName}`,
         );
       }
 
@@ -222,11 +222,11 @@ function displaySprintDetails(sprint: NotionSprint): void {
   console.log(chalk.yellow("Name:"), sprint.name);
   console.log(
     chalk.yellow("Status:"),
-    getStatusColor(sprint.status)(sprint.status)
+    getStatusColor(sprint.status)(sprint.status),
   );
   console.log(
     chalk.yellow("Dates:"),
-    formatDateRange(sprint.startDate, sprint.endDate)
+    formatDateRange(sprint.startDate, sprint.endDate),
   );
   console.log(chalk.yellow("URL:"), sprint.url);
 
@@ -263,8 +263,8 @@ async function displaySprintTasks(sprint: NotionSprint): Promise<void> {
     console.log(chalk.blue(`\n=== Tasks in Sprint (${tasks.length}) ===\n`));
     console.log(
       chalk.gray(
-        `${"ID".padEnd(10)} ${"Status".padEnd(18)} ${"Title".padEnd(50)}`
-      )
+        `${"ID".padEnd(10)} ${"Status".padEnd(18)} ${"Title".padEnd(50)}`,
+      ),
     );
     console.log(chalk.gray("-".repeat(80)));
 
@@ -276,7 +276,7 @@ async function displaySprintTasks(sprint: NotionSprint): Promise<void> {
       console.log(
         `${chalk.cyan(task.shortId.padEnd(10))} ` +
           `${task.status.padEnd(18)} ` +
-          `${truncatedTitle}`
+          `${truncatedTitle}`,
       );
     }
   } catch (err) {
@@ -327,10 +327,14 @@ sprintCommand
       if (options.dryRun) {
         console.log(chalk.gray("\n[Dry run - no changes made]"));
         console.log(chalk.gray("Would:"));
-        console.log(chalk.gray(`  1. git checkout ${epicBranchName} && git pull`));
+        console.log(
+          chalk.gray(`  1. git checkout ${epicBranchName} && git pull`),
+        );
         console.log(chalk.gray(`  2. git checkout -b ${sprintBranchName}`));
         if (options.push !== false) {
-          console.log(chalk.gray(`  3. git push -u origin ${sprintBranchName}`));
+          console.log(
+            chalk.gray(`  3. git push -u origin ${sprintBranchName}`),
+          );
         }
         console.log(chalk.gray('  4. Update sprint status to "In Progress"'));
         return;
@@ -359,7 +363,11 @@ sprintCommand
       spinner.succeed("Sprint status updated to In Progress");
 
       console.log(chalk.green("\nSprint started successfully!"));
-      console.log(chalk.gray(`\nNow commit tasks to this branch. When done, run 'lw sprint merge ${sprint.shortId}'`));
+      console.log(
+        chalk.gray(
+          `\nNow commit tasks to this branch. When done, run 'lw sprint merge ${sprint.shortId}'`,
+        ),
+      );
     } catch (err) {
       spinner.fail("Failed to start sprint");
       console.error(chalk.red((err as Error).message));
@@ -404,7 +412,9 @@ sprintCommand
       if (options.dryRun) {
         console.log(chalk.gray("\n[Dry run - no changes made]"));
         console.log(chalk.gray("Would:"));
-        console.log(chalk.gray(`  1. git checkout ${epicBranchName} && git pull`));
+        console.log(
+          chalk.gray(`  1. git checkout ${epicBranchName} && git pull`),
+        );
         console.log(chalk.gray(`  2. git merge ${sprintBranchName} --no-ff`));
         console.log(chalk.gray(`  3. git push origin ${epicBranchName}`));
         console.log(chalk.gray('  4. Update sprint status to "Completed"'));
@@ -418,7 +428,9 @@ sprintCommand
 
       // Merge sprint branch
       spinner.start(`Merging ${sprintBranchName} to ${epicBranchName}...`);
-      await exec(`git merge ${sprintBranchName} --no-ff -m "Merge sprint: ${sprint.name}"`);
+      await exec(
+        `git merge ${sprintBranchName} --no-ff -m "Merge sprint: ${sprint.name}"`,
+      );
       spinner.succeed(`Merged ${sprintBranchName}`);
 
       // Push to epic branch
@@ -432,9 +444,17 @@ sprintCommand
       spinner.succeed("Sprint status updated to Completed");
 
       console.log(chalk.green("\nSprint merged successfully!"));
-      console.log(chalk.gray(`\nThe sprint branch '${sprintBranchName}' can now be deleted if desired.`));
+      console.log(
+        chalk.gray(
+          `\nThe sprint branch '${sprintBranchName}' can now be deleted if desired.`,
+        ),
+      );
       if (epic) {
-        console.log(chalk.gray(`When the epic is complete, run 'lw epic merge ${epic.shortId}'`));
+        console.log(
+          chalk.gray(
+            `When the epic is complete, run 'lw epic merge ${epic.shortId}'`,
+          ),
+        );
       }
     } catch (err) {
       spinner.fail("Failed to merge sprint");

@@ -3,10 +3,145 @@ import chalk from "chalk";
 import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join, basename, dirname } from "path";
-import { getPackagePath } from "../utils/paths.js";
+import { getPackagePath, findWorkspaceRoot } from "../utils/paths.js";
+import { exec } from "../utils/exec.js";
 
-export const cmsCommand = new Command("cms")
-  .description("CMS integration commands - make components props-driven");
+export const cmsCommand = new Command("cms").description(
+  "CMS integration commands - pages, components, content",
+);
+
+// =============================================================================
+// PAGE COMMANDS - lw cms:page
+// =============================================================================
+
+const pageCommand = new Command("page").description("Manage CMS pages");
+
+/**
+ * lw cms:page create <slug>
+ * Create a page with smart defaults
+ */
+pageCommand
+  .command("create <slug>")
+  .description("Create a CMS page (e.g., lw cms:page create terms)")
+  .option("--site <domain>", "Site domain")
+  .option("--title <title>", "Custom title")
+  .option("--draft", "Create as draft")
+  .option("--force", "Overwrite if exists")
+  .action(async (slug: string, options) => {
+    const root = findWorkspaceRoot();
+    const lwmPath = join(root, "lightwave-platform", "lwm_core");
+
+    const args = ["manage.py", "create_page", slug, "--json"];
+    if (options.site) args.push("--site", options.site);
+    if (options.title) args.push("--title", options.title);
+    if (options.draft) args.push("--draft");
+    if (options.force) args.push("--force");
+
+    try {
+      const result = await exec(
+        "docker",
+        ["compose", "exec", "-T", "web", "python", ...args],
+        { cwd: lwmPath, silent: true },
+      );
+
+      const data = JSON.parse(result.stdout.trim());
+
+      if (data.status === "exists") {
+        console.log(chalk.yellow(`Page already exists: ${slug}`));
+        console.log(chalk.gray("  Use --force to overwrite"));
+      } else {
+        console.log(chalk.green(`Page ${data.status}: ${data.slug}`));
+        console.log(chalk.gray(`  Title: ${data.title}`));
+        console.log(chalk.gray(`  Path: ${data.path}`));
+        console.log(chalk.gray(`  URL: https://${data.site}${data.path}`));
+      }
+    } catch (err: any) {
+      console.log(chalk.red(`Failed to create page: ${err.message}`));
+    }
+  });
+
+/**
+ * lw cms:page list
+ * List all CMS pages
+ */
+pageCommand
+  .command("list")
+  .description("List all CMS pages")
+  .option("--site <domain>", "Filter by site")
+  .action(async (options) => {
+    const root = findWorkspaceRoot();
+    const lwmPath = join(root, "lightwave-platform", "lwm_core");
+
+    const args = ["manage.py", "create_page", "--list", "--json"];
+    if (options.site) args.push("--site", options.site);
+
+    try {
+      const result = await exec(
+        "docker",
+        ["compose", "exec", "-T", "web", "python", ...args],
+        { cwd: lwmPath, silent: true },
+      );
+
+      const pages = JSON.parse(result.stdout.trim());
+
+      if (pages.length === 0) {
+        console.log(chalk.yellow("No pages found"));
+        console.log(chalk.gray("  Run: lw cms:page seed"));
+        return;
+      }
+
+      console.log(chalk.blue("\n=== CMS Pages ===\n"));
+
+      let currentSite = "";
+      for (const page of pages) {
+        if (page.site !== currentSite) {
+          currentSite = page.site;
+          console.log(chalk.cyan(`\n${currentSite}`));
+        }
+
+        const status = page.is_published ? chalk.green("+") : chalk.yellow("o");
+        console.log(`  [${status}] ${chalk.white(page.path)} - ${page.title}`);
+      }
+      console.log("");
+    } catch (err: any) {
+      console.log(chalk.red(`Failed to list pages: ${err.message}`));
+    }
+  });
+
+/**
+ * lw cms:page seed
+ * Seed default pages (terms, privacy, about, contact, careers)
+ */
+pageCommand
+  .command("seed")
+  .description("Seed default pages (terms, privacy, about, contact, careers)")
+  .option("--site <domain>", "Site domain")
+  .option("--force", "Overwrite existing")
+  .action(async (options) => {
+    const root = findWorkspaceRoot();
+    const lwmPath = join(root, "lightwave-platform", "lwm_core");
+
+    const args = ["manage.py", "create_page", "--seed-defaults"];
+    if (options.site) args.push("--site", options.site);
+    if (options.force) args.push("--force");
+
+    console.log(chalk.blue("Seeding default CMS pages..."));
+
+    try {
+      const result = await exec(
+        "docker",
+        ["compose", "exec", "-T", "web", "python", ...args],
+        { cwd: lwmPath },
+      );
+
+      console.log(chalk.green("\nDefault pages seeded!"));
+      console.log(chalk.gray("  Run: lw cms:page list"));
+    } catch (err: any) {
+      console.log(chalk.red(`Failed to seed pages: ${err.message}`));
+    }
+  });
+
+cmsCommand.addCommand(pageCommand);
 
 interface ExtractedContent {
   sectionTitle?: string;
@@ -58,7 +193,10 @@ cmsCommand
       console.log(chalk.gray("  Headline:"), extracted.headline);
     }
     if (extracted.description) {
-      console.log(chalk.gray("  Description:"), extracted.description.slice(0, 80) + "...");
+      console.log(
+        chalk.gray("  Description:"),
+        extracted.description.slice(0, 80) + "...",
+      );
     }
 
     if (extracted.features.length > 0) {
@@ -109,7 +247,11 @@ cmsCommand
 
     const extracted = analyzeComponent(content);
     const propsInterface = generatePropsInterface(componentName, extracted);
-    const convertedComponent = generateCMSComponent(pascalName, extracted, content);
+    const convertedComponent = generateCMSComponent(
+      pascalName,
+      extracted,
+      content,
+    );
 
     if (options.dryRun) {
       console.log(chalk.blue("\n=== Dry Run: Converted Component ===\n"));
@@ -130,8 +272,13 @@ cmsCommand
 
     // Also write default content
     const defaultContentPath = outputPath.replace(".tsx", ".content.ts");
-    await writeFile(defaultContentPath, generateDefaultContent(pascalName, extracted));
-    console.log(chalk.green(`✓ Default content written to: ${defaultContentPath}`));
+    await writeFile(
+      defaultContentPath,
+      generateDefaultContent(pascalName, extracted),
+    );
+    console.log(
+      chalk.green(`✓ Default content written to: ${defaultContentPath}`),
+    );
   });
 
 /**
@@ -158,7 +305,9 @@ cmsCommand
       if (!existsSync(catPath)) continue;
 
       const files = await readdir(catPath);
-      const tsxFiles = files.filter(f => f.endsWith(".tsx") && !f.includes(".content."));
+      const tsxFiles = files.filter(
+        (f) => f.endsWith(".tsx") && !f.includes(".content."),
+      );
 
       for (const file of tsxFiles) {
         const filePath = join(catPath, file);
@@ -166,10 +315,14 @@ cmsCommand
 
         // Check if component has hardcoded strings
         const hasHardcodedContent = hasHardcodedStrings(content);
-        const hasProps = content.includes("Props {") || content.includes("Props{");
+        const hasProps =
+          content.includes("Props {") || content.includes("Props{");
 
         if (hasHardcodedContent && !hasProps) {
-          console.log(chalk.yellow(`  ${cat}/${file}`), chalk.gray("- needs conversion"));
+          console.log(
+            chalk.yellow(`  ${cat}/${file}`),
+            chalk.gray("- needs conversion"),
+          );
         }
       }
     }
@@ -196,7 +349,9 @@ function analyzeComponent(content: string): ExtractedContent {
   }
 
   // Extract description (p tags after headline)
-  const descMatches = content.match(/<p[^>]*className="[^"]*text-tertiary[^"]*"[^>]*>\s*([^<]+)/g);
+  const descMatches = content.match(
+    /<p[^>]*className="[^"]*text-tertiary[^"]*"[^>]*>\s*([^<]+)/g,
+  );
   if (descMatches && descMatches.length > 0) {
     const match = descMatches[0].match(/>([^<]+)/);
     if (match) {
@@ -205,14 +360,18 @@ function analyzeComponent(content: string): ExtractedContent {
   }
 
   // Extract features from array literals
-  const featureArrayMatch = content.match(/\[\s*\{[\s\S]*?title:[\s\S]*?\}\s*\]/g);
+  const featureArrayMatch = content.match(
+    /\[\s*\{[\s\S]*?title:[\s\S]*?\}\s*\]/g,
+  );
   if (featureArrayMatch) {
     for (const arrayStr of featureArrayMatch) {
       const titleMatches = arrayStr.matchAll(/title:\s*["']([^"']+)["']/g);
-      const subtitleMatches = arrayStr.matchAll(/subtitle:\s*["']([^"']+)["']/g);
+      const subtitleMatches = arrayStr.matchAll(
+        /subtitle:\s*["']([^"']+)["']/g,
+      );
 
-      const titles = [...titleMatches].map(m => m[1]);
-      const subtitles = [...subtitleMatches].map(m => m[1]);
+      const titles = [...titleMatches].map((m) => m[1]);
+      const subtitles = [...subtitleMatches].map((m) => m[1]);
 
       titles.forEach((title, i) => {
         result.features.push({
@@ -224,9 +383,11 @@ function analyzeComponent(content: string): ExtractedContent {
   }
 
   // Extract features from inline h2 tags within grid
-  const h2Matches = content.matchAll(/<h2[^>]*>([^<]+)<\/h2>[\s\S]*?<p[^>]*>([^<]+)<\/p>/g);
+  const h2Matches = content.matchAll(
+    /<h2[^>]*>([^<]+)<\/h2>[\s\S]*?<p[^>]*>([^<]+)<\/p>/g,
+  );
   for (const match of h2Matches) {
-    if (!result.features.find(f => f.title === match[1].trim())) {
+    if (!result.features.find((f) => f.title === match[1].trim())) {
       result.features.push({
         title: match[1].trim(),
         subtitle: match[2].trim(),
@@ -238,14 +399,16 @@ function analyzeComponent(content: string): ExtractedContent {
   const checkItemsMatch = content.match(/\.map\(\(feat\)[\s\S]*?\[([^\]]+)\]/);
   if (checkItemsMatch) {
     const items = checkItemsMatch[1].matchAll(/["']([^"']+)["']/g);
-    const checkItems = [...items].map(m => m[1]);
+    const checkItems = [...items].map((m) => m[1]);
     if (result.features.length > 0 && checkItems.length > 0) {
       result.features[result.features.length - 1].checkItems = checkItems;
     }
   }
 
   // Extract images
-  const imgMatches = content.matchAll(/<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["']/g);
+  const imgMatches = content.matchAll(
+    /<img[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']+)["']/g,
+  );
   for (const match of imgMatches) {
     result.images.push({
       alt: match[1],
@@ -259,22 +422,25 @@ function analyzeComponent(content: string): ExtractedContent {
 function hasHardcodedStrings(content: string): boolean {
   // Check for hardcoded text in JSX
   const patterns = [
-    />\s*[A-Z][a-z]+.*?</,  // Text content starting with capital
-    /title:\s*["'][^"']{10,}["']/,  // Long title strings
-    /subtitle:\s*["'][^"']{20,}["']/,  // Long subtitle strings
+    />\s*[A-Z][a-z]+.*?</, // Text content starting with capital
+    /title:\s*["'][^"']{10,}["']/, // Long title strings
+    /subtitle:\s*["'][^"']{20,}["']/, // Long subtitle strings
   ];
 
-  return patterns.some(p => p.test(content));
+  return patterns.some((p) => p.test(content));
 }
 
 function kebabToPascal(kebab: string): string {
   return kebab
     .split("-")
-    .map(s => s.charAt(0).toUpperCase() + s.slice(1))
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join("");
 }
 
-function generatePropsInterface(componentName: string, extracted: ExtractedContent): string {
+function generatePropsInterface(
+  componentName: string,
+  extracted: ExtractedContent,
+): string {
   const pascalName = kebabToPascal(componentName);
 
   let props = `export interface ${pascalName}Props {\n`;
@@ -294,7 +460,7 @@ function generatePropsInterface(componentName: string, extracted: ExtractedConte
     props += `    title: string;\n`;
     props += `    subtitle: string;\n`;
     props += `    icon?: React.ComponentType<{ className?: string }>;\n`;
-    if (extracted.features.some(f => f.checkItems?.length)) {
+    if (extracted.features.some((f) => f.checkItems?.length)) {
       props += `    checkItems?: string[];\n`;
     }
     props += `  }>;\n`;
@@ -313,7 +479,11 @@ function generatePropsInterface(componentName: string, extracted: ExtractedConte
   return props;
 }
 
-function generateCMSComponent(pascalName: string, extracted: ExtractedContent, originalContent: string): string {
+function generateCMSComponent(
+  pascalName: string,
+  extracted: ExtractedContent,
+  originalContent: string,
+): string {
   // This is a simplified version - full conversion requires manual work
   return `export function ${pascalName}(props: ${pascalName}Props) {
   const {
@@ -333,7 +503,10 @@ function generateCMSComponent(pascalName: string, extracted: ExtractedContent, o
 }`;
 }
 
-function generateDefaultContent(pascalName: string, extracted: ExtractedContent): string {
+function generateDefaultContent(
+  pascalName: string,
+  extracted: ExtractedContent,
+): string {
   let content = `// Default content for ${pascalName}\n`;
   content += `// Import this and spread into component, or use CMS data\n\n`;
 

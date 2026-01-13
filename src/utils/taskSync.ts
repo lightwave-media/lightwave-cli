@@ -39,7 +39,7 @@ export async function pushTaskUpdate(task: TaskSyncPayload): Promise<boolean> {
 
   try {
     const response = await fetch(`${BACKEND_URL}/api/tasks/sync/`, {
-      method: "POST",
+      method: "post",
       headers: {
         "Content-Type": "application/json",
         "X-Agent-Key": agentKey,
@@ -83,7 +83,7 @@ async function getAgentKey(): Promise<string | null> {
       new GetParameterCommand({
         Name: "/lightwave/prod/CLI_AGENT_KEY",
         WithDecryption: true,
-      })
+      }),
     );
     cachedAgentKey = result.Parameter?.Value || null;
     return cachedAgentKey;

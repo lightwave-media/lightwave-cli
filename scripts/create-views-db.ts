@@ -19,7 +19,7 @@ async function getApiKey(): Promise<string> {
     new GetParameterCommand({
       Name: "/lightwave/prod/NOTION_API_KEY",
       WithDecryption: true,
-    })
+    }),
   );
 
   if (!result.Parameter?.Value) {
@@ -46,7 +46,9 @@ async function main() {
   });
 
   if (searchResult.results.length === 0) {
-    console.error("Could not find a parent page. Please create the database manually.");
+    console.error(
+      "Could not find a parent page. Please create the database manually.",
+    );
     console.log("\nManual creation instructions:");
     console.log("1. Create a new database called 'CLI Views'");
     console.log("2. Add properties:");
@@ -133,14 +135,20 @@ async function main() {
                     ],
                   },
                   null,
-                  2
+                  2,
                 ),
               },
             },
           ],
         },
         Description: {
-          rich_text: [{ text: { content: "Tasks in Production domain with Software Dev type" } }],
+          rich_text: [
+            {
+              text: {
+                content: "Tasks in Production domain with Software Dev type",
+              },
+            },
+          ],
         },
         Active: {
           checkbox: true,

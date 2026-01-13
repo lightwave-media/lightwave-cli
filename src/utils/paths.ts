@@ -12,13 +12,18 @@ export function findWorkspaceRoot(): string {
   let current = process.cwd();
 
   while (current !== "/") {
-    if (existsSync(join(current, ".claude")) && existsSync(join(current, "packages"))) {
+    if (
+      existsSync(join(current, ".claude")) &&
+      existsSync(join(current, "packages"))
+    ) {
       return current;
     }
     current = dirname(current);
   }
 
-  throw new Error("Could not find LightWave workspace root (looking for .claude/ directory)");
+  throw new Error(
+    "Could not find LightWave workspace root (looking for .claude/ directory)",
+  );
 }
 
 /**

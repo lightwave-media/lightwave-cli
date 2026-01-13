@@ -36,7 +36,10 @@ workspaceCommand
       if (!existsSync(join(domainPath, ".git"))) continue;
 
       console.log(chalk.yellow(`\n${domain}:`));
-      const result = await exec("git", ["status", "--short"], { cwd: domainPath, silent: true });
+      const result = await exec("git", ["status", "--short"], {
+        cwd: domainPath,
+        silent: true,
+      });
       if (result.stdout.trim()) {
         console.log(result.stdout);
       } else {
@@ -150,12 +153,16 @@ workspaceCommand
     // Show agents
     const agentsDir = join(root, ".claude/agents");
     const agents = await readdir(agentsDir);
-    const agentCount = agents.filter((a) => a.endsWith(".md") && a !== "README.md").length;
+    const agentCount = agents.filter(
+      (a) => a.endsWith(".md") && a !== "README.md",
+    ).length;
     console.log(`\nClaude Agents: ${agentCount}`);
 
     // Show skills
     const skillsDir = join(root, ".claude/skills");
     const skills = await readdir(skillsDir);
-    const skillCount = skills.filter((s) => s.endsWith(".md") && s !== "README.md").length;
+    const skillCount = skills.filter(
+      (s) => s.endsWith(".md") && s !== "README.md",
+    ).length;
     console.log(`Claude Skills: ${skillCount}`);
   });

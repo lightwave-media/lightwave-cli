@@ -5,10 +5,15 @@ import { existsSync } from "fs";
 import { readdir } from "fs/promises";
 import { join } from "path";
 import { exec, make } from "../utils/exec.js";
-import { findWorkspaceRoot, getPackagePath, getDomainPath } from "../utils/paths.js";
+import {
+  findWorkspaceRoot,
+  getPackagePath,
+  getDomainPath,
+} from "../utils/paths.js";
 
-export const buildCommand = new Command("build")
-  .description("Build commands for packages and domains");
+export const buildCommand = new Command("build").description(
+  "Build commands for packages and domains",
+);
 
 /**
  * lw build:ui

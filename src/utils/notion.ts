@@ -45,7 +45,7 @@ async function loadConfig(): Promise<NotionConfig> {
         new GetParameterCommand({
           Name: "/lightwave/prod/NOTION_API_KEY",
           WithDecryption: true,
-        })
+        }),
       );
 
       if (!apiKeyResult.Parameter?.Value) {
@@ -58,7 +58,7 @@ async function loadConfig(): Promise<NotionConfig> {
       if (error.name === "ParameterNotFound") {
         throw new Error(
           "Notion credentials not found. Set NOTION_API_KEY env var, " +
-            "or ensure AWS Parameter Store has /lightwave/prod/NOTION_API_KEY"
+            "or ensure AWS Parameter Store has /lightwave/prod/NOTION_API_KEY",
         );
       }
       throw err;
@@ -109,7 +109,9 @@ interface DatabaseQueryResponse {
  * Uses client.request() because SDK v5 dataSources.query uses /data_sources/ endpoint
  * which doesn't work with databases created before 2025 API
  */
-export async function queryTasks(options: TaskListOptions = {}): Promise<NotionTask[]> {
+export async function queryTasks(
+  options: TaskListOptions = {},
+): Promise<NotionTask[]> {
   const { client, config } = await getNotionClient();
 
   // Build filter conditions
@@ -321,7 +323,10 @@ export async function getTask(taskId: string): Promise<NotionTask | null> {
     // Stop early if we found a match (optimization)
     const shortId = normalizedId.substring(0, 8);
     const earlyMatch = response.results.find((page) => {
-      const pageShortId = (page.id as string).replace(/-/g, "").substring(0, 8).toLowerCase();
+      const pageShortId = (page.id as string)
+        .replace(/-/g, "")
+        .substring(0, 8)
+        .toLowerCase();
       return pageShortId === shortId;
     });
     if (earlyMatch) {
@@ -333,7 +338,10 @@ export async function getTask(taskId: string): Promise<NotionTask | null> {
   // Check for partial matches in all results
   const shortId = normalizedId.substring(0, 8);
   const matches = allResults.filter((page) => {
-    const pageShortId = (page.id as string).replace(/-/g, "").substring(0, 8).toLowerCase();
+    const pageShortId = (page.id as string)
+      .replace(/-/g, "")
+      .substring(0, 8)
+      .toLowerCase();
     return pageShortId.startsWith(shortId);
   });
 
@@ -343,7 +351,7 @@ export async function getTask(taskId: string): Promise<NotionTask | null> {
 
   if (matches.length > 1) {
     throw new Error(
-      `Ambiguous task ID: ${taskId}. Found ${matches.length} matches. Use full ID.`
+      `Ambiguous task ID: ${taskId}. Found ${matches.length} matches. Use full ID.`,
     );
   }
 
@@ -355,7 +363,7 @@ export async function getTask(taskId: string): Promise<NotionTask | null> {
  */
 export async function createTask(
   title: string,
-  properties?: Record<string, unknown>
+  properties?: Record<string, unknown>,
 ): Promise<NotionTask> {
   const { client, config } = await getNotionClient();
 
@@ -378,7 +386,7 @@ export async function createTask(
  */
 export async function updateTaskStatus(
   taskId: string,
-  status: NotionTaskStatus
+  status: NotionTaskStatus,
 ): Promise<void> {
   const { client } = await getNotionClient();
 
@@ -402,7 +410,7 @@ export async function updateTask(
     priority?: string | null;
     epicId?: string | null;
     sprintId?: string | null;
-  }
+  },
 ): Promise<void> {
   const { client } = await getNotionClient();
 
@@ -427,7 +435,9 @@ export async function updateTask(
       // Clear epic relation
       properties["🌐 Global Projects & Epics DB "] = { relation: [] };
     } else {
-      properties["🌐 Global Projects & Epics DB "] = { relation: [{ id: options.epicId }] };
+      properties["🌐 Global Projects & Epics DB "] = {
+        relation: [{ id: options.epicId }],
+      };
     }
   }
 
@@ -436,7 +446,9 @@ export async function updateTask(
       // Clear sprint relation
       properties["🛠️  Global Sprints DB"] = { relation: [] };
     } else {
-      properties["🛠️  Global Sprints DB"] = { relation: [{ id: options.sprintId }] };
+      properties["🛠️  Global Sprints DB"] = {
+        relation: [{ id: options.sprintId }],
+      };
     }
   }
 
@@ -446,7 +458,8 @@ export async function updateTask(
 
   await client.pages.update({
     page_id: taskId,
-    properties,
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    properties: properties as any,
   });
 }
 
@@ -455,7 +468,7 @@ export async function updateTask(
  */
 export async function updateTaskPriority(
   taskId: string,
-  priority: string | null
+  priority: string | null,
 ): Promise<void> {
   await updateTask(taskId, { priority });
 }
@@ -465,7 +478,7 @@ export async function updateTaskPriority(
  */
 export async function assignTaskToEpic(
   taskId: string,
-  epicId: string | null
+  epicId: string | null,
 ): Promise<void> {
   await updateTask(taskId, { epicId });
 }
@@ -475,7 +488,7 @@ export async function assignTaskToEpic(
  */
 export async function assignTaskToSprint(
   taskId: string,
-  sprintId: string | null
+  sprintId: string | null,
 ): Promise<void> {
   await updateTask(taskId, { sprintId });
 }
@@ -517,10 +530,12 @@ export async function queryLifeDomains(): Promise<NotionLifeDomain[]> {
 /**
  * Find a Life Domain by name (case-insensitive partial match)
  */
-export async function findLifeDomainByName(name: string): Promise<NotionLifeDomain | null> {
+export async function findLifeDomainByName(
+  name: string,
+): Promise<NotionLifeDomain | null> {
   const domains = await queryLifeDomains();
   const lowerName = name.toLowerCase();
-  return domains.find(d => d.name.toLowerCase().includes(lowerName)) || null;
+  return domains.find((d) => d.name.toLowerCase().includes(lowerName)) || null;
 }
 
 // =============================================================================
@@ -530,23 +545,30 @@ export async function findLifeDomainByName(name: string): Promise<NotionLifeDoma
 /**
  * Query Epics/Projects from Notion
  */
-export async function queryEpics(options: {
-  status?: EpicStatus | EpicStatus[];
-  domain?: string;
-  limit?: number;
-} = {}): Promise<NotionEpic[]> {
+export async function queryEpics(
+  options: {
+    status?: EpicStatus | EpicStatus[];
+    domain?: string;
+    limit?: number;
+  } = {},
+): Promise<NotionEpic[]> {
   const { client, config } = await getNotionClient();
 
   const conditions: Array<Record<string, unknown>> = [];
 
   // Status filter
   if (options.status) {
-    const statuses = Array.isArray(options.status) ? options.status : [options.status];
+    const statuses = Array.isArray(options.status)
+      ? options.status
+      : [options.status];
     if (statuses.length === 1) {
       conditions.push({ property: "Status", status: { equals: statuses[0] } });
     } else {
       conditions.push({
-        or: statuses.map((s) => ({ property: "Status", status: { equals: s } })),
+        or: statuses.map((s) => ({
+          property: "Status",
+          status: { equals: s },
+        })),
       });
     }
   }
@@ -585,15 +607,20 @@ export async function queryEpics(options: {
 /**
  * Find an Epic by name or ID
  */
-export async function findEpicByName(nameOrId: string): Promise<NotionEpic | null> {
+export async function findEpicByName(
+  nameOrId: string,
+): Promise<NotionEpic | null> {
   const { client, config } = await getNotionClient();
 
   // Try by ID first
   const normalizedId = nameOrId.replace(/-/g, "").toLowerCase();
   if (normalizedId.length >= 8 && /^[a-f0-9]+$/.test(normalizedId)) {
     const epics = await queryEpics({ limit: 100 });
-    const match = epics.find(e =>
-      e.id.replace(/-/g, "").toLowerCase().startsWith(normalizedId.substring(0, 8))
+    const match = epics.find((e) =>
+      e.id
+        .replace(/-/g, "")
+        .toLowerCase()
+        .startsWith(normalizedId.substring(0, 8)),
     );
     if (match) return match;
   }
@@ -601,7 +628,7 @@ export async function findEpicByName(nameOrId: string): Promise<NotionEpic | nul
   // Search by name
   const epics = await queryEpics({ limit: 100 });
   const lowerName = nameOrId.toLowerCase();
-  return epics.find(e => e.name.toLowerCase().includes(lowerName)) || null;
+  return epics.find((e) => e.name.toLowerCase().includes(lowerName)) || null;
 }
 
 /**
@@ -631,7 +658,7 @@ export async function getEpic(epicId: string): Promise<NotionEpic | null> {
  */
 export async function updateEpicStatus(
   epicId: string,
-  status: EpicStatus
+  status: EpicStatus,
 ): Promise<void> {
   const { client } = await getNotionClient();
 
@@ -650,7 +677,9 @@ export async function updateEpicStatus(
 /**
  * Get a User Story by ID
  */
-export async function getUserStory(storyId: string): Promise<NotionUserStory | null> {
+export async function getUserStory(
+  storyId: string,
+): Promise<NotionUserStory | null> {
   const { client } = await getNotionClient();
 
   try {
@@ -671,9 +700,15 @@ function pageToUserStory(page: Record<string, unknown>): NotionUserStory {
   const statusProp = props.Status as { status?: { name: string } };
   const priorityProp = props.Priority as { select?: { name: string } };
   const userTypeProp = props["User Type"] as { select?: { name: string } };
-  const epicRelation = props["🌐 Global Projects & Epics DB "] as { relation?: Array<{ id: string }> };
-  const sprintRelation = props["🛠️  Global Sprints DB"] as { relation?: Array<{ id: string }> };
-  const taskRelation = props["🌐  Global Tasks DB"] as { relation?: Array<{ id: string }> };
+  const epicRelation = props["🌐 Global Projects & Epics DB "] as {
+    relation?: Array<{ id: string }>;
+  };
+  const sprintRelation = props["🛠️  Global Sprints DB"] as {
+    relation?: Array<{ id: string }>;
+  };
+  const taskRelation = props["🌐  Global Tasks DB"] as {
+    relation?: Array<{ id: string }>;
+  };
 
   const pageId = page.id as string;
 
@@ -687,7 +722,7 @@ function pageToUserStory(page: Record<string, unknown>): NotionUserStory {
     url: page.url as string,
     epicId: epicRelation?.relation?.[0]?.id || null,
     sprintId: sprintRelation?.relation?.[0]?.id || null,
-    taskIds: taskRelation?.relation?.map(r => r.id) || [],
+    taskIds: taskRelation?.relation?.map((r) => r.id) || [],
   };
 }
 
@@ -698,7 +733,9 @@ function pageToUserStory(page: Record<string, unknown>): NotionUserStory {
 /**
  * Get a Life Domain by ID
  */
-export async function getLifeDomain(domainId: string): Promise<NotionLifeDomain | null> {
+export async function getLifeDomain(
+  domainId: string,
+): Promise<NotionLifeDomain | null> {
   const { client } = await getNotionClient();
 
   try {
@@ -716,23 +753,30 @@ export async function getLifeDomain(domainId: string): Promise<NotionLifeDomain 
 /**
  * Query Sprints from Notion
  */
-export async function querySprints(options: {
-  status?: SprintStatus | SprintStatus[];
-  domain?: string;
-  limit?: number;
-} = {}): Promise<NotionSprint[]> {
+export async function querySprints(
+  options: {
+    status?: SprintStatus | SprintStatus[];
+    domain?: string;
+    limit?: number;
+  } = {},
+): Promise<NotionSprint[]> {
   const { client, config } = await getNotionClient();
 
   const conditions: Array<Record<string, unknown>> = [];
 
   // Status filter
   if (options.status) {
-    const statuses = Array.isArray(options.status) ? options.status : [options.status];
+    const statuses = Array.isArray(options.status)
+      ? options.status
+      : [options.status];
     if (statuses.length === 1) {
       conditions.push({ property: "Status", status: { equals: statuses[0] } });
     } else {
       conditions.push({
-        or: statuses.map((s) => ({ property: "Status", status: { equals: s } })),
+        or: statuses.map((s) => ({
+          property: "Status",
+          status: { equals: s },
+        })),
       });
     }
   }
@@ -742,7 +786,8 @@ export async function querySprints(options: {
     const domain = await findLifeDomainByName(options.domain);
     if (domain) {
       conditions.push({
-        property: "🌐  Life Buckets DB  (ID: b1e7c26b-7b52-4f60-9885-d73bcf1b76df) ",
+        property:
+          "🌐  Life Buckets DB  (ID: b1e7c26b-7b52-4f60-9885-d73bcf1b76df) ",
         relation: { contains: domain.id },
       });
     }
@@ -771,14 +816,19 @@ export async function querySprints(options: {
 /**
  * Find a Sprint by name or ID
  */
-export async function findSprintByName(nameOrId: string): Promise<NotionSprint | null> {
+export async function findSprintByName(
+  nameOrId: string,
+): Promise<NotionSprint | null> {
   const normalizedId = nameOrId.replace(/-/g, "").toLowerCase();
 
   // Try by short ID first
   if (normalizedId.length >= 8 && /^[a-f0-9]+$/.test(normalizedId)) {
     const sprints = await querySprints({ limit: 100 });
-    const match = sprints.find(s =>
-      s.id.replace(/-/g, "").toLowerCase().startsWith(normalizedId.substring(0, 8))
+    const match = sprints.find((s) =>
+      s.id
+        .replace(/-/g, "")
+        .toLowerCase()
+        .startsWith(normalizedId.substring(0, 8)),
     );
     if (match) return match;
   }
@@ -786,13 +836,15 @@ export async function findSprintByName(nameOrId: string): Promise<NotionSprint |
   // Search by name
   const sprints = await querySprints({ limit: 100 });
   const lowerName = nameOrId.toLowerCase();
-  return sprints.find(s => s.name.toLowerCase().includes(lowerName)) || null;
+  return sprints.find((s) => s.name.toLowerCase().includes(lowerName)) || null;
 }
 
 /**
  * Find a User Story by name or ID
  */
-export async function findUserStoryByName(nameOrId: string): Promise<{ id: string; name: string } | null> {
+export async function findUserStoryByName(
+  nameOrId: string,
+): Promise<{ id: string; name: string } | null> {
   const { client, config } = await getNotionClient();
   const normalizedId = nameOrId.replace(/-/g, "").toLowerCase();
 
@@ -805,8 +857,11 @@ export async function findUserStoryByName(nameOrId: string): Promise<{ id: strin
       body: { page_size: 100 },
     });
 
-    const match = response.results.find(page =>
-      (page.id as string).replace(/-/g, "").toLowerCase().startsWith(normalizedId.substring(0, 8))
+    const match = response.results.find((page) =>
+      (page.id as string)
+        .replace(/-/g, "")
+        .toLowerCase()
+        .startsWith(normalizedId.substring(0, 8)),
     );
     if (match) {
       const props = match.properties as Record<string, unknown>;
@@ -849,7 +904,9 @@ export async function getCurrentSprint(): Promise<NotionSprint | null> {
 /**
  * Get a single Sprint by ID with full details
  */
-export async function getSprint(sprintId: string): Promise<NotionSprint | null> {
+export async function getSprint(
+  sprintId: string,
+): Promise<NotionSprint | null> {
   const { client } = await getNotionClient();
 
   const normalizedId = sprintId.replace(/-/g, "").toLowerCase();
@@ -873,7 +930,7 @@ export async function getSprint(sprintId: string): Promise<NotionSprint | null> 
  */
 export async function updateSprintStatus(
   sprintId: string,
-  status: SprintStatus
+  status: SprintStatus,
 ): Promise<void> {
   const { client } = await getNotionClient();
 
@@ -951,7 +1008,10 @@ export function generateEpicBranchName(epic: NotionEpic): string {
  * Format: sprint/{epicId}-{year}-w{week}
  * Example: sprint/f87f6649-2025-w02
  */
-export function generateSprintBranchName(sprint: NotionSprint, epic?: NotionEpic | null): string {
+export function generateSprintBranchName(
+  sprint: NotionSprint,
+  epic?: NotionEpic | null,
+): string {
   // Extract year and week from sprint dates or name
   let yearWeek = "";
 
@@ -978,11 +1038,13 @@ export function generateSprintBranchName(sprint: NotionSprint, epic?: NotionEpic
  * Get ISO week number from date
  */
 function getWeekNumber(date: Date): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const d = new Date(
+    Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()),
+  );
   const dayNum = d.getUTCDay() || 7;
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
 }
 
 /**
@@ -991,11 +1053,13 @@ function getWeekNumber(date: Date): number {
  */
 export function generateCommitMessage(
   task: NotionTask,
-  options?: { userStoryId?: string; scope?: string }
+  options?: { userStoryId?: string; scope?: string },
 ): string {
   const type = inferTaskType(task.title);
   const scope = options?.scope || "task";
-  const description = task.title.toLowerCase().replace(/^(add|fix|update|implement|create|remove|refactor)\s+/i, "");
+  const description = task.title
+    .toLowerCase()
+    .replace(/^(add|fix|update|implement|create|remove|refactor)\s+/i, "");
 
   let message = `${type}(${scope}): ${description}\n\nTask: ${task.shortId}`;
 
@@ -1030,14 +1094,16 @@ function pageToTask(page: Record<string, unknown>): NotionTask {
   const status = (statusProp?.status?.name || "On Hold") as NotionTaskStatus;
 
   // Extract description (rich text)
-  const descProp = (props.Description ||
-    props.Summary) as { rich_text?: Array<{ plain_text: string }> };
+  const descProp = (props.Description || props.Summary) as {
+    rich_text?: Array<{ plain_text: string }>;
+  };
   const description =
     descProp?.rich_text?.map((t) => t.plain_text).join("") || null;
 
   // Extract acceptance criteria
-  const acProp = (props["Acceptance Criteria"] ||
-    props.Criteria) as { rich_text?: Array<{ plain_text: string }> };
+  const acProp = (props["Acceptance Criteria"] || props.Criteria) as {
+    rich_text?: Array<{ plain_text: string }>;
+  };
   const acceptanceCriteria =
     acProp?.rich_text?.map((t) => t.plain_text).join("") || null;
 
@@ -1048,42 +1114,68 @@ function pageToTask(page: Record<string, unknown>): NotionTask {
   // ==========================================================================
   // Relations (to other databases)
   // ==========================================================================
-  const epicRelation = props["🌐 Global Projects & Epics DB "] as { relation?: Array<{ id: string }> };
-  const sprintRelation = props["🛠️  Global Sprints DB"] as { relation?: Array<{ id: string }> };
-  const domainRelation = props["🌐 Life Domains DB"] as { relation?: Array<{ id: string }> };
-  const userStoryRelation = props["👤 User Stories "] as { relation?: Array<{ id: string }> };
-  const documentRelation = props["Related Document"] as { relation?: Array<{ id: string }> };
+  const epicRelation = props["🌐 Global Projects & Epics DB "] as {
+    relation?: Array<{ id: string }>;
+  };
+  const sprintRelation = props["🛠️  Global Sprints DB"] as {
+    relation?: Array<{ id: string }>;
+  };
+  const domainRelation = props["🌐 Life Domains DB"] as {
+    relation?: Array<{ id: string }>;
+  };
+  const userStoryRelation = props["👤 User Stories "] as {
+    relation?: Array<{ id: string }>;
+  };
+  const documentRelation = props["Related Document"] as {
+    relation?: Array<{ id: string }>;
+  };
 
   // ==========================================================================
   // Self-relations (Parent/Sub tasks)
   // ==========================================================================
-  const parentTaskRelation = props["Parent Task"] as { relation?: Array<{ id: string }> };
-  const subTaskRelation = props["Sub Task"] as { relation?: Array<{ id: string }> };
+  const parentTaskRelation = props["Parent Task"] as {
+    relation?: Array<{ id: string }>;
+  };
+  const subTaskRelation = props["Sub Task"] as {
+    relation?: Array<{ id: string }>;
+  };
 
   // ==========================================================================
   // Select fields
   // ==========================================================================
   const priorityProp = props.Priority as { select?: { name: string } };
-  const agentStatusProp = props["Agent Status"] as { select?: { name: string } };
-  const assignedAgentProp = props["Assigned Agent"] as { select?: { name: string } };
+  const agentStatusProp = props["Agent Status"] as {
+    select?: { name: string };
+  };
+  const assignedAgentProp = props["Assigned Agent"] as {
+    select?: { name: string };
+  };
   const taskTypeProp = props["Task Type"] as { select?: { name: string } };
 
   // ==========================================================================
   // Date fields
   // ==========================================================================
-  const dueDateProp = props["Due Date"] as { date?: { start: string; end: string | null } };
-  const doDateProp = props["Do Date"] as { date?: { start: string; end: string | null } };
+  const dueDateProp = props["Due Date"] as {
+    date?: { start: string; end: string | null };
+  };
+  const doDateProp = props["Do Date"] as {
+    date?: { start: string; end: string | null };
+  };
 
   // ==========================================================================
   // People field
   // ==========================================================================
-  const assigneeProp = props.Assignee as { people?: Array<{ name: string; id: string }> };
+  const assigneeProp = props.Assignee as {
+    people?: Array<{ name: string; id: string }>;
+  };
 
   // ==========================================================================
   // Rich text fields
   // ==========================================================================
   const noteProp = props.Note as { rich_text?: Array<{ plain_text: string }> };
-  const aiSummaryProp = props["AI summary"] as { rich_text?: Array<{ plain_text: string }> };
+  const aiSummaryProp = props["AI summary"] as {
+    rich_text?: Array<{ plain_text: string }>;
+  };
 
   // ==========================================================================
   // Checkbox fields
@@ -1093,7 +1185,9 @@ function pageToTask(page: Record<string, unknown>): NotionTask {
   // ==========================================================================
   // Unique ID field
   // ==========================================================================
-  const uniqueIdProp = props.ID as { unique_id?: { number: number; prefix: string | null } };
+  const uniqueIdProp = props.ID as {
+    unique_id?: { number: number; prefix: string | null };
+  };
 
   return {
     id: pageId,
@@ -1113,16 +1207,20 @@ function pageToTask(page: Record<string, unknown>): NotionTask {
     doDate: doDateProp?.date?.start || null,
 
     // Agent Workflow
-    agentStatus: (agentStatusProp?.select?.name as NotionTask["agentStatus"]) || null,
-    assignedAgent: (assignedAgentProp?.select?.name as NotionTask["assignedAgent"]) || null,
+    agentStatus:
+      (agentStatusProp?.select?.name as NotionTask["agentStatus"]) || null,
+    assignedAgent:
+      (assignedAgentProp?.select?.name as NotionTask["assignedAgent"]) || null,
     assignee: assigneeProp?.people?.[0]?.name || null,
 
     // Task Type from Notion
-    taskTypeSelect: (taskTypeProp?.select?.name as NotionTask["taskTypeSelect"]) || null,
+    taskTypeSelect:
+      (taskTypeProp?.select?.name as NotionTask["taskTypeSelect"]) || null,
 
     // Notes & AI
     note: noteProp?.rich_text?.map((t) => t.plain_text).join("") || null,
-    aiSummary: aiSummaryProp?.rich_text?.map((t) => t.plain_text).join("") || null,
+    aiSummary:
+      aiSummaryProp?.rich_text?.map((t) => t.plain_text).join("") || null,
 
     // Task Hierarchy
     parentTaskId: parentTaskRelation?.relation?.[0]?.id || null,
@@ -1133,7 +1231,7 @@ function pageToTask(page: Record<string, unknown>): NotionTask {
     sprintId: sprintRelation?.relation?.[0]?.id || null,
     lifeDomainId: domainRelation?.relation?.[0]?.id || null,
     userStoryIds: userStoryRelation?.relation?.map((r) => r.id) || [],
-    userStoryId: userStoryRelation?.relation?.[0]?.id || null,  // Deprecated, backwards compat
+    userStoryId: userStoryRelation?.relation?.[0]?.id || null, // Deprecated, backwards compat
     documentIds: documentRelation?.relation?.map((r) => r.id) || [],
 
     // Metadata
@@ -1150,7 +1248,9 @@ function pageToTask(page: Record<string, unknown>): NotionTask {
 function pageToLifeDomain(page: Record<string, unknown>): NotionLifeDomain {
   const props = (page as { properties: Record<string, unknown> }).properties;
 
-  const titleProp = props["Pillar Name"] as { title?: Array<{ plain_text: string }> };
+  const titleProp = props["Pillar Name"] as {
+    title?: Array<{ plain_text: string }>;
+  };
   const typeProp = props.Type as { select?: { name: string } };
   const statusProp = props.Status as { select?: { name: string } };
 
@@ -1174,18 +1274,38 @@ function pageToEpic(page: Record<string, unknown>): NotionEpic {
 
   const titleProp = props.Name as { title?: Array<{ plain_text: string }> };
   const statusProp = props.Status as { status?: { name: string } };
-  const subtitleProp = props["Subtitle "] as { rich_text?: Array<{ plain_text: string }> };
-  const logLineProp = props["Log Line"] as { rich_text?: Array<{ plain_text: string }> };
+  const subtitleProp = props["Subtitle "] as {
+    rich_text?: Array<{ plain_text: string }>;
+  };
+  const logLineProp = props["Log Line"] as {
+    rich_text?: Array<{ plain_text: string }>;
+  };
   const priorityProp = props.Priority as { select?: { name: string } };
-  const projectTypeProp = props["Type of Project"] as { select?: { name: string } };
-  const timelineProp = props["Timeline Dates"] as { date?: { start: string; end: string | null } };
-  const storyPointsProp = props["Total Story Points"] as { rollup?: { number: number } };
+  const projectTypeProp = props["Type of Project"] as {
+    select?: { name: string };
+  };
+  const timelineProp = props["Timeline Dates"] as {
+    date?: { start: string; end: string | null };
+  };
+  const storyPointsProp = props["Total Story Points"] as {
+    rollup?: { number: number };
+  };
   const githubProp = props["github repo link"] as { url?: string };
-  const domainRelation = props["🌐 Life Domains DB"] as { relation?: Array<{ id: string }> };
-  const sprintRelation = props["🛠️  Global Sprints DB"] as { relation?: Array<{ id: string }> };
-  const storyRelation = props["👤 User Stories "] as { relation?: Array<{ id: string }> };
-  const taskRelation = props["🌐  Global Tasks DB"] as { relation?: Array<{ id: string }> };
-  const docRelation = props["🌐  Global Documents DB"] as { relation?: Array<{ id: string }> };
+  const domainRelation = props["🌐 Life Domains DB"] as {
+    relation?: Array<{ id: string }>;
+  };
+  const sprintRelation = props["🛠️  Global Sprints DB"] as {
+    relation?: Array<{ id: string }>;
+  };
+  const storyRelation = props["👤 User Stories "] as {
+    relation?: Array<{ id: string }>;
+  };
+  const taskRelation = props["🌐  Global Tasks DB"] as {
+    relation?: Array<{ id: string }>;
+  };
+  const docRelation = props["🌐  Global Documents DB"] as {
+    relation?: Array<{ id: string }>;
+  };
 
   const pageId = page.id as string;
 
@@ -1204,10 +1324,10 @@ function pageToEpic(page: Record<string, unknown>): NotionEpic {
     url: page.url as string,
     githubRepoLink: githubProp?.url || null,
     lifeDomainId: domainRelation?.relation?.[0]?.id || null,
-    sprintIds: sprintRelation?.relation?.map(r => r.id) || [],
-    userStoryIds: storyRelation?.relation?.map(r => r.id) || [],
-    taskIds: taskRelation?.relation?.map(r => r.id) || [],
-    documentIds: docRelation?.relation?.map(r => r.id) || [],
+    sprintIds: sprintRelation?.relation?.map((r) => r.id) || [],
+    userStoryIds: storyRelation?.relation?.map((r) => r.id) || [],
+    taskIds: taskRelation?.relation?.map((r) => r.id) || [],
+    documentIds: docRelation?.relation?.map((r) => r.id) || [],
   };
 }
 
@@ -1219,13 +1339,25 @@ function pageToSprint(page: Record<string, unknown>): NotionSprint {
 
   const titleProp = props.Name as { title?: Array<{ plain_text: string }> };
   const statusProp = props.Status as { status?: { name: string } };
-  const objectivesProp = props["📋 Sprint Objectives"] as { rich_text?: Array<{ plain_text: string }> };
-  const datesProp = props["Sprint Dates"] as { date?: { start: string; end: string | null } };
+  const objectivesProp = props["📋 Sprint Objectives"] as {
+    rich_text?: Array<{ plain_text: string }>;
+  };
+  const datesProp = props["Sprint Dates"] as {
+    date?: { start: string; end: string | null };
+  };
   const scoreProp = props["📊 Sprint Quality Score"] as { number?: number };
-  const domainRelation = props["🌐  Life Buckets DB  (ID: b1e7c26b-7b52-4f60-9885-d73bcf1b76df) "] as { relation?: Array<{ id: string }> };
-  const epicRelation = props["🌐 Global Projects & Epics DB "] as { relation?: Array<{ id: string }> };
-  const taskRelation = props["🌐  Global Tasks DB"] as { relation?: Array<{ id: string }> };
-  const storyRelation = props["👤 User Stories "] as { relation?: Array<{ id: string }> };
+  const domainRelation = props[
+    "🌐  Life Buckets DB  (ID: b1e7c26b-7b52-4f60-9885-d73bcf1b76df) "
+  ] as { relation?: Array<{ id: string }> };
+  const epicRelation = props["🌐 Global Projects & Epics DB "] as {
+    relation?: Array<{ id: string }>;
+  };
+  const taskRelation = props["🌐  Global Tasks DB"] as {
+    relation?: Array<{ id: string }>;
+  };
+  const storyRelation = props["👤 User Stories "] as {
+    relation?: Array<{ id: string }>;
+  };
 
   const pageId = page.id as string;
 
@@ -1234,14 +1366,15 @@ function pageToSprint(page: Record<string, unknown>): NotionSprint {
     shortId: pageId.replace(/-/g, "").substring(0, 8),
     name: titleProp?.title?.[0]?.plain_text || "Untitled",
     status: (statusProp?.status?.name || "Not Started") as SprintStatus,
-    objectives: objectivesProp?.rich_text?.map(t => t.plain_text).join("") || null,
+    objectives:
+      objectivesProp?.rich_text?.map((t) => t.plain_text).join("") || null,
     startDate: datesProp?.date?.start || null,
     endDate: datesProp?.date?.end || null,
     qualityScore: scoreProp?.number || null,
     url: page.url as string,
-    epicIds: epicRelation?.relation?.map(r => r.id) || [],
-    taskIds: taskRelation?.relation?.map(r => r.id) || [],
-    userStoryIds: storyRelation?.relation?.map(r => r.id) || [],
+    epicIds: epicRelation?.relation?.map((r) => r.id) || [],
+    taskIds: taskRelation?.relation?.map((r) => r.id) || [],
+    userStoryIds: storyRelation?.relation?.map((r) => r.id) || [],
     lifeDomainId: domainRelation?.relation?.[0]?.id || null,
   };
 }
@@ -1253,7 +1386,9 @@ function pageToSprint(page: Record<string, unknown>): NotionSprint {
 /**
  * Query Documents from Notion
  */
-export async function queryDocuments(options: DocumentListOptions = {}): Promise<NotionDocument[]> {
+export async function queryDocuments(
+  options: DocumentListOptions = {},
+): Promise<NotionDocument[]> {
   const { client, config } = await getNotionClient();
 
   const conditions: Array<Record<string, unknown>> = [];
@@ -1307,7 +1442,9 @@ export async function queryDocuments(options: DocumentListOptions = {}): Promise
 /**
  * Get a single Document by ID
  */
-export async function getDocument(docId: string): Promise<NotionDocument | null> {
+export async function getDocument(
+  docId: string,
+): Promise<NotionDocument | null> {
   const { client } = await getNotionClient();
 
   const normalizedId = docId.replace(/-/g, "").toLowerCase();
@@ -1324,8 +1461,11 @@ export async function getDocument(docId: string): Promise<NotionDocument | null>
 
   // Search by short ID
   const docs = await queryDocuments({ limit: 100 });
-  const match = docs.find(d =>
-    d.id.replace(/-/g, "").toLowerCase().startsWith(normalizedId.substring(0, 8))
+  const match = docs.find((d) =>
+    d.id
+      .replace(/-/g, "")
+      .toLowerCase()
+      .startsWith(normalizedId.substring(0, 8)),
   );
   return match || null;
 }
@@ -1346,7 +1486,10 @@ export async function getDocumentContent(docId: string): Promise<string> {
 /**
  * Get all blocks from a page (handles pagination)
  */
-async function getAllBlocks(client: Client, blockId: string): Promise<Array<Record<string, unknown>>> {
+async function getAllBlocks(
+  client: Client,
+  blockId: string,
+): Promise<Array<Record<string, unknown>>> {
   const allBlocks: Array<Record<string, unknown>> = [];
   let hasMore = true;
   let startCursor: string | undefined;
@@ -1379,7 +1522,10 @@ async function getAllBlocks(client: Client, blockId: string): Promise<Array<Reco
 /**
  * Convert Notion blocks to markdown
  */
-function blocksToMarkdown(blocks: Array<Record<string, unknown>>, indent = 0): string {
+function blocksToMarkdown(
+  blocks: Array<Record<string, unknown>>,
+  indent = 0,
+): string {
   const lines: string[] = [];
   const prefix = "  ".repeat(indent);
 
@@ -1390,8 +1536,10 @@ function blocksToMarkdown(blocks: Array<Record<string, unknown>>, indent = 0): s
     if (!content) continue;
 
     // Extract rich text content
-    const richText = (content.rich_text || content.text) as Array<{ plain_text: string }> | undefined;
-    const text = richText?.map(t => t.plain_text).join("") || "";
+    const richText = (content.rich_text || content.text) as
+      | Array<{ plain_text: string }>
+      | undefined;
+    const text = richText?.map((t) => t.plain_text).join("") || "";
 
     switch (type) {
       case "heading_1":
@@ -1439,7 +1587,9 @@ function blocksToMarkdown(blocks: Array<Record<string, unknown>>, indent = 0): s
     }
 
     // Process children
-    const children = block.children as Array<Record<string, unknown>> | undefined;
+    const children = block.children as
+      | Array<Record<string, unknown>>
+      | undefined;
     if (children && children.length > 0) {
       lines.push(blocksToMarkdown(children, indent + 1));
     }
@@ -1455,7 +1605,9 @@ function blocksToMarkdown(blocks: Array<Record<string, unknown>>, indent = 0): s
 /**
  * Get documents linked to a task
  */
-export async function getTaskDocuments(taskId: string): Promise<NotionDocument[]> {
+export async function getTaskDocuments(
+  taskId: string,
+): Promise<NotionDocument[]> {
   const task = await getTask(taskId);
   if (!task || !task.documentIds || task.documentIds.length === 0) {
     return [];
@@ -1475,7 +1627,9 @@ export async function getTaskDocuments(taskId: string): Promise<NotionDocument[]
 /**
  * Get full task context with all related data
  */
-export async function getTaskContext(taskId: string): Promise<TaskContext | null> {
+export async function getTaskContext(
+  taskId: string,
+): Promise<TaskContext | null> {
   const task = await getTask(taskId);
   if (!task) return null;
 
@@ -1563,12 +1717,22 @@ function pageToDocument(page: Record<string, unknown>): NotionDocument {
   const props = (page as { properties: Record<string, unknown> }).properties;
 
   const titleProp = props.Name as { title?: Array<{ plain_text: string }> };
-  const contentTypeProp = props["Content Type"] as { select?: { name: string } };
-  const versionProp = props.Version as { rich_text?: Array<{ plain_text: string }> };
+  const contentTypeProp = props["Content Type"] as {
+    select?: { name: string };
+  };
+  const versionProp = props.Version as {
+    rich_text?: Array<{ plain_text: string }>;
+  };
   const statusProp = props["Document Status"] as { select?: { name: string } };
-  const agentTagsProp = props["Agent Tags"] as { multi_select?: Array<{ name: string }> };
-  const taskRelation = props["🌐  Global Tasks DB"] as { relation?: Array<{ id: string }> };
-  const epicRelation = props["🌐 Global Projects & Epics DB "] as { relation?: Array<{ id: string }> };
+  const agentTagsProp = props["Agent Tags"] as {
+    multi_select?: Array<{ name: string }>;
+  };
+  const taskRelation = props["🌐  Global Tasks DB"] as {
+    relation?: Array<{ id: string }>;
+  };
+  const epicRelation = props["🌐 Global Projects & Epics DB "] as {
+    relation?: Array<{ id: string }>;
+  };
 
   const pageId = page.id as string;
 
@@ -1579,9 +1743,9 @@ function pageToDocument(page: Record<string, unknown>): NotionDocument {
     contentType: contentTypeProp?.select?.name || null,
     version: versionProp?.rich_text?.[0]?.plain_text || null,
     status: statusProp?.select?.name || null,
-    agentTags: agentTagsProp?.multi_select?.map(t => t.name) || [],
+    agentTags: agentTagsProp?.multi_select?.map((t) => t.name) || [],
     url: page.url as string,
-    taskIds: taskRelation?.relation?.map(r => r.id) || [],
-    epicIds: epicRelation?.relation?.map(r => r.id) || [],
+    taskIds: taskRelation?.relation?.map((r) => r.id) || [],
+    epicIds: epicRelation?.relation?.map((r) => r.id) || [],
   };
 }

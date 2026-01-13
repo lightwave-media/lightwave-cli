@@ -5,10 +5,15 @@ import { readFile, writeFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 import { exec } from "../utils/exec.js";
-import { findWorkspaceRoot, getPackagePath, getDomainPath } from "../utils/paths.js";
+import {
+  findWorkspaceRoot,
+  getPackagePath,
+  getDomainPath,
+} from "../utils/paths.js";
 
-export const syncCommand = new Command("sync")
-  .description("Sync dependencies and versions across workspace");
+export const syncCommand = new Command("sync").description(
+  "Sync dependencies and versions across workspace",
+);
 
 /**
  * lw sync:ui
@@ -23,7 +28,9 @@ syncCommand
     const uiPath = getPackagePath("lightwave-ui");
 
     // Get current version
-    const uiPackageJson = JSON.parse(await readFile(join(uiPath, "package.json"), "utf-8"));
+    const uiPackageJson = JSON.parse(
+      await readFile(join(uiPath, "package.json"), "utf-8"),
+    );
     const currentVersion = uiPackageJson.version;
 
     console.log(chalk.blue("\n=== Sync @lightwave-media/ui ===\n"));
@@ -40,11 +47,14 @@ syncCommand
       if (!existsSync(packageJsonPath)) continue;
 
       try {
-        const packageJson = JSON.parse(await readFile(packageJsonPath, "utf-8"));
+        const packageJson = JSON.parse(
+          await readFile(packageJsonPath, "utf-8"),
+        );
         const deps = packageJson.dependencies || {};
         const devDeps = packageJson.devDependencies || {};
 
-        const uiDep = deps["@lightwave-media/ui"] || devDeps["@lightwave-media/ui"];
+        const uiDep =
+          deps["@lightwave-media/ui"] || devDeps["@lightwave-media/ui"];
 
         if (uiDep) {
           const installedVersion = uiDep.replace(/[\^~]/, "");
@@ -53,7 +63,7 @@ syncCommand
               chalk.yellow(`  ${domain}:`),
               chalk.red(installedVersion),
               "→",
-              chalk.green(currentVersion)
+              chalk.green(currentVersion),
             );
 
             if (!options.dryRun) {
@@ -64,10 +74,15 @@ syncCommand
               if (devDeps["@lightwave-media/ui"]) {
                 devDeps["@lightwave-media/ui"] = `^${currentVersion}`;
               }
-              await writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2) + "\n");
+              await writeFile(
+                packageJsonPath,
+                JSON.stringify(packageJson, null, 2) + "\n",
+              );
             }
           } else {
-            console.log(chalk.gray(`  ${domain}: up to date (${currentVersion})`));
+            console.log(
+              chalk.gray(`  ${domain}: up to date (${currentVersion})`),
+            );
           }
         }
       } catch (err) {
@@ -78,7 +93,9 @@ syncCommand
     if (options.dryRun) {
       console.log(chalk.yellow("\n(dry run - no changes made)"));
     } else {
-      console.log(chalk.green("\n✓ Versions updated. Run pnpm install in each domain."));
+      console.log(
+        chalk.green("\n✓ Versions updated. Run pnpm install in each domain."),
+      );
     }
   });
 
@@ -146,10 +163,14 @@ syncCommand
 
       const spinner = ora(`${domain}`).start();
       try {
-        await exec("docker", ["compose", "run", "--rm", "web", "uv", "sync", "--frozen"], {
-          cwd: domainPath,
-          silent: true,
-        });
+        await exec(
+          "docker",
+          ["compose", "run", "--rm", "web", "uv", "sync", "--frozen"],
+          {
+            cwd: domainPath,
+            silent: true,
+          },
+        );
         spinner.succeed(`${domain}`);
       } catch (err) {
         spinner.warn(`${domain} (containers not running?)`);
@@ -255,7 +276,9 @@ syncCommand
     }
 
     if (!domain) {
-      console.error(chalk.red("Error: Could not detect domain. Use --domain <name>"));
+      console.error(
+        chalk.red("Error: Could not detect domain. Use --domain <name>"),
+      );
       process.exit(1);
     }
 
@@ -263,12 +286,15 @@ syncCommand
     const staticPath = join(domainPath, "static");
 
     if (!existsSync(staticPath)) {
-      console.error(chalk.red(`Error: No static directory found at ${staticPath}`));
+      console.error(
+        chalk.red(`Error: No static directory found at ${staticPath}`),
+      );
       process.exit(1);
     }
 
     // S3 bucket and path
-    const s3Bucket = process.env.LIGHTWAVE_CDN_BUCKET || "cdn.lightwave-media.ltd";
+    const s3Bucket =
+      process.env.LIGHTWAVE_CDN_BUCKET || "cdn.lightwave-media.ltd";
     const s3Path = `s3://${s3Bucket}/static/${domain}/`;
 
     console.log(chalk.blue("\n=== Sync Static Assets to CDN ===\n"));
@@ -300,7 +326,11 @@ syncCommand
         console.log(chalk.yellow("\n(dry run - no changes made)"));
       }
 
-      console.log(chalk.green(`\n✓ Assets available at: https://cdn.lightwave-media.ltd/static/${domain}/`));
+      console.log(
+        chalk.green(
+          `\n✓ Assets available at: https://cdn.lightwave-media.ltd/static/${domain}/`,
+        ),
+      );
     } catch (err) {
       spinner.fail("Failed to sync static assets");
       console.error(chalk.red((err as Error).message));

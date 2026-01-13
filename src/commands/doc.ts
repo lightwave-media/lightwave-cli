@@ -18,7 +18,7 @@ import {
 import type { NotionDocument } from "../types/notion.js";
 
 export const docCommand = new Command("doc").description(
-  "Document management - read specs and configs from Notion"
+  "Document management - read specs and configs from Notion",
 );
 
 /**
@@ -39,9 +39,15 @@ function getStatusColor(status: string | null) {
 docCommand
   .command("list")
   .description("List documents from Notion")
-  .option("--status <status>", "Filter by Document Status (e.g., '📢 Active/Live')")
+  .option(
+    "--status <status>",
+    "Filter by Document Status (e.g., '📢 Active/Live')",
+  )
   .option("--type <type>", "Filter by Content Type (e.g., 'Config', 'SOP')")
-  .option("--tags <tags>", "Filter by Agent Tags (comma-separated, e.g., 'agent:v_speak,agent:v_core')")
+  .option(
+    "--tags <tags>",
+    "Filter by Agent Tags (comma-separated, e.g., 'agent:v_speak,agent:v_core')",
+  )
   .option("--limit <n>", "Max number of documents", "20")
   .option("--format <format>", "Output format: table, json", "table")
   .action(async (options) => {
@@ -76,8 +82,8 @@ docCommand
       console.log(chalk.blue("\n=== Documents ===\n"));
       console.log(
         chalk.gray(
-          `${"ID".padEnd(10)} ${"Type".padEnd(12)} ${"Status".padEnd(16)} ${"Name".padEnd(50)}`
-        )
+          `${"ID".padEnd(10)} ${"Type".padEnd(12)} ${"Status".padEnd(16)} ${"Name".padEnd(50)}`,
+        ),
       );
       console.log(chalk.gray("-".repeat(90)));
 
@@ -91,7 +97,7 @@ docCommand
           `${chalk.cyan(doc.shortId.padEnd(10))} ` +
             `${chalk.gray(contentType.padEnd(12))} ` +
             `${statusColor(status.padEnd(16))} ` +
-            `${truncatedName}`
+            `${truncatedName}`,
         );
       }
 
@@ -143,7 +149,10 @@ docCommand
         console.log(chalk.yellow("Type:"), doc.contentType || "(none)");
         console.log(chalk.yellow("Version:"), doc.version || "(none)");
         console.log(chalk.yellow("Status:"), doc.status || "(none)");
-        console.log(chalk.yellow("Tags:"), doc.agentTags.length > 0 ? doc.agentTags.join(", ") : "(none)");
+        console.log(
+          chalk.yellow("Tags:"),
+          doc.agentTags.length > 0 ? doc.agentTags.join(", ") : "(none)",
+        );
         console.log(chalk.yellow("URL:"), doc.url);
         console.log(chalk.blue("\n=== Content ===\n"));
       }
@@ -173,7 +182,7 @@ docCommand
       const allDocs = await queryDocuments({ limit: 100 });
       const lowerQuery = query.toLowerCase();
       const matches = allDocs.filter((doc) =>
-        doc.name.toLowerCase().includes(lowerQuery)
+        doc.name.toLowerCase().includes(lowerQuery),
       );
 
       const limitedMatches = matches.slice(0, parseInt(options.limit, 10));
@@ -194,8 +203,8 @@ docCommand
       console.log(chalk.blue(`\n=== Search Results for "${query}" ===\n`));
       console.log(
         chalk.gray(
-          `${"ID".padEnd(10)} ${"Type".padEnd(12)} ${"Name".padEnd(60)}`
-        )
+          `${"ID".padEnd(10)} ${"Type".padEnd(12)} ${"Name".padEnd(60)}`,
+        ),
       );
       console.log(chalk.gray("-".repeat(84)));
 
@@ -206,14 +215,14 @@ docCommand
         console.log(
           `${chalk.cyan(doc.shortId.padEnd(10))} ` +
             `${chalk.gray(contentType.padEnd(12))} ` +
-            `${truncatedName}`
+            `${truncatedName}`,
         );
       }
 
       console.log(
         chalk.gray(
-          `\n${limitedMatches.length} of ${matches.length} match(es) shown`
-        )
+          `\n${limitedMatches.length} of ${matches.length} match(es) shown`,
+        ),
       );
     } catch (err) {
       spinner.fail("Search failed");

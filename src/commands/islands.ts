@@ -10,7 +10,14 @@ export const islandsCommand = new Command("islands")
   .alias("is")
   .description("Config-driven island component management");
 
-const ISLAND_TYPES = ["hero", "menu", "footer", "section", "cta", "features"] as const;
+const ISLAND_TYPES = [
+  "hero",
+  "menu",
+  "footer",
+  "section",
+  "cta",
+  "features",
+] as const;
 type IslandType = (typeof ISLAND_TYPES)[number];
 
 /**
@@ -34,15 +41,17 @@ islandsCommand
     const content = await readFile(registryPath, "utf-8");
 
     // Extract variants array
-    const variantsMatch = content.match(/const \w+Variants = \[([\s\S]*?)\] as const/);
+    const variantsMatch = content.match(
+      /const \w+Variants = \[([\s\S]*?)\] as const/,
+    );
     if (!variantsMatch) {
       console.log(chalk.red("Could not parse variants from registry"));
       return;
     }
 
-    const variants = variantsMatch[1]
-      .match(/"([^"]+)"/g)
-      ?.map((v) => v.replace(/"/g, "")) || [];
+    const variants =
+      variantsMatch[1].match(/"([^"]+)"/g)?.map((v) => v.replace(/"/g, "")) ||
+      [];
 
     console.log(chalk.blue(`\n=== ${type} Variants ===\n`));
     variants.forEach((v) => console.log(chalk.gray(`  ${v}`)));
@@ -55,7 +64,9 @@ islandsCommand
  */
 islandsCommand
   .command("add-variant <type> <variant>")
-  .description("Add a variant to registry (e.g., lw islands:add-variant hero split-image-01)")
+  .description(
+    "Add a variant to registry (e.g., lw islands:add-variant hero split-image-01)",
+  )
   .option("--dry-run", "Preview changes without writing")
   .action(async (type: string, variant: string, options) => {
     const uiPath = getPackagePath("lightwave-ui");
@@ -72,7 +83,12 @@ islandsCommand
     };
 
     const componentDir = componentDirs[type] || `marketing/${type}`;
-    const componentPath = join(uiPath, "src/components", componentDir, `${type}-${variant}.tsx`);
+    const componentPath = join(
+      uiPath,
+      "src/components",
+      componentDir,
+      `${type}-${variant}.tsx`,
+    );
 
     console.log(chalk.blue(`\n=== Add Variant: ${type}/${variant} ===\n`));
 
@@ -92,10 +108,16 @@ islandsCommand
       console.log(chalk.yellow("⚠ Component missing headerProps support"));
       console.log(chalk.gray("  Add to interface: headerProps?: HeaderProps;"));
       console.log(chalk.gray("  Add to destructuring: headerProps,"));
-      console.log(chalk.gray("  Spread to Header: <Header {...headerProps} />"));
+      console.log(
+        chalk.gray("  Spread to Header: <Header {...headerProps} />"),
+      );
 
       if (!options.dryRun) {
-        console.log(chalk.yellow("\nContinuing anyway... (component may need manual update)"));
+        console.log(
+          chalk.yellow(
+            "\nContinuing anyway... (component may need manual update)",
+          ),
+        );
       }
     } else {
       console.log(chalk.green("✓ Component has headerProps support"));
@@ -103,7 +125,9 @@ islandsCommand
 
     // Check if registry exists
     if (!existsSync(registryPath)) {
-      console.log(chalk.yellow(`Registry not found. Creating: ${registryPath}`));
+      console.log(
+        chalk.yellow(`Registry not found. Creating: ${registryPath}`),
+      );
       if (!options.dryRun) {
         await writeFile(registryPath, generateRegistry(type, variant));
         console.log(chalk.green(`✓ Created registry: ${registryPath}`));
@@ -127,11 +151,13 @@ islandsCommand
     const importStatement = `import { ${pascalName} } from "@/components/${componentDir}/${type}-${variant}.js";`;
 
     // Find last import and add after
-    const importMatch = registryContent.match(/import .* from .*;\n(?=\n|export)/);
+    const importMatch = registryContent.match(
+      /import .* from .*;\n(?=\n|export)/,
+    );
     if (importMatch) {
       registryContent = registryContent.replace(
         importMatch[0],
-        importMatch[0] + importStatement + "\n"
+        importMatch[0] + importStatement + "\n",
       );
     }
 
@@ -140,16 +166,25 @@ islandsCommand
     registryContent = registryContent.replace(variantsRegex, (match, inner) => {
       const trimmed = inner.trimEnd();
       const needsComma = trimmed && !trimmed.endsWith(",");
-      return match.replace(inner, `${inner}${needsComma ? "," : ""}\n  "${variant}",`);
+      return match.replace(
+        inner,
+        `${inner}${needsComma ? "," : ""}\n  "${variant}",`,
+      );
     });
 
     // Add to registry object
     const registryObjRegex = /const \w+Registry[^{]*\{([\s\S]*?)\n\};/;
-    registryContent = registryContent.replace(registryObjRegex, (match, inner) => {
-      const trimmed = inner.trimEnd();
-      const needsComma = trimmed && !trimmed.endsWith(",");
-      return match.replace(inner, `${inner}${needsComma ? "," : ""}\n  "${variant}": ${pascalName},`);
-    });
+    registryContent = registryContent.replace(
+      registryObjRegex,
+      (match, inner) => {
+        const trimmed = inner.trimEnd();
+        const needsComma = trimmed && !trimmed.endsWith(",");
+        return match.replace(
+          inner,
+          `${inner}${needsComma ? "," : ""}\n  "${variant}": ${pascalName},`,
+        );
+      },
+    );
 
     if (options.dryRun) {
       console.log(chalk.yellow("\n=== Dry Run: Registry Changes ===\n"));
@@ -172,7 +207,9 @@ islandsCommand
  */
 islandsCommand
   .command("scaffold <type> <name>")
-  .description("Scaffold a new island component (e.g., lw islands:scaffold hero my-custom)")
+  .description(
+    "Scaffold a new island component (e.g., lw islands:scaffold hero my-custom)",
+  )
   .option("--dry-run", "Preview what would be created")
   .action(async (type: string, name: string, options) => {
     const uiPath = getPackagePath("lightwave-ui");
@@ -188,7 +225,12 @@ islandsCommand
 
     const componentDir = componentDirs[type] || `marketing/${type}`;
     const componentName = `${type}-${name}`;
-    const componentPath = join(uiPath, "src/components", componentDir, `${componentName}.tsx`);
+    const componentPath = join(
+      uiPath,
+      "src/components",
+      componentDir,
+      `${componentName}.tsx`,
+    );
     const pascalName = kebabToPascal(componentName);
 
     const componentContent = generateIslandComponent(type, name, pascalName);
@@ -209,13 +251,17 @@ islandsCommand
     const spinner = ora(`Creating island: ${componentName}`).start();
 
     try {
-      await mkdir(join(uiPath, "src/components", componentDir), { recursive: true });
+      await mkdir(join(uiPath, "src/components", componentDir), {
+        recursive: true,
+      });
       await writeFile(componentPath, componentContent);
       spinner.succeed(`Created island: ${componentName}`);
       console.log(chalk.gray(`  → ${componentPath}`));
       console.log(chalk.yellow("\nNext steps:"));
       console.log(chalk.gray(`  1. Customize the component`));
-      console.log(chalk.gray(`  2. Run: lw islands:add-variant ${type} ${name}`));
+      console.log(
+        chalk.gray(`  2. Run: lw islands:add-variant ${type} ${name}`),
+      );
     } catch (err) {
       spinner.fail(`Failed: ${err}`);
     }
@@ -227,7 +273,9 @@ islandsCommand
  */
 islandsCommand
   .command("validate <config>")
-  .description("Validate config against registries (e.g., lw islands:validate lightwave-config.yaml)")
+  .description(
+    "Validate config against registries (e.g., lw islands:validate lightwave-config.yaml)",
+  )
   .action(async (configPath: string) => {
     const uiPath = getPackagePath("lightwave-ui");
 
@@ -238,7 +286,9 @@ islandsCommand
 
     // Parse YAML (simplified - just look for variant: lines)
     const configContent = await readFile(configPath, "utf-8");
-    const variantMatches = configContent.matchAll(/variant:\s*["']?([^"'\n]+)["']?/g);
+    const variantMatches = configContent.matchAll(
+      /variant:\s*["']?([^"'\n]+)["']?/g,
+    );
 
     console.log(chalk.blue("\n=== Config Validation ===\n"));
 
@@ -252,7 +302,11 @@ islandsCommand
       // Try to find which registry this belongs to
       let found = false;
       for (const type of ISLAND_TYPES) {
-        const registryPath = join(uiPath, "src/islands", `${type}-registry.tsx`);
+        const registryPath = join(
+          uiPath,
+          "src/islands",
+          `${type}-registry.tsx`,
+        );
         if (existsSync(registryPath)) {
           const content = await readFile(registryPath, "utf-8");
           if (content.includes(`"${variant}"`)) {
@@ -287,7 +341,9 @@ islandsCommand
  */
 islandsCommand
   .command("check <type> <variant>")
-  .description("Check headerProps support (e.g., lw islands:check hero simple-text-01)")
+  .description(
+    "Check headerProps support (e.g., lw islands:check hero simple-text-01)",
+  )
   .option("--fix", "Add headerProps support if missing")
   .action(async (type: string, variant: string, options) => {
     const uiPath = getPackagePath("lightwave-ui");
@@ -302,7 +358,12 @@ islandsCommand
     };
 
     const componentDir = componentDirs[type] || `marketing/${type}`;
-    const componentPath = join(uiPath, "src/components", componentDir, `${type}-${variant}.tsx`);
+    const componentPath = join(
+      uiPath,
+      "src/components",
+      componentDir,
+      `${type}-${variant}.tsx`,
+    );
 
     if (!existsSync(componentPath)) {
       console.log(chalk.red(`Component not found: ${componentPath}`));
@@ -387,12 +448,17 @@ islandsCommand
       const type = registry.replace("-registry.tsx", "");
       const content = await readFile(join(islandsDir, registry), "utf-8");
 
-      const variantsMatch = content.match(/const \w+Variants = \[([\s\S]*?)\] as const/);
-      const variants = variantsMatch?.[1]
-        .match(/"([^"]+)"/g)
-        ?.map((v) => v.replace(/"/g, "")) || [];
+      const variantsMatch = content.match(
+        /const \w+Variants = \[([\s\S]*?)\] as const/,
+      );
+      const variants =
+        variantsMatch?.[1]
+          .match(/"([^"]+)"/g)
+          ?.map((v) => v.replace(/"/g, "")) || [];
 
-      console.log(chalk.yellow(`${type}/`) + chalk.gray(` (${variants.length} variants)`));
+      console.log(
+        chalk.yellow(`${type}/`) + chalk.gray(` (${variants.length} variants)`),
+      );
       variants.forEach((v) => console.log(chalk.gray(`  └─ ${v}`)));
     }
   });
@@ -449,7 +515,11 @@ function kebabToPascal(kebab: string): string {
     .join("");
 }
 
-function generateIslandComponent(type: string, name: string, pascalName: string): string {
+function generateIslandComponent(
+  type: string,
+  name: string,
+  pascalName: string,
+): string {
   return `import type { HeaderProps } from "@/components/ui/header";
 import { Header } from "@/components/ui/header";
 

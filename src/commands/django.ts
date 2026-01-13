@@ -17,7 +17,9 @@ export const djangoCommand = new Command("django")
  */
 djangoCommand
   .command("app <domain> <app_name>")
-  .description("Create a new Django app (e.g., lw django:app cineos.io analytics)")
+  .description(
+    "Create a new Django app (e.g., lw django:app cineos.io analytics)",
+  )
   .option("--with-api", "Include DRF serializers and viewsets")
   .option("--with-admin", "Include admin configuration")
   .option("--dry-run", "Preview what would be created")
@@ -78,15 +80,30 @@ djangoCommand
       }
 
       if (options.withApi) {
-        await writeFile(join(appPath, "serializers.py"), generateSerializersFile(appName));
-        await writeFile(join(appPath, "api_views.py"), generateApiViewsFile(appName));
-        await writeFile(join(appPath, "api_urls.py"), generateApiUrlsFile(appName));
+        await writeFile(
+          join(appPath, "serializers.py"),
+          generateSerializersFile(appName),
+        );
+        await writeFile(
+          join(appPath, "api_views.py"),
+          generateApiViewsFile(appName),
+        );
+        await writeFile(
+          join(appPath, "api_urls.py"),
+          generateApiUrlsFile(appName),
+        );
       }
 
       // Test files
       await writeFile(join(appPath, "tests", "__init__.py"), "");
-      await writeFile(join(appPath, "tests", "test_models.py"), generateTestModelsFile(appName));
-      await writeFile(join(appPath, "tests", "test_views.py"), generateTestViewsFile(appName));
+      await writeFile(
+        join(appPath, "tests", "test_models.py"),
+        generateTestModelsFile(appName),
+      );
+      await writeFile(
+        join(appPath, "tests", "test_views.py"),
+        generateTestViewsFile(appName),
+      );
 
       spinner.succeed(`Created Django app: ${appName}`);
       console.log(chalk.gray(`  → ${appPath}/`));
@@ -106,8 +123,13 @@ djangoCommand
  */
 djangoCommand
   .command("model <domain> <path>")
-  .description("Add a model to an app (e.g., lw django:model cineos.io analytics/PageView)")
-  .option("--fields <fields>", "Comma-separated fields (e.g., name:str,count:int,team:fk)")
+  .description(
+    "Add a model to an app (e.g., lw django:model cineos.io analytics/PageView)",
+  )
+  .option(
+    "--fields <fields>",
+    "Comma-separated fields (e.g., name:str,count:int,team:fk)",
+  )
   .option("--team-model", "Extend BaseTeamModel instead of BaseModel")
   .option("--dry-run", "Preview what would be generated")
   .action(async (domain: string, path: string, options) => {
@@ -150,13 +172,20 @@ djangoCommand
  */
 djangoCommand
   .command("island <domain> <name>")
-  .description("Create a React island component (e.g., lw django:island cineos.io UserDashboard)")
+  .description(
+    "Create a React island component (e.g., lw django:island cineos.io UserDashboard)",
+  )
   .option("--props <props>", "Comma-separated props")
   .option("--dry-run", "Preview what would be created")
   .action(async (domain: string, name: string, options) => {
     const domainPath = getDomainPath(domain);
     const kebabName = pascalToKebab(name);
-    const islandPath = join(domainPath, "assets", "islands", `${kebabName}.tsx`);
+    const islandPath = join(
+      domainPath,
+      "assets",
+      "islands",
+      `${kebabName}.tsx`,
+    );
 
     const props = options.props
       ? options.props.split(",").map((p: string) => {
@@ -205,7 +234,9 @@ djangoCommand
     if (domain) {
       const domainPath = getDomainPath(domain);
       console.log(chalk.blue(`\n=== Migrations: ${domain} ===\n`));
-      await exec("make", ["manage", "ARGS=showmigrations"], { cwd: domainPath });
+      await exec("make", ["manage", "ARGS=showmigrations"], {
+        cwd: domainPath,
+      });
       return;
     }
 
@@ -220,10 +251,23 @@ djangoCommand
 
       console.log(chalk.blue(`\n=== ${d} ===`));
       try {
-        const result = await exec("docker", ["compose", "exec", "-T", "web", "python", "manage.py", "showmigrations", "--list"], {
-          cwd: domainPath,
-          silent: true,
-        });
+        const result = await exec(
+          "docker",
+          [
+            "compose",
+            "exec",
+            "-T",
+            "web",
+            "python",
+            "manage.py",
+            "showmigrations",
+            "--list",
+          ],
+          {
+            cwd: domainPath,
+            silent: true,
+          },
+        );
         // Count unapplied migrations
         const unapplied = (result.stdout.match(/\[ \]/g) || []).length;
         if (unapplied > 0) {
@@ -382,7 +426,11 @@ class ${appName.charAt(0).toUpperCase() + appName.slice(1)}ViewTests(TestCase):
 `;
 }
 
-function generateModelClass(name: string, fields: Field[], isTeamModel: boolean): string {
+function generateModelClass(
+  name: string,
+  fields: Field[],
+  isTeamModel: boolean,
+): string {
   const baseClass = isTeamModel ? "BaseTeamModel" : "BaseModel";
   const baseImport = isTeamModel
     ? "from apps.teams.models import BaseTeamModel"
@@ -410,7 +458,10 @@ function generateModelClass(name: string, fields: Field[], isTeamModel: boolean)
   return code;
 }
 
-function generateIslandComponent(name: string, props: Array<{ name: string; type: string }>): string {
+function generateIslandComponent(
+  name: string,
+  props: Array<{ name: string; type: string }>,
+): string {
   const propsInterface = props.length
     ? props.map((p) => `  ${p.name}?: ${p.type};`).join("\n")
     : "  // Add props here";
@@ -436,7 +487,11 @@ export default ${name};
 `;
 }
 
-function generateIslandTemplate(name: string, kebabName: string, props: Array<{ name: string; type: string }>): string {
+function generateIslandTemplate(
+  name: string,
+  kebabName: string,
+  props: Array<{ name: string; type: string }>,
+): string {
   const propsJson = props.length
     ? props.map((p) => `"${p.name}": "{{ ${p.name} }}"`).join(", ")
     : "";

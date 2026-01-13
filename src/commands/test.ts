@@ -5,10 +5,15 @@ import { mkdir, writeFile, readFile } from "fs/promises";
 import { existsSync } from "fs";
 import { join } from "path";
 import { exec } from "../utils/exec.js";
-import { findWorkspaceRoot, getDomainPath, getPackagePath } from "../utils/paths.js";
+import {
+  findWorkspaceRoot,
+  getDomainPath,
+  getPackagePath,
+} from "../utils/paths.js";
 
-export const testCommand = new Command("test")
-  .description("Test scaffolding and running commands");
+export const testCommand = new Command("test").description(
+  "Test scaffolding and running commands",
+);
 
 /**
  * lw test:create <domain> <app>/<test_name>
@@ -16,7 +21,9 @@ export const testCommand = new Command("test")
  */
 testCommand
   .command("create <domain> <path>")
-  .description("Create a test file (e.g., lw test:create cineos.io users/test_permissions)")
+  .description(
+    "Create a test file (e.g., lw test:create cineos.io users/test_permissions)",
+  )
   .option("--type <type>", "Test type: unit, integration, e2e", "unit")
   .option("--dry-run", "Preview what would be created")
   .action(async (domain: string, path: string, options) => {
@@ -71,61 +78,66 @@ testCommand
   .option("--app <app>", "Only test specific app")
   .option("--coverage", "Run with coverage report")
   .option("--verbose", "Verbose output")
-  .action(async (domain?: string, options?: { app?: string; coverage?: boolean; verbose?: boolean }) => {
-    const root = findWorkspaceRoot();
+  .action(
+    async (
+      domain?: string,
+      options?: { app?: string; coverage?: boolean; verbose?: boolean },
+    ) => {
+      const root = findWorkspaceRoot();
 
-    if (domain) {
-      const domainPath = getDomainPath(domain);
-      console.log(chalk.blue(`\n=== Running Tests: ${domain} ===\n`));
+      if (domain) {
+        const domainPath = getDomainPath(domain);
+        console.log(chalk.blue(`\n=== Running Tests: ${domain} ===\n`));
 
-      const args = ["test"];
-      if (options?.app) {
-        args.push(`ARGS=apps.${options.app}`);
+        const args = ["test"];
+        if (options?.app) {
+          args.push(`ARGS=apps.${options.app}`);
+        }
+        if (options?.coverage) {
+          args.push("COVERAGE=1");
+        }
+
+        try {
+          await exec("make", args, { cwd: domainPath });
+        } catch (err) {
+          console.log(chalk.red("Tests failed"));
+        }
+        return;
       }
-      if (options?.coverage) {
-        args.push("COVERAGE=1");
+
+      // Run tests across all domains
+      const { readdir } = await import("fs/promises");
+      const domainsDir = join(root, "domains");
+      const domains = await readdir(domainsDir);
+
+      console.log(chalk.blue("\n=== Running Tests Across Domains ===\n"));
+
+      let passed = 0;
+      let failed = 0;
+
+      for (const d of domains) {
+        const domainPath = join(domainsDir, d);
+        if (!existsSync(join(domainPath, "Makefile"))) continue;
+
+        const spinner = ora(`${d}`).start();
+
+        try {
+          await exec("make", ["test"], { cwd: domainPath, silent: true });
+          spinner.succeed(`${d}`);
+          passed++;
+        } catch {
+          spinner.fail(`${d}`);
+          failed++;
+        }
       }
 
-      try {
-        await exec("make", args, { cwd: domainPath });
-      } catch (err) {
-        console.log(chalk.red("Tests failed"));
+      console.log(chalk.blue("\n=== Summary ==="));
+      console.log(chalk.green(`  Passed: ${passed}`));
+      if (failed > 0) {
+        console.log(chalk.red(`  Failed: ${failed}`));
       }
-      return;
-    }
-
-    // Run tests across all domains
-    const { readdir } = await import("fs/promises");
-    const domainsDir = join(root, "domains");
-    const domains = await readdir(domainsDir);
-
-    console.log(chalk.blue("\n=== Running Tests Across Domains ===\n"));
-
-    let passed = 0;
-    let failed = 0;
-
-    for (const d of domains) {
-      const domainPath = join(domainsDir, d);
-      if (!existsSync(join(domainPath, "Makefile"))) continue;
-
-      const spinner = ora(`${d}`).start();
-
-      try {
-        await exec("make", ["test"], { cwd: domainPath, silent: true });
-        spinner.succeed(`${d}`);
-        passed++;
-      } catch {
-        spinner.fail(`${d}`);
-        failed++;
-      }
-    }
-
-    console.log(chalk.blue("\n=== Summary ==="));
-    console.log(chalk.green(`  Passed: ${passed}`));
-    if (failed > 0) {
-      console.log(chalk.red(`  Failed: ${failed}`));
-    }
-  });
+    },
+  );
 
 /**
  * lw test:coverage [domain]
@@ -142,7 +154,9 @@ testCommand
       return;
     }
 
-    console.log(chalk.yellow("Specify a domain for coverage: lw test:coverage cineos.io"));
+    console.log(
+      chalk.yellow("Specify a domain for coverage: lw test:coverage cineos.io"),
+    );
   });
 
 /**
@@ -167,7 +181,11 @@ testCommand
     try {
       await exec("make", args, { cwd: domainPath });
     } catch {
-      console.log(chalk.yellow("Watch mode may not be configured. Using standard test run."));
+      console.log(
+        chalk.yellow(
+          "Watch mode may not be configured. Using standard test run.",
+        ),
+      );
       await exec("make", ["test"], { cwd: domainPath });
     }
   });
@@ -207,13 +225,24 @@ testCommand
  */
 testCommand
   .command("factory <domain> <path>")
-  .description("Generate a test factory (e.g., lw test:factory cineos.io users/User)")
+  .description(
+    "Generate a test factory (e.g., lw test:factory cineos.io users/User)",
+  )
   .option("--dry-run", "Preview what would be created")
   .action(async (domain: string, path: string, options) => {
     const [appName, modelName] = path.split("/");
     const domainPath = getDomainPath(domain);
-    const factoriesDir = join(domainPath, "apps", appName, "tests", "factories");
-    const factoryFile = join(factoriesDir, `${modelName.toLowerCase()}_factory.py`);
+    const factoriesDir = join(
+      domainPath,
+      "apps",
+      appName,
+      "tests",
+      "factories",
+    );
+    const factoryFile = join(
+      factoriesDir,
+      `${modelName.toLowerCase()}_factory.py`,
+    );
 
     const factoryContent = generateFactory(appName, modelName);
 
@@ -246,7 +275,11 @@ testCommand
 
 // Helper functions
 
-function generateTestFile(appName: string, testName: string, testType: string): string {
+function generateTestFile(
+  appName: string,
+  testName: string,
+  testType: string,
+): string {
   const className = testName
     .split("_")
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))

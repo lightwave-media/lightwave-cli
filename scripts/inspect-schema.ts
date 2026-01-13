@@ -24,7 +24,7 @@ async function getApiKey(): Promise<string> {
     new GetParameterCommand({
       Name: "/lightwave/prod/NOTION_API_KEY",
       WithDecryption: true,
-    })
+    }),
   );
 
   if (!result.Parameter?.Value) {
@@ -38,7 +38,7 @@ async function main() {
   const apiKey = await getApiKey();
   const client = new Client({
     auth: apiKey,
-    notionVersion: "2022-06-28"  // Use older API that returns properties
+    notionVersion: "2022-06-28", // Use older API that returns properties
   });
 
   const dbName = process.argv[2] || "tasks";
@@ -75,7 +75,11 @@ async function main() {
     } else if (type === "status" && "status" in prop && prop.status?.options) {
       const opts = prop.status.options.map((o) => o.name).slice(0, 5);
       extra = ` [${opts.join(", ")}${prop.status.options.length > 5 ? "..." : ""}]`;
-    } else if (type === "multi_select" && "multi_select" in prop && prop.multi_select?.options) {
+    } else if (
+      type === "multi_select" &&
+      "multi_select" in prop &&
+      prop.multi_select?.options
+    ) {
       const opts = prop.multi_select.options.map((o) => o.name).slice(0, 5);
       extra = ` [${opts.join(", ")}${prop.multi_select.options.length > 5 ? "..." : ""}]`;
     } else if (type === "relation" && "relation" in prop) {

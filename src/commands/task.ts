@@ -38,8 +38,19 @@ import {
   getTaskContext,
 } from "../utils/notion.js";
 import { getViewByName, queryViews } from "../utils/views.js";
-import { VALID_STATUSES, STATUS_ALIASES, VALID_PRIORITIES, PRIORITY_ALIASES } from "../types/notion.js";
-import type { NotionTaskStatus, TaskPriority, AgentStatus, AssignedAgent, NotionTaskType } from "../types/notion.js";
+import {
+  VALID_STATUSES,
+  STATUS_ALIASES,
+  VALID_PRIORITIES,
+  PRIORITY_ALIASES,
+} from "../types/notion.js";
+import type {
+  NotionTaskStatus,
+  TaskPriority,
+  AgentStatus,
+  AssignedAgent,
+  NotionTaskType,
+} from "../types/notion.js";
 
 import { pushTaskUpdate } from "../utils/taskSync.js";
 
@@ -76,7 +87,7 @@ function resolvePriority(input: string): TaskPriority | null {
 }
 
 export const taskCommand = new Command("task").description(
-  "Notion task management - bridges Notion tasks with Git workflow"
+  "Notion task management - bridges Notion tasks with Git workflow",
 );
 
 /**
@@ -87,11 +98,11 @@ function getStatusColor(status: NotionTaskStatus) {
     "On Hold": chalk.yellow,
     "Active (Approved for work)": chalk.blue,
     "Next Up": chalk.cyan,
-    "Future": chalk.gray,
+    Future: chalk.gray,
     "Active (In progress)": chalk.magenta,
     "Active (In Review)": chalk.blue,
-    "Archived": chalk.green,
-    "Cancelled": chalk.gray,
+    Archived: chalk.green,
+    Cancelled: chalk.gray,
   };
   return colors[status] || chalk.white;
 }
@@ -102,23 +113,37 @@ function getStatusColor(status: NotionTaskStatus) {
 
 taskCommand
   .command("list")
-  .description("List tasks from Notion (filterable by status, domain, epic, view)")
+  .description(
+    "List tasks from Notion (filterable by status, domain, epic, view)",
+  )
   .option(
     "--status <status>",
-    "Filter by status (comma-separated for multiple)"
+    "Filter by status (comma-separated for multiple)",
   )
   .option("--all", "Show all statuses including waiting/future")
-  .option("--domain <name>", "Filter by Life Domain (e.g., 'Product Development')")
+  .option(
+    "--domain <name>",
+    "Filter by Life Domain (e.g., 'Product Development')",
+  )
   .option("--epic <name>", "Filter by Epic/Project name or ID")
   .option("--sprint <name>", "Filter by Sprint name or ID")
   .option("--user-story <name>", "Filter by User Story name or ID")
   // New view-based filtering
   .option("--view <name>", "Use a named view from CLI Views database")
   // New property filters
-  .option("--priority <priority>", "Filter by priority (1st, 2nd, 3rd or alias)")
-  .option("--task-type <type>", "Filter by Task Type (Software Dev, General, etc.)")
+  .option(
+    "--priority <priority>",
+    "Filter by priority (1st, 2nd, 3rd or alias)",
+  )
+  .option(
+    "--task-type <type>",
+    "Filter by Task Type (Software Dev, General, etc.)",
+  )
   .option("--agent-status <status>", "Filter by Agent Status")
-  .option("--assigned-agent <agent>", "Filter by Assigned Agent (v_core, v_senior_developer, etc.)")
+  .option(
+    "--assigned-agent <agent>",
+    "Filter by Assigned Agent (v_core, v_senior_developer, etc.)",
+  )
   .option("--assignee <name>", "Filter by human assignee name")
   // Date filters
   .option("--due-before <date>", "Filter tasks due before date (ISO 8601)")
@@ -140,7 +165,9 @@ taskCommand
           const view = await getViewByName(options.view);
           if (!view) {
             spinner.fail(`View not found: "${options.view}"`);
-            console.log(chalk.gray("\nUse 'lw task views' to list available views."));
+            console.log(
+              chalk.gray("\nUse 'lw task views' to list available views."),
+            );
             process.exit(1);
           }
           spinner.text = `Applying view "${view.name}"...`;
@@ -163,10 +190,17 @@ taskCommand
       if (options.status) {
         statusFilter = options.status
           .split(",")
-          .map((s: string) => resolveStatus(s.trim()) || s.trim() as NotionTaskStatus);
+          .map(
+            (s: string) =>
+              resolveStatus(s.trim()) || (s.trim() as NotionTaskStatus),
+          );
       } else if (!options.all && !options.view) {
         // Default: show actionable statuses (unless using a view)
-        statusFilter = ["Active (Approved for work)", "Next Up", "Active (In progress)"];
+        statusFilter = [
+          "Active (Approved for work)",
+          "Next Up",
+          "Active (In progress)",
+        ];
       }
 
       // Resolve priority alias if provided
@@ -216,8 +250,8 @@ taskCommand
       console.log(chalk.blue("\n=== Tasks ===\n"));
       console.log(
         chalk.gray(
-          `${"ID".padEnd(10)} ${"Status".padEnd(18)} ${"Title".padEnd(50)}`
-        )
+          `${"ID".padEnd(10)} ${"Status".padEnd(18)} ${"Title".padEnd(50)}`,
+        ),
       );
       console.log(chalk.gray("-".repeat(80)));
 
@@ -230,7 +264,7 @@ taskCommand
         console.log(
           `${chalk.cyan(task.shortId.padEnd(10))} ` +
             `${statusColor(task.status.padEnd(18))} ` +
-            `${truncatedTitle}`
+            `${truncatedTitle}`,
         );
       }
 
@@ -260,8 +294,12 @@ taskCommand
 
       if (views.length === 0) {
         console.log(chalk.yellow("No views found."));
-        console.log(chalk.gray("\nCreate views in the CLI Views database in Notion."));
-        console.log(chalk.gray("See scripts/create-views-db.ts for setup instructions."));
+        console.log(
+          chalk.gray("\nCreate views in the CLI Views database in Notion."),
+        );
+        console.log(
+          chalk.gray("See scripts/create-views-db.ts for setup instructions."),
+        );
         return;
       }
 
@@ -273,9 +311,7 @@ taskCommand
       // Table format
       console.log(chalk.blue("\n=== Available Task Views ===\n"));
       console.log(
-        chalk.gray(
-          `${"Name".padEnd(25)} ${"Description".padEnd(50)}`
-        )
+        chalk.gray(`${"Name".padEnd(25)} ${"Description".padEnd(50)}`),
       );
       console.log(chalk.gray("-".repeat(77)));
 
@@ -287,20 +323,24 @@ taskCommand
             : description;
         console.log(
           `${chalk.cyan(view.name.padEnd(25))} ` +
-            `${chalk.gray(truncatedDesc)}`
+            `${chalk.gray(truncatedDesc)}`,
         );
       }
 
       console.log(chalk.gray(`\n${views.length} view(s) available`));
-      console.log(chalk.gray("\nUsage: lw task list --view \"<view name>\""));
+      console.log(chalk.gray('\nUsage: lw task list --view "<view name>"'));
     } catch (err) {
       const error = err as Error;
       if (error.message.includes("not configured")) {
         spinner.warn("CLI Views database not configured.");
         console.log(chalk.gray("\nTo enable view-based filtering:"));
         console.log(chalk.gray("1. Create the CLI Views database in Notion"));
-        console.log(chalk.gray("2. Update NOTION_DB_IDS.cliViews in types/notion.ts"));
-        console.log(chalk.gray("\nSee scripts/create-views-db.ts for details."));
+        console.log(
+          chalk.gray("2. Update NOTION_DB_IDS.cliViews in types/notion.ts"),
+        );
+        console.log(
+          chalk.gray("\nSee scripts/create-views-db.ts for details."),
+        );
       } else {
         spinner.fail("Failed to fetch views");
         console.error(chalk.red(error.message));
@@ -341,7 +381,7 @@ taskCommand
       console.log(chalk.yellow("Title:"), task.title);
       console.log(
         chalk.yellow("Status:"),
-        getStatusColor(task.status)(task.status)
+        getStatusColor(task.status)(task.status),
       );
       console.log(chalk.yellow("Type:"), task.taskType);
       if (task.priority) {
@@ -398,7 +438,9 @@ taskCommand
               console.log(chalk.gray(`  Status: ${sprint.status}`));
               if (sprint.startDate) {
                 const endStr = sprint.endDate ? ` → ${sprint.endDate}` : "";
-                console.log(chalk.gray(`  Dates: ${sprint.startDate}${endStr}`));
+                console.log(
+                  chalk.gray(`  Dates: ${sprint.startDate}${endStr}`),
+                );
               }
             }
           } catch {
@@ -410,7 +452,10 @@ taskCommand
 
         // Show document count if available
         if (task.documentIds && task.documentIds.length > 0) {
-          console.log(chalk.yellow("Documents:"), chalk.cyan(`${task.documentIds.length} linked`));
+          console.log(
+            chalk.yellow("Documents:"),
+            chalk.cyan(`${task.documentIds.length} linked`),
+          );
         }
       }
 
@@ -480,7 +525,8 @@ taskCommand
         console.log(`- **ID**: ${epic.shortId}`);
         console.log(`- **Status**: ${epic.status}`);
         if (epic.projectType) console.log(`- **Type**: ${epic.projectType}`);
-        if (epic.githubRepoLink) console.log(`- **GitHub**: ${epic.githubRepoLink}`);
+        if (epic.githubRepoLink)
+          console.log(`- **GitHub**: ${epic.githubRepoLink}`);
         if (epic.logLine) {
           console.log("\n### Log Line\n");
           console.log(epic.logLine);
@@ -507,7 +553,8 @@ taskCommand
       if (context.lifeDomain) {
         console.log("\n## Life Domain\n");
         console.log(`- **Name**: ${context.lifeDomain.name}`);
-        if (context.lifeDomain.type) console.log(`- **Type**: ${context.lifeDomain.type}`);
+        if (context.lifeDomain.type)
+          console.log(`- **Type**: ${context.lifeDomain.type}`);
       }
 
       // Parent Task section
@@ -531,7 +578,9 @@ taskCommand
       if (context.userStories && context.userStories.length > 0) {
         console.log("\n## User Stories\n");
         for (const story of context.userStories) {
-          console.log(`- **${story.name}** (${story.shortId}) - ${story.status}`);
+          console.log(
+            `- **${story.name}** (${story.shortId}) - ${story.status}`,
+          );
           if (story.userType) console.log(`  - User Type: ${story.userType}`);
         }
       }
@@ -540,8 +589,10 @@ taskCommand
       if (task.agentStatus || task.assignedAgent || task.assignee) {
         console.log("\n## Assignment\n");
         if (task.assignee) console.log(`- **Assignee**: ${task.assignee}`);
-        if (task.assignedAgent) console.log(`- **Assigned Agent**: ${task.assignedAgent}`);
-        if (task.agentStatus) console.log(`- **Agent Status**: ${task.agentStatus}`);
+        if (task.assignedAgent)
+          console.log(`- **Assigned Agent**: ${task.assignedAgent}`);
+        if (task.agentStatus)
+          console.log(`- **Agent Status**: ${task.agentStatus}`);
       }
 
       // Due Date section
@@ -650,7 +701,7 @@ taskCommand
         console.log(chalk.gray(`  Branch: ${branchName}`));
       } else {
         console.log(
-          chalk.gray(`\nRun: lw task start ${task.shortId} to begin work`)
+          chalk.gray(`\nRun: lw task start ${task.shortId} to begin work`),
         );
       }
     } catch (err) {
@@ -667,7 +718,7 @@ taskCommand
 taskCommand
   .command("start <task-id>")
   .description(
-    "Start a task: creates branch, updates Notion status to 'Active (In progress)'"
+    "Start a task: creates branch, updates Notion status to 'Active (In progress)'",
   )
   .option("--dry-run", "Preview what would happen")
   .option("--no-push", "Don't push branch to remote")
@@ -704,17 +755,25 @@ taskCommand
         if (options.push !== false) {
           console.log(chalk.gray(`  git push -u origin ${branchName}`));
         }
-        console.log(chalk.gray(`  Update Notion status -> "Active (In progress)"`));
+        console.log(
+          chalk.gray(`  Update Notion status -> "Active (In progress)"`),
+        );
         return;
       }
 
       // 4. Check if branch already exists
-      const existingBranch = await exec("git", ["branch", "--list", branchName], {
-        silent: true,
-      });
+      const existingBranch = await exec(
+        "git",
+        ["branch", "--list", branchName],
+        {
+          silent: true,
+        },
+      );
       if (existingBranch.stdout.trim()) {
         console.log(
-          chalk.yellow(`\nBranch ${branchName} already exists. Checking out...`)
+          chalk.yellow(
+            `\nBranch ${branchName} already exists. Checking out...`,
+          ),
         );
         await exec("git", ["checkout", branchName]);
       } else {
@@ -771,7 +830,10 @@ taskCommand
     if (!resolvedStatus) {
       console.error(chalk.red(`Invalid status: ${newStatus}`));
       console.log(chalk.gray("Valid statuses:"), VALID_STATUSES.join(", "));
-      console.log(chalk.gray("Aliases:"), Object.keys(STATUS_ALIASES).join(", "));
+      console.log(
+        chalk.gray("Aliases:"),
+        Object.keys(STATUS_ALIASES).join(", "),
+      );
       process.exit(1);
     }
 
@@ -950,7 +1012,7 @@ taskCommand
         chalk.gray("Branch:"),
         currentBranch,
         "->",
-        options.base || "main"
+        options.base || "main",
       );
       console.log(chalk.gray("\nBody:"));
       console.log(chalk.gray("-".repeat(60)));
@@ -1221,7 +1283,10 @@ taskCommand
   .option("--no-stage", "Skip git add, commit only staged changes")
   .option("--scope <scope>", "Override scope in commit message")
   .option("--story <story-id>", "Include user story ID in commit message")
-  .option("-m, --message <msg>", "Override commit description (body still uses task)")
+  .option(
+    "-m, --message <msg>",
+    "Override commit description (body still uses task)",
+  )
   .action(async (taskId: string, options) => {
     const spinner = ora("Loading task from Notion...").start();
 
@@ -1290,7 +1355,11 @@ taskCommand
       }
 
       console.log(chalk.green("\nTask committed successfully!"));
-      console.log(chalk.gray(`\nTask ${task.shortId} is now a commit on the current branch.`));
+      console.log(
+        chalk.gray(
+          `\nTask ${task.shortId} is now a commit on the current branch.`,
+        ),
+      );
     } catch (err) {
       spinner.fail("Failed to commit task");
       console.error(chalk.red((err as Error).message));

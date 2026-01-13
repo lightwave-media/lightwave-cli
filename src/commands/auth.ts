@@ -37,7 +37,10 @@ type AuthVariant = (typeof AUTH_VARIANTS)[number];
 /**
  * Django template mappings for auth variants
  */
-const TEMPLATE_MAPPINGS: Record<AuthVariant, { path: string; description: string }> = {
+const TEMPLATE_MAPPINGS: Record<
+  AuthVariant,
+  { path: string; description: string }
+> = {
   "login-combined": {
     path: "account/login.html",
     description: "Login page with email/password and social auth",
@@ -92,7 +95,9 @@ authCommand
  */
 authCommand
   .command("scaffold <domain>")
-  .description("Generate auth templates with React islands (e.g., lw auth scaffold lightwave-media.site)")
+  .description(
+    "Generate auth templates with React islands (e.g., lw auth scaffold lightwave-media.site)",
+  )
   .option("--dry-run", "Preview what would be created")
   .option("--force", "Overwrite existing templates")
   .option("--variant <variant>", "Only scaffold a specific variant")
@@ -132,7 +137,9 @@ authCommand
 
         // Check if template already exists
         if (existsSync(templatePath) && !options.force) {
-          spinner.info(`Skipping ${mapping.path} (exists, use --force to overwrite)`);
+          spinner.info(
+            `Skipping ${mapping.path} (exists, use --force to overwrite)`,
+          );
           continue;
         }
 
@@ -155,8 +162,14 @@ authCommand
       if (!options.dryRun) {
         console.log(chalk.green("\n✓ Auth templates created!"));
         console.log(chalk.gray("\nNext steps:"));
-        console.log(chalk.gray("  1. Update assets/javascript/islands.ts to register auth islands"));
-        console.log(chalk.gray("  2. Configure social providers in settings.py"));
+        console.log(
+          chalk.gray(
+            "  1. Update assets/javascript/islands.ts to register auth islands",
+          ),
+        );
+        console.log(
+          chalk.gray("  2. Configure social providers in settings.py"),
+        );
         console.log(chalk.gray("  3. Run: pnpm build"));
       }
     } catch (err) {
@@ -193,7 +206,8 @@ authCommand
       if (exists) {
         // Check if it uses islands
         const content = await readFile(templatePath, "utf-8");
-        const usesIslands = content.includes("data-island") || content.includes("data-props");
+        const usesIslands =
+          content.includes("data-island") || content.includes("data-props");
 
         if (usesIslands) {
           console.log(chalk.green(`✓ ${variant}`));
@@ -211,7 +225,9 @@ authCommand
     }
 
     if (allGood) {
-      console.log(chalk.green("\n✓ All auth templates configured with islands!"));
+      console.log(
+        chalk.green("\n✓ All auth templates configured with islands!"),
+      );
     } else {
       console.log(chalk.yellow("\n⚠ Some templates need attention"));
       console.log(chalk.gray("  Run: lw auth scaffold " + domain));
