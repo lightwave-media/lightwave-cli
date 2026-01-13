@@ -346,7 +346,7 @@ epicCommand
 
       // Optionally show sprints
       if (options.sprints) {
-        await displayEpicSprints(epic);
+        await displayEpicSprints(epic, backend);
       }
     } catch (err) {
       spinner.fail("Failed to load epic");
@@ -456,13 +456,22 @@ async function displayEpicTasks(
 /**
  * Display sprints linked to an epic
  */
-async function displayEpicSprints(epic: NotionEpic): Promise<void> {
+async function displayEpicSprints(
+  epic: NotionEpic,
+  backend: "django" | "notion" = "django",
+): Promise<void> {
   const spinner = ora("Loading epic sprints...").start();
 
   try {
-    // Query sprints - we'll need to filter by those linked to this epic
-    const allSprints = await querySprints({ limit: 100 });
-    const epicSprints = allSprints.filter((s) => s.epicIds.includes(epic.id));
+    let epicSprints;
+    if (backend === "django") {
+      // Django API supports direct epic filtering
+      epicSprints = await querySprintsDjango({ epic: epic.shortId });
+    } else {
+      // Query sprints - we'll need to filter by those linked to this epic
+      const allSprints = await querySprints({ limit: 100 });
+      epicSprints = allSprints.filter((s) => s.epicIds.includes(epic.id));
+    }
 
     spinner.stop();
 
