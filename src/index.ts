@@ -11,8 +11,10 @@ import { islandsCommand } from "./commands/islands.js";
 import { taskCommand } from "./commands/task.js";
 import { sprintCommand } from "./commands/sprint.js";
 import { epicCommand } from "./commands/epic.js";
+import { storyCommand } from "./commands/story.js";
 import { authCommand } from "./commands/auth.js";
 import { docCommand } from "./commands/doc.js";
+import { domainCommand } from "./commands/domain.js";
 
 const program = new Command();
 
@@ -33,7 +35,9 @@ program.addCommand(islandsCommand);
 program.addCommand(taskCommand);
 program.addCommand(sprintCommand);
 program.addCommand(epicCommand);
+program.addCommand(storyCommand);
 program.addCommand(authCommand);
 program.addCommand(docCommand);
+program.addCommand(domainCommand);
 
 program.parse();
