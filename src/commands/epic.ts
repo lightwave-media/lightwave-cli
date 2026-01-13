@@ -518,11 +518,20 @@ epicCommand
   .description("Create epic branch from main and set status to In Progress")
   .option("--dry-run", "Show what would be done without making changes")
   .option("--no-push", "Create branch locally without pushing")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (epicId: string, options) => {
-    const spinner = ora("Loading epic from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading epic from ${backendLabel}...`).start();
 
     try {
-      const epic = await getEpic(epicId);
+      const epic =
+        backend === "django"
+          ? await getEpicDjango(epicId)
+          : await getEpic(epicId);
       if (!epic) {
         spinner.fail(`Epic not found: ${epicId}`);
         process.exit(1);
@@ -566,9 +575,13 @@ epicCommand
         spinner.succeed("Pushed to remote");
       }
 
-      // Update epic status in Notion
-      spinner.start("Updating epic status in Notion...");
-      await updateEpicStatus(epic.id, "In Progress");
+      // Update epic status
+      spinner.start(`Updating epic status in ${backendLabel}...`);
+      if (backend === "django") {
+        await updateEpicStatusDjango(epic.id, "In Progress");
+      } else {
+        await updateEpicStatus(epic.id, "In Progress");
+      }
       spinner.succeed("Epic status updated to In Progress");
 
       console.log(chalk.green("\nEpic started successfully!"));
@@ -594,11 +607,20 @@ epicCommand
   .option("--dry-run", "Show what would be done without making changes")
   .option("--no-tag", "Skip creating a release tag")
   .option("--tag-version <version>", "Specify version for tag (e.g., 1.2.0)")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (epicId: string, options) => {
-    const spinner = ora("Loading epic from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading epic from ${backendLabel}...`).start();
 
     try {
-      const epic = await getEpic(epicId);
+      const epic =
+        backend === "django"
+          ? await getEpicDjango(epicId)
+          : await getEpic(epicId);
       if (!epic) {
         spinner.fail(`Epic not found: ${epicId}`);
         process.exit(1);
@@ -661,9 +683,13 @@ epicCommand
         spinner.succeed(`Created and pushed tag ${tagName}`);
       }
 
-      // Update epic status in Notion
-      spinner.start("Updating epic status in Notion...");
-      await updateEpicStatus(epic.id, "Completed");
+      // Update epic status
+      spinner.start(`Updating epic status in ${backendLabel}...`);
+      if (backend === "django") {
+        await updateEpicStatusDjango(epic.id, "Completed");
+      } else {
+        await updateEpicStatus(epic.id, "Completed");
+      }
       spinner.succeed("Epic status updated to Completed");
 
       console.log(chalk.green("\nEpic merged successfully!"));
