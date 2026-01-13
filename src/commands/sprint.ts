@@ -2,7 +2,7 @@
  * Sprint management commands
  *
  * Commands:
- *   lw sprint list              List sprints from Notion
+ *   lw sprint list              List sprints from Notion/createOS
  *   lw sprint current           Show current active sprint
  *   lw sprint info <id>         Show sprint details
  *   lw sprint start <id>        Create sprint branch from epic
@@ -25,11 +25,34 @@ import {
   findEpicByName,
   findLifeDomainByName,
 } from "../utils/notion.js";
+import {
+  getBackend,
+  querySprintsDjango,
+  getCurrentSprintDjango,
+  getSprintDjango,
+  queryTasksDjango,
+  getEpicDjango,
+  createSprintDjango,
+  updateSprintStatusDjango,
+  findEpicByNameDjango,
+  findDomainByNameDjango,
+} from "../utils/createos.js";
 import { exec } from "../utils/exec.js";
 import type { SprintStatus, NotionSprint } from "../types/notion.js";
 
+/**
+ * Resolve which backend to use
+ */
+function resolveBackend(optionBackend?: string): "django" | "notion" {
+  if (optionBackend) {
+    return optionBackend.toLowerCase() === "notion" ? "notion" : "django";
+  }
+  const defaultBackend = getBackend();
+  return defaultBackend === "both" ? "django" : defaultBackend;
+}
+
 export const sprintCommand = new Command("sprint").description(
-  "Sprint management - view and track sprints from Notion",
+  "Sprint management - view and track sprints",
 );
 
 /**
@@ -60,7 +83,7 @@ function formatDateRange(start: string | null, end: string | null): string {
 
 sprintCommand
   .command("list")
-  .description("List sprints from Notion")
+  .description("List sprints")
   .option(
     "--status <status>",
     "Filter by status (Not Started, In Progress, Completed, Cancelled)",
@@ -69,8 +92,14 @@ sprintCommand
   .option("--domain <name>", "Filter by Life Domain")
   .option("--limit <n>", "Max number of sprints", "20")
   .option("--format <format>", "Output format: table, json", "table")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (options) => {
-    const spinner = ora("Fetching sprints from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Fetching sprints from ${backendLabel}...`).start();
 
     try {
       // Parse status filter
@@ -84,11 +113,22 @@ sprintCommand
         statusFilter = ["In Progress", "Not Started"];
       }
 
-      const sprints = await querySprints({
-        status: statusFilter,
-        domain: options.domain,
-        limit: parseInt(options.limit, 10),
-      });
+      let sprints: NotionSprint[];
+      if (backend === "django") {
+        // Django expects single status for now
+        const djangoStatus = statusFilter?.[0];
+        sprints = await querySprintsDjango({
+          status: djangoStatus,
+          domain: options.domain,
+          limit: parseInt(options.limit, 10),
+        });
+      } else {
+        sprints = await querySprints({
+          status: statusFilter,
+          domain: options.domain,
+          limit: parseInt(options.limit, 10),
+        });
+      }
 
       spinner.stop();
 
