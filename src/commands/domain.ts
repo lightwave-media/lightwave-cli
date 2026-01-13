@@ -41,11 +41,14 @@ async function runSetupDomain(
 domainCommand
   .command("list")
   .description("List all configured domains")
-  .action(async () => {
+  .option("--tenant <schema>", "Tenant schema name")
+  .action(async (options) => {
+    const args: string[] = ["--list"];
+    if (options.tenant) args.push("--tenant", options.tenant);
     console.log(chalk.blue("\n=== Configured Domains ===\n"));
 
     try {
-      const result = await runSetupDomain(["--list"], { silent: false });
+      await runSetupDomain(args, { silent: false });
     } catch (err: any) {
       console.log(chalk.red(`Failed to list domains: ${err.message}`));
     }
@@ -58,9 +61,13 @@ domainCommand
 domainCommand
   .command("show <domain>")
   .description("Show domain configuration details")
-  .action(async (domain: string) => {
+  .option("--tenant <schema>", "Tenant schema name")
+  .action(async (domain: string, options) => {
+    const args: string[] = [domain];
+    if (options.tenant) args.push("--tenant", options.tenant);
+
     try {
-      await runSetupDomain([domain], { silent: false });
+      await runSetupDomain(args, { silent: false });
     } catch (err: any) {
       console.log(chalk.red(`Failed to show domain: ${err.message}`));
     }
@@ -84,9 +91,11 @@ domainCommand
   .option("--use-subscriptions", "Enable subscriptions feature")
   .option("--use-chat", "Enable chat feature")
   .option("--dry-run", "Preview without creating")
+  .option("--tenant <schema>", "Tenant schema name")
   .action(async (domain: string, options) => {
     const args: string[] = [domain, "--create"];
 
+    if (options.tenant) args.push("--tenant", options.tenant);
     if (options.brandName) args.push("--brand-name", options.brandName);
     if (options.brandTagline)
       args.push("--brand-tagline", options.brandTagline);
@@ -128,9 +137,11 @@ domainCommand
   .option("--use-subscriptions", "Enable subscriptions feature")
   .option("--use-chat", "Enable chat feature")
   .option("--dry-run", "Preview without updating")
+  .option("--tenant <schema>", "Tenant schema name")
   .action(async (domain: string, options) => {
     const args: string[] = [domain, "--update"];
 
+    if (options.tenant) args.push("--tenant", options.tenant);
     if (options.brandName) args.push("--brand-name", options.brandName);
     if (options.brandTagline)
       args.push("--brand-tagline", options.brandTagline);
@@ -161,9 +172,11 @@ domainCommand
   .command("setup-dns <domain>")
   .description("Set up DNS records in Cloudflare")
   .option("--dry-run", "Preview without creating DNS records")
+  .option("--tenant <schema>", "Tenant schema name")
   .action(async (domain: string, options) => {
     const args: string[] = [domain, "--setup-dns"];
 
+    if (options.tenant) args.push("--tenant", options.tenant);
     if (options.dryRun) args.push("--dry-run");
 
     console.log(chalk.blue(`\nSetting up DNS for: ${domain}\n`));
