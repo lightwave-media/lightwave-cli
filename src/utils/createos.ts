@@ -890,3 +890,288 @@ export async function assignTaskToSprintDjango(
 ): Promise<NotionTask> {
   return updateTaskDjango(taskId, { sprintId });
 }
+
+// =============================================================================
+// EPIC CRUD OPERATIONS
+// =============================================================================
+
+// Map Django epic status to Notion epic status
+const DJANGO_TO_NOTION_EPIC_STATUS: Record<string, string> = {
+  not_started: "Not Started",
+  in_progress: "In Progress",
+  completed: "Completed",
+  on_hold: "On Hold",
+  cancelled: "Cancelled",
+};
+
+const NOTION_TO_DJANGO_EPIC_STATUS: Record<string, string> = {
+  "Not Started": "not_started",
+  "In Progress": "in_progress",
+  Completed: "completed",
+  "On Hold": "on_hold",
+  Cancelled: "cancelled",
+};
+
+/**
+ * Create a new epic in createOS
+ */
+export async function createEpicDjango(
+  name: string,
+  options: {
+    subtitle?: string;
+    logLine?: string;
+    projectType?: string;
+    priority?: string;
+    lifeDomainId?: string;
+    startDate?: string;
+    endDate?: string;
+    githubRepo?: string;
+  } = {},
+): Promise<NotionEpic> {
+  const djangoEpic: Record<string, unknown> = {
+    name,
+    status: "not_started",
+  };
+
+  if (options.subtitle) djangoEpic.subtitle = options.subtitle;
+  if (options.logLine) djangoEpic.log_line = options.logLine;
+  if (options.priority) {
+    djangoEpic.priority =
+      NOTION_TO_DJANGO_PRIORITY[options.priority] || "p3_medium";
+  }
+  if (options.lifeDomainId) djangoEpic.domain = options.lifeDomainId;
+  if (options.startDate) djangoEpic.start_date = options.startDate;
+  if (options.endDate) djangoEpic.target_date = options.endDate;
+  if (options.githubRepo) djangoEpic.github_repo = options.githubRepo;
+
+  const created = await apiRequest<DjangoEpic>(`/api/createos/epics/`, {
+    method: "POST",
+    body: JSON.stringify(djangoEpic),
+  });
+
+  return djangoEpicToNotionEpic(created);
+}
+
+/**
+ * Update epic status in createOS
+ */
+export async function updateEpicStatusDjango(
+  epicId: string,
+  status: string,
+): Promise<NotionEpic> {
+  const djangoStatus = NOTION_TO_DJANGO_EPIC_STATUS[status];
+  if (!djangoStatus) {
+    throw new Error(`Invalid epic status: ${status}`);
+  }
+
+  // Need to get full UUID if given short_id
+  let fullId = epicId;
+  if (epicId.length === 8) {
+    const epic = await getEpicDjango(epicId);
+    if (!epic) {
+      throw new Error(`Epic not found: ${epicId}`);
+    }
+    fullId = epic.id;
+  }
+
+  const updated = await apiRequest<DjangoEpic>(
+    `/api/createos/epics/${fullId}/`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status: djangoStatus }),
+    },
+  );
+
+  return djangoEpicToNotionEpic(updated);
+}
+
+/**
+ * Find epic by name in createOS
+ */
+export async function findEpicByNameDjango(
+  nameOrId: string,
+): Promise<NotionEpic | null> {
+  // Try short_id first
+  if (nameOrId.length === 8 && /^[a-f0-9]+$/i.test(nameOrId)) {
+    return getEpicDjango(nameOrId);
+  }
+
+  // Search by name
+  const response = await apiRequest<DjangoPaginatedResponse<DjangoEpic>>(
+    `/api/createos/epics/?search=${encodeURIComponent(nameOrId)}`,
+  );
+
+  if (response.results.length === 0) {
+    return null;
+  }
+
+  // Find exact match by name, or return first result
+  const exact = response.results.find(
+    (e) => e.name.toLowerCase() === nameOrId.toLowerCase(),
+  );
+  return exact
+    ? djangoEpicToNotionEpic(exact)
+    : djangoEpicToNotionEpic(response.results[0]);
+}
+
+// =============================================================================
+// SPRINT CRUD OPERATIONS
+// =============================================================================
+
+// Map Django sprint status to Notion sprint status
+const DJANGO_TO_NOTION_SPRINT_STATUS: Record<string, string> = {
+  not_started: "Not Started",
+  active: "In Progress",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+const NOTION_TO_DJANGO_SPRINT_STATUS: Record<string, string> = {
+  "Not Started": "not_started",
+  "In Progress": "active",
+  Completed: "completed",
+  Cancelled: "cancelled",
+};
+
+/**
+ * Create a new sprint in createOS
+ */
+export async function createSprintDjango(
+  name: string,
+  options: {
+    objectives?: string;
+    startDate?: string;
+    endDate?: string;
+    epicId?: string;
+    lifeDomainId?: string;
+  } = {},
+): Promise<NotionSprint> {
+  const djangoSprint: Record<string, unknown> = {
+    name,
+    status: "not_started",
+  };
+
+  if (options.objectives) djangoSprint.objectives = options.objectives;
+  if (options.startDate) djangoSprint.start_date = options.startDate;
+  if (options.endDate) djangoSprint.end_date = options.endDate;
+  if (options.epicId) djangoSprint.epic = options.epicId;
+  if (options.lifeDomainId) djangoSprint.domain = options.lifeDomainId;
+
+  const created = await apiRequest<DjangoSprint>(`/api/createos/sprints/`, {
+    method: "POST",
+    body: JSON.stringify(djangoSprint),
+  });
+
+  return djangoSprintToNotionSprint(created);
+}
+
+/**
+ * Update sprint status in createOS
+ */
+export async function updateSprintStatusDjango(
+  sprintId: string,
+  status: string,
+): Promise<NotionSprint> {
+  const djangoStatus = NOTION_TO_DJANGO_SPRINT_STATUS[status];
+  if (!djangoStatus) {
+    throw new Error(`Invalid sprint status: ${status}`);
+  }
+
+  // Need to get full UUID if given short_id
+  let fullId = sprintId;
+  if (sprintId.length === 8) {
+    const sprint = await getSprintDjango(sprintId);
+    if (!sprint) {
+      throw new Error(`Sprint not found: ${sprintId}`);
+    }
+    fullId = sprint.id;
+  }
+
+  const updated = await apiRequest<DjangoSprint>(
+    `/api/createos/sprints/${fullId}/`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status: djangoStatus }),
+    },
+  );
+
+  return djangoSprintToNotionSprint(updated);
+}
+
+/**
+ * Get the current active sprint in createOS
+ */
+export async function getCurrentSprintDjango(): Promise<NotionSprint | null> {
+  const response = await apiRequest<DjangoPaginatedResponse<DjangoSprint>>(
+    `/api/createos/sprints/?status=active`,
+  );
+
+  if (response.results.length === 0) {
+    return null;
+  }
+
+  // Return the most recent active sprint
+  return djangoSprintToNotionSprint(response.results[0]);
+}
+
+/**
+ * Find sprint by name in createOS
+ */
+export async function findSprintByNameDjango(
+  nameOrId: string,
+): Promise<NotionSprint | null> {
+  // Try short_id first
+  if (nameOrId.length === 8 && /^[a-f0-9]+$/i.test(nameOrId)) {
+    return getSprintDjango(nameOrId);
+  }
+
+  // Search by name
+  const response = await apiRequest<DjangoPaginatedResponse<DjangoSprint>>(
+    `/api/createos/sprints/?search=${encodeURIComponent(nameOrId)}`,
+  );
+
+  if (response.results.length === 0) {
+    return null;
+  }
+
+  // Find exact match by name, or return first result
+  const exact = response.results.find(
+    (s) => s.name.toLowerCase() === nameOrId.toLowerCase(),
+  );
+  return exact
+    ? djangoSprintToNotionSprint(exact)
+    : djangoSprintToNotionSprint(response.results[0]);
+}
+
+// =============================================================================
+// DOMAIN CRUD OPERATIONS
+// =============================================================================
+
+/**
+ * Find domain by name in createOS
+ */
+export async function findDomainByNameDjango(
+  nameOrId: string,
+): Promise<NotionLifeDomain | null> {
+  // Try short_id first
+  if (nameOrId.length === 8 && /^[a-f0-9]+$/i.test(nameOrId)) {
+    return getDomainDjango(nameOrId);
+  }
+
+  // Search by name
+  const response = await apiRequest<DjangoPaginatedResponse<DjangoLifeDomain>>(
+    `/api/createos/domains/?search=${encodeURIComponent(nameOrId)}`,
+  );
+
+  if (response.results.length === 0) {
+    return null;
+  }
+
+  // Find exact match by name, or return first result
+  const exact = response.results.find(
+    (d) => d.name.toLowerCase() === nameOrId.toLowerCase(),
+  );
+  return exact
+    ? djangoDomainToNotionDomain(exact)
+    : djangoDomainToNotionDomain(response.results[0]);
+}

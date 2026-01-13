@@ -2,7 +2,7 @@
  * Epic/Project management commands
  *
  * Commands:
- *   lw epic list              List epics from Notion
+ *   lw epic list              List epics from Notion/createOS
  *   lw epic info <id>         Show epic details with tasks and docs
  *   lw epic start <id>        Create epic branch from main
  *   lw epic merge <id>        Merge epic to main, tag release
@@ -21,11 +21,32 @@ import {
   createEpic,
   findLifeDomainByName,
 } from "../utils/notion.js";
+import {
+  getBackend,
+  queryEpicsDjango,
+  getEpicDjango,
+  queryTasksDjango,
+  querySprintsDjango,
+  createEpicDjango,
+  updateEpicStatusDjango,
+  findDomainByNameDjango,
+} from "../utils/createos.js";
 import { exec } from "../utils/exec.js";
 import type { EpicStatus, NotionEpic } from "../types/notion.js";
 
+/**
+ * Resolve which backend to use
+ */
+function resolveBackend(optionBackend?: string): "django" | "notion" {
+  if (optionBackend) {
+    return optionBackend.toLowerCase() === "notion" ? "notion" : "django";
+  }
+  const defaultBackend = getBackend();
+  return defaultBackend === "both" ? "django" : defaultBackend;
+}
+
 export const epicCommand = new Command("epic").description(
-  "Epic/Project management - view and track epics from Notion",
+  "Epic/Project management - view and track epics",
 );
 
 /**
@@ -57,7 +78,7 @@ function formatDateRange(start: string | null, end: string | null): string {
 
 epicCommand
   .command("list")
-  .description("List epics/projects from Notion")
+  .description("List epics/projects")
   .option(
     "--status <status>",
     "Filter by status (Not Started, In Progress, Completed, On Hold, Cancelled)",
@@ -69,8 +90,14 @@ epicCommand
   )
   .option("--limit <n>", "Max number of epics", "20")
   .option("--format <format>", "Output format: table, json", "table")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (options) => {
-    const spinner = ora("Fetching epics from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Fetching epics from ${backendLabel}...`).start();
 
     try {
       // Parse status filter
@@ -84,11 +111,22 @@ epicCommand
         statusFilter = ["In Progress", "Not Started"];
       }
 
-      const epics = await queryEpics({
-        status: statusFilter,
-        domain: options.domain,
-        limit: parseInt(options.limit, 10),
-      });
+      let epics: NotionEpic[];
+      if (backend === "django") {
+        // Django expects single status for now
+        const djangoStatus = statusFilter?.[0];
+        epics = await queryEpicsDjango({
+          status: djangoStatus,
+          domain: options.domain,
+          limit: parseInt(options.limit, 10),
+        });
+      } else {
+        epics = await queryEpics({
+          status: statusFilter,
+          domain: options.domain,
+          limit: parseInt(options.limit, 10),
+        });
+      }
 
       spinner.stop();
 
@@ -140,7 +178,7 @@ epicCommand
 
 epicCommand
   .command("create <name>")
-  .description("Create a new epic/project in Notion")
+  .description("Create a new epic/project")
   .option("--subtitle <text>", "Epic subtitle")
   .option("--log-line <text>", "Epic log line / description")
   .option(
@@ -156,15 +194,24 @@ epicCommand
   .option("--end <date>", "End date (YYYY-MM-DD)")
   .option("--dry-run", "Preview what would be created")
   .option("--start-work", "Also create branch and set to In Progress")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (name: string, options) => {
-    const spinner = ora("Creating epic in Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Creating epic in ${backendLabel}...`).start();
 
     try {
       // Resolve life domain if provided
       let lifeDomainId: string | undefined;
       if (options.domain) {
         spinner.text = "Resolving life domain...";
-        const domain = await findLifeDomainByName(options.domain);
+        const domain =
+          backend === "django"
+            ? await findDomainByNameDjango(options.domain)
+            : await findLifeDomainByName(options.domain);
         if (!domain) {
           spinner.fail(`Life domain not found: ${options.domain}`);
           process.exit(1);
@@ -175,6 +222,7 @@ epicCommand
       if (options.dryRun) {
         spinner.stop();
         console.log(chalk.blue("\n=== Preview Epic ===\n"));
+        console.log(chalk.yellow("Backend:"), backendLabel);
         console.log(chalk.yellow("Name:"), name);
         if (options.subtitle)
           console.log(chalk.yellow("Subtitle:"), options.subtitle);
@@ -191,15 +239,28 @@ epicCommand
         return;
       }
 
-      const epic = await createEpic(name, {
-        subtitle: options.subtitle,
-        logLine: options.logLine,
-        projectType: options.type,
-        priority: options.priority,
-        lifeDomainId,
-        startDate: options.start,
-        endDate: options.end,
-      });
+      let epic: NotionEpic;
+      if (backend === "django") {
+        epic = await createEpicDjango(name, {
+          subtitle: options.subtitle,
+          logLine: options.logLine,
+          projectType: options.type,
+          priority: options.priority,
+          lifeDomainId,
+          startDate: options.start,
+          endDate: options.end,
+        });
+      } else {
+        epic = await createEpic(name, {
+          subtitle: options.subtitle,
+          logLine: options.logLine,
+          projectType: options.type,
+          priority: options.priority,
+          lifeDomainId,
+          startDate: options.start,
+          endDate: options.end,
+        });
+      }
 
       spinner.succeed("Epic created!");
 
@@ -220,7 +281,11 @@ epicCommand
         await exec("git checkout main && git pull");
         await exec(`git checkout -b ${branchName}`);
         await exec(`git push -u origin ${branchName}`);
-        await updateEpicStatus(epic.id, "In Progress");
+        if (backend === "django") {
+          await updateEpicStatusDjango(epic.id, "In Progress");
+        } else {
+          await updateEpicStatus(epic.id, "In Progress");
+        }
         spinner.succeed(`Branch created: ${branchName}`);
 
         console.log(chalk.yellow("\nBranch:"), chalk.cyan(branchName));
@@ -246,11 +311,20 @@ epicCommand
   .option("--format <format>", "Output format: text, json", "text")
   .option("--tasks", "Also show tasks in this epic")
   .option("--sprints", "Also show sprints linked to this epic")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (epicId: string, options) => {
-    const spinner = ora("Loading epic from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading epic from ${backendLabel}...`).start();
 
     try {
-      const epic = await getEpic(epicId);
+      const epic =
+        backend === "django"
+          ? await getEpicDjango(epicId)
+          : await getEpic(epicId);
       if (!epic) {
         spinner.fail(`Epic not found: ${epicId}`);
         process.exit(1);
@@ -267,7 +341,7 @@ epicCommand
 
       // Optionally show tasks
       if (options.tasks) {
-        await displayEpicTasks(epic);
+        await displayEpicTasks(epic, backend);
       }
 
       // Optionally show sprints
@@ -336,11 +410,17 @@ function displayEpicDetails(epic: NotionEpic): void {
 /**
  * Display tasks in an epic
  */
-async function displayEpicTasks(epic: NotionEpic): Promise<void> {
+async function displayEpicTasks(
+  epic: NotionEpic,
+  backend: "django" | "notion" = "django",
+): Promise<void> {
   const spinner = ora("Loading epic tasks...").start();
 
   try {
-    const tasks = await queryTasks({ epic: epic.name });
+    const tasks =
+      backend === "django"
+        ? await queryTasksDjango({ epic: epic.shortId })
+        : await queryTasks({ epic: epic.name });
     spinner.stop();
 
     if (tasks.length === 0) {
