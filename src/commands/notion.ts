@@ -1,9 +1,11 @@
 /**
- * Notion export commands for data emancipation
+ * Notion export/import commands for data emancipation
  *
  * Commands:
  *   lw notion export              Export all databases to JSON
  *   lw notion export --db <name>  Export specific database
+ *   lw notion import              Import JSON exports into Django
+ *   lw notion import --dry-run    Preview import without changes
  *   lw notion list                List available databases
  *   lw notion stats               Show database statistics
  */
@@ -13,6 +15,7 @@ import chalk from "chalk";
 import ora from "ora";
 import * as fs from "fs";
 import * as path from "path";
+import { execSync, spawn } from "child_process";
 import { getNotionClient } from "../utils/notion.js";
 import { NOTION_DB_IDS } from "../types/notion.js";
 
@@ -205,15 +208,27 @@ function extractPropertyValue(prop: unknown): unknown {
       return formula[formulaType] ?? null;
     }
     case "people": {
-      const people = p.people as Array<{ name: string; id: string }> | undefined;
-      return people?.map((person) => ({ id: person.id, name: person.name })) || [];
+      const people = p.people as
+        | Array<{ name: string; id: string }>
+        | undefined;
+      return (
+        people?.map((person) => ({ id: person.id, name: person.name })) || []
+      );
     }
     case "files": {
-      const files = p.files as Array<{ name: string; file?: { url: string }; external?: { url: string } }> | undefined;
-      return files?.map((f) => ({
-        name: f.name,
-        url: f.file?.url || f.external?.url || null,
-      })) || [];
+      const files = p.files as
+        | Array<{
+            name: string;
+            file?: { url: string };
+            external?: { url: string };
+          }>
+        | undefined;
+      return (
+        files?.map((f) => ({
+          name: f.name,
+          url: f.file?.url || f.external?.url || null,
+        })) || []
+      );
     }
     case "created_time":
       return p.created_time ?? null;
@@ -225,7 +240,10 @@ function extractPropertyValue(prop: unknown): unknown {
       return user ? { id: user.id, name: user.name } : null;
     }
     case "unique_id": {
-      const uid = p.unique_id as { number: number; prefix: string | null } | null;
+      const uid = p.unique_id as {
+        number: number;
+        prefix: string | null;
+      } | null;
       return uid ? `${uid.prefix || ""}${uid.number}` : null;
     }
     default:
@@ -236,7 +254,9 @@ function extractPropertyValue(prop: unknown): unknown {
 /**
  * Get database schema (properties)
  */
-async function getDatabaseSchema(dbId: string): Promise<Record<string, unknown>> {
+async function getDatabaseSchema(
+  dbId: string,
+): Promise<Record<string, unknown>> {
   const { client } = await getNotionClient();
 
   const response = await client.request<Record<string, unknown>>({
@@ -277,7 +297,9 @@ notionCommand
       );
     }
 
-    console.log(chalk.gray(`\n${Object.keys(DATABASES).length} database(s) configured`));
+    console.log(
+      chalk.gray(`\n${Object.keys(DATABASES).length} database(s) configured`),
+    );
     console.log(chalk.yellow("\nTo export: lw notion export [--db <key>]"));
   });
 
@@ -294,7 +316,10 @@ notionCommand
 
     try {
       const { client } = await getNotionClient();
-      const stats: Record<string, { count: number; lastEdited: string | null }> = {};
+      const stats: Record<
+        string,
+        { count: number; lastEdited: string | null }
+      > = {};
 
       for (const [key, config] of Object.entries(DATABASES)) {
         spinner.text = `Counting ${config.name}...`;
@@ -311,7 +336,9 @@ notionCommand
             body: {
               page_size: 100,
               start_cursor: startCursor,
-              sorts: [{ timestamp: "last_edited_time", direction: "descending" }],
+              sorts: [
+                { timestamp: "last_edited_time", direction: "descending" },
+              ],
             },
           });
 
@@ -373,7 +400,10 @@ notionCommand
 notionCommand
   .command("export")
   .description("Export Notion databases to JSON files")
-  .option("--db <key>", "Export specific database (tasks, epics, sprints, etc.)")
+  .option(
+    "--db <key>",
+    "Export specific database (tasks, epics, sprints, etc.)",
+  )
   .option("--all", "Include archived/deleted records")
   .option("--output <dir>", "Output directory", "data/notion_exports")
   .option("--schema", "Also export database schemas")
@@ -455,7 +485,9 @@ notionCommand
       }
 
       console.log(chalk.gray("-".repeat(77)));
-      console.log(chalk.green(`Total: ${totalRecords} records exported to ${exportDir}`));
+      console.log(
+        chalk.green(`Total: ${totalRecords} records exported to ${exportDir}`),
+      );
 
       // Write manifest
       const manifest = {
@@ -474,7 +506,9 @@ notionCommand
         JSON.stringify(manifest, null, 2),
       );
 
-      console.log(chalk.yellow(`\nManifest: ${path.join(exportDir, "manifest.json")}`));
+      console.log(
+        chalk.yellow(`\nManifest: ${path.join(exportDir, "manifest.json")}`),
+      );
     } catch (err) {
       spinner.fail("Export failed");
       console.error(chalk.red((err as Error).message));
@@ -525,9 +559,13 @@ notionCommand
 
         // Extract relevant details based on type
         if (type === "select" || type === "status") {
-          const opts = (p[type] as { options?: Array<{ name: string }> })?.options;
+          const opts = (p[type] as { options?: Array<{ name: string }> })
+            ?.options;
           if (opts) {
-            details = opts.map((o) => o.name).slice(0, 3).join(", ");
+            details = opts
+              .map((o) => o.name)
+              .slice(0, 3)
+              .join(", ");
             if (opts.length > 3) details += "...";
           }
         } else if (type === "relation") {
@@ -537,18 +575,26 @@ notionCommand
             const relDb = Object.entries(DATABASES).find(
               ([_, cfg]) => cfg.id === rel.database_id,
             );
-            details = relDb ? `-> ${relDb[0]}` : `-> ${rel.database_id.slice(0, 8)}`;
+            details = relDb
+              ? `-> ${relDb[0]}`
+              : `-> ${rel.database_id.slice(0, 8)}`;
           }
         } else if (type === "multi_select") {
-          const opts = (p.multi_select as { options?: Array<{ name: string }> })?.options;
+          const opts = (p.multi_select as { options?: Array<{ name: string }> })
+            ?.options;
           if (opts) {
-            details = opts.map((o) => o.name).slice(0, 3).join(", ");
+            details = opts
+              .map((o) => o.name)
+              .slice(0, 3)
+              .join(", ");
             if (opts.length > 3) details += "...";
           }
         }
 
-        const truncName = name.length > 33 ? name.substring(0, 33) + ".." : name;
-        const truncDetails = details.length > 28 ? details.substring(0, 28) + ".." : details;
+        const truncName =
+          name.length > 33 ? name.substring(0, 33) + ".." : name;
+        const truncDetails =
+          details.length > 28 ? details.substring(0, 28) + ".." : details;
 
         console.log(
           `${chalk.cyan(truncName.padEnd(35))} ` +
@@ -560,6 +606,222 @@ notionCommand
       console.log(chalk.gray(`\n${Object.keys(schema).length} properties`));
     } catch (err) {
       spinner.fail("Failed to fetch schema");
+      console.error(chalk.red((err as Error).message));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// lw notion import
+// =============================================================================
+
+/**
+ * Find the lightwave-platform directory
+ */
+function findPlatformDir(): string | null {
+  // Check various possible locations
+  const candidates = [
+    path.resolve(process.cwd(), "../../lightwave-platform"),
+    path.resolve(process.cwd(), "../lightwave-platform"),
+    path.resolve(process.cwd(), "lightwave-platform"),
+    path.resolve(process.cwd(), "../../../lightwave-platform"),
+  ];
+
+  for (const candidate of candidates) {
+    if (
+      fs.existsSync(candidate) &&
+      fs.existsSync(path.join(candidate, "docker-compose.yml"))
+    ) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Find the latest export directory
+ */
+function findLatestExport(baseDir: string): string | null {
+  if (!fs.existsSync(baseDir)) return null;
+
+  const entries = fs.readdirSync(baseDir, { withFileTypes: true });
+  const dirs = entries
+    .filter((e) => e.isDirectory())
+    .map((e) => e.name)
+    .sort()
+    .reverse();
+
+  return dirs.length > 0 ? path.join(baseDir, dirs[0]) : null;
+}
+
+notionCommand
+  .command("import")
+  .description("Import Notion JSON exports into Django")
+  .option("--dir <path>", "Path to export directory")
+  .option("--dry-run", "Preview changes without modifying database")
+  .option("--domains-only", "Only import Life Domains")
+  .option("--epics-only", "Only import Epics")
+  .option("--sprints-only", "Only import Sprints")
+  .option("--stories-only", "Only import User Stories")
+  .option("--tasks-only", "Only import Tasks")
+  .option("-v, --verbose", "Verbose output")
+  .action(async (options) => {
+    const spinner = ora("Preparing import...").start();
+
+    try {
+      // Find the lightwave-platform directory
+      const platformDir = findPlatformDir();
+      if (!platformDir) {
+        spinner.fail("Could not find lightwave-platform directory");
+        console.log(chalk.yellow("\nMake sure you're in the lightwave monorepo"));
+        process.exit(1);
+      }
+
+      // Determine export directory
+      let exportDir: string;
+      if (options.dir) {
+        exportDir = path.resolve(options.dir);
+      } else {
+        // Find latest export
+        const exportsBase = path.resolve(process.cwd(), "data/notion_exports");
+        const latest = findLatestExport(exportsBase);
+        if (!latest) {
+          spinner.fail("No export directory found");
+          console.log(
+            chalk.yellow(
+              "\nRun 'lw notion export' first, or specify --dir <path>",
+            ),
+          );
+          process.exit(1);
+        }
+        exportDir = latest;
+      }
+
+      if (!fs.existsSync(exportDir)) {
+        spinner.fail(`Export directory not found: ${exportDir}`);
+        process.exit(1);
+      }
+
+      // Check for manifest
+      const manifestPath = path.join(exportDir, "manifest.json");
+      if (fs.existsSync(manifestPath)) {
+        const manifest = JSON.parse(fs.readFileSync(manifestPath, "utf-8"));
+        spinner.info(
+          `Loading export from ${manifest.exportedAt} (${manifest.totalRecords} records)`,
+        );
+      } else {
+        spinner.info(`Loading export from ${exportDir}`);
+      }
+
+      // Copy export files to backend data directory (accessible to Docker)
+      const backendDataDir = path.join(
+        platformDir,
+        "lwm_core/backend/data/notion_exports",
+      );
+      if (!fs.existsSync(backendDataDir)) {
+        fs.mkdirSync(backendDataDir, { recursive: true });
+      }
+
+      // Create a symlink or copy the files
+      const targetDir = path.join(
+        backendDataDir,
+        path.basename(exportDir),
+      );
+
+      spinner.text = "Copying export files to backend...";
+
+      // Remove existing target if it exists
+      if (fs.existsSync(targetDir)) {
+        fs.rmSync(targetDir, { recursive: true });
+      }
+
+      // Copy files
+      fs.cpSync(exportDir, targetDir, { recursive: true });
+
+      spinner.text = "Running Django import command...";
+      spinner.stop();
+
+      // Build the Django command
+      const djangoArgs = ["import_notion_json"];
+
+      if (options.dryRun) {
+        djangoArgs.push("--dry-run");
+      }
+      if (options.domainsOnly) {
+        djangoArgs.push("--domains-only");
+      }
+      if (options.epicsOnly) {
+        djangoArgs.push("--epics-only");
+      }
+      if (options.sprintsOnly) {
+        djangoArgs.push("--sprints-only");
+      }
+      if (options.storiesOnly) {
+        djangoArgs.push("--stories-only");
+      }
+      if (options.tasksOnly) {
+        djangoArgs.push("--tasks-only");
+      }
+      if (options.verbose) {
+        djangoArgs.push("-v", "2");
+      }
+
+      // Add the directory path (relative to /code in container)
+      djangoArgs.push(
+        "--dir",
+        `/code/data/notion_exports/${path.basename(exportDir)}`,
+      );
+
+      console.log(chalk.blue("\n=== Running Django Import ===\n"));
+      console.log(chalk.gray(`Platform: ${platformDir}`));
+      console.log(chalk.gray(`Export: ${exportDir}`));
+      console.log(chalk.gray(`Command: python manage.py ${djangoArgs.join(" ")}\n`));
+
+      // Execute the Django management command via docker compose
+      const dockerCmd = [
+        "docker",
+        "compose",
+        "exec",
+        "-T",
+        "web",
+        "python",
+        "manage.py",
+        ...djangoArgs,
+      ];
+
+      const result = spawn(dockerCmd[0], dockerCmd.slice(1), {
+        cwd: platformDir,
+        stdio: "inherit",
+      });
+
+      result.on("close", (code) => {
+        if (code === 0) {
+          console.log(chalk.green("\n✓ Import completed successfully"));
+
+          if (options.dryRun) {
+            console.log(
+              chalk.yellow(
+                "\nDRY RUN complete. Run without --dry-run to apply changes.",
+              ),
+            );
+          }
+        } else {
+          console.log(chalk.red(`\n✗ Import failed with code ${code}`));
+          process.exit(code || 1);
+        }
+      });
+
+      result.on("error", (err) => {
+        console.error(chalk.red(`\n✗ Failed to run import: ${err.message}`));
+        console.log(
+          chalk.yellow("\nMake sure Docker is running and web service is up:"),
+        );
+        console.log(chalk.gray("  cd lightwave-platform && make start-bg"));
+        process.exit(1);
+      });
+    } catch (err) {
+      spinner.fail("Import failed");
       console.error(chalk.red((err as Error).message));
       process.exit(1);
     }
