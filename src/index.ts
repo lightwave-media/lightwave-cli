@@ -15,6 +15,11 @@ import { storyCommand } from "./commands/story.js";
 import { authCommand } from "./commands/auth.js";
 import { docCommand } from "./commands/doc.js";
 import { domainCommand } from "./commands/domain.js";
+import { routeCommand } from "./commands/route.js";
+import { agentCommand } from "./commands/agent.js";
+import { automationCommand } from "./commands/automation.js";
+import { bugsCommand } from "./commands/bugs.js";
+import { notionCommand } from "./commands/notion.js";
 
 const program = new Command();
 
@@ -39,5 +44,10 @@ program.addCommand(storyCommand);
 program.addCommand(authCommand);
 program.addCommand(docCommand);
 program.addCommand(domainCommand);
+program.addCommand(routeCommand);
+program.addCommand(agentCommand);
+program.addCommand(automationCommand);
+program.addCommand(bugsCommand);
+program.addCommand(notionCommand);
 
 program.parse();
