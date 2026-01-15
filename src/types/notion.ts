@@ -258,6 +258,8 @@ export interface NotionUserStory {
   id: string;
   shortId: string;
   name: string;
+  description?: string;
+  acceptanceCriteria?: string;
   status: string;
   priority: string | null;
   userType: string | null;

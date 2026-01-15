@@ -125,6 +125,8 @@ interface DjangoUserStory {
   id: string;
   short_id: string;
   name: string;
+  description: string;
+  acceptance_criteria: string;
   epic: string | null;
   epic_name: string | null;
   sprint: string | null;
@@ -470,14 +472,16 @@ export async function getTaskDjango(
   taskId: string,
 ): Promise<NotionTask | null> {
   try {
-    // If it's a short_id (8 chars), query by short_id
+    // If it's a short_id (8 chars), query by short_id filter
     if (taskId.length === 8 && /^[a-f0-9]+$/i.test(taskId)) {
       const response = await apiRequest<DjangoPaginatedResponse<DjangoTask>>(
-        `/api/createos/tasks/?search=${taskId}`,
+        `/api/createos/tasks/?short_id=${taskId}`,
       );
-      // Find exact match by short_id
-      const task = response.results.find((t) => t.short_id === taskId);
-      return task ? djangoTaskToNotionTask(task) : null;
+      // Return first match (short_id filter returns exact matches)
+      if (response.results.length > 0) {
+        return djangoTaskToNotionTask(response.results[0]);
+      }
+      return null;
     }
 
     // Otherwise, assume it's a full UUID
@@ -1174,4 +1178,212 @@ export async function findDomainByNameDjango(
   return exact
     ? djangoDomainToNotionDomain(exact)
     : djangoDomainToNotionDomain(response.results[0]);
+}
+
+// =============================================================================
+// USER STORY CRUD OPERATIONS
+// =============================================================================
+
+// Map Django story status to Notion-compatible status
+const DJANGO_TO_NOTION_STORY_STATUS: Record<string, string> = {
+  draft: "Draft",
+  ready: "Ready",
+  in_progress: "In Progress",
+  done: "Done",
+  blocked: "Blocked",
+};
+
+const NOTION_TO_DJANGO_STORY_STATUS: Record<string, string> = {
+  Draft: "draft",
+  Ready: "ready",
+  "In Progress": "in_progress",
+  Done: "done",
+  Blocked: "blocked",
+  // Also map from Notion-style status names
+  "Not Started": "draft",
+  Completed: "done",
+};
+
+/**
+ * Convert Django UserStory to Notion-compatible format
+ */
+function djangoStoryToNotionStory(story: DjangoUserStory): NotionUserStory {
+  return {
+    id: story.id,
+    shortId: story.short_id,
+    name: story.name,
+    description: story.description || undefined,
+    acceptanceCriteria: story.acceptance_criteria || undefined,
+    status: DJANGO_TO_NOTION_STORY_STATUS[story.status] || story.status,
+    priority: story.priority
+      ? DJANGO_TO_NOTION_PRIORITY[story.priority] || story.priority
+      : null,
+    userType: story.user_type,
+    url: `${getApiUrl()}/admin/createos/userstory/${story.id}/change/`,
+    epicId: story.epic,
+    epicName: story.epic_name,
+    sprintId: story.sprint,
+    taskIds: [], // Not returned by API, would need separate query
+  };
+}
+
+/**
+ * Query user stories from createOS
+ */
+export async function queryUserStoriesDjango(
+  options: {
+    status?: string | string[];
+    epicId?: string;
+    sprintId?: string;
+    limit?: number;
+  } = {},
+): Promise<NotionUserStory[]> {
+  const params = new URLSearchParams();
+
+  if (options.status) {
+    const statuses = Array.isArray(options.status)
+      ? options.status
+      : [options.status];
+    // Convert to Django status if needed
+    const djangoStatus =
+      NOTION_TO_DJANGO_STORY_STATUS[statuses[0]] || statuses[0].toLowerCase();
+    params.set("status", djangoStatus);
+  }
+
+  if (options.epicId) {
+    params.set("epic", options.epicId);
+  }
+
+  if (options.sprintId) {
+    params.set("sprint", options.sprintId);
+  }
+
+  if (options.limit) {
+    params.set("page_size", options.limit.toString());
+  }
+
+  const queryString = params.toString();
+  const url = `/api/createos/stories/${queryString ? `?${queryString}` : ""}`;
+
+  const response =
+    await apiRequest<DjangoPaginatedResponse<DjangoUserStory>>(url);
+  return response.results.map(djangoStoryToNotionStory);
+}
+
+/**
+ * Get a single user story by ID or short_id
+ */
+export async function getUserStoryDjango(
+  storyId: string,
+): Promise<NotionUserStory | null> {
+  try {
+    // Try UUID first, then short_id lookup
+    const endpoint =
+      storyId.length === 8 && /^[a-f0-9]+$/i.test(storyId)
+        ? `/api/createos/stories/?search=${storyId}`
+        : `/api/createos/stories/${storyId}/`;
+
+    if (storyId.length === 8) {
+      const response =
+        await apiRequest<DjangoPaginatedResponse<DjangoUserStory>>(endpoint);
+      if (response.results.length === 0) return null;
+      // Find exact match by short_id
+      const exact = response.results.find(
+        (s) => s.short_id.toLowerCase() === storyId.toLowerCase(),
+      );
+      return exact ? djangoStoryToNotionStory(exact) : null;
+    }
+
+    const story = await apiRequest<DjangoUserStory>(endpoint);
+    return djangoStoryToNotionStory(story);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Create a new user story in createOS
+ */
+export async function createUserStoryDjango(
+  name: string,
+  options: {
+    description?: string;
+    acceptanceCriteria?: string;
+    userType?: string;
+    priority?: string;
+    epicId?: string;
+    sprintId?: string;
+    storyPoints?: number;
+  } = {},
+): Promise<NotionUserStory> {
+  const payload: Record<string, unknown> = {
+    name,
+    status: "draft", // Default to draft
+  };
+
+  if (options.description) {
+    payload.description = options.description;
+  }
+
+  if (options.acceptanceCriteria) {
+    payload.acceptance_criteria = options.acceptanceCriteria;
+  }
+
+  if (options.userType) {
+    payload.user_type = options.userType;
+  }
+
+  if (options.priority) {
+    payload.priority =
+      NOTION_TO_DJANGO_PRIORITY[options.priority] ||
+      options.priority.toLowerCase().replace(/\s+/g, "_");
+  }
+
+  if (options.epicId) {
+    payload.epic = options.epicId;
+  }
+
+  if (options.sprintId) {
+    payload.sprint = options.sprintId;
+  }
+
+  if (options.storyPoints) {
+    payload.story_points = options.storyPoints;
+  }
+
+  const story = await apiRequest<DjangoUserStory>("/api/createos/stories/", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  return djangoStoryToNotionStory(story);
+}
+
+/**
+ * Find user story by name or short_id in createOS
+ */
+export async function findUserStoryByNameDjango(
+  nameOrId: string,
+): Promise<NotionUserStory | null> {
+  // Try short_id first
+  if (nameOrId.length === 8 && /^[a-f0-9]+$/i.test(nameOrId)) {
+    return getUserStoryDjango(nameOrId);
+  }
+
+  // Search by name
+  const response = await apiRequest<DjangoPaginatedResponse<DjangoUserStory>>(
+    `/api/createos/stories/?search=${encodeURIComponent(nameOrId)}`,
+  );
+
+  if (response.results.length === 0) {
+    return null;
+  }
+
+  // Find exact match by name, or return first result
+  const exact = response.results.find(
+    (s) => s.name.toLowerCase() === nameOrId.toLowerCase(),
+  );
+  return exact
+    ? djangoStoryToNotionStory(exact)
+    : djangoStoryToNotionStory(response.results[0]);
 }
