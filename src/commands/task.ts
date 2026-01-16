@@ -1,8 +1,8 @@
 /**
- * Task management commands - bridges Notion/Django with Git workflow
+ * Task management commands - bridges createOS (Django) with Git workflow
  *
  * Commands:
- *   lw task list              List tasks (from Notion or Django)
+ *   lw task list              List tasks (from createOS/Django)
  *   lw task info <id>         Show task details
  *   lw task create <title>    Create new task
  *   lw task start <id>        Create branch, update status -> "Active (In progress)"
@@ -12,8 +12,8 @@
  *   lw task commit <id>       Stage and commit with formatted message
  *
  * Backend Selection:
- *   --backend django|notion   Select backend (default: from LW_BACKEND env or notion)
- *   LW_BACKEND=django         Environment variable to set default backend
+ *   --backend django|notion   Select backend (default: django)
+ *   LW_BACKEND=notion         Environment variable to use Notion instead
  */
 
 import { Command } from "commander";
@@ -76,17 +76,19 @@ import type {
 import { pushTaskUpdate } from "../utils/taskSync.js";
 
 /**
- * Resolve backend from command option or environment
+ * Resolve backend from command option or environment.
+ * Default is Django (createOS) as the Single Source of Truth.
  */
 function resolveBackend(optionBackend?: string): "django" | "notion" {
   if (optionBackend) {
-    if (optionBackend === "django" || optionBackend === "createos") {
-      return "django";
+    if (optionBackend === "notion") {
+      return "notion";
     }
-    return "notion";
+    return "django"; // django, createos, or any other value defaults to django
   }
   const envBackend = getBackend();
-  return envBackend === "both" ? "notion" : envBackend;
+  // Default to django unless explicitly set to notion
+  return envBackend === "notion" ? "notion" : "django";
 }
 
 /**
@@ -122,7 +124,7 @@ function resolvePriority(input: string): TaskPriority | null {
 }
 
 export const taskCommand = new Command("task").description(
-  "Task management - bridges Notion/Django with Git workflow",
+  "Task management - createOS (Django) is the source of truth",
 );
 
 /**
@@ -151,7 +153,7 @@ taskCommand
   .description("List tasks (filterable by status, domain, epic, view)")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option(
     "--status <status>",
@@ -403,7 +405,7 @@ taskCommand
   .description("Show detailed task information")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--format <format>", "Output format: text, json", "text")
   .option("--context", "Show Epic, Sprint, and Document context")
@@ -697,7 +699,7 @@ taskCommand
   .description("Create a new task")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--dry-run", "Preview what would be created")
   .option("--start", "Immediately start the task after creation")
@@ -797,7 +799,7 @@ taskCommand
   )
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--dry-run", "Preview what would happen")
   .option("--no-push", "Don't push branch to remote")
@@ -915,7 +917,7 @@ taskCommand
   .description("Manually update task status")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--dry-run", "Preview without updating")
   .action(async (taskId: string, newStatus: string, options) => {
@@ -991,7 +993,7 @@ taskCommand
   .description("Mark task as done")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--dry-run", "Preview without updating")
   .action(async (taskId: string, options) => {
@@ -1055,7 +1057,7 @@ taskCommand
   .description("Delete (trash) a task")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--dry-run", "Preview without deleting")
   .action(async (taskId: string, options) => {
@@ -1109,7 +1111,7 @@ taskCommand
   .description("Create a PR with task details in body")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--dry-run", "Preview PR without creating")
   .option("--draft", "Create as draft PR")
@@ -1141,9 +1143,13 @@ taskCommand
         process.exit(1);
       }
 
-      // 3. Build PR title and body
+      // 3. Get commit messages for the PR body
+      const baseBranch = options.base || "main";
+      const commits = await getCommitMessages(baseBranch);
+
+      // 4. Build PR title and body
       const prTitle = `${task.title} [${task.shortId}]`;
-      const prBody = buildPrBody(task);
+      const prBody = buildPrBody(task, commits);
 
       spinner.stop();
       console.log(chalk.blue(`\n=== PR Preview (${backendLabel}) ===\n`));
@@ -1164,12 +1170,12 @@ taskCommand
         return;
       }
 
-      // 4. Ensure branch is pushed
+      // 5. Ensure branch is pushed
       spinner.start("Ensuring branch is pushed...");
       await exec("git", ["push", "-u", "origin", currentBranch]);
       spinner.succeed("Branch pushed");
 
-      // 5. Create PR using gh CLI
+      // 6. Create PR using gh CLI
       spinner.start("Creating pull request...");
 
       // Write body to temp file to avoid shell escaping issues
@@ -1222,30 +1228,107 @@ taskCommand
   });
 
 /**
- * Build PR body from task
+ * Build PR body from task with rich context
  */
-function buildPrBody(task: {
-  shortId: string;
-  url: string;
-  description: string | null;
-  acceptanceCriteria: string | null;
-}): string {
-  const description = task.description || "_No description provided_";
-  const acceptanceCriteria =
-    task.acceptanceCriteria || "_See Notion task for details_";
+function buildPrBody(
+  task: {
+    shortId: string;
+    url: string;
+    title: string;
+    description: string | null;
+    acceptanceCriteria: string | null;
+    aiSummary?: string | null;
+    note?: string | null;
+    epicName?: string | null;
+    sprintName?: string | null;
+    userStoryName?: string | null;
+    lifeDomainName?: string | null;
+    taskType?: string;
+    priority?: string | null;
+  },
+  commits: string[] = [],
+): string {
+  const sections: string[] = [];
 
-  return `## Summary
+  // Summary section
+  sections.push("## Summary\n");
 
-${description}
+  // Use AI summary if available, otherwise description, otherwise generate from title
+  if (task.aiSummary) {
+    sections.push(task.aiSummary);
+  } else if (task.description) {
+    sections.push(task.description);
+  } else {
+    // Generate summary from title
+    sections.push(`Implements: ${task.title}`);
+  }
 
-**Notion Task**: [${task.shortId}](${task.url})
+  // Context section - only if we have meaningful context
+  const contextItems: string[] = [];
+  if (task.epicName) contextItems.push(`**Epic**: ${task.epicName}`);
+  if (task.sprintName) contextItems.push(`**Sprint**: ${task.sprintName}`);
+  if (task.userStoryName)
+    contextItems.push(`**User Story**: ${task.userStoryName}`);
+  if (task.lifeDomainName)
+    contextItems.push(`**Domain**: ${task.lifeDomainName}`);
+  if (task.priority) contextItems.push(`**Priority**: ${task.priority}`);
 
-## Test Plan
+  if (contextItems.length > 0) {
+    sections.push("\n### Context\n");
+    sections.push(contextItems.join("\n"));
+  }
 
-${acceptanceCriteria}
+  // Changes section - from commit messages
+  if (commits.length > 0) {
+    sections.push("\n### Changes\n");
+    commits.forEach((commit) => {
+      sections.push(`- ${commit}`);
+    });
+  }
 
----
-Generated with \`lw task pr\``;
+  // Notes section
+  if (task.note) {
+    sections.push("\n### Notes\n");
+    sections.push(task.note);
+  }
+
+  // Task link
+  sections.push(`\n**Task**: [${task.shortId}](${task.url})`);
+
+  // Test Plan section
+  sections.push("\n## Test Plan\n");
+  if (task.acceptanceCriteria) {
+    sections.push(task.acceptanceCriteria);
+  } else {
+    sections.push("- [ ] _Add test steps here_");
+  }
+
+  sections.push("\n---");
+  sections.push("Generated with `lw task pr`");
+
+  return sections.join("\n");
+}
+
+/**
+ * Get commit messages for the current branch compared to base
+ */
+async function getCommitMessages(baseBranch: string): Promise<string[]> {
+  try {
+    const result = await exec(
+      "git",
+      ["log", `${baseBranch}..HEAD`, "--pretty=format:%s"],
+      { silent: true },
+    );
+    if (result.code !== 0 || !result.stdout.trim()) {
+      return [];
+    }
+    return result.stdout
+      .trim()
+      .split("\n")
+      .filter((msg) => msg.trim());
+  } catch {
+    return [];
+  }
 }
 
 // =============================================================================
@@ -1257,7 +1340,7 @@ taskCommand
   .description("Set task priority (1, 2, 3 or high, medium, low)")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--dry-run", "Preview without updating")
   .action(async (taskId: string, priorityInput: string, options) => {
@@ -1324,7 +1407,7 @@ taskCommand
   .description("Assign task to an epic (use 'none' to clear)")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--dry-run", "Preview without updating")
   .action(async (taskId: string, epicInput: string, options) => {
@@ -1398,7 +1481,7 @@ taskCommand
   .description("Assign task to a sprint (use 'none' to clear)")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--dry-run", "Preview without updating")
   .action(async (taskId: string, sprintInput: string, options) => {
@@ -1472,7 +1555,7 @@ taskCommand
   .description("Stage all changes and commit with formatted message")
   .option(
     "--backend <backend>",
-    "Backend to use: django, notion (default: from LW_BACKEND env)",
+    "Backend to use: django, notion (default: django)",
   )
   .option("--dry-run", "Show commit message without committing")
   .option("--no-stage", "Skip git add, commit only staged changes")
