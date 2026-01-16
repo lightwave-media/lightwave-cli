@@ -1266,7 +1266,7 @@ function buildPrBody(
   // Context section - only if we have meaningful context
   const contextItems: string[] = [];
   if (task.epicName) contextItems.push(`**Epic**: ${task.epicName}`);
-  if (task.sprintName) contextItems.push(`**Sprint**: ${task.sprintName}`);
+  if (task.sprintName) contextItems.push(`**PR**: ${task.sprintName}`);
   if (task.userStoryName)
     contextItems.push(`**User Story**: ${task.userStoryName}`);
   if (task.lifeDomainName)
@@ -1292,8 +1292,8 @@ function buildPrBody(
     sections.push(task.note);
   }
 
-  // Task link
-  sections.push(`\n**Task**: [${task.shortId}](${task.url})`);
+  // Commit link
+  sections.push(`\n**Commit**: [${task.shortId}](${task.url})`);
 
   // Test Plan section
   sections.push("\n## Test Plan\n");
