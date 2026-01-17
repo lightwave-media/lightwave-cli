@@ -16,7 +16,9 @@ import type {
   NotionSprint,
   NotionUserStory,
   NotionLifeDomain,
+  NotionDocument,
   TaskListOptions,
+  DocumentListOptions,
   TaskType,
   AgentStatus,
   AssignedAgent,
@@ -152,6 +154,24 @@ interface DjangoLifeDomain {
   updated_at: string;
 }
 
+interface DjangoDocument {
+  id: string;
+  short_id: string;
+  name: string;
+  content: string;
+  document_type: string; // sop, spec, config, template, reference, guide
+  status: string; // draft, active, archived, deprecated
+  version: string;
+  agent_tags: string[];
+  notion_id: string;
+  domain: string | null;
+  domain_name: string | null;
+  epic_ids: string[];
+  task_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
 interface DjangoPaginatedResponse<T> {
   count: number;
   next: string | null;
@@ -210,6 +230,41 @@ const DJANGO_TO_NOTION_TASK_TYPE: Record<string, NotionTaskType> = {
   photography: "Photography",
   business_admin: "Business Admin",
   personal: "Personal",
+};
+
+// Map Django document type to Notion content type
+const DJANGO_TO_NOTION_DOC_TYPE: Record<string, string> = {
+  sop: "SOP",
+  spec: "Spec",
+  config: "Config",
+  template: "Template",
+  reference: "Reference",
+  guide: "Guide",
+};
+
+const NOTION_TO_DJANGO_DOC_TYPE: Record<string, string> = {
+  SOP: "sop",
+  Spec: "spec",
+  Config: "config",
+  Template: "template",
+  Reference: "reference",
+  Guide: "guide",
+};
+
+// Map Django document status to Notion document status
+const DJANGO_TO_NOTION_DOC_STATUS: Record<string, string> = {
+  draft: "Draft",
+  active: "📢 Active/Live",
+  archived: "Archived",
+  deprecated: "Deprecated",
+};
+
+const NOTION_TO_DJANGO_DOC_STATUS: Record<string, string> = {
+  Draft: "draft",
+  "📢 Active/Live": "active",
+  Active: "active",
+  Archived: "archived",
+  Deprecated: "deprecated",
 };
 
 // =============================================================================
@@ -336,6 +391,26 @@ function djangoDomainToNotionDomain(
     type: domain.type,
     status: domain.is_active ? "Active" : "Inactive",
     url: `${getApiUrl()}/api/createos/domains/${domain.id}/`,
+  };
+}
+
+/**
+ * Convert Django document to Notion document format
+ */
+function djangoDocumentToNotionDocument(doc: DjangoDocument): NotionDocument {
+  return {
+    id: doc.id,
+    shortId: doc.short_id,
+    name: doc.name,
+    contentType:
+      DJANGO_TO_NOTION_DOC_TYPE[doc.document_type] || doc.document_type,
+    version: doc.version || null,
+    status: DJANGO_TO_NOTION_DOC_STATUS[doc.status] || doc.status,
+    agentTags: doc.agent_tags || [],
+    content: doc.content,
+    url: `${getApiUrl()}/api/createos/documents/${doc.id}/`,
+    taskIds: doc.task_ids || [],
+    epicIds: doc.epic_ids || [],
   };
 }
 
@@ -701,10 +776,12 @@ export async function getEpicDjango(
   try {
     if (epicId.length === 8 && /^[a-f0-9]+$/i.test(epicId)) {
       const response = await apiRequest<DjangoPaginatedResponse<DjangoEpic>>(
-        `/api/createos/epics/?search=${epicId}`,
+        `/api/createos/epics/?short_id=${epicId}`,
       );
-      const epic = response.results.find((e) => e.short_id === epicId);
-      return epic ? djangoEpicToNotionEpic(epic) : null;
+      if (response.results.length > 0) {
+        return djangoEpicToNotionEpic(response.results[0]);
+      }
+      return null;
     }
 
     const epic = await apiRequest<DjangoEpic>(`/api/createos/epics/${epicId}/`);
@@ -1386,4 +1463,551 @@ export async function findUserStoryByNameDjango(
   return exact
     ? djangoStoryToNotionStory(exact)
     : djangoStoryToNotionStory(response.results[0]);
+}
+
+// =============================================================================
+// DOCUMENT OPERATIONS
+// =============================================================================
+
+/**
+ * Query documents from createOS
+ */
+export async function queryDocumentsDjango(
+  options: DocumentListOptions = {},
+): Promise<NotionDocument[]> {
+  const params = new URLSearchParams();
+
+  if (options.status) {
+    const djangoStatus =
+      NOTION_TO_DJANGO_DOC_STATUS[options.status] ||
+      options.status.toLowerCase();
+    params.append("status", djangoStatus);
+  }
+
+  if (options.contentType) {
+    const djangoType =
+      NOTION_TO_DJANGO_DOC_TYPE[options.contentType] ||
+      options.contentType.toLowerCase();
+    params.append("document_type", djangoType);
+  }
+
+  if (options.tags && options.tags.length > 0) {
+    // Filter by agent tags
+    params.append("agent_tags", options.tags.join(","));
+  }
+
+  if (options.limit) {
+    params.append("page_size", options.limit.toString());
+  }
+
+  const queryString = params.toString();
+  const endpoint = `/api/createos/documents/${queryString ? `?${queryString}` : ""}`;
+
+  const response =
+    await apiRequest<DjangoPaginatedResponse<DjangoDocument>>(endpoint);
+
+  return response.results.map(djangoDocumentToNotionDocument);
+}
+
+/**
+ * Get a single document by ID or short_id from createOS
+ */
+export async function getDocumentDjango(
+  docId: string,
+): Promise<NotionDocument | null> {
+  try {
+    // If it's a short_id (8 chars), query by short_id filter
+    if (docId.length === 8 && /^[a-f0-9]+$/i.test(docId)) {
+      const response = await apiRequest<
+        DjangoPaginatedResponse<DjangoDocument>
+      >(`/api/createos/documents/?short_id=${docId}`);
+      if (response.results.length > 0) {
+        return djangoDocumentToNotionDocument(response.results[0]);
+      }
+      return null;
+    }
+
+    // Otherwise, assume it's a full UUID
+    const doc = await apiRequest<DjangoDocument>(
+      `/api/createos/documents/${docId}/`,
+    );
+    return djangoDocumentToNotionDocument(doc);
+  } catch (error) {
+    if ((error as Error).message.includes("404")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Get document content (markdown) from createOS
+ */
+export async function getDocumentContentDjango(
+  docId: string,
+): Promise<string | null> {
+  const doc = await getDocumentDjango(docId);
+  return doc?.content || null;
+}
+
+/**
+ * Create a new document in createOS
+ */
+export async function createDocumentDjango(
+  name: string,
+  options: {
+    content?: string;
+    documentType?: string;
+    status?: string;
+    version?: string;
+    agentTags?: string[];
+    domainId?: string;
+    epicIds?: string[];
+    taskIds?: string[];
+  } = {},
+): Promise<NotionDocument> {
+  const djangoDoc: Record<string, unknown> = {
+    name,
+    status: options.status
+      ? NOTION_TO_DJANGO_DOC_STATUS[options.status] || "draft"
+      : "draft",
+  };
+
+  if (options.content) djangoDoc.content = options.content;
+  if (options.documentType) {
+    djangoDoc.document_type =
+      NOTION_TO_DJANGO_DOC_TYPE[options.documentType] ||
+      options.documentType.toLowerCase();
+  }
+  if (options.version) djangoDoc.version = options.version;
+  if (options.agentTags) djangoDoc.agent_tags = options.agentTags;
+  if (options.domainId) djangoDoc.domain = options.domainId;
+  if (options.epicIds) djangoDoc.epics = options.epicIds;
+  if (options.taskIds) djangoDoc.tasks = options.taskIds;
+
+  const created = await apiRequest<DjangoDocument>(`/api/createos/documents/`, {
+    method: "POST",
+    body: JSON.stringify(djangoDoc),
+  });
+
+  return djangoDocumentToNotionDocument(created);
+}
+
+/**
+ * Update a document in createOS
+ */
+export async function updateDocumentDjango(
+  docId: string,
+  updates: Partial<{
+    name: string;
+    content: string;
+    documentType: string;
+    status: string;
+    version: string;
+    agentTags: string[];
+    domainId: string | null;
+    epicIds: string[];
+    taskIds: string[];
+  }>,
+): Promise<NotionDocument> {
+  const djangoUpdates: Record<string, unknown> = {};
+
+  if (updates.name) djangoUpdates.name = updates.name;
+  if (updates.content) djangoUpdates.content = updates.content;
+  if (updates.documentType) {
+    djangoUpdates.document_type =
+      NOTION_TO_DJANGO_DOC_TYPE[updates.documentType] ||
+      updates.documentType.toLowerCase();
+  }
+  if (updates.status) {
+    djangoUpdates.status =
+      NOTION_TO_DJANGO_DOC_STATUS[updates.status] ||
+      updates.status.toLowerCase();
+  }
+  if (updates.version) djangoUpdates.version = updates.version;
+  if (updates.agentTags) djangoUpdates.agent_tags = updates.agentTags;
+  if (updates.domainId !== undefined) djangoUpdates.domain = updates.domainId;
+  if (updates.epicIds) djangoUpdates.epics = updates.epicIds;
+  if (updates.taskIds) djangoUpdates.tasks = updates.taskIds;
+
+  // Get full UUID if given short_id
+  let fullId = docId;
+  if (docId.length === 8) {
+    const doc = await getDocumentDjango(docId);
+    if (!doc) {
+      throw new Error(`Document not found: ${docId}`);
+    }
+    fullId = doc.id;
+  }
+
+  const updated = await apiRequest<DjangoDocument>(
+    `/api/createos/documents/${fullId}/`,
+    {
+      method: "PATCH",
+      body: JSON.stringify(djangoUpdates),
+    },
+  );
+
+  return djangoDocumentToNotionDocument(updated);
+}
+
+/**
+ * Delete a document in createOS
+ */
+export async function deleteDocumentDjango(docId: string): Promise<void> {
+  // Get full UUID if given short_id
+  let fullId = docId;
+  if (docId.length === 8) {
+    const doc = await getDocumentDjango(docId);
+    if (!doc) {
+      throw new Error(`Document not found: ${docId}`);
+    }
+    fullId = doc.id;
+  }
+
+  await apiRequest<void>(`/api/createos/documents/${fullId}/`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * Search documents by name or content in createOS
+ */
+export async function searchDocumentsDjango(
+  query: string,
+  options: { limit?: number } = {},
+): Promise<NotionDocument[]> {
+  const params = new URLSearchParams();
+  params.append("search", query);
+
+  if (options.limit) {
+    params.append("page_size", options.limit.toString());
+  }
+
+  const endpoint = `/api/createos/documents/?${params.toString()}`;
+  const response =
+    await apiRequest<DjangoPaginatedResponse<DjangoDocument>>(endpoint);
+
+  return response.results.map(djangoDocumentToNotionDocument);
+}
+
+/**
+ * Find document by name or short_id in createOS
+ */
+export async function findDocumentByNameDjango(
+  nameOrId: string,
+): Promise<NotionDocument | null> {
+  // Try short_id first
+  if (nameOrId.length === 8 && /^[a-f0-9]+$/i.test(nameOrId)) {
+    return getDocumentDjango(nameOrId);
+  }
+
+  // Search by name
+  const response = await apiRequest<DjangoPaginatedResponse<DjangoDocument>>(
+    `/api/createos/documents/?search=${encodeURIComponent(nameOrId)}`,
+  );
+
+  if (response.results.length === 0) {
+    return null;
+  }
+
+  // Find exact match by name, or return first result
+  const exact = response.results.find(
+    (d) => d.name.toLowerCase() === nameOrId.toLowerCase(),
+  );
+  return exact
+    ? djangoDocumentToNotionDocument(exact)
+    : djangoDocumentToNotionDocument(response.results[0]);
+}
+
+// =============================================================================
+// USER STORY INTERVIEW OPERATIONS
+// =============================================================================
+
+/**
+ * Interview session types
+ */
+export interface InterviewSession {
+  id: string;
+  shortId: string;
+  roundType: string;
+  roundTypeDisplay: string;
+  status: string;
+  transcript: Array<{ role: string; content: string; timestamp?: string }>;
+  findings: Record<string, unknown>;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoryContext {
+  story: NotionUserStory & {
+    discoveryStatus: string;
+    currentInterviewRound: string;
+    personas: Array<Record<string, unknown>>;
+    userFlows: Record<string, unknown>;
+    rbacRequirements: Array<Record<string, unknown>>;
+    technicalConstraints: Array<string>;
+    edgeCases: Array<Record<string, unknown>>;
+    interviewProgress: {
+      currentRound: string;
+      completedRounds: number;
+      totalRounds: number;
+      percentComplete: number;
+    };
+  };
+  epic: NotionEpic | null;
+  sprint: NotionSprint | null;
+  tasks: NotionTask[];
+  interviewSessions: InterviewSession[];
+  layers: string[];
+}
+
+interface DjangoInterviewSession {
+  id: string;
+  short_id: string;
+  round_type: string;
+  round_type_display: string;
+  status: string;
+  transcript: Array<{ role: string; content: string; timestamp?: string }>;
+  findings: Record<string, unknown>;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Get full story context for Claude consumption
+ */
+export async function getStoryContextDjango(
+  storyId: string,
+): Promise<StoryContext | null> {
+  try {
+    // Resolve short_id to full UUID if needed
+    let fullId = storyId;
+    if (storyId.length === 8 && /^[a-f0-9]+$/i.test(storyId)) {
+      const story = await getUserStoryDjango(storyId);
+      if (!story) return null;
+      fullId = story.id;
+    }
+
+    const response = await apiRequest<{
+      story: DjangoUserStory & {
+        discovery_status: string;
+        current_interview_round: string;
+        personas: Array<Record<string, unknown>>;
+        user_flows: Record<string, unknown>;
+        rbac_requirements: Array<Record<string, unknown>>;
+        technical_constraints: Array<string>;
+        edge_cases: Array<Record<string, unknown>>;
+        interview_progress: {
+          current_round: string;
+          completed_rounds: number;
+          total_rounds: number;
+          percent_complete: number;
+        };
+      };
+      epic: DjangoEpic | null;
+      sprint: DjangoSprint | null;
+      tasks: DjangoTask[];
+      interview_sessions: DjangoInterviewSession[];
+      layers: string[];
+    }>(`/api/createos/stories/${fullId}/context/`);
+
+    return {
+      story: {
+        ...djangoStoryToNotionStory(response.story),
+        discoveryStatus: response.story.discovery_status,
+        currentInterviewRound: response.story.current_interview_round,
+        personas: response.story.personas || [],
+        userFlows: response.story.user_flows || {},
+        rbacRequirements: response.story.rbac_requirements || [],
+        technicalConstraints: response.story.technical_constraints || [],
+        edgeCases: response.story.edge_cases || [],
+        interviewProgress: {
+          currentRound: response.story.interview_progress.current_round,
+          completedRounds: response.story.interview_progress.completed_rounds,
+          totalRounds: response.story.interview_progress.total_rounds,
+          percentComplete: response.story.interview_progress.percent_complete,
+        },
+      },
+      epic: response.epic ? djangoEpicToNotionEpic(response.epic) : null,
+      sprint: response.sprint
+        ? djangoSprintToNotionSprint(response.sprint)
+        : null,
+      tasks: response.tasks.map(djangoTaskToNotionTask),
+      interviewSessions: response.interview_sessions.map((s) => ({
+        id: s.id,
+        shortId: s.short_id,
+        roundType: s.round_type,
+        roundTypeDisplay: s.round_type_display,
+        status: s.status,
+        transcript: s.transcript,
+        findings: s.findings,
+        completedAt: s.completed_at,
+        createdAt: s.created_at,
+        updatedAt: s.updated_at,
+      })),
+      layers: response.layers,
+    };
+  } catch (error) {
+    if ((error as Error).message.includes("404")) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+/**
+ * Start or resume an interview session for a user story
+ */
+export async function startInterviewDjango(
+  storyId: string,
+  round?: string,
+): Promise<InterviewSession> {
+  // Resolve short_id to full UUID if needed
+  let fullId = storyId;
+  if (storyId.length === 8 && /^[a-f0-9]+$/i.test(storyId)) {
+    const story = await getUserStoryDjango(storyId);
+    if (!story) throw new Error(`Story not found: ${storyId}`);
+    fullId = story.id;
+  }
+
+  const body: Record<string, unknown> = {};
+  if (round) body.round = round;
+
+  const response = await apiRequest<DjangoInterviewSession>(
+    `/api/createos/stories/${fullId}/start_interview/`,
+    {
+      method: "POST",
+      body: JSON.stringify(body),
+    },
+  );
+
+  return {
+    id: response.id,
+    shortId: response.short_id,
+    roundType: response.round_type,
+    roundTypeDisplay: response.round_type_display,
+    status: response.status,
+    transcript: response.transcript,
+    findings: response.findings,
+    completedAt: response.completed_at,
+    createdAt: response.created_at,
+    updatedAt: response.updated_at,
+  };
+}
+
+/**
+ * Record an interview message
+ */
+export async function recordInterviewDjango(
+  storyId: string,
+  data: {
+    role: "user" | "assistant";
+    content: string;
+    findings?: Record<string, unknown>;
+  },
+): Promise<InterviewSession> {
+  // Resolve short_id to full UUID if needed
+  let fullId = storyId;
+  if (storyId.length === 8 && /^[a-f0-9]+$/i.test(storyId)) {
+    const story = await getUserStoryDjango(storyId);
+    if (!story) throw new Error(`Story not found: ${storyId}`);
+    fullId = story.id;
+  }
+
+  const response = await apiRequest<DjangoInterviewSession>(
+    `/api/createos/stories/${fullId}/record_interview/`,
+    {
+      method: "POST",
+      body: JSON.stringify(data),
+    },
+  );
+
+  return {
+    id: response.id,
+    shortId: response.short_id,
+    roundType: response.round_type,
+    roundTypeDisplay: response.round_type_display,
+    status: response.status,
+    transcript: response.transcript,
+    findings: response.findings,
+    completedAt: response.completed_at,
+    createdAt: response.created_at,
+    updatedAt: response.updated_at,
+  };
+}
+
+/**
+ * Complete the current interview round and advance to the next
+ */
+export async function completeRoundDjango(storyId: string): Promise<{
+  previousRound: string;
+  newRound: string;
+  discoveryStatus: string;
+  message: string;
+}> {
+  // Resolve short_id to full UUID if needed
+  let fullId = storyId;
+  if (storyId.length === 8 && /^[a-f0-9]+$/i.test(storyId)) {
+    const story = await getUserStoryDjango(storyId);
+    if (!story) throw new Error(`Story not found: ${storyId}`);
+    fullId = story.id;
+  }
+
+  return apiRequest<{
+    previousRound: string;
+    newRound: string;
+    discoveryStatus: string;
+    message: string;
+  }>(`/api/createos/stories/${fullId}/complete_round/`, {
+    method: "POST",
+  });
+}
+
+/**
+ * Get user flows for a story as Mermaid diagram
+ */
+export async function getStoryFlowsDjango(
+  storyId: string,
+): Promise<{ flows: Record<string, unknown>; mermaid: string }> {
+  // Resolve short_id to full UUID if needed
+  let fullId = storyId;
+  if (storyId.length === 8 && /^[a-f0-9]+$/i.test(storyId)) {
+    const story = await getUserStoryDjango(storyId);
+    if (!story) throw new Error(`Story not found: ${storyId}`);
+    fullId = story.id;
+  }
+
+  return apiRequest<{ flows: Record<string, unknown>; mermaid: string }>(
+    `/api/createos/stories/${fullId}/flows/`,
+  );
+}
+
+/**
+ * Generate tasks from story acceptance criteria
+ */
+export async function generateTasksFromStoryDjango(
+  storyId: string,
+  dryRun = false,
+): Promise<{
+  tasks: Array<{ title: string; description: string; id?: string }>;
+  created: boolean;
+}> {
+  // Resolve short_id to full UUID if needed
+  let fullId = storyId;
+  if (storyId.length === 8 && /^[a-f0-9]+$/i.test(storyId)) {
+    const story = await getUserStoryDjango(storyId);
+    if (!story) throw new Error(`Story not found: ${storyId}`);
+    fullId = story.id;
+  }
+
+  return apiRequest<{
+    tasks: Array<{ title: string; description: string; id?: string }>;
+    created: boolean;
+  }>(`/api/createos/stories/${fullId}/generate_tasks/`, {
+    method: "POST",
+    body: JSON.stringify({ dry_run: dryRun }),
+  });
 }
