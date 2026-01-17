@@ -191,6 +191,11 @@ taskCommand
   .option("--has-subtasks", "Only show tasks with subtasks")
   .option("--is-parent", "Only show parent tasks")
   .option("--parent <task-id>", "Filter by parent task ID")
+  // Orphan filter
+  .option(
+    "--orphan",
+    "Show only tasks with no epic, sprint, or user story linked",
+  )
   .option("--limit <n>", "Max number of tasks", "20")
   .option("--format <format>", "Output format: table, json", "table")
   .action(async (options) => {
@@ -253,7 +258,7 @@ taskCommand
 
       const queryOptions = {
         status: statusFilter,
-        limit: parseInt(options.limit, 10),
+        limit: options.orphan ? 200 : parseInt(options.limit, 10), // Fetch more for client-side orphan filtering
         domain: options.domain,
         epic: options.epic,
         sprint: options.sprint,
@@ -276,10 +281,22 @@ taskCommand
       };
 
       // Use appropriate backend
-      const tasks: NotionTask[] =
+      let tasks: NotionTask[] =
         backend === "django"
           ? await queryTasksDjango(queryOptions)
           : await queryTasks(queryOptions);
+
+      // Filter orphan tasks (no epic, sprint, or user story linked)
+      if (options.orphan) {
+        tasks = tasks.filter(
+          (t) =>
+            !t.epicId &&
+            !t.sprintId &&
+            (!t.userStoryIds || t.userStoryIds.length === 0),
+        );
+        // Apply limit after orphan filter
+        tasks = tasks.slice(0, parseInt(options.limit, 10));
+      }
 
       spinner.stop();
 
@@ -701,6 +718,12 @@ taskCommand
     "--backend <backend>",
     "Backend to use: django, notion (default: django)",
   )
+  .option(
+    "--priority <priority>",
+    "Task priority (high, medium, low or 1, 2, 3)",
+  )
+  .option("--description <text>", "Task description/notes")
+  .option("--epic <epic-id>", "Assign to epic")
   .option("--dry-run", "Preview what would be created")
   .option("--start", "Immediately start the task after creation")
   .action(async (title: string, options) => {
@@ -709,20 +732,41 @@ taskCommand
     const spinner = ora(`Creating task in ${backendLabel}...`).start();
 
     try {
+      // Resolve priority if provided
+      let priority: TaskPriority | undefined;
+      if (options.priority) {
+        priority = resolvePriority(options.priority) || undefined;
+        if (!priority) {
+          spinner.fail(`Invalid priority: ${options.priority}`);
+          console.log(
+            chalk.gray("Valid priorities: high, medium, low (or 1, 2, 3)"),
+          );
+          process.exit(1);
+        }
+      }
+
       if (options.dryRun) {
         spinner.stop();
         console.log(
           chalk.blue(`\n=== Task Creation Preview (${backendLabel}) ===\n`),
         );
         console.log(chalk.gray("Title:"), title);
+        if (priority) console.log(chalk.gray("Priority:"), priority);
+        if (options.description)
+          console.log(chalk.gray("Description:"), options.description);
+        if (options.epic) console.log(chalk.gray("Epic:"), options.epic);
         console.log(chalk.yellow("\n(dry run - no task created)"));
         return;
       }
 
-      // Create the task
+      // Create the task with options
       const task =
         backend === "django"
-          ? await createTaskDjango(title)
+          ? await createTaskDjango(title, {
+              description: options.description,
+              priority,
+              epicId: options.epic,
+            })
           : await createTask(title);
       spinner.succeed("Task created");
 

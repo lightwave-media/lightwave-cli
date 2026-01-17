@@ -88,6 +88,7 @@ epicCommand
     "--domain <name>",
     "Filter by Life Domain (e.g., 'Product Development')",
   )
+  .option("--orphan", "Show only epics with no tasks, sprints, or user stories")
   .option("--limit <n>", "Max number of epics", "20")
   .option("--format <format>", "Output format: table, json", "table")
   .option(
@@ -118,14 +119,26 @@ epicCommand
         epics = await queryEpicsDjango({
           status: djangoStatus,
           domain: options.domain,
-          limit: parseInt(options.limit, 10),
+          limit: options.orphan ? 200 : parseInt(options.limit, 10), // Fetch more for client-side orphan filtering
         });
       } else {
         epics = await queryEpics({
           status: statusFilter,
           domain: options.domain,
-          limit: parseInt(options.limit, 10),
+          limit: options.orphan ? 200 : parseInt(options.limit, 10),
         });
+      }
+
+      // Filter orphan epics (no tasks, sprints, or user stories linked)
+      if (options.orphan) {
+        epics = epics.filter(
+          (e) =>
+            (!e.taskIds || e.taskIds.length === 0) &&
+            (!e.sprintIds || e.sprintIds.length === 0) &&
+            (!e.userStoryIds || e.userStoryIds.length === 0),
+        );
+        // Apply limit after orphan filter
+        epics = epics.slice(0, parseInt(options.limit, 10));
       }
 
       spinner.stop();
@@ -181,6 +194,7 @@ epicCommand
   .description("Create a new epic/project")
   .option("--subtitle <text>", "Epic subtitle")
   .option("--log-line <text>", "Epic log line / description")
+  .option("--description <text>", "Epic description (alias for --log-line)")
   .option(
     "--type <type>",
     "Project type (Software, Creative, Business, Personal)",
@@ -219,6 +233,9 @@ epicCommand
         lifeDomainId = domain.id;
       }
 
+      // Handle --description as alias for --log-line
+      const logLine = options.logLine || options.description;
+
       if (options.dryRun) {
         spinner.stop();
         console.log(chalk.blue("\n=== Preview Epic ===\n"));
@@ -226,8 +243,7 @@ epicCommand
         console.log(chalk.yellow("Name:"), name);
         if (options.subtitle)
           console.log(chalk.yellow("Subtitle:"), options.subtitle);
-        if (options.logLine)
-          console.log(chalk.yellow("Log Line:"), options.logLine);
+        if (logLine) console.log(chalk.yellow("Description:"), logLine);
         if (options.type) console.log(chalk.yellow("Type:"), options.type);
         if (options.priority)
           console.log(chalk.yellow("Priority:"), options.priority);
@@ -243,7 +259,7 @@ epicCommand
       if (backend === "django") {
         epic = await createEpicDjango(name, {
           subtitle: options.subtitle,
-          logLine: options.logLine,
+          logLine,
           projectType: options.type,
           priority: options.priority,
           lifeDomainId,
@@ -253,7 +269,7 @@ epicCommand
       } else {
         epic = await createEpic(name, {
           subtitle: options.subtitle,
-          logLine: options.logLine,
+          logLine,
           projectType: options.type,
           priority: options.priority,
           lifeDomainId,
@@ -700,6 +716,149 @@ epicCommand
       );
     } catch (err) {
       spinner.fail("Failed to merge epic");
+      console.error(chalk.red((err as Error).message));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// lw epic status <id> <status>
+// =============================================================================
+
+epicCommand
+  .command("status <epic-id> <status>")
+  .description(
+    "Update epic status (not_started, in_progress, completed, on_hold, cancelled)",
+  )
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
+  .action(async (epicId: string, status: string, options) => {
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Updating epic status in ${backendLabel}...`).start();
+
+    // Map CLI-friendly aliases to proper status names
+    const statusAliases: Record<string, EpicStatus> = {
+      "not-started": "Not Started",
+      not_started: "Not Started",
+      "in-progress": "In Progress",
+      in_progress: "In Progress",
+      completed: "Completed",
+      done: "Completed",
+      "on-hold": "On Hold",
+      on_hold: "On Hold",
+      hold: "On Hold",
+      cancelled: "Cancelled",
+      canceled: "Cancelled",
+      cancel: "Cancelled",
+    };
+
+    const normalizedStatus =
+      statusAliases[status.toLowerCase()] || (status as EpicStatus);
+
+    try {
+      // Verify epic exists
+      const epic =
+        backend === "django"
+          ? await getEpicDjango(epicId)
+          : await getEpic(epicId);
+      if (!epic) {
+        spinner.fail(`Epic not found: ${epicId}`);
+        process.exit(1);
+      }
+
+      if (backend === "django") {
+        await updateEpicStatusDjango(epic.id, normalizedStatus);
+      } else {
+        await updateEpicStatus(epic.id, normalizedStatus);
+      }
+
+      spinner.succeed(`Epic status updated to ${normalizedStatus}`);
+
+      console.log(chalk.blue("\n=== Epic Updated ===\n"));
+      console.log(chalk.yellow("ID:"), epic.shortId);
+      console.log(chalk.yellow("Name:"), epic.name);
+      console.log(
+        chalk.yellow("Status:"),
+        getStatusColor(normalizedStatus)(normalizedStatus),
+      );
+    } catch (err) {
+      spinner.fail("Failed to update epic status");
+      console.error(chalk.red((err as Error).message));
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// lw epic delete <id>
+// =============================================================================
+
+epicCommand
+  .command("delete <epic-id>")
+  .description("Delete (trash) an epic")
+  .option("--force", "Skip confirmation prompt")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
+  .action(async (epicId: string, options) => {
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading epic from ${backendLabel}...`).start();
+
+    try {
+      const epic =
+        backend === "django"
+          ? await getEpicDjango(epicId)
+          : await getEpic(epicId);
+      if (!epic) {
+        spinner.fail(`Epic not found: ${epicId}`);
+        process.exit(1);
+      }
+
+      spinner.stop();
+
+      console.log(chalk.blue("\n=== Delete Epic ===\n"));
+      console.log(chalk.yellow("ID:"), epic.shortId);
+      console.log(chalk.yellow("Name:"), epic.name);
+      console.log(
+        chalk.yellow("Status:"),
+        getStatusColor(epic.status)(epic.status),
+      );
+      console.log(chalk.yellow("Tasks:"), epic.taskIds.length);
+      console.log(chalk.yellow("Sprints:"), epic.sprintIds.length);
+
+      if (!options.force) {
+        // For now, just warn and suggest using status command
+        console.log(
+          chalk.yellow(
+            "\nTo cancel this epic, use: lw epic status " +
+              epic.shortId +
+              " cancelled",
+          ),
+        );
+        console.log(
+          chalk.gray(
+            "Note: Permanent deletion requires --force flag or use the web UI.",
+          ),
+        );
+        return;
+      }
+
+      // If force flag is set, mark as cancelled
+      spinner.start("Marking epic as cancelled...");
+      if (backend === "django") {
+        await updateEpicStatusDjango(epic.id, "Cancelled");
+      } else {
+        await updateEpicStatus(epic.id, "Cancelled");
+      }
+      spinner.succeed("Epic marked as cancelled");
+
+      console.log(chalk.green("\nEpic has been cancelled."));
+    } catch (err) {
+      spinner.fail("Failed to delete epic");
       console.error(chalk.red((err as Error).message));
       process.exit(1);
     }

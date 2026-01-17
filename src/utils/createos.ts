@@ -360,6 +360,8 @@ function djangoEpicToNotionEpic(epic: DjangoEpic): NotionEpic {
  * Convert Django sprint to Notion sprint format
  */
 function djangoSprintToNotionSprint(sprint: DjangoSprint): NotionSprint {
+  // Use epic UUID if available, otherwise check epic_name to determine if linked
+  const hasEpic = sprint.epic || sprint.epic_name;
   return {
     id: sprint.id,
     shortId: sprint.short_id,
@@ -370,7 +372,7 @@ function djangoSprintToNotionSprint(sprint: DjangoSprint): NotionSprint {
     endDate: sprint.end_date,
     qualityScore: sprint.quality_score,
     url: `${getApiUrl()}/api/createos/sprints/${sprint.id}/`,
-    epicIds: sprint.epic ? [sprint.epic] : [],
+    epicIds: hasEpic ? [sprint.epic || sprint.epic_name || ""] : [],
     taskIds: [],
     userStoryIds: [],
     lifeDomainId: sprint.domain,
@@ -440,7 +442,20 @@ async function apiRequest<T>(
     throw new Error(`createOS API error (${response.status}): ${error}`);
   }
 
-  return response.json();
+  // Handle 204 No Content (common for DELETE) and empty responses
+  if (
+    response.status === 204 ||
+    response.headers.get("content-length") === "0"
+  ) {
+    return undefined as T;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return undefined as T;
+  }
+
+  return JSON.parse(text);
 }
 
 // =============================================================================
@@ -1357,7 +1372,7 @@ export async function getUserStoryDjango(
     // Try UUID first, then short_id lookup
     const endpoint =
       storyId.length === 8 && /^[a-f0-9]+$/i.test(storyId)
-        ? `/api/createos/stories/?search=${storyId}`
+        ? `/api/createos/stories/?short_id=${storyId}`
         : `/api/createos/stories/${storyId}/`;
 
     if (storyId.length === 8) {
