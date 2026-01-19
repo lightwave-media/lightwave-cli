@@ -20,6 +20,7 @@ import { agentCommand } from "./commands/agent.js";
 import { automationCommand } from "./commands/automation.js";
 import { bugsCommand } from "./commands/bugs.js";
 import { notionCommand } from "./commands/notion.js";
+import { outboxCommand } from "./commands/outbox.js";
 
 const program = new Command();
 
@@ -49,5 +50,6 @@ program.addCommand(agentCommand);
 program.addCommand(automationCommand);
 program.addCommand(bugsCommand);
 program.addCommand(notionCommand);
+program.addCommand(outboxCommand);
 
 program.parse();

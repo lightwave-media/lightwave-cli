@@ -159,15 +159,39 @@ interface DjangoDocument {
   short_id: string;
   name: string;
   content: string;
-  document_type: string; // sop, spec, config, template, reference, guide
+  // Classification
+  vertical: string; // createos, cineos, photoos
+  document_type: string; // sop, spec, config, template, reference, guide, fleeting, etc.
   status: string; // draft, active, archived, deprecated
+  is_template: boolean;
   version: string;
-  agent_tags: string[];
-  notion_id: string;
+  // Security
+  security_level: string; // low, medium, high
+  // Organization
   domain: string | null;
   domain_name: string | null;
+  parent: string | null;
+  parent_name: string | null;
+  // Tags
+  agent_tags: string[];
+  tech_tags: string[];
+  audience_tags: string[];
+  // Metadata
+  url: string;
+  ai_summary: string;
+  owner: string | null;
+  owner_username: string | null;
+  notion_id: string;
+  // Computed
+  is_note: boolean;
+  has_children: boolean;
+  // Relations
   epic_ids: string[];
+  sprint_ids: string[];
+  user_story_ids: string[];
   task_ids: string[];
+  related_document_ids: string[];
+  children_ids: string[];
   created_at: string;
   updated_at: string;
 }
@@ -404,15 +428,42 @@ function djangoDocumentToNotionDocument(doc: DjangoDocument): NotionDocument {
     id: doc.id,
     shortId: doc.short_id,
     name: doc.name,
-    contentType:
-      DJANGO_TO_NOTION_DOC_TYPE[doc.document_type] || doc.document_type,
-    version: doc.version || null,
-    status: DJANGO_TO_NOTION_DOC_STATUS[doc.status] || doc.status,
-    agentTags: doc.agent_tags || [],
     content: doc.content,
-    url: `${getApiUrl()}/api/createos/documents/${doc.id}/`,
-    taskIds: doc.task_ids || [],
+    // Classification
+    vertical: (doc.vertical || "createos") as "createos" | "cineos" | "photoos",
+    contentType: doc.document_type as any,
+    status: (doc.status || "draft") as
+      | "draft"
+      | "active"
+      | "archived"
+      | "deprecated",
+    isTemplate: doc.is_template || false,
+    version: doc.version || null,
+    // Security
+    securityLevel: (doc.security_level || "low") as "low" | "medium" | "high",
+    // Tags
+    agentTags: doc.agent_tags || [],
+    techTags: doc.tech_tags || [],
+    audienceTags: doc.audience_tags || [],
+    // Metadata
+    url: doc.url || `${getApiUrl()}/api/createos/documents/${doc.id}/`,
+    aiSummary: doc.ai_summary || undefined,
+    notionId: doc.notion_id || undefined,
+    // Computed
+    isNote: doc.is_note || false,
+    // Relations
+    domainId: doc.domain || undefined,
+    domainName: doc.domain_name || undefined,
+    parentId: doc.parent || undefined,
+    parentName: doc.parent_name || undefined,
+    ownerId: doc.owner || undefined,
+    ownerUsername: doc.owner_username || undefined,
     epicIds: doc.epic_ids || [],
+    sprintIds: doc.sprint_ids || [],
+    userStoryIds: doc.user_story_ids || [],
+    taskIds: doc.task_ids || [],
+    relatedDocumentIds: doc.related_document_ids || [],
+    childrenIds: doc.children_ids || [],
   };
 }
 
@@ -1492,25 +1543,71 @@ export async function queryDocumentsDjango(
 ): Promise<NotionDocument[]> {
   const params = new URLSearchParams();
 
+  // Status filter
   if (options.status) {
-    const djangoStatus =
-      NOTION_TO_DJANGO_DOC_STATUS[options.status] ||
-      options.status.toLowerCase();
-    params.append("status", djangoStatus);
+    params.append("status", options.status);
   }
 
+  // Document type filter
   if (options.contentType) {
-    const djangoType =
-      NOTION_TO_DJANGO_DOC_TYPE[options.contentType] ||
-      options.contentType.toLowerCase();
-    params.append("document_type", djangoType);
+    params.append("document_type", options.contentType);
   }
 
+  // Vertical filter
+  if (options.vertical) {
+    params.append("vertical", options.vertical);
+  }
+
+  // Template filter
+  if (options.isTemplate !== undefined) {
+    params.append("is_template", options.isTemplate.toString());
+  }
+
+  // Note filter (Zettelkasten types)
+  if (options.isNote !== undefined) {
+    params.append("is_note", options.isNote.toString());
+  }
+
+  // Security level filter
+  if (options.securityLevel) {
+    params.append("security_level", options.securityLevel);
+  }
+
+  // Domain filter
+  if (options.domain) {
+    if (options.domain.length === 8 && /^[a-f0-9]+$/i.test(options.domain)) {
+      params.append("domain_short_id", options.domain);
+    } else {
+      params.append("domain", options.domain);
+    }
+  }
+
+  // Parent filter
+  if (options.parent) {
+    if (options.parent.length === 8 && /^[a-f0-9]+$/i.test(options.parent)) {
+      params.append("parent_short_id", options.parent);
+    } else {
+      params.append("parent", options.parent);
+    }
+  }
+
+  // Related entity filters
+  if (options.epic) {
+    params.append("epic", options.epic);
+  }
+  if (options.sprint) {
+    params.append("sprint", options.sprint);
+  }
+  if (options.task) {
+    params.append("task", options.task);
+  }
+
+  // Agent tags filter
   if (options.tags && options.tags.length > 0) {
-    // Filter by agent tags
     params.append("agent_tags", options.tags.join(","));
   }
 
+  // Pagination
   if (options.limit) {
     params.append("page_size", options.limit.toString());
   }
@@ -1573,31 +1670,49 @@ export async function createDocumentDjango(
   options: {
     content?: string;
     documentType?: string;
+    vertical?: string;
     status?: string;
+    isTemplate?: boolean;
     version?: string;
+    securityLevel?: string;
     agentTags?: string[];
+    techTags?: string[];
+    audienceTags?: string[];
     domainId?: string;
+    parentId?: string;
+    url?: string;
     epicIds?: string[];
+    sprintIds?: string[];
+    userStoryIds?: string[];
     taskIds?: string[];
   } = {},
 ): Promise<NotionDocument> {
   const djangoDoc: Record<string, unknown> = {
     name,
-    status: options.status
-      ? NOTION_TO_DJANGO_DOC_STATUS[options.status] || "draft"
-      : "draft",
+    status: options.status || "draft",
+    vertical: options.vertical || "createos",
   };
 
   if (options.content) djangoDoc.content = options.content;
   if (options.documentType) {
-    djangoDoc.document_type =
-      NOTION_TO_DJANGO_DOC_TYPE[options.documentType] ||
-      options.documentType.toLowerCase();
+    djangoDoc.document_type = options.documentType;
+  }
+  if (options.isTemplate !== undefined) {
+    djangoDoc.is_template = options.isTemplate;
   }
   if (options.version) djangoDoc.version = options.version;
+  if (options.securityLevel) {
+    djangoDoc.security_level = options.securityLevel;
+  }
   if (options.agentTags) djangoDoc.agent_tags = options.agentTags;
+  if (options.techTags) djangoDoc.tech_tags = options.techTags;
+  if (options.audienceTags) djangoDoc.audience_tags = options.audienceTags;
   if (options.domainId) djangoDoc.domain = options.domainId;
+  if (options.parentId) djangoDoc.parent = options.parentId;
+  if (options.url) djangoDoc.url = options.url;
   if (options.epicIds) djangoDoc.epics = options.epicIds;
+  if (options.sprintIds) djangoDoc.sprints = options.sprintIds;
+  if (options.userStoryIds) djangoDoc.user_stories = options.userStoryIds;
   if (options.taskIds) djangoDoc.tasks = options.taskIds;
 
   const created = await apiRequest<DjangoDocument>(`/api/createos/documents/`, {

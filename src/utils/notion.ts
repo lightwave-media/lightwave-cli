@@ -20,6 +20,8 @@ import {
   type TaskListOptions,
   type DocumentListOptions,
   type TaskContext,
+  type DocumentType,
+  type DocumentStatus,
 } from "../types/notion.js";
 
 // Singleton instances
@@ -1994,12 +1996,17 @@ function pageToDocument(page: Record<string, unknown>): NotionDocument {
     id: pageId,
     shortId: pageId.replace(/-/g, "").substring(0, 8),
     name: titleProp?.title?.[0]?.plain_text || "Untitled",
-    contentType: contentTypeProp?.select?.name || null,
+    vertical: "createos" as const,
+    contentType: (contentTypeProp?.select?.name as DocumentType) || null,
     version: versionProp?.rich_text?.[0]?.plain_text || null,
-    status: statusProp?.select?.name || null,
+    status: (statusProp?.select?.name as DocumentStatus) || null,
+    isTemplate: false,
+    securityLevel: "low" as const,
     agentTags: agentTagsProp?.multi_select?.map((t) => t.name) || [],
+    techTags: [],
+    audienceTags: [],
     url: page.url as string,
-    taskIds: taskRelation?.relation?.map((r) => r.id) || [],
+    isNote: false,
     epicIds: epicRelation?.relation?.map((r) => r.id) || [],
   };
 }

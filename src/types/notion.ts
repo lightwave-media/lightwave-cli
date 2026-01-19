@@ -280,27 +280,125 @@ export interface NotionLifeDomain {
   url: string;
 }
 
+// =============================================================================
+// DOCUMENT TYPES (Unified Document System)
+// =============================================================================
+
+/**
+ * Lightwave verticals (apps) that documents can be scoped to
+ */
+export type DocumentVertical = "createos" | "cineos" | "photoos";
+
+/**
+ * Unified document types for all Lightwave verticals
+ */
+export type DocumentType =
+  // Universal (all verticals)
+  | "spec"
+  | "sop"
+  | "config"
+  | "guide"
+  | "reference"
+  | "template"
+  // Notes (Zettelkasten-style)
+  | "fleeting"
+  | "literature"
+  | "permanent"
+  // cineOS: Pre-Production
+  | "script"
+  | "treatment"
+  | "shot_list"
+  | "call_sheet"
+  // cineOS: Production
+  | "budget"
+  | "schedule"
+  | "breakdown"
+  // cineOS: Post-Production
+  | "edit_notes"
+  | "color_notes"
+  | "vfx_notes";
+
+/**
+ * Document status values
+ */
+export type DocumentStatus = "draft" | "active" | "archived" | "deprecated";
+
+/**
+ * Security classification for documents
+ */
+export type SecurityLevel = "low" | "medium" | "high";
+
 export interface NotionDocument {
   id: string;
   shortId: string;
   name: string;
-  contentType: string | null; // "Config", "SOP", "Spec", "Template", etc.
+  content?: string; // Markdown content (populated on demand)
+  // Classification
+  vertical: DocumentVertical;
+  contentType: DocumentType | null; // Renamed from document_type for backward compat
+  status: DocumentStatus | null;
+  isTemplate: boolean;
   version: string | null;
-  status: string | null; // "📢 Active/Live", "Draft", etc.
-  agentTags: string[]; // ["agent:v_speak", "agent:v_core"]
-  content?: string; // Markdown content from blocks (populated on demand)
+  // Security
+  securityLevel: SecurityLevel;
+  // Tags
+  agentTags: string[];
+  techTags: string[];
+  audienceTags: string[];
+  // Metadata
   url: string;
+  aiSummary?: string;
+  notionId?: string;
+  // Computed
+  isNote: boolean;
   // Relations
-  taskIds?: string[];
+  domainId?: string;
+  domainName?: string;
+  parentId?: string;
+  parentName?: string;
+  ownerId?: string;
+  ownerUsername?: string;
   epicIds?: string[];
+  sprintIds?: string[];
+  userStoryIds?: string[];
+  taskIds?: string[];
+  relatedDocumentIds?: string[];
+  childrenIds?: string[];
 }
 
 export interface DocumentListOptions {
+  // Filter options
   tags?: string[]; // Filter by Agent Tags
-  status?: string; // Filter by Document Status
-  contentType?: string; // Filter by Content Type
+  status?: DocumentStatus; // Filter by Document Status
+  contentType?: DocumentType; // Filter by Content Type
+  vertical?: DocumentVertical; // Filter by vertical
+  isTemplate?: boolean; // Filter for templates
+  isNote?: boolean; // Filter for Zettelkasten notes
+  securityLevel?: SecurityLevel; // Filter by security level
+  domain?: string; // Filter by domain ID
+  parent?: string; // Filter by parent document ID
+  epic?: string; // Filter by related epic ID
+  sprint?: string; // Filter by related sprint ID
+  task?: string; // Filter by related task ID
+  // Pagination
   limit?: number;
+  // Output
   format?: "table" | "json";
+}
+
+export interface DocumentCreateOptions {
+  documentType?: DocumentType;
+  vertical?: DocumentVertical;
+  status?: DocumentStatus;
+  isTemplate?: boolean;
+  content?: string;
+  agentTags?: string[];
+  techTags?: string[];
+  audienceTags?: string[];
+  securityLevel?: SecurityLevel;
+  domain?: string;
+  parent?: string;
+  url?: string;
 }
 
 // Task context output structure

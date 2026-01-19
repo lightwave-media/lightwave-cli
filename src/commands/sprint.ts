@@ -90,6 +90,8 @@ sprintCommand
   )
   .option("--all", "Show all statuses")
   .option("--domain <name>", "Filter by Life Domain")
+  .option("--epic <name-or-id>", "Filter by Epic name or ID")
+  .option("--orphan", "Show only sprints with no epic linked")
   .option("--limit <n>", "Max number of sprints", "20")
   .option("--format <format>", "Output format: table, json", "table")
   .option(
@@ -120,14 +122,22 @@ sprintCommand
         sprints = await querySprintsDjango({
           status: djangoStatus,
           domain: options.domain,
-          limit: parseInt(options.limit, 10),
+          epic: options.epic,
+          limit: options.orphan ? 200 : parseInt(options.limit, 10), // Fetch more for client-side orphan filtering
         });
       } else {
         sprints = await querySprints({
           status: statusFilter,
           domain: options.domain,
-          limit: parseInt(options.limit, 10),
+          limit: options.orphan ? 200 : parseInt(options.limit, 10),
         });
+      }
+
+      // Filter orphan sprints (no epic linked)
+      if (options.orphan) {
+        sprints = sprints.filter((s) => !s.epicIds || s.epicIds.length === 0);
+        // Apply limit after orphan filter
+        sprints = sprints.slice(0, parseInt(options.limit, 10));
       }
 
       spinner.stop();
@@ -180,7 +190,7 @@ sprintCommand
 
 sprintCommand
   .command("create <name>")
-  .description("Create a new sprint in Notion")
+  .description("Create a new sprint")
   .option("--objectives <text>", "Sprint objectives")
   .option("--start <date>", "Start date (YYYY-MM-DD)")
   .option("--end <date>", "End date (YYYY-MM-DD)")
@@ -188,8 +198,14 @@ sprintCommand
   .option("--domain <name>", "Life Domain to link to")
   .option("--dry-run", "Preview what would be created")
   .option("--start-work", "Also create branch and set to In Progress")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (name: string, options) => {
-    const spinner = ora("Creating sprint in Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Creating sprint in ${backendLabel}...`).start();
 
     try {
       // Resolve epic if provided
@@ -197,7 +213,10 @@ sprintCommand
       let epic = null;
       if (options.epic) {
         spinner.text = "Resolving epic...";
-        epic = await findEpicByName(options.epic);
+        epic =
+          backend === "django"
+            ? await findEpicByNameDjango(options.epic)
+            : await findEpicByName(options.epic);
         if (!epic) {
           spinner.fail(`Epic not found: ${options.epic}`);
           process.exit(1);
@@ -209,7 +228,10 @@ sprintCommand
       let lifeDomainId: string | undefined;
       if (options.domain) {
         spinner.text = "Resolving life domain...";
-        const domain = await findLifeDomainByName(options.domain);
+        const domain =
+          backend === "django"
+            ? await findDomainByNameDjango(options.domain)
+            : await findLifeDomainByName(options.domain);
         if (!domain) {
           spinner.fail(`Life domain not found: ${options.domain}`);
           process.exit(1);
@@ -233,13 +255,24 @@ sprintCommand
       }
 
       spinner.text = "Creating sprint...";
-      const sprint = await createSprint(name, {
-        objectives: options.objectives,
-        startDate: options.start,
-        endDate: options.end,
-        epicId,
-        lifeDomainId,
-      });
+      let sprint: NotionSprint;
+      if (backend === "django") {
+        sprint = await createSprintDjango(name, {
+          objectives: options.objectives,
+          startDate: options.start,
+          endDate: options.end,
+          epicId,
+          lifeDomainId,
+        });
+      } else {
+        sprint = await createSprint(name, {
+          objectives: options.objectives,
+          startDate: options.start,
+          endDate: options.end,
+          epicId,
+          lifeDomainId,
+        });
+      }
 
       spinner.succeed("Sprint created!");
 
@@ -262,7 +295,11 @@ sprintCommand
         await exec(`git checkout ${baseBranch} && git pull`);
         await exec(`git checkout -b ${branchName}`);
         await exec(`git push -u origin ${branchName}`);
-        await updateSprintStatus(sprint.id, "In Progress");
+        if (backend === "django") {
+          await updateSprintStatusDjango(sprint.id, "In Progress");
+        } else {
+          await updateSprintStatus(sprint.id, "In Progress");
+        }
         spinner.succeed(`Branch created: ${branchName}`);
 
         console.log(chalk.yellow("\nBranch:"), chalk.cyan(branchName));
@@ -287,11 +324,22 @@ sprintCommand
   .description("Show the current active sprint")
   .option("--format <format>", "Output format: text, json", "text")
   .option("--tasks", "Also show tasks in this sprint")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (options) => {
-    const spinner = ora("Loading current sprint...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(
+      `Loading current sprint from ${backendLabel}...`,
+    ).start();
 
     try {
-      const sprint = await getCurrentSprint();
+      const sprint =
+        backend === "django"
+          ? await getCurrentSprintDjango()
+          : await getCurrentSprint();
 
       if (!sprint) {
         spinner.stop();
@@ -311,7 +359,7 @@ sprintCommand
 
       // Optionally show tasks
       if (options.tasks) {
-        await displaySprintTasks(sprint);
+        await displaySprintTasks(sprint, backend);
       }
     } catch (err) {
       spinner.fail("Failed to load sprint");
@@ -329,11 +377,20 @@ sprintCommand
   .description("Show detailed sprint information")
   .option("--format <format>", "Output format: text, json", "text")
   .option("--tasks", "Also show tasks in this sprint")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (sprintId: string, options) => {
-    const spinner = ora("Loading sprint from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading sprint from ${backendLabel}...`).start();
 
     try {
-      const sprint = await getSprint(sprintId);
+      const sprint =
+        backend === "django"
+          ? await getSprintDjango(sprintId)
+          : await getSprint(sprintId);
       if (!sprint) {
         spinner.fail(`Sprint not found: ${sprintId}`);
         process.exit(1);
@@ -350,7 +407,7 @@ sprintCommand
 
       // Optionally show tasks
       if (options.tasks) {
-        await displaySprintTasks(sprint);
+        await displaySprintTasks(sprint, backend);
       }
     } catch (err) {
       spinner.fail("Failed to load sprint");
@@ -395,11 +452,17 @@ function displaySprintDetails(sprint: NotionSprint): void {
 /**
  * Display tasks in a sprint
  */
-async function displaySprintTasks(sprint: NotionSprint): Promise<void> {
+async function displaySprintTasks(
+  sprint: NotionSprint,
+  backend: "django" | "notion" = "django",
+): Promise<void> {
   const spinner = ora("Loading sprint tasks...").start();
 
   try {
-    const tasks = await queryTasks({ sprint: sprint.name });
+    const tasks =
+      backend === "django"
+        ? await queryTasksDjango({ sprint: sprint.name })
+        : await queryTasks({ sprint: sprint.name });
     spinner.stop();
 
     if (tasks.length === 0) {
@@ -441,11 +504,20 @@ sprintCommand
   .description("Create sprint branch from epic branch")
   .option("--dry-run", "Show what would be done without making changes")
   .option("--no-push", "Create branch locally without pushing")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (sprintId: string, options) => {
-    const spinner = ora("Loading sprint from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading sprint from ${backendLabel}...`).start();
 
     try {
-      const sprint = await getSprint(sprintId);
+      const sprint =
+        backend === "django"
+          ? await getSprintDjango(sprintId)
+          : await getSprint(sprintId);
       if (!sprint) {
         spinner.fail(`Sprint not found: ${sprintId}`);
         process.exit(1);
@@ -454,7 +526,10 @@ sprintCommand
       // Get the linked epic (required for proper branching)
       let epic = null;
       if (sprint.epicIds.length > 0) {
-        epic = await getEpic(sprint.epicIds[0]);
+        epic =
+          backend === "django"
+            ? await getEpicDjango(sprint.epicIds[0])
+            : await getEpic(sprint.epicIds[0]);
       }
 
       spinner.stop();
@@ -504,9 +579,13 @@ sprintCommand
         spinner.succeed("Pushed to remote");
       }
 
-      // Update sprint status in Notion
-      spinner.start("Updating sprint status in Notion...");
-      await updateSprintStatus(sprint.id, "In Progress");
+      // Update sprint status
+      spinner.start(`Updating sprint status in ${backendLabel}...`);
+      if (backend === "django") {
+        await updateSprintStatusDjango(sprint.id, "In Progress");
+      } else {
+        await updateSprintStatus(sprint.id, "In Progress");
+      }
       spinner.succeed("Sprint status updated to In Progress");
 
       console.log(chalk.green("\nSprint started successfully!"));
@@ -530,11 +609,20 @@ sprintCommand
   .command("merge <sprint-id>")
   .description("Merge sprint branch to epic branch")
   .option("--dry-run", "Show what would be done without making changes")
+  .option(
+    "--backend <backend>",
+    "Backend to use: django, notion (default: from LW_BACKEND env)",
+  )
   .action(async (sprintId: string, options) => {
-    const spinner = ora("Loading sprint from Notion...").start();
+    const backend = resolveBackend(options.backend);
+    const backendLabel = backend === "django" ? "createOS" : "Notion";
+    const spinner = ora(`Loading sprint from ${backendLabel}...`).start();
 
     try {
-      const sprint = await getSprint(sprintId);
+      const sprint =
+        backend === "django"
+          ? await getSprintDjango(sprintId)
+          : await getSprint(sprintId);
       if (!sprint) {
         spinner.fail(`Sprint not found: ${sprintId}`);
         process.exit(1);
@@ -543,7 +631,10 @@ sprintCommand
       // Get the linked epic
       let epic = null;
       if (sprint.epicIds.length > 0) {
-        epic = await getEpic(sprint.epicIds[0]);
+        epic =
+          backend === "django"
+            ? await getEpicDjango(sprint.epicIds[0])
+            : await getEpic(sprint.epicIds[0]);
       }
 
       spinner.stop();
@@ -585,9 +676,13 @@ sprintCommand
       await exec(`git push origin ${epicBranchName}`);
       spinner.succeed(`Pushed to ${epicBranchName}`);
 
-      // Update sprint status in Notion
-      spinner.start("Updating sprint status in Notion...");
-      await updateSprintStatus(sprint.id, "Completed");
+      // Update sprint status
+      spinner.start(`Updating sprint status in ${backendLabel}...`);
+      if (backend === "django") {
+        await updateSprintStatusDjango(sprint.id, "Completed");
+      } else {
+        await updateSprintStatus(sprint.id, "Completed");
+      }
       spinner.succeed("Sprint status updated to Completed");
 
       console.log(chalk.green("\nSprint merged successfully!"));
