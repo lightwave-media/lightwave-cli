@@ -1,8 +1,12 @@
 package cli
 
 import (
+	"context"
 	"fmt"
+	"strings"
 
+	"github.com/fatih/color"
+	"github.com/lightwave-media/lightwave-cli/internal/db"
 	"github.com/spf13/cobra"
 )
 
@@ -117,7 +121,83 @@ var dbNuclearCmd = &cobra.Command{
 	},
 }
 
+var dbCleanupDryRun bool
+
+var dbCleanupCmd = &cobra.Command{
+	Use:   "cleanup",
+	Short: "Drop orphaned test schemas (test_*, unique_schema_*)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		rows, err := pool.Query(ctx, `
+			SELECT schema_name FROM information_schema.schemata
+			WHERE schema_name LIKE 'test_%' OR schema_name LIKE 'unique_schema_%'
+			ORDER BY schema_name
+		`)
+		if err != nil {
+			return fmt.Errorf("failed to query schemas: %w", err)
+		}
+		defer rows.Close()
+
+		var schemas []string
+		for rows.Next() {
+			var name string
+			if err := rows.Scan(&name); err != nil {
+				return err
+			}
+			schemas = append(schemas, name)
+		}
+
+		if len(schemas) == 0 {
+			fmt.Println("No orphaned test schemas found")
+			return nil
+		}
+
+		fmt.Printf("Found %s orphaned test schemas:\n", color.YellowString("%d", len(schemas)))
+		for _, s := range schemas {
+			fmt.Printf("  %s\n", s)
+		}
+
+		if dbCleanupDryRun {
+			fmt.Println(color.CyanString("\nDry run — no schemas dropped"))
+			return nil
+		}
+
+		fmt.Printf("\nDrop all %d schemas? [y/N] ", len(schemas))
+		var confirm string
+		fmt.Scanln(&confirm)
+		if confirm != "y" && confirm != "Y" {
+			fmt.Println("Cancelled")
+			return nil
+		}
+
+		dropped := 0
+		for _, s := range schemas {
+			_, err := pool.Exec(ctx, fmt.Sprintf("DROP SCHEMA %s CASCADE",
+				strings.ReplaceAll(s, "'", "''")))
+			if err != nil {
+				fmt.Printf("  %s %s: %v\n", color.RedString("FAIL"), s, err)
+			} else {
+				fmt.Printf("  %s %s\n", color.GreenString("DROP"), s)
+				dropped++
+			}
+		}
+
+		fmt.Printf("\nDropped %s of %d schemas\n",
+			color.GreenString("%d", dropped), len(schemas))
+		return nil
+	},
+}
+
 func init() {
+	dbCleanupCmd.Flags().BoolVar(&dbCleanupDryRun, "dry-run", false, "List schemas without dropping")
+
 	dbMigrateCmd.Flags().BoolVar(&dbMigratePublic, "public", false, "Migrate public schema only")
 
 	dbTenantCmd.AddCommand(dbTenantListCmd)
@@ -128,4 +208,5 @@ func init() {
 	dbCmd.AddCommand(dbTenantCmd)
 	dbCmd.AddCommand(dbResetCmd)
 	dbCmd.AddCommand(dbNuclearCmd)
+	dbCmd.AddCommand(dbCleanupCmd)
 }
