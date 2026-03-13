@@ -1,5 +1,11 @@
-node_modules/
+# Binaries
+/lw
+/lw-native
 dist/
-*.log
-.DS_Store
-data/
+
+# IDE
+.idea/
+.vscode/
+
+# Claude local settings
+.claude/settings.local.json
