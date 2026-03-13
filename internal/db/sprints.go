@@ -109,15 +109,13 @@ func CreateSprint(ctx context.Context, pool *pgxpool.Pool, opts SprintCreateOpti
 	now := time.Now()
 
 	query := `
-		INSERT INTO createos_sprint (id, name, status, objectives, start_date, end_date, epic_id, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8)
+		INSERT INTO createos_sprint (id, name, status, objectives, start_date, end_date, epic_id, notion_id, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $9)
 		RETURNING id, name, status
 	`
 
-	var objectives *string
-	if opts.Objectives != "" {
-		objectives = &opts.Objectives
-	}
+	objectives := opts.Objectives
+	notionID := "cli-" + id[:8]
 	var epicID *string
 	if opts.EpicID != "" {
 		epicID = &opts.EpicID
@@ -140,7 +138,7 @@ func CreateSprint(ctx context.Context, pool *pgxpool.Pool, opts SprintCreateOpti
 
 	var s Sprint
 	err := pool.QueryRow(ctx, query,
-		id, opts.Name, opts.Status, objectives, startDate, endDate, epicID, now,
+		id, opts.Name, opts.Status, objectives, startDate, endDate, epicID, notionID, now,
 	).Scan(&s.ID, &s.Name, &s.Status)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create sprint: %w", err)

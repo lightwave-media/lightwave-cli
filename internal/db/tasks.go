@@ -218,10 +218,14 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, opts TaskCreateOptions)
 	id := uuid.New().String()
 	now := time.Now()
 
+	notionID := "cli-" + id[:8]
+
 	query := `
-		INSERT INTO createos_task (id, title, description, priority, task_type, task_category,
-			epic_id, sprint_id, user_story_id, status, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'approved', $10, $10)
+		INSERT INTO createos_task (id, title, description, acceptance_criteria, priority, task_type, task_category,
+			epic_id, sprint_id, user_story_id, status, agent_status, assigned_agent,
+			branch_name, pr_url, ai_summary, note, notion_id, created_at, updated_at)
+		VALUES ($1, $2, $3, '', $4, $5, $6, $7, $8, $9, 'approved', 'idle', '',
+			'', '', '', '', $10, $11, $11)
 		RETURNING id, title, status, priority, task_type
 	`
 
@@ -236,15 +240,12 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, opts TaskCreateOptions)
 		storyID = &opts.StoryID
 	}
 
-	var desc *string
-	if opts.Description != "" {
-		desc = &opts.Description
-	}
+	description := opts.Description
 
 	var t Task
 	err := pool.QueryRow(ctx, query,
-		id, opts.Title, desc, opts.Priority, opts.TaskType, opts.Category,
-		epicID, sprintID, storyID, now,
+		id, opts.Title, description, opts.Priority, opts.TaskType, opts.Category,
+		epicID, sprintID, storyID, notionID, now,
 	).Scan(&t.ID, &t.Title, &t.Status, &t.Priority, &t.TaskType)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task: %w", err)
