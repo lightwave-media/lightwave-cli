@@ -23,6 +23,13 @@ var (
 	epicListLimit  int
 )
 
+// Flags for epic update
+var (
+	epicUpdateStatus   string
+	epicUpdateName     string
+	epicUpdatePriority string
+)
+
 var epicListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List epics",
@@ -61,13 +68,58 @@ Examples:
 	},
 }
 
+var epicUpdateCmd = &cobra.Command{
+	Use:   "update [epic-id]",
+	Short: "Update an epic",
+	Long: `Update epic fields by short ID prefix.
+
+Examples:
+  lw epic update a1b2 --status=completed
+  lw epic update a1b2 --name="Updated epic" --priority=p2_high`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		opts := db.EpicUpdateOptions{}
+		if cmd.Flags().Changed("status") {
+			opts.Status = &epicUpdateStatus
+		}
+		if cmd.Flags().Changed("name") {
+			opts.Name = &epicUpdateName
+		}
+		if cmd.Flags().Changed("priority") {
+			opts.Priority = &epicUpdatePriority
+		}
+
+		epic, err := db.UpdateEpic(ctx, pool, args[0], opts)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Updated epic %s\n", color.YellowString(epic.ShortID))
+		return nil
+	},
+}
+
 func init() {
 	// epic list flags
 	epicListCmd.Flags().StringVarP(&epicListStatus, "status", "s", "", "Filter by status (active, completed, planned)")
 	epicListCmd.Flags().IntVarP(&epicListLimit, "limit", "n", 50, "Limit number of results")
 
+	// epic update flags
+	epicUpdateCmd.Flags().StringVar(&epicUpdateStatus, "status", "", "Status (active, completed, planned)")
+	epicUpdateCmd.Flags().StringVar(&epicUpdateName, "name", "", "Epic name")
+	epicUpdateCmd.Flags().StringVar(&epicUpdatePriority, "priority", "", "Priority (p1_urgent, p2_high, p3_medium, p4_low)")
+
 	// Add subcommands
 	epicCmd.AddCommand(epicListCmd)
+	epicCmd.AddCommand(epicUpdateCmd)
 }
 
 func printEpicTable(epics []db.Epic) {

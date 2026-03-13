@@ -35,6 +35,13 @@ var (
 	storyCreateUserType    string
 )
 
+// Flags for story update
+var (
+	storyUpdateStatus   string
+	storyUpdateName     string
+	storyUpdatePriority string
+)
+
 var storyListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List user stories",
@@ -116,6 +123,45 @@ Examples:
 	},
 }
 
+var storyUpdateCmd = &cobra.Command{
+	Use:   "update [story-id]",
+	Short: "Update a user story",
+	Long: `Update story fields by short ID prefix.
+
+Examples:
+  lw story update a1b2 --status=active
+  lw story update a1b2 --name="Updated story name" --priority=p2_high`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		opts := db.StoryUpdateOptions{}
+		if cmd.Flags().Changed("status") {
+			opts.Status = &storyUpdateStatus
+		}
+		if cmd.Flags().Changed("name") {
+			opts.Name = &storyUpdateName
+		}
+		if cmd.Flags().Changed("priority") {
+			opts.Priority = &storyUpdatePriority
+		}
+
+		story, err := db.UpdateStory(ctx, pool, args[0], opts)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Updated story %s\n", color.YellowString(story.ShortID))
+		return nil
+	},
+}
+
 func init() {
 	// story list flags
 	storyListCmd.Flags().StringVarP(&storyListStatus, "status", "s", "", "Filter by status")
@@ -131,9 +177,15 @@ func init() {
 	storyCreateCmd.Flags().StringVar(&storyCreateSprint, "sprint", "", "Sprint ID")
 	storyCreateCmd.Flags().StringVar(&storyCreateUserType, "user-type", "", "User type")
 
+	// story update flags
+	storyUpdateCmd.Flags().StringVar(&storyUpdateStatus, "status", "", "Status")
+	storyUpdateCmd.Flags().StringVar(&storyUpdateName, "name", "", "Story name")
+	storyUpdateCmd.Flags().StringVar(&storyUpdatePriority, "priority", "", "Priority (p1_urgent, p2_high, p3_medium, p4_low)")
+
 	// Add subcommands
 	storyCmd.AddCommand(storyListCmd)
 	storyCmd.AddCommand(storyCreateCmd)
+	storyCmd.AddCommand(storyUpdateCmd)
 }
 
 func printStoryTable(stories []db.Story) {

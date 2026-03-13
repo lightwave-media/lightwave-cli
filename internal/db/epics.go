@@ -87,3 +87,95 @@ func ListEpics(ctx context.Context, pool *pgxpool.Pool, opts EpicListOptions) ([
 
 	return epics, nil
 }
+
+// GetEpic finds an epic by short ID prefix
+func GetEpic(ctx context.Context, pool *pgxpool.Pool, shortID string) (*Epic, error) {
+	query := `
+		SELECT e.id, e.name, e.status, e.priority, e.github_repo,
+			e.start_date, e.target_date, e.created_at, e.updated_at,
+			COALESCE((SELECT COUNT(*) FROM createos_task t WHERE t.epic_id = e.id), 0) AS task_count
+		FROM createos_epic e
+		WHERE e.id::text LIKE $1 || '%'
+		LIMIT 2
+	`
+	rows, err := pool.Query(ctx, query, shortID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query epic: %w", err)
+	}
+	defer rows.Close()
+
+	var epics []Epic
+	for rows.Next() {
+		var e Epic
+		err := rows.Scan(&e.ID, &e.Name, &e.Status, &e.Priority, &e.GithubRepo,
+			&e.StartDate, &e.TargetDate, &e.CreatedAt, &e.UpdatedAt, &e.TaskCount)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan epic: %w", err)
+		}
+		if len(e.ID) >= 8 {
+			e.ShortID = e.ID[:8]
+		}
+		epics = append(epics, e)
+	}
+
+	if len(epics) == 0 {
+		return nil, fmt.Errorf("no epic found matching '%s'", shortID)
+	}
+	if len(epics) > 1 {
+		return nil, fmt.Errorf("ambiguous ID '%s' matches %d epics — use more characters", shortID, len(epics))
+	}
+	return &epics[0], nil
+}
+
+// EpicUpdateOptions holds fields for updating an epic
+type EpicUpdateOptions struct {
+	Status   *string
+	Name     *string
+	Priority *string
+}
+
+// UpdateEpic updates specified fields of an epic
+func UpdateEpic(ctx context.Context, pool *pgxpool.Pool, epicID string, opts EpicUpdateOptions) (*Epic, error) {
+	epic, err := GetEpic(ctx, pool, epicID)
+	if err != nil {
+		return nil, err
+	}
+
+	setClauses := []string{}
+	args := []interface{}{}
+	argNum := 1
+
+	if opts.Status != nil {
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", argNum))
+		args = append(args, *opts.Status)
+		argNum++
+	}
+	if opts.Name != nil {
+		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argNum))
+		args = append(args, *opts.Name)
+		argNum++
+	}
+	if opts.Priority != nil {
+		setClauses = append(setClauses, fmt.Sprintf("priority = $%d", argNum))
+		args = append(args, *opts.Priority)
+		argNum++
+	}
+
+	if len(setClauses) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	setClauses = append(setClauses, fmt.Sprintf("updated_at = $%d", argNum))
+	args = append(args, time.Now())
+	argNum++
+
+	args = append(args, epic.ID)
+	query := fmt.Sprintf("UPDATE createos_epic SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), argNum)
+
+	_, err = pool.Exec(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update epic: %w", err)
+	}
+	return epic, nil
+}
