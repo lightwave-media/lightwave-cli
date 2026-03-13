@@ -34,6 +34,15 @@ var (
 	sprintCreateStatus     string
 )
 
+// Flags for sprint update
+var (
+	sprintUpdateStatus     string
+	sprintUpdateName       string
+	sprintUpdateObjectives string
+	sprintUpdateStartDate  string
+	sprintUpdateEndDate    string
+)
+
 var sprintListCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List sprints",
@@ -114,6 +123,52 @@ Examples:
 	},
 }
 
+var sprintUpdateCmd = &cobra.Command{
+	Use:   "update [sprint-id]",
+	Short: "Update a sprint",
+	Long: `Update sprint fields by short ID prefix.
+
+Examples:
+  lw sprint update 74ce --status=completed
+  lw sprint update 74ce --name="Sprint 2 (Final)" --objectives="Shipped"
+  lw sprint update 74ce --start-date=2026-03-14 --end-date=2026-03-21`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		opts := db.SprintUpdateOptions{}
+		if cmd.Flags().Changed("status") {
+			opts.Status = &sprintUpdateStatus
+		}
+		if cmd.Flags().Changed("name") {
+			opts.Name = &sprintUpdateName
+		}
+		if cmd.Flags().Changed("objectives") {
+			opts.Objectives = &sprintUpdateObjectives
+		}
+		if cmd.Flags().Changed("start-date") {
+			opts.StartDate = &sprintUpdateStartDate
+		}
+		if cmd.Flags().Changed("end-date") {
+			opts.EndDate = &sprintUpdateEndDate
+		}
+
+		sprint, err := db.UpdateSprint(ctx, pool, args[0], opts)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Updated sprint %s\n", color.YellowString(sprint.ShortID))
+		return nil
+	},
+}
+
 func init() {
 	// sprint list flags
 	sprintListCmd.Flags().StringVarP(&sprintListStatus, "status", "s", "", "Filter by status (active, completed, planned)")
@@ -128,9 +183,17 @@ func init() {
 	sprintCreateCmd.Flags().StringVar(&sprintCreateEndDate, "end-date", "", "End date (YYYY-MM-DD)")
 	sprintCreateCmd.Flags().StringVar(&sprintCreateStatus, "status", "planned", "Status (active, completed, planned)")
 
+	// sprint update flags
+	sprintUpdateCmd.Flags().StringVar(&sprintUpdateStatus, "status", "", "Status (active, completed, planned)")
+	sprintUpdateCmd.Flags().StringVar(&sprintUpdateName, "name", "", "Sprint name")
+	sprintUpdateCmd.Flags().StringVar(&sprintUpdateObjectives, "objectives", "", "Sprint objectives")
+	sprintUpdateCmd.Flags().StringVar(&sprintUpdateStartDate, "start-date", "", "Start date (YYYY-MM-DD)")
+	sprintUpdateCmd.Flags().StringVar(&sprintUpdateEndDate, "end-date", "", "End date (YYYY-MM-DD)")
+
 	// Add subcommands
 	sprintCmd.AddCommand(sprintListCmd)
 	sprintCmd.AddCommand(sprintCreateCmd)
+	sprintCmd.AddCommand(sprintUpdateCmd)
 }
 
 func printSprintTable(sprints []db.Sprint) {

@@ -149,3 +149,119 @@ func CreateSprint(ctx context.Context, pool *pgxpool.Pool, opts SprintCreateOpti
 	}
 	return &s, nil
 }
+
+// GetSprint finds a sprint by short ID prefix
+func GetSprint(ctx context.Context, pool *pgxpool.Pool, shortID string) (*Sprint, error) {
+	query := `
+		SELECT id, name, status, objectives, start_date, end_date, epic_id, created_at, updated_at
+		FROM createos_sprint
+		WHERE id::text LIKE $1 || '%'
+		LIMIT 2
+	`
+
+	rows, err := pool.Query(ctx, query, shortID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query sprint: %w", err)
+	}
+	defer rows.Close()
+
+	var sprints []Sprint
+	for rows.Next() {
+		var s Sprint
+		err := rows.Scan(
+			&s.ID, &s.Name, &s.Status, &s.Objectives,
+			&s.StartDate, &s.EndDate, &s.EpicID,
+			&s.CreatedAt, &s.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan sprint: %w", err)
+		}
+		if len(s.ID) >= 8 {
+			s.ShortID = s.ID[:8]
+		}
+		sprints = append(sprints, s)
+	}
+
+	if len(sprints) == 0 {
+		return nil, fmt.Errorf("no sprint found matching '%s'", shortID)
+	}
+	if len(sprints) > 1 {
+		return nil, fmt.Errorf("ambiguous ID '%s' matches %d sprints — use more characters", shortID, len(sprints))
+	}
+
+	return &sprints[0], nil
+}
+
+// SprintUpdateOptions holds fields for updating a sprint
+type SprintUpdateOptions struct {
+	Status     *string
+	Name       *string
+	Objectives *string
+	StartDate  *string
+	EndDate    *string
+}
+
+// UpdateSprint updates specified fields of a sprint
+func UpdateSprint(ctx context.Context, pool *pgxpool.Pool, sprintID string, opts SprintUpdateOptions) (*Sprint, error) {
+	sprint, err := GetSprint(ctx, pool, sprintID)
+	if err != nil {
+		return nil, err
+	}
+
+	setClauses := []string{}
+	args := []interface{}{}
+	argNum := 1
+
+	if opts.Status != nil {
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", argNum))
+		args = append(args, *opts.Status)
+		argNum++
+	}
+	if opts.Name != nil {
+		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argNum))
+		args = append(args, *opts.Name)
+		argNum++
+	}
+	if opts.Objectives != nil {
+		setClauses = append(setClauses, fmt.Sprintf("objectives = $%d", argNum))
+		args = append(args, *opts.Objectives)
+		argNum++
+	}
+	if opts.StartDate != nil {
+		t, parseErr := time.Parse("2006-01-02", *opts.StartDate)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid start-date format (use YYYY-MM-DD): %w", parseErr)
+		}
+		setClauses = append(setClauses, fmt.Sprintf("start_date = $%d", argNum))
+		args = append(args, t)
+		argNum++
+	}
+	if opts.EndDate != nil {
+		t, parseErr := time.Parse("2006-01-02", *opts.EndDate)
+		if parseErr != nil {
+			return nil, fmt.Errorf("invalid end-date format (use YYYY-MM-DD): %w", parseErr)
+		}
+		setClauses = append(setClauses, fmt.Sprintf("end_date = $%d", argNum))
+		args = append(args, t)
+		argNum++
+	}
+
+	if len(setClauses) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	setClauses = append(setClauses, fmt.Sprintf("updated_at = $%d", argNum))
+	args = append(args, time.Now())
+	argNum++
+
+	args = append(args, sprint.ID)
+	query := fmt.Sprintf("UPDATE createos_sprint SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), argNum)
+
+	_, err = pool.Exec(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update sprint: %w", err)
+	}
+
+	return sprint, nil
+}
