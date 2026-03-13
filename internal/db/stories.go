@@ -152,3 +152,94 @@ func CreateStory(ctx context.Context, pool *pgxpool.Pool, opts StoryCreateOption
 	}
 	return &s, nil
 }
+
+// GetStory finds a story by short ID prefix
+func GetStory(ctx context.Context, pool *pgxpool.Pool, shortID string) (*Story, error) {
+	query := `
+		SELECT id, name, description, status, priority, user_type, story_points,
+			epic_id, sprint_id, created_at, updated_at
+		FROM createos_userstory
+		WHERE id::text LIKE $1 || '%'
+		LIMIT 2
+	`
+	rows, err := pool.Query(ctx, query, shortID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query story: %w", err)
+	}
+	defer rows.Close()
+
+	var stories []Story
+	for rows.Next() {
+		var s Story
+		err := rows.Scan(&s.ID, &s.Name, &s.Description, &s.Status, &s.Priority,
+			&s.UserType, &s.StoryPoints, &s.EpicID, &s.SprintID, &s.CreatedAt, &s.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan story: %w", err)
+		}
+		if len(s.ID) >= 8 {
+			s.ShortID = s.ID[:8]
+		}
+		stories = append(stories, s)
+	}
+
+	if len(stories) == 0 {
+		return nil, fmt.Errorf("no story found matching '%s'", shortID)
+	}
+	if len(stories) > 1 {
+		return nil, fmt.Errorf("ambiguous ID '%s' matches %d stories — use more characters", shortID, len(stories))
+	}
+	return &stories[0], nil
+}
+
+// StoryUpdateOptions holds fields for updating a story
+type StoryUpdateOptions struct {
+	Status   *string
+	Name     *string
+	Priority *string
+}
+
+// UpdateStory updates specified fields of a story
+func UpdateStory(ctx context.Context, pool *pgxpool.Pool, storyID string, opts StoryUpdateOptions) (*Story, error) {
+	story, err := GetStory(ctx, pool, storyID)
+	if err != nil {
+		return nil, err
+	}
+
+	setClauses := []string{}
+	args := []interface{}{}
+	argNum := 1
+
+	if opts.Status != nil {
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", argNum))
+		args = append(args, *opts.Status)
+		argNum++
+	}
+	if opts.Name != nil {
+		setClauses = append(setClauses, fmt.Sprintf("name = $%d", argNum))
+		args = append(args, *opts.Name)
+		argNum++
+	}
+	if opts.Priority != nil {
+		setClauses = append(setClauses, fmt.Sprintf("priority = $%d", argNum))
+		args = append(args, *opts.Priority)
+		argNum++
+	}
+
+	if len(setClauses) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	setClauses = append(setClauses, fmt.Sprintf("updated_at = $%d", argNum))
+	args = append(args, time.Now())
+	argNum++
+
+	args = append(args, story.ID)
+	query := fmt.Sprintf("UPDATE createos_userstory SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), argNum)
+
+	_, err = pool.Exec(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update story: %w", err)
+	}
+	return story, nil
+}
