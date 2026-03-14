@@ -66,7 +66,7 @@ func init() {
 	emailSendCmd.Flags().StringVar(&emailSubject, "subject", "", "Email subject line (required)")
 	emailSendCmd.Flags().StringVar(&emailProps, "props", "", "JSON props for the template")
 	emailSendCmd.Flags().StringVar(&emailFrom, "from", "", "Sender email address override")
-	emailSendCmd.Flags().StringVar(&emailTenant, "tenant", "", "Tenant slug for schema_context")
+	emailSendCmd.Flags().StringVar(&emailTenant, "tenant", "", "Tenant schema_name for schema_context (e.g. lightwave_media)")
 	emailSendCmd.Flags().BoolVar(&emailDryRun, "dry-run", false, "Render only, don't send")
 
 	_ = emailSendCmd.MarkFlagRequired("template")

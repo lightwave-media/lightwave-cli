@@ -51,6 +51,8 @@ var (
 	taskUpdatePRUrl       string
 	taskUpdateTitle       string
 	taskUpdateDescription string
+	taskUpdateEpic        string
+	taskUpdateSprint      string
 )
 
 var taskListCmd = &cobra.Command{
@@ -240,6 +242,12 @@ Examples:
 		if cmd.Flags().Changed("description") {
 			opts.Description = &taskUpdateDescription
 		}
+		if cmd.Flags().Changed("epic") {
+			opts.EpicID = &taskUpdateEpic
+		}
+		if cmd.Flags().Changed("sprint") {
+			opts.SprintID = &taskUpdateSprint
+		}
 
 		task, err := db.UpdateTask(ctx, pool, taskID, opts)
 		if err != nil {
@@ -280,6 +288,8 @@ func init() {
 	taskUpdateCmd.Flags().StringVar(&taskUpdatePRUrl, "pr-url", "", "Pull request URL")
 	taskUpdateCmd.Flags().StringVar(&taskUpdateTitle, "title", "", "New title")
 	taskUpdateCmd.Flags().StringVar(&taskUpdateDescription, "description", "", "New description")
+	taskUpdateCmd.Flags().StringVar(&taskUpdateEpic, "epic", "", "Epic ID (short ID, empty to unset)")
+	taskUpdateCmd.Flags().StringVar(&taskUpdateSprint, "sprint", "", "Sprint ID (short ID, empty to unset)")
 
 	// Add subcommands
 	taskCmd.AddCommand(taskListCmd)

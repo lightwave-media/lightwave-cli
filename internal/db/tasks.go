@@ -231,13 +231,25 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, opts TaskCreateOptions)
 
 	var epicID, sprintID, storyID *string
 	if opts.EpicID != "" {
-		epicID = &opts.EpicID
+		epic, err := GetEpic(ctx, pool, opts.EpicID)
+		if err != nil {
+			return nil, fmt.Errorf("resolving epic: %w", err)
+		}
+		epicID = &epic.ID
 	}
 	if opts.SprintID != "" {
-		sprintID = &opts.SprintID
+		sprint, err := GetSprint(ctx, pool, opts.SprintID)
+		if err != nil {
+			return nil, fmt.Errorf("resolving sprint: %w", err)
+		}
+		sprintID = &sprint.ID
 	}
 	if opts.StoryID != "" {
-		storyID = &opts.StoryID
+		story, err := GetStory(ctx, pool, opts.StoryID)
+		if err != nil {
+			return nil, fmt.Errorf("resolving story: %w", err)
+		}
+		storyID = &story.ID
 	}
 
 	description := opts.Description
@@ -266,6 +278,8 @@ type TaskUpdateOptions struct {
 	PRUrl       *string
 	Title       *string
 	Description *string
+	EpicID      *string
+	SprintID    *string
 }
 
 // UpdateTask updates specified fields of a task
@@ -313,6 +327,34 @@ func UpdateTask(ctx context.Context, pool *pgxpool.Pool, taskID string, opts Tas
 	if opts.Description != nil {
 		setClauses = append(setClauses, fmt.Sprintf("description = $%d", argNum))
 		args = append(args, *opts.Description)
+		argNum++
+	}
+	if opts.EpicID != nil {
+		if *opts.EpicID == "" {
+			setClauses = append(setClauses, fmt.Sprintf("epic_id = $%d", argNum))
+			args = append(args, nil)
+		} else {
+			epic, err := GetEpic(ctx, pool, *opts.EpicID)
+			if err != nil {
+				return nil, fmt.Errorf("resolving epic: %w", err)
+			}
+			setClauses = append(setClauses, fmt.Sprintf("epic_id = $%d", argNum))
+			args = append(args, epic.ID)
+		}
+		argNum++
+	}
+	if opts.SprintID != nil {
+		if *opts.SprintID == "" {
+			setClauses = append(setClauses, fmt.Sprintf("sprint_id = $%d", argNum))
+			args = append(args, nil)
+		} else {
+			sprint, err := GetSprint(ctx, pool, *opts.SprintID)
+			if err != nil {
+				return nil, fmt.Errorf("resolving sprint: %w", err)
+			}
+			setClauses = append(setClauses, fmt.Sprintf("sprint_id = $%d", argNum))
+			args = append(args, sprint.ID)
+		}
 		argNum++
 	}
 
