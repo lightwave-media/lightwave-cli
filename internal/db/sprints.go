@@ -12,15 +12,15 @@ import (
 
 // Sprint represents a createOS sprint
 type Sprint struct {
-	ID        string     `db:"id"`
-	Name      string     `db:"name"`
-	Status    string     `db:"status"`
-	Objectives *string   `db:"objectives"`
-	StartDate *time.Time `db:"start_date"`
-	EndDate   *time.Time `db:"end_date"`
-	EpicID    *string    `db:"epic_id"`
-	CreatedAt time.Time  `db:"created_at"`
-	UpdatedAt time.Time  `db:"updated_at"`
+	ID         string     `db:"id"`
+	Name       string     `db:"name"`
+	Status     string     `db:"status"`
+	Objectives *string    `db:"objectives"`
+	StartDate  *time.Time `db:"start_date"`
+	EndDate    *time.Time `db:"end_date"`
+	EpicID     *string    `db:"epic_id"`
+	CreatedAt  time.Time  `db:"created_at"`
+	UpdatedAt  time.Time  `db:"updated_at"`
 	// Computed
 	ShortID string
 }

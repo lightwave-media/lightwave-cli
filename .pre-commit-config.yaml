@@ -1,0 +1,46 @@
+repos:
+  # Go formatting, vetting, and building
+  - repo: local
+    hooks:
+      - id: go-fmt
+        name: Go Format
+        entry: gofmt -l -w
+        language: system
+        types: [go]
+
+      - id: go-vet
+        name: Go Vet
+        entry: bash -c 'go vet ./...'
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-build
+        name: Go Build
+        entry: bash -c 'go build ./cmd/lw'
+        language: system
+        types: [go]
+        pass_filenames: false
+
+      - id: go-test
+        name: Go Test
+        entry: bash -c 'go test ./...'
+        language: system
+        types: [go]
+        pass_filenames: false
+        stages: [pre-push]
+
+  # General file hygiene
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: (\.lock$|go\.sum$)
+      - id: end-of-file-fixer
+        exclude: (\.lock$|go\.sum$)
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: [--maxkb=1000]
+      - id: check-merge-conflict
+      - id: detect-private-key

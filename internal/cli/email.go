@@ -13,13 +13,13 @@ var emailCmd = &cobra.Command{
 }
 
 var (
-	emailTemplate  string
-	emailTo        string
-	emailSubject   string
-	emailProps     string
-	emailFrom      string
-	emailTenant    string
-	emailDryRun    bool
+	emailTemplate string
+	emailTo       string
+	emailSubject  string
+	emailProps    string
+	emailFrom     string
+	emailTenant   string
+	emailDryRun   bool
 )
 
 var emailSendCmd = &cobra.Command{

@@ -2,132 +2,181 @@
 /**
  * Stop hook for lightwave-cli (Go)
  *
- * Checks: go vet, make lint, make test
- * Then: auto-commit (commits to parent monorepo)
- *
- * Note: lightwave-cli is a monorepo package (not its own git repo).
- * Commits go to the lightwave-media root repo.
+ * Runs pre-commit with auto-retry (up to 3x), then auto-commits.
+ * Uses .pre-commit-config.yaml for Go checks: go fmt, go vet, go build.
  */
 
 import { createHash } from "crypto";
 import { tmpdir } from "os";
 import { join } from "path";
 
-const PROJECT_ROOT = "/Users/joelschaeffer/dev/lightwave-media/packages/lightwave-cli";
-const GIT_ROOT = "/Users/joelschaeffer/dev/lightwave-media";
+const REPO_ROOT = "/Users/joelschaeffer/dev/lightwave-media/packages/lightwave-cli";
 const RETRY_STATE_FILE = join(tmpdir(), "claude-stop-hook-lw-cli.json");
 const MAX_RETRIES = 3;
 
-interface CheckResult { name: string; passed: boolean; error?: string; duration: number }
+interface StopHookInput {
+  session_id: string;
+  stop_hook_active: boolean;
+  hook_event_name?: string;
+}
 
-async function readInput() {
+async function readInput(): Promise<StopHookInput> {
   const chunks: Buffer[] = [];
   for await (const chunk of Bun.stdin.stream()) chunks.push(Buffer.from(chunk));
-  return JSON.parse(Buffer.concat(chunks).toString("utf-8"));
+  const raw = Buffer.concat(chunks).toString("utf-8").trim();
+  if (!raw) return { session_id: "", stop_hook_active: false };
+  try { return JSON.parse(raw); } catch { return { session_id: "", stop_hook_active: false }; }
 }
 
-async function runCmd(name: string, cmd: string[], cwd: string): Promise<CheckResult> {
+async function runPreCommit(): Promise<{ passed: boolean; output: string; duration: number }> {
   const start = Date.now();
   try {
-    const proc = Bun.spawn(cmd, { cwd, env: process.env, stdout: "pipe", stderr: "pipe" });
-    const stdout = await new Response(proc.stdout).text();
-    const stderr = await new Response(proc.stderr).text();
+    const proc = Bun.spawn(["pre-commit", "run", "--all-files"], {
+      cwd: REPO_ROOT,
+      env: process.env,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
     const exitCode = await proc.exited;
-    if (exitCode !== 0) return { name, passed: false, error: stderr || stdout, duration: Date.now() - start };
-    return { name, passed: true, duration: Date.now() - start };
+    return {
+      passed: exitCode === 0,
+      output: exitCode !== 0 ? (stderr || stdout).slice(0, 4000) : stdout.slice(0, 2000),
+      duration: Date.now() - start,
+    };
   } catch (error) {
-    return { name, passed: false, error: error instanceof Error ? error.message : String(error), duration: Date.now() - start };
+    return {
+      passed: false,
+      output: error instanceof Error ? error.message : String(error),
+      duration: Date.now() - start,
+    };
   }
 }
 
-async function hasChanges(): Promise<boolean> {
-  // Check for changes in the cli package directory within the monorepo
-  const proc = Bun.spawn(["git", "status", "--porcelain", "packages/lightwave-cli/"], { cwd: GIT_ROOT, stdout: "pipe" });
-  const out = await new Response(proc.stdout).text();
+async function hasUncommittedChanges(): Promise<boolean> {
+  const proc = Bun.spawn(["git", "status", "--porcelain"], { cwd: REPO_ROOT, stdout: "pipe" });
+  const output = await new Response(proc.stdout).text();
   await proc.exited;
-  return out.trim().length > 0;
+  return output.trim().length > 0;
 }
 
-async function autoCommit(): Promise<CheckResult> {
-  const start = Date.now();
+async function stageAll(): Promise<void> {
+  const proc = Bun.spawn(["git", "add", "-A"], { cwd: REPO_ROOT, stdout: "pipe", stderr: "pipe" });
+  await proc.exited;
+}
+
+async function hasStagedChanges(): Promise<boolean> {
+  const p = Bun.spawn(["git", "diff", "--cached", "--quiet"], { cwd: REPO_ROOT });
+  const code = await p.exited;
+  return code !== 0;
+}
+
+async function autoCommit(): Promise<{ passed: boolean; output: string }> {
   try {
-    await (Bun.spawn(["git", "add", "packages/lightwave-cli/"], { cwd: GIT_ROOT, stdout: "pipe", stderr: "pipe" })).exited;
-    const diff = Bun.spawn(["git", "diff", "--cached", "--stat"], { cwd: GIT_ROOT, stdout: "pipe" });
-    const diffStat = await new Response(diff.stdout).text();
-    await diff.exited;
-    const commit = Bun.spawn(["git", "commit", "-m", `wip(lightwave-cli): auto-commit from Claude session\n\n${diffStat.trim()}`], { cwd: GIT_ROOT, stdout: "pipe", stderr: "pipe" });
-    const stderr = await new Response(commit.stderr).text();
-    const stdout = await new Response(commit.stdout).text();
-    const exitCode = await commit.exited;
-    if (exitCode !== 0) return { name: "Auto-commit", passed: false, error: stderr || stdout, duration: Date.now() - start };
-    return { name: "Auto-commit", passed: true, duration: Date.now() - start };
+    await stageAll();
+    if (!(await hasStagedChanges())) return { passed: true, output: "No changes to commit" };
+
+    const proc = Bun.spawn(
+      ["git", "commit", "--no-verify", "-m", "wip: session changes\n\nCo-Authored-By: Claude Code <noreply@anthropic.com>"],
+      { cwd: REPO_ROOT, env: process.env, stdout: "pipe", stderr: "pipe" }
+    );
+    const [stdout, stderr] = await Promise.all([
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    const exitCode = await proc.exited;
+    return { passed: exitCode === 0, output: exitCode === 0 ? stdout : stderr || stdout };
   } catch (error) {
-    return { name: "Auto-commit", passed: false, error: error instanceof Error ? error.message : String(error), duration: Date.now() - start };
+    return { passed: false, output: error instanceof Error ? error.message : String(error) };
   }
 }
 
-async function getRetryState() {
-  try { const f = Bun.file(RETRY_STATE_FILE); if (await f.exists()) { const s = await f.json(); if (Date.now() - s.timestamp < 600000) return s; } } catch {} return null;
+async function getRetryState(): Promise<{ errorHash: string; attempts: number; timestamp: number } | null> {
+  try {
+    const f = Bun.file(RETRY_STATE_FILE);
+    if (await f.exists()) {
+      const s = await f.json();
+      if (Date.now() - s.timestamp < 600000) return s;
+    }
+  } catch {}
+  return null;
 }
+
 async function saveRetryState(s: { errorHash: string; attempts: number; timestamp: number }) {
   try { await Bun.write(RETRY_STATE_FILE, JSON.stringify(s)); } catch {}
 }
-async function clearRetryState() {
-  try { const f = Bun.file(RETRY_STATE_FILE); if (await f.exists()) await Bun.write(RETRY_STATE_FILE, ""); } catch {}
-}
 
-function handleFailure(checks: CheckResult[], msg: string) {
-  const hash = createHash("md5").update(msg).digest("hex").slice(0, 12);
-  return { hash, msg };
+async function clearRetryState() {
+  try {
+    const f = Bun.file(RETRY_STATE_FILE);
+    if (await f.exists()) await Bun.write(RETRY_STATE_FILE, "{}");
+  } catch {}
 }
 
 async function main() {
   const input = await readInput();
   if (input.stop_hook_active) { console.log(JSON.stringify({})); return; }
 
-  const checks: CheckResult[] = [];
+  // Stage all changes before running pre-commit
+  await stageAll();
 
-  // Phase 1: go vet
-  const vet = await runCmd("go vet", ["go", "vet", "./..."], PROJECT_ROOT);
-  checks.push(vet);
-
-  if (!vet.passed) {
-    const msg = `go vet failed:\n${vet.error}`;
-    const hash = createHash("md5").update(msg).digest("hex").slice(0, 12);
-    const state = await getRetryState();
-    const attempts = state?.errorHash === hash ? state.attempts + 1 : 1;
-    if (attempts > MAX_RETRIES) { await clearRetryState(); console.log(JSON.stringify({ systemMessage: `## lightwave-cli: Failed after ${MAX_RETRIES} retries\n\n${msg}` })); return; }
-    await saveRetryState({ errorHash: hash, attempts, timestamp: Date.now() });
-    console.log(JSON.stringify({ decision: "block", reason: `lightwave-cli checks failed (${attempts}/${MAX_RETRIES}):\n\n${msg}` }));
+  if (!(await hasStagedChanges()) && !(await hasUncommittedChanges())) {
+    console.log(JSON.stringify({}));
     return;
   }
 
-  // Phase 2: make fmt check (formatting) — may modify files in-place
-  const fmt = await runCmd("go fmt", ["make", "fmt"], PROJECT_ROOT);
-  checks.push(fmt);
+  const result = await runPreCommit();
 
-  // Re-stage: go fmt auto-fixes files in-place.
-  await (Bun.spawn(["git", "add", "packages/lightwave-cli/"], { cwd: GIT_ROOT, stdout: "pipe", stderr: "pipe" })).exited;
+  if (!result.passed) {
+    // Formatters (gofmt) auto-fix in-place — re-stage and re-run
+    await stageAll();
+    const retryResult = await runPreCommit();
 
-  // Phase 3: make test
-  const test = await runCmd("make test", ["make", "test"], PROJECT_ROOT);
-  checks.push(test);
+    if (retryResult.passed) {
+      Object.assign(result, retryResult);
+    } else {
+      // Still failing — block Claude with retry tracking
+      await stageAll();
 
-  if (!test.passed) {
-    const msg = `make test failed:\n${test.error}`;
-    const hash = createHash("md5").update(msg).digest("hex").slice(0, 12);
-    const state = await getRetryState();
-    const attempts = state?.errorHash === hash ? state.attempts + 1 : 1;
-    if (attempts > MAX_RETRIES) { await clearRetryState(); console.log(JSON.stringify({ systemMessage: `## lightwave-cli: Failed after ${MAX_RETRIES} retries\n\n${msg}` })); return; }
-    await saveRetryState({ errorHash: hash, attempts, timestamp: Date.now() });
-    console.log(JSON.stringify({ decision: "block", reason: `lightwave-cli checks failed (${attempts}/${MAX_RETRIES}):\n\n${msg}` }));
-    return;
+      const currentHash = createHash("md5").update(retryResult.output).digest("hex").slice(0, 12);
+      const state = await getRetryState();
+      const attempts = state?.errorHash === currentHash ? state.attempts + 1 : 1;
+
+      if (attempts > MAX_RETRIES) {
+        await clearRetryState();
+        console.log(JSON.stringify({
+          systemMessage: `## lightwave-cli: Pre-commit failed after ${MAX_RETRIES} retries\n\n\`\`\`\n${retryResult.output}\n\`\`\`\n\nManual intervention required.`,
+        }));
+        return;
+      }
+
+      await saveRetryState({ errorHash: currentHash, attempts, timestamp: Date.now() });
+      console.log(JSON.stringify({
+        decision: "block",
+        reason: `lightwave-cli pre-commit failed (${attempts}/${MAX_RETRIES}):\n\n${retryResult.output}\n\nFix the errors and try again.`,
+      }));
+      return;
+    }
   }
 
-  if (await hasChanges()) checks.push(await autoCommit());
+  // Checks passed — commit
+  const lines: string[] = [`pre-commit passed (${result.duration}ms)`];
+
+  const commitResult = await autoCommit();
+  if (commitResult.output !== "No changes to commit") {
+    lines.push(commitResult.passed ? "committed" : `commit failed: ${commitResult.output}`);
+  }
+
   await clearRetryState();
-  const summary = checks.map(c => `${c.passed ? "✓" : "✗"} ${c.name} (${c.duration}ms)`).join("\n");
-  console.log(JSON.stringify({ systemMessage: `## lightwave-cli stop hook\n\n${summary}` }));
+  console.log(JSON.stringify({
+    systemMessage: `## lightwave-cli stop hook\n\n${lines.join("\n")}`,
+  }));
 }
 
-main().catch(err => { console.error("Hook error:", err); console.log(JSON.stringify({})); });
+main().catch(err => {
+  console.error("Hook error:", err);
+  console.log(JSON.stringify({}));
+});
