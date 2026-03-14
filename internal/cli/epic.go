@@ -23,12 +23,60 @@ var (
 	epicListLimit  int
 )
 
+// Flags for epic create
+var (
+	epicCreateName     string
+	epicCreateStatus   string
+	epicCreatePriority string
+)
+
 // Flags for epic update
 var (
 	epicUpdateStatus   string
 	epicUpdateName     string
 	epicUpdatePriority string
 )
+
+var epicCreateCmd = &cobra.Command{
+	Use:   "create",
+	Short: "Create a new epic",
+	Long: `Create a new epic in createOS.
+
+Examples:
+  lw epic create --name="LightWave Platform Q1"
+  lw epic create --name="LightWave Platform Q1" --status=active --priority=p1_urgent`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if epicCreateName == "" {
+			return fmt.Errorf("--name is required")
+		}
+
+		ctx := context.Background()
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		status := epicCreateStatus
+		if status == "" {
+			status = "active"
+		}
+
+		opts := db.EpicCreateOptions{
+			Name:     epicCreateName,
+			Status:   status,
+			Priority: epicCreatePriority,
+		}
+
+		epic, err := db.CreateEpic(ctx, pool, opts)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Created epic %s: %s\n", color.YellowString(epic.ShortID), epic.Name)
+		return nil
+	},
+}
 
 var epicListCmd = &cobra.Command{
 	Use:   "list",
@@ -108,6 +156,11 @@ Examples:
 }
 
 func init() {
+	// epic create flags
+	epicCreateCmd.Flags().StringVar(&epicCreateName, "name", "", "Epic name (required)")
+	epicCreateCmd.Flags().StringVar(&epicCreateStatus, "status", "active", "Status (active, completed, planned)")
+	epicCreateCmd.Flags().StringVar(&epicCreatePriority, "priority", "", "Priority (p1_urgent, p2_high, p3_medium, p4_low)")
+
 	// epic list flags
 	epicListCmd.Flags().StringVarP(&epicListStatus, "status", "s", "", "Filter by status (active, completed, planned)")
 	epicListCmd.Flags().IntVarP(&epicListLimit, "limit", "n", 50, "Limit number of results")
@@ -118,6 +171,7 @@ func init() {
 	epicUpdateCmd.Flags().StringVar(&epicUpdatePriority, "priority", "", "Priority (p1_urgent, p2_high, p3_medium, p4_low)")
 
 	// Add subcommands
+	epicCmd.AddCommand(epicCreateCmd)
 	epicCmd.AddCommand(epicListCmd)
 	epicCmd.AddCommand(epicUpdateCmd)
 }

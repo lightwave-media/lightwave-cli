@@ -117,10 +117,16 @@ func CreateStory(ctx context.Context, pool *pgxpool.Pool, opts StoryCreateOption
 	id := uuid.New().String()
 	now := time.Now()
 
+	notionID := "cli-" + id[:8]
 	query := `
-		INSERT INTO createos_userstory (id, name, description, status, priority, user_type,
-			discovery_status, epic_id, sprint_id, created_at, updated_at)
-		VALUES ($1, $2, $3, 'draft', $4, $5, 'not_started', $6, $7, $8, $8)
+		INSERT INTO createos_userstory (id, name, description, acceptance_criteria, status, priority, user_type,
+			notion_id, current_interview_round, discovery_status, interview_transcript, personas,
+			user_flows, edge_cases, technical_constraints, rbac_requirements, research_notes,
+			epic_id, sprint_id, created_at, updated_at)
+		VALUES ($1, $2, $3, '[]'::jsonb, 'draft', $4, $5,
+			$6, '', 'not_started', '[]'::jsonb, '[]'::jsonb,
+			'[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, '',
+			$7, $8, $9, $9)
 		RETURNING id, name, status, priority
 	`
 
@@ -141,7 +147,7 @@ func CreateStory(ctx context.Context, pool *pgxpool.Pool, opts StoryCreateOption
 	var s Story
 	err := pool.QueryRow(ctx, query,
 		id, opts.Name, desc, opts.Priority, userType,
-		epicID, sprintID, now,
+		notionID, epicID, sprintID, now,
 	).Scan(&s.ID, &s.Name, &s.Status, &s.Priority)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create story: %w", err)

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -125,6 +126,45 @@ func GetEpic(ctx context.Context, pool *pgxpool.Pool, shortID string) (*Epic, er
 		return nil, fmt.Errorf("ambiguous ID '%s' matches %d epics — use more characters", shortID, len(epics))
 	}
 	return &epics[0], nil
+}
+
+// EpicCreateOptions holds fields for creating an epic
+type EpicCreateOptions struct {
+	Name     string
+	Status   string
+	Priority string
+}
+
+// CreateEpic inserts a new epic into createos_epic
+func CreateEpic(ctx context.Context, pool *pgxpool.Pool, opts EpicCreateOptions) (*Epic, error) {
+	id := uuid.New().String()
+	now := time.Now()
+	notionID := "cli-" + id[:8]
+
+	query := `
+		INSERT INTO createos_epic (id, name, status, priority, subtitle, log_line, github_repo, notion_id, budget_tier, client, production_company, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $12)
+		RETURNING id, name, status
+	`
+
+	priority := opts.Priority
+	if priority == "" {
+		priority = "p3_medium"
+	}
+
+	var e Epic
+	err := pool.QueryRow(ctx, query,
+		id, opts.Name, opts.Status, priority,
+		"", "", "", notionID, "", "", "",
+		now,
+	).Scan(&e.ID, &e.Name, &e.Status)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create epic: %w", err)
+	}
+	if len(e.ID) >= 8 {
+		e.ShortID = e.ID[:8]
+	}
+	return &e, nil
 }
 
 // EpicUpdateOptions holds fields for updating an epic
