@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -8,6 +9,7 @@ import (
 	"os/exec"
 
 	"github.com/fatih/color"
+	"github.com/lightwave-media/lightwave-cli/internal/db"
 	"github.com/lightwave-media/lightwave-cli/internal/ux"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -326,6 +328,119 @@ var uxDevicesCmd = &cobra.Command{
 	},
 }
 
+// ── backlog ──────────────────────────────────────────────────────────
+
+var (
+	uxBacklogEpic   string
+	uxBacklogSprint string
+)
+
+var uxBacklogCmd = &cobra.Command{
+	Use:   "backlog [session-id]",
+	Short: "Create backlog tasks from analyzed improvement items",
+	Long: `Reads improvement items from an analyzed UX session and creates
+tasks in the LightWave backlog.
+
+Severity → Priority:  critical→p1_urgent, major→p2_high, minor→p3_medium
+Category → Type:      bug/performance→fix, usability/design/feature_request→feature, content→chore`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var session *ux.Session
+		var err error
+
+		if len(args) > 0 {
+			session, err = ux.LoadSession(args[0])
+		} else {
+			session, err = ux.LatestSession()
+		}
+		if err != nil {
+			return err
+		}
+
+		if session.Status != ux.StatusAnalyzed {
+			return fmt.Errorf("session %s has not been analyzed yet — run 'lw ux analyze %s'", session.ID, session.ID)
+		}
+
+		items, err := ux.LoadItems(session.ID)
+		if err != nil {
+			return err
+		}
+		if len(items) == 0 {
+			fmt.Println(color.YellowString("No improvement items to create tasks from."))
+			return nil
+		}
+
+		ctx := context.Background()
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		fmt.Printf("Creating %d tasks from session %s...\n\n", len(items), color.CyanString(session.ID))
+
+		for _, item := range items {
+			opts := db.TaskCreateOptions{
+				Title:       item.Description,
+				Description: formatItemDescription(item, session.ID),
+				Priority:    mapSeverityToPriority(item.Severity),
+				TaskType:    mapCategoryToType(item.Category),
+				EpicID:      uxBacklogEpic,
+				SprintID:    uxBacklogSprint,
+			}
+
+			task, err := db.CreateTask(ctx, pool, opts)
+			if err != nil {
+				fmt.Printf("  %s Failed: %s — %v\n", color.RedString("✗"), item.Description, err)
+				continue
+			}
+
+			fmt.Printf("  %s %s  %s\n", color.GreenString("✓"), color.YellowString(task.ShortID), task.Title)
+		}
+
+		fmt.Printf("\nDone. Run %s to see the backlog.\n", color.YellowString("lw task list"))
+		return nil
+	},
+}
+
+func mapSeverityToPriority(severity string) string {
+	switch severity {
+	case "critical":
+		return "p1_urgent"
+	case "major":
+		return "p2_high"
+	case "minor":
+		return "p3_medium"
+	default:
+		return "p3_medium"
+	}
+}
+
+func mapCategoryToType(category string) string {
+	switch category {
+	case "bug", "performance":
+		return "fix"
+	case "content":
+		return "chore"
+	default:
+		return "feature"
+	}
+}
+
+func formatItemDescription(item ux.ImprovementItem, sessionID string) string {
+	desc := fmt.Sprintf("From UX session %s", sessionID)
+	if item.Timestamp != "" {
+		desc += fmt.Sprintf(" at %s", item.Timestamp)
+	}
+	if item.AffectedComponent != "" {
+		desc += fmt.Sprintf("\n\nAffected component: %s", item.AffectedComponent)
+	}
+	if item.UserQuote != "" {
+		desc += fmt.Sprintf("\n\nUser quote: \"%s\"", item.UserQuote)
+	}
+	desc += fmt.Sprintf("\n\nSource: %s | Severity: %s | Category: %s", item.Source, item.Severity, item.Category)
+	return desc
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────
 
 func printItems(items []ux.ImprovementItem) {
@@ -393,6 +508,9 @@ func downloadWhisperModel(dest string) error {
 func init() {
 	uxStartCmd.Flags().StringVar(&uxStartName, "name", "", "Name/description for this session")
 
+	uxBacklogCmd.Flags().StringVar(&uxBacklogEpic, "epic", "", "Epic ID to assign tasks to")
+	uxBacklogCmd.Flags().StringVar(&uxBacklogSprint, "sprint", "", "Sprint ID to assign tasks to")
+
 	uxCmd.AddCommand(uxInitCmd)
 	uxCmd.AddCommand(uxStartCmd)
 	uxCmd.AddCommand(uxStopCmd)
@@ -401,6 +519,7 @@ func init() {
 	uxCmd.AddCommand(uxItemsCmd)
 	uxCmd.AddCommand(uxPlayCmd)
 	uxCmd.AddCommand(uxDevicesCmd)
+	uxCmd.AddCommand(uxBacklogCmd)
 
 	rootCmd.AddCommand(uxCmd)
 }

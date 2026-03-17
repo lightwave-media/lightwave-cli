@@ -21,6 +21,7 @@ var epicCmd = &cobra.Command{
 var (
 	epicListStatus string
 	epicListLimit  int
+	epicListFormat string
 )
 
 // Flags for epic create
@@ -86,7 +87,8 @@ var epicListCmd = &cobra.Command{
 Examples:
   lw epic list
   lw epic list --status=active
-  lw epic list --limit=10`,
+  lw epic list --limit=10
+  lw epic list --format=ids`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 
@@ -107,7 +109,17 @@ Examples:
 		}
 
 		if len(epics) == 0 {
+			if epicListFormat == "ids" {
+				return nil // Silent for scripting
+			}
 			fmt.Println(color.YellowString("No epics found matching filters"))
+			return nil
+		}
+
+		if epicListFormat == "ids" {
+			for _, e := range epics {
+				fmt.Println(e.ID)
+			}
 			return nil
 		}
 
@@ -164,6 +176,7 @@ func init() {
 	// epic list flags
 	epicListCmd.Flags().StringVarP(&epicListStatus, "status", "s", "", "Filter by status (active, completed, planned)")
 	epicListCmd.Flags().IntVarP(&epicListLimit, "limit", "n", 50, "Limit number of results")
+	epicListCmd.Flags().StringVar(&epicListFormat, "format", "table", "Output format (table, ids)")
 
 	// epic update flags
 	epicUpdateCmd.Flags().StringVar(&epicUpdateStatus, "status", "", "Status (active, completed, planned)")
