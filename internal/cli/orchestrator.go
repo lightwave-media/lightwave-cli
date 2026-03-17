@@ -350,7 +350,7 @@ func validateWithArchitect(ctx context.Context, spec string) (bool, string, erro
 	defer cancel()
 
 	cmd := exec.CommandContext(ctx, "claude",
-		"--permission-mode", "bypassPermissions",
+		"--permission-mode", "plan",
 		"--print",
 		"-p", prompt,
 	)
@@ -387,14 +387,9 @@ func roleFromCategory(category string) agent.Role {
 	}
 }
 
-// notifyJoel sends a notification via openclaw system event.
+// notifyJoel logs a notification message. Placeholder for Elixir PubSub integration (Phase 5).
 func notifyJoel(message string) {
-	cmd := exec.Command("openclaw", "system", "event", "--text", message, "--mode", "now")
-	if out, err := cmd.CombinedOutput(); err != nil {
-		fmt.Printf("  %s notification failed: %v (%s)\n", color.YellowString("Warning:"), err, strings.TrimSpace(string(out)))
-	} else {
-		fmt.Printf("  Notification sent: %s\n", message)
-	}
+	fmt.Printf("  Notification: %s\n", message)
 }
 
 // monitorPRForAgent checks PR status for an active agent's branch.

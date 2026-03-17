@@ -108,10 +108,11 @@ func (m *Manager) Kill(name string, force bool) error {
 
 // buildClaudeCommand assembles the claude CLI invocation.
 func buildClaudeCommand(opts SpawnOptions) string {
-	cmd := "claude --dangerously-skip-permissions"
+	cmd := "claude"
 	if opts.Prompt != "" {
 		cmd += fmt.Sprintf(" -p '%s'", opts.Prompt)
 	}
+	cmd += " --output-format stream-json"
 	return cmd
 }
 

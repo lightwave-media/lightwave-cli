@@ -125,8 +125,7 @@ func extractAudio(sessionID string) error {
 		"-y",
 		output,
 	)
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runQuiet(cmd, sessionID, "ffmpeg-audio.log")
 }
 
 // transcribe runs whisper-cli on the extracted audio.
@@ -155,8 +154,7 @@ func transcribe(sessionID string) error {
 		"--output-srt",
 		"-of", outputBase,
 	)
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runQuiet(cmd, sessionID, "whisper.log")
 }
 
 // extractFrames uses ffmpeg to extract keyframes at regular intervals.
@@ -168,18 +166,29 @@ func extractFrames(sessionID string) error {
 		return err
 	}
 
+	// Get session duration to decide frame interval
+	session, err := LoadSession(sessionID)
+	if err != nil {
+		return err
+	}
+
+	// For short recordings (<60s), extract 1 frame per 5 seconds
+	// For longer recordings, 1 frame per 30 seconds
+	interval := 30
+	if session.DurationSecs < 60 {
+		interval = 5
+	}
+
 	outputPattern := filepath.Join(framesDir, "frame_%04d.jpg")
 
-	// 1 frame every 30 seconds, scaled to 1280px wide
 	cmd := exec.Command("ffmpeg",
 		"-i", input,
-		"-vf", "fps=1/30,scale=1280:-1",
+		"-vf", fmt.Sprintf("fps=1/%d,scale=1280:-1,format=yuvj420p", interval),
 		"-q:v", "3",
 		"-y",
 		outputPattern,
 	)
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runQuiet(cmd, sessionID, "ffmpeg-frames.log")
 }
 
 // loadTranscriptText reads the whisper JSON and formats it as timestamped text.
@@ -204,6 +213,19 @@ func loadTranscriptText(sessionID string) (string, error) {
 	}
 
 	return sb.String(), nil
+}
+
+// runQuiet runs a command with stdout/stderr redirected to a log file in the session dir.
+func runQuiet(cmd *exec.Cmd, sessionID, logName string) error {
+	logPath := filepath.Join(SessionDir(sessionID), logName)
+	logFile, err := os.Create(logPath)
+	if err != nil {
+		return err
+	}
+	defer logFile.Close()
+	cmd.Stdout = logFile
+	cmd.Stderr = logFile
+	return cmd.Run()
 }
 
 // collectFramePaths returns sorted paths to all extracted keyframe images.
