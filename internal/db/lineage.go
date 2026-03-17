@@ -20,6 +20,17 @@ type LineageGap struct {
 	EntityType    string // epic, story
 	EntityID      string
 	EntityShortID string
+	EntityName    string // human-readable name for display
+	TaskCount     int    // for stories: number of tasks that triggered threshold
+}
+
+// DocumentTypeConfig holds SST metadata for a document category
+type DocumentTypeConfig struct {
+	Description    string   `yaml:"description"`
+	Requires       []string `yaml:"requires"`
+	Produces       []string `yaml:"produces"`
+	LinksTo        *string  `yaml:"links_to"`
+	RequiredFields []string `yaml:"required_fields"`
 }
 
 // LineageConfig holds validation rules loaded from SST YAML
@@ -28,10 +39,24 @@ type LineageConfig struct {
 	EpicRecommended []string
 	TaskThreshold   int
 	SprintBlockers  []string
+	// Full document type definitions from document_lineage
+	DocumentTypes map[string]DocumentTypeConfig
+	// Ordered chain: product_vision → market_analysis → prd → sad/nfr → ddd → api_spec
+	ChainOrder []string
+}
+
+// ValidCategories returns the set of valid document categories from SST
+func (lc LineageConfig) ValidCategories() map[string]bool {
+	cats := make(map[string]bool)
+	for k := range lc.DocumentTypes {
+		cats[k] = true
+	}
+	return cats
 }
 
 // sst YAML structs for unmarshaling
 type createOSConfigYAML struct {
+	DocumentLineage   map[string]DocumentTypeConfig `yaml:"document_lineage"`
 	LineageValidation struct {
 		EpicRequires       []string `yaml:"epic_requires"`
 		EpicRecommended    []string `yaml:"epic_recommended"`
@@ -68,6 +93,12 @@ func LoadLineageConfig() LineageConfig {
 		EpicRecommended: lv.EpicRecommended,
 		TaskThreshold:   lv.StoryRequiresDddIf.TaskCountThreshold,
 		SprintBlockers:  lv.SprintBlockers,
+		DocumentTypes:   parsed.DocumentLineage,
+	}
+
+	// Build chain order via topological walk from roots
+	if len(lc.DocumentTypes) > 0 {
+		lc.ChainOrder = buildChainOrder(lc.DocumentTypes)
 	}
 
 	// Ensure sane defaults for anything missing
@@ -102,7 +133,55 @@ func defaultLineageConfig() LineageConfig {
 		EpicRecommended: []string{"sad", "nfr"},
 		TaskThreshold:   5,
 		SprintBlockers:  []string{"prd"},
+		DocumentTypes: map[string]DocumentTypeConfig{
+			"product_vision":  {Description: "Product vision", Produces: []string{"market_analysis", "prd"}},
+			"market_analysis": {Description: "Market analysis", Requires: []string{"product_vision"}, Produces: []string{"prd"}},
+			"prd":             {Description: "Product requirements", Requires: []string{"product_vision"}, Produces: []string{"sad", "nfr"}},
+			"sad":             {Description: "System architecture", Requires: []string{"prd"}, Produces: []string{"ddd"}},
+			"nfr":             {Description: "Non-functional requirements", Requires: []string{"prd"}},
+			"ddd":             {Description: "Detailed design", Requires: []string{"sad"}, Produces: []string{"api_spec"}},
+			"api_spec":        {Description: "API specification", Requires: []string{"ddd"}},
+		},
+		ChainOrder: []string{"product_vision", "market_analysis", "prd", "sad", "nfr", "ddd", "api_spec"},
 	}
+}
+
+// buildChainOrder does a topological sort from roots (no requires) to leaves
+func buildChainOrder(types map[string]DocumentTypeConfig) []string {
+	// Find roots: types with no requires
+	var roots []string
+	for name, dt := range types {
+		if len(dt.Requires) == 0 {
+			roots = append(roots, name)
+		}
+	}
+
+	visited := make(map[string]bool)
+	var order []string
+
+	var visit func(name string)
+	visit = func(name string) {
+		if visited[name] {
+			return
+		}
+		visited[name] = true
+		// Visit requires first
+		if dt, ok := types[name]; ok {
+			for _, req := range dt.Requires {
+				visit(req)
+			}
+		}
+		order = append(order, name)
+	}
+
+	for _, root := range roots {
+		visit(root)
+	}
+	// Catch any not reachable from roots
+	for name := range types {
+		visit(name)
+	}
+	return order
 }
 
 // CheckLineage checks for missing or incomplete upstream documents for an epic
@@ -173,6 +252,9 @@ func checkEpicDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string, 
 		}
 	}
 
+	// Check chain ordering: doc exists but upstream prerequisite is missing
+	gaps = append(gaps, checkChainOrder(lc, existingDocs, "epic", epicID, shortID)...)
+
 	return gaps, nil
 }
 
@@ -200,6 +282,32 @@ func checkDocPresence(docType, severity, entityType, entityID, entityShortID str
 		}
 	}
 	return nil
+}
+
+// checkChainOrder detects docs that exist but whose upstream prerequisites are missing.
+// E.g., SAD exists but PRD doesn't → out_of_order warning.
+func checkChainOrder(lc LineageConfig, existingDocs map[string]string, entityType, entityID, entityShortID string) []LineageGap {
+	var gaps []LineageGap
+	for cat, dt := range lc.DocumentTypes {
+		_, exists := existingDocs[cat]
+		if !exists {
+			continue // doc doesn't exist, nothing to check
+		}
+		for _, req := range dt.Requires {
+			if _, reqExists := existingDocs[req]; !reqExists {
+				gaps = append(gaps, LineageGap{
+					DocumentType:  cat,
+					Status:        "out_of_order",
+					Severity:      "warning",
+					EntityType:    entityType,
+					EntityID:      entityID,
+					EntityShortID: entityShortID,
+					EntityName:    fmt.Sprintf("%s exists but requires %s", strings.ToUpper(cat), strings.ToUpper(req)),
+				})
+			}
+		}
+	}
+	return gaps
 }
 
 func checkStoryDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string, lc LineageConfig) ([]LineageGap, error) {
@@ -254,6 +362,8 @@ func checkStoryDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string,
 				EntityType:    "story",
 				EntityID:      story.id,
 				EntityShortID: shortID,
+				EntityName:    story.name,
+				TaskCount:     story.taskCount,
 			})
 		} else if dddStatus != nil && *dddStatus == "draft" {
 			gaps = append(gaps, LineageGap{
@@ -263,6 +373,8 @@ func checkStoryDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string,
 				EntityType:    "story",
 				EntityID:      story.id,
 				EntityShortID: shortID,
+				EntityName:    story.name,
+				TaskCount:     story.taskCount,
 			})
 		}
 	}
@@ -270,8 +382,22 @@ func checkStoryDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string,
 	return gaps, nil
 }
 
+// SkeletonContent generates placeholder content sections from SST required_fields
+func SkeletonContent(lc LineageConfig, category string) map[string]string {
+	dt, ok := lc.DocumentTypes[category]
+	if !ok || len(dt.RequiredFields) == 0 {
+		return nil
+	}
+	content := make(map[string]string)
+	for _, field := range dt.RequiredFields {
+		content[field] = "TODO"
+	}
+	return content
+}
+
 // FixLineage auto-creates missing documents for an epic, returns what was created
 func FixLineage(ctx context.Context, pool *pgxpool.Pool, epicID string) ([]Document, error) {
+	lc := LoadLineageConfig()
 	gaps, err := CheckLineage(ctx, pool, epicID)
 	if err != nil {
 		return nil, err
@@ -287,6 +413,7 @@ func FixLineage(ctx context.Context, pool *pgxpool.Pool, epicID string) ([]Docum
 		opts := DocumentCreateOptions{
 			Category: gap.DocumentType,
 			Title:    fmt.Sprintf("%s — %s", gap.EntityShortID, strings.ToUpper(gap.DocumentType)),
+			Content:  SkeletonContent(lc, gap.DocumentType),
 		}
 		if gap.EntityType == "epic" {
 			opts.FullEpicID = gap.EntityID // Full UUID — skip GetEpic lookup

@@ -224,6 +224,8 @@ func printLineageReport(epic db.Epic, gaps []db.LineageGap) {
 	for _, gap := range gaps {
 		statusColor := tablewriter.Colors{}
 		switch {
+		case gap.Status == "out_of_order":
+			statusColor = tablewriter.Colors{tablewriter.FgMagentaColor, tablewriter.Bold}
 		case gap.Severity == "required" && gap.Status == "missing":
 			statusColor = tablewriter.Colors{tablewriter.FgRedColor, tablewriter.Bold}
 		case gap.Severity == "required" && gap.Status == "draft":
@@ -234,11 +236,23 @@ func printLineageReport(epic db.Epic, gaps []db.LineageGap) {
 			statusColor = tablewriter.Colors{tablewriter.FgHiBlackColor}
 		}
 
+		entity := gap.EntityType + " " + gap.EntityShortID
+		if gap.EntityName != "" {
+			name := gap.EntityName
+			if len(name) > 30 {
+				name = name[:27] + "..."
+			}
+			entity = fmt.Sprintf("%s %s (%s)", gap.EntityType, gap.EntityShortID, name)
+		}
+		if gap.TaskCount > 0 {
+			entity += fmt.Sprintf(" [%d tasks]", gap.TaskCount)
+		}
+
 		table.Rich([]string{
 			gap.DocumentType,
 			gap.Status,
 			gap.Severity,
-			gap.EntityType + " " + gap.EntityShortID,
+			entity,
 		}, []tablewriter.Colors{
 			{},
 			statusColor,
@@ -251,12 +265,15 @@ func printLineageReport(epic db.Epic, gaps []db.LineageGap) {
 
 	missing := 0
 	draft := 0
+	outOfOrder := 0
 	for _, g := range gaps {
 		switch g.Status {
 		case "missing":
 			missing++
 		case "draft":
 			draft++
+		case "out_of_order":
+			outOfOrder++
 		}
 	}
 	parts := []string{}
@@ -265,6 +282,9 @@ func printLineageReport(epic db.Epic, gaps []db.LineageGap) {
 	}
 	if draft > 0 {
 		parts = append(parts, color.YellowString("%d draft", draft))
+	}
+	if outOfOrder > 0 {
+		parts = append(parts, color.MagentaString("%d out of order", outOfOrder))
 	}
 	fmt.Printf("\n%s\n", strings.Join(parts, ", "))
 }

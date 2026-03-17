@@ -212,6 +212,37 @@ Examples:
 	},
 }
 
+var docDeleteCmd = &cobra.Command{
+	Use:   "delete [doc-id]",
+	Short: "Soft-delete a document",
+	Long: `Mark a document as deleted by short ID prefix. The document is not
+permanently removed — it is flagged with is_deleted=true.
+
+Examples:
+  lw doc delete 322973ad`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		doc, err := db.DeleteDocument(ctx, pool, args[0])
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("%s Deleted %s document %s (%s)\n",
+			color.RedString("✗"),
+			color.CyanString(strings.ToUpper(doc.Category)),
+			color.YellowString(doc.ShortID),
+			doc.Title)
+		return nil
+	},
+}
+
 func init() {
 	docCreateCmd.Flags().String("category", "", "Document category (prd, sad, nfr, ddd, api_spec, product_vision, market_analysis)")
 	docCreateCmd.Flags().String("epic", "", "Epic ID to link document to")
@@ -227,4 +258,5 @@ func init() {
 	docCmd.AddCommand(docCreateCmd)
 	docCmd.AddCommand(docListCmd)
 	docCmd.AddCommand(docUpdateCmd)
+	docCmd.AddCommand(docDeleteCmd)
 }

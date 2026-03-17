@@ -5,15 +5,18 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/fatih/color"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/db"
 	"github.com/lightwave-media/lightwave-cli/internal/github"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 var sprintCmd = &cobra.Command{
@@ -529,6 +532,127 @@ Examples:
 	},
 }
 
+var sprintPlanCmd = &cobra.Command{
+	Use:   "plan [sprint-id]",
+	Short: "Generate a sprint spec YAML from database records",
+	Long: `Read sprint, stories, and tasks from the database and write a spec YAML
+file to .claude/queue/draft/ for use with lw sprint start.
+
+Examples:
+  lw sprint plan a1b2c3d4`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		sprint, err := db.GetSprint(ctx, pool, args[0])
+		if err != nil {
+			return err
+		}
+
+		// Get epic
+		var epicName, epicID string
+		if sprint.EpicID != nil {
+			epic, err := db.GetEpic(ctx, pool, *sprint.EpicID)
+			if err == nil {
+				epicName = epic.Name
+				epicID = epic.ID
+			}
+		}
+
+		// Get stories for this sprint
+		stories, err := db.ListStories(ctx, pool, db.StoryListOptions{SprintID: sprint.ID})
+		if err != nil {
+			return fmt.Errorf("failed to list stories: %w", err)
+		}
+
+		// Get tasks for this sprint
+		tasks, err := db.ListTasks(ctx, pool, db.TaskListOptions{SprintID: sprint.ID, Limit: 100})
+		if err != nil {
+			return fmt.Errorf("failed to list tasks: %w", err)
+		}
+
+		// Build spec structure
+		spec := SprintSpec{}
+		spec.Sprint.ID = sprint.ID
+		spec.Sprint.Name = sprint.Name
+		spec.Sprint.Status = sprint.Status
+		spec.Epic.ID = epicID
+		spec.Epic.Name = epicName
+
+		if sprint.Objectives != nil {
+			spec.Objective = *sprint.Objectives
+		}
+
+		for _, s := range stories {
+			spec.Stories = append(spec.Stories, struct {
+				ID   string `yaml:"id"`
+				Name string `yaml:"name"`
+			}{ID: s.ID, Name: s.Name})
+		}
+
+		for _, t := range tasks {
+			spec.Tasks = append(spec.Tasks, struct {
+				ID       string   `yaml:"id"`
+				Name     string   `yaml:"name"`
+				Type     string   `yaml:"type"`
+				Priority string   `yaml:"priority"`
+				Status   string   `yaml:"status"`
+				Story    string   `yaml:"story"`
+				Files    []string `yaml:"files"`
+				AC       string   `yaml:"ac"`
+			}{
+				ID:       t.ID,
+				Name:     t.Title,
+				Type:     t.TaskType,
+				Priority: t.Priority,
+				Status:   t.Status,
+			})
+		}
+
+		// Marshal to YAML
+		data, err := yaml.Marshal(&spec)
+		if err != nil {
+			return fmt.Errorf("failed to marshal spec: %w", err)
+		}
+
+		// Write to .claude/queue/draft/
+		cfg := config.Get()
+		draftDir := filepath.Join(cfg.Paths.LightwaveRoot, ".claude", "queue", "draft")
+		if err := os.MkdirAll(draftDir, 0o755); err != nil {
+			return fmt.Errorf("failed to create draft directory: %w", err)
+		}
+
+		// Sanitize sprint name for filename
+		safeName := strings.ReplaceAll(strings.ToLower(sprint.Name), " ", "-")
+		safeName = strings.Map(func(r rune) rune {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+				return r
+			}
+			return -1
+		}, safeName)
+		filename := fmt.Sprintf("sprint-%s-%s.yaml", sprint.ShortID, safeName)
+		outPath := filepath.Join(draftDir, filename)
+
+		if err := os.WriteFile(outPath, data, 0o644); err != nil {
+			return fmt.Errorf("failed to write spec: %w", err)
+		}
+
+		fmt.Printf("%s Sprint spec written to %s\n",
+			color.GreenString("✓"),
+			color.CyanString(outPath))
+		fmt.Printf("  Sprint: %s (%s)\n", sprint.Name, sprint.ShortID)
+		fmt.Printf("  Stories: %d  Tasks: %d\n", len(stories), len(tasks))
+		fmt.Printf("\nNext: edit the spec, then run %s\n",
+			color.CyanString("lw sprint start %s", sprint.ShortID))
+		return nil
+	},
+}
+
 func init() {
 	// sprint list flags
 	sprintListCmd.Flags().StringVarP(&sprintListStatus, "status", "s", "", "Filter by status (active, completed, planned)")
@@ -563,6 +687,7 @@ func init() {
 	sprintCmd.AddCommand(sprintStartCmd)
 	sprintCmd.AddCommand(sprintStatusCmd)
 	sprintCmd.AddCommand(sprintCompleteCmd)
+	sprintCmd.AddCommand(sprintPlanCmd)
 }
 
 func syncSprintToGitHub(ctx context.Context, pool interface{}, sprint *db.Sprint) error {

@@ -28,9 +28,10 @@ type Document struct {
 type DocumentCreateOptions struct {
 	Category    string
 	Title       string
-	EpicID      string // optional — resolved via GetEpic (supports short ID prefix)
-	UserStoryID string // optional — used directly as full UUID
-	FullEpicID  string // optional — bypass GetEpic lookup when full UUID is known
+	EpicID      string            // optional — resolved via GetEpic (supports short ID prefix)
+	UserStoryID string            // optional — used directly as full UUID
+	FullEpicID  string            // optional — bypass GetEpic lookup when full UUID is known
+	Content     map[string]string // optional — initial content sections (key → placeholder text)
 }
 
 // GetDefaultSiteID returns the first site ID in the current tenant schema.
@@ -55,8 +56,26 @@ func GetDefaultSiteID(ctx context.Context, pool *pgxpool.Pool) (string, error) {
 	return newID, nil
 }
 
+// ValidateCategory checks if a category is valid per SST document_lineage definitions
+func ValidateCategory(category string) error {
+	lc := LoadLineageConfig()
+	valid := lc.ValidCategories()
+	if len(valid) > 0 && !valid[category] {
+		var cats []string
+		for k := range valid {
+			cats = append(cats, k)
+		}
+		return fmt.Errorf("invalid category %q — valid categories: %s", category, strings.Join(cats, ", "))
+	}
+	return nil
+}
+
 // CreateDocument inserts a new document into createos_document
 func CreateDocument(ctx context.Context, pool *pgxpool.Pool, opts DocumentCreateOptions) (*Document, error) {
+	if err := ValidateCategory(opts.Category); err != nil {
+		return nil, err
+	}
+
 	siteID, err := GetDefaultSiteID(ctx, pool)
 	if err != nil {
 		return nil, err
@@ -67,11 +86,18 @@ func CreateDocument(ctx context.Context, pool *pgxpool.Pool, opts DocumentCreate
 
 	metadata, _ := json.Marshal(map[string]string{"title": opts.Title})
 
+	// Build content JSON — empty if no sections provided
+	contentJSON := "{}"
+	if len(opts.Content) > 0 {
+		contentBytes, _ := json.Marshal(opts.Content)
+		contentJSON = string(contentBytes)
+	}
+
 	query := `
 		INSERT INTO createos_document
 			(id, site_id, category, status, version_number, content_hash, content, metadata,
 			 epic_id, user_story_id, is_deleted, created_at, updated_at)
-		VALUES ($1, $2, $3, 'draft', 1, '', '{}'::jsonb, $4::jsonb,
+		VALUES ($1, $2, $3, 'draft', 1, '', $8::jsonb, $4::jsonb,
 			$5, $6, false, $7, $7)
 		RETURNING id::text, category, status
 	`
@@ -96,7 +122,7 @@ func CreateDocument(ctx context.Context, pool *pgxpool.Pool, opts DocumentCreate
 	err = pool.QueryRow(ctx, query,
 		id, siteID, opts.Category, string(metadata),
 		epicID, storyID,
-		now,
+		now, contentJSON,
 	).Scan(&doc.ID, &doc.Category, &doc.Status)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create document: %w", err)
@@ -259,4 +285,21 @@ func ListDocuments(ctx context.Context, pool *pgxpool.Pool, category, epicID str
 		docs = append(docs, d)
 	}
 	return docs, nil
+}
+
+// DeleteDocument soft-deletes a document by short ID prefix
+func DeleteDocument(ctx context.Context, pool *pgxpool.Pool, shortID string) (*Document, error) {
+	doc, err := GetDocument(ctx, pool, shortID)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = pool.Exec(ctx,
+		"UPDATE createos_document SET is_deleted = true, updated_at = $1 WHERE id = $2",
+		time.Now(), doc.ID,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete document: %w", err)
+	}
+	return doc, nil
 }
