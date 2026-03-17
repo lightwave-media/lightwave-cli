@@ -67,7 +67,7 @@ func SessionDir(id string) string {
 
 // RecordingPath returns the path to the MKV recording.
 func RecordingPath(id string) string {
-	return filepath.Join(SessionDir(id), "recording.mkv")
+	return filepath.Join(SessionDir(id), "recording.mp4")
 }
 
 // PIDPath returns the path to the ffmpeg PID file.
