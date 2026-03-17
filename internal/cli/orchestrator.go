@@ -246,8 +246,17 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 	}
 	fmt.Println(color.GreenString("  Architect approved"))
 
-	// Step 6: Spawn Claude Code session
-	fmt.Println(color.CyanString("Step 5: Spawning Claude Code session"))
+	// Step 6: Pre-flight quality gate
+	fmt.Println(color.CyanString("Step 5: Running pre-flight quality gate"))
+	if err := runQualityGate(ctx); err != nil {
+		fmt.Printf("  %s Quality gate failed: %v\n", color.YellowString("Warning:"), err)
+		fmt.Println("  Proceeding despite quality gate failure (non-blocking)")
+	} else {
+		fmt.Println(color.GreenString("  Quality gate passed"))
+	}
+
+	// Step 7: Spawn Claude Code session
+	fmt.Println(color.CyanString("Step 6: Spawning Claude Code session"))
 	if dryRun {
 		fmt.Printf("  [DRY RUN] Would spawn agent for task %s\n", task.ShortID)
 		result.Action = "spawned"
@@ -283,11 +292,33 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 	}
 	fmt.Printf("  Marked task %s as in_progress (agent: %s)\n", color.YellowString(task.ShortID), agentName)
 
-	// Step 7: Notify Joel
-	fmt.Println(color.CyanString("Step 6: Notifying Joel"))
+	// Step 8: Notify Joel
+	fmt.Println(color.CyanString("Step 7: Notifying Joel"))
 	notifyJoel(fmt.Sprintf("Task %s started: %s (agent: %s)", task.ShortID, task.Title, agentName))
 
 	fmt.Println(color.GreenString("Iteration complete"))
+	return nil
+}
+
+// runQualityGate runs lw check to verify codebase health before spawning a session.
+func runQualityGate(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Minute)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, "lw", "check")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("lw check failed: %w (stderr: %s)", err, stderr.String())
+	}
+
+	output := stdout.String()
+	if strings.Contains(output, "Failed") {
+		return fmt.Errorf("quality checks have failures:\n%s", output)
+	}
+
 	return nil
 }
 
