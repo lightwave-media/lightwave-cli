@@ -3,39 +3,120 @@ package db
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"gopkg.in/yaml.v3"
 )
 
-// LineageGap represents a missing upstream document in the lineage chain
+// LineageGap represents a missing or incomplete upstream document
 type LineageGap struct {
 	DocumentType  string // prd, sad, nfr, ddd, api_spec
 	Status        string // missing, draft, stale
 	Severity      string // required, recommended
-	EntityType    string // epic, user_story
+	EntityType    string // epic, story
 	EntityID      string
 	EntityShortID string
 }
 
-// Required document types for an epic (from SST document_lineage.epic_requires)
-var epicRequiredDocs = []string{"prd"}
+// LineageConfig holds validation rules loaded from SST YAML
+type LineageConfig struct {
+	EpicRequires    []string
+	EpicRecommended []string
+	TaskThreshold   int
+	SprintBlockers  []string
+}
 
-// Recommended document types for an epic (from SST document_lineage.epic_recommended)
-var epicRecommendedDocs = []string{"sad", "nfr"}
+// sst YAML structs for unmarshaling
+type createOSConfigYAML struct {
+	LineageValidation struct {
+		EpicRequires       []string `yaml:"epic_requires"`
+		EpicRecommended    []string `yaml:"epic_recommended"`
+		StoryRequiresDddIf struct {
+			TaskCountThreshold int `yaml:"task_count_threshold"`
+		} `yaml:"story_requires_ddd_if"`
+		SprintBlockers []string `yaml:"sprint_blockers"`
+	} `yaml:"lineage_validation"`
+}
 
-// CheckLineage checks for missing upstream documents for an epic
+// LoadLineageConfig reads lineage validation rules from SST YAML.
+// Falls back to hardcoded defaults if the file can't be read.
+func LoadLineageConfig() LineageConfig {
+	cfg := config.Get()
+	configPath := filepath.Join(
+		cfg.Paths.LightwaveRoot,
+		"packages", "lightwave-core", "lightwave", "schema",
+		"definitions", "products", "createos", "config.yaml",
+	)
+
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return defaultLineageConfig()
+	}
+
+	var parsed createOSConfigYAML
+	if err := yaml.Unmarshal(data, &parsed); err != nil {
+		return defaultLineageConfig()
+	}
+
+	lv := parsed.LineageValidation
+	lc := LineageConfig{
+		EpicRequires:    lv.EpicRequires,
+		EpicRecommended: lv.EpicRecommended,
+		TaskThreshold:   lv.StoryRequiresDddIf.TaskCountThreshold,
+		SprintBlockers:  lv.SprintBlockers,
+	}
+
+	// Ensure sane defaults for anything missing
+	if len(lc.EpicRequires) == 0 {
+		lc.EpicRequires = []string{"prd"}
+	}
+	if lc.TaskThreshold == 0 {
+		lc.TaskThreshold = 5
+	}
+
+	// Recommended = full list minus required (deduplicated)
+	if len(lc.EpicRecommended) > 0 {
+		reqSet := make(map[string]bool)
+		for _, r := range lc.EpicRequires {
+			reqSet[r] = true
+		}
+		var recOnly []string
+		for _, r := range lc.EpicRecommended {
+			if !reqSet[r] {
+				recOnly = append(recOnly, r)
+			}
+		}
+		lc.EpicRecommended = recOnly
+	}
+
+	return lc
+}
+
+func defaultLineageConfig() LineageConfig {
+	return LineageConfig{
+		EpicRequires:    []string{"prd"},
+		EpicRecommended: []string{"sad", "nfr"},
+		TaskThreshold:   5,
+		SprintBlockers:  []string{"prd"},
+	}
+}
+
+// CheckLineage checks for missing or incomplete upstream documents for an epic
 func CheckLineage(ctx context.Context, pool *pgxpool.Pool, epicID string) ([]LineageGap, error) {
+	lc := LoadLineageConfig()
 	var gaps []LineageGap
 
-	// Check epic-level documents (PRD, SAD, NFR)
-	epicGaps, err := checkEpicDocuments(ctx, pool, epicID)
+	epicGaps, err := checkEpicDocuments(ctx, pool, epicID, lc)
 	if err != nil {
 		return nil, err
 	}
 	gaps = append(gaps, epicGaps...)
 
-	// Check story-level documents (DDD for complex stories)
-	storyGaps, err := checkStoryDocuments(ctx, pool, epicID)
+	storyGaps, err := checkStoryDocuments(ctx, pool, epicID, lc)
 	if err != nil {
 		return nil, err
 	}
@@ -44,16 +125,21 @@ func CheckLineage(ctx context.Context, pool *pgxpool.Pool, epicID string) ([]Lin
 	return gaps, nil
 }
 
-func checkEpicDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string) ([]LineageGap, error) {
+// docRow holds category + status from a document query
+type docRow struct {
+	category string
+	status   string
+}
+
+func checkEpicDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string, lc LineageConfig) ([]LineageGap, error) {
 	var gaps []LineageGap
 	shortID := epicID
 	if len(shortID) > 8 {
 		shortID = shortID[:8]
 	}
 
-	// Query existing documents linked to this epic
 	query := `
-		SELECT category FROM createos_document
+		SELECT category, status FROM createos_document
 		WHERE epic_id = $1 AND is_deleted = false
 	`
 	rows, err := pool.Query(ctx, query, epicID)
@@ -62,57 +148,71 @@ func checkEpicDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string) 
 	}
 	defer rows.Close()
 
-	existingDocs := make(map[string]bool)
+	existingDocs := make(map[string]string) // category → status
 	for rows.Next() {
-		var category string
-		if err := rows.Scan(&category); err != nil {
+		var d docRow
+		if err := rows.Scan(&d.category, &d.status); err != nil {
 			return nil, fmt.Errorf("failed to scan document: %w", err)
 		}
-		existingDocs[category] = true
+		existingDocs[d.category] = d.status
 	}
 
 	// Check required docs
-	for _, docType := range epicRequiredDocs {
-		if !existingDocs[docType] {
-			gaps = append(gaps, LineageGap{
-				DocumentType:  docType,
-				Status:        "missing",
-				Severity:      "required",
-				EntityType:    "epic",
-				EntityID:      epicID,
-				EntityShortID: shortID,
-			})
+	for _, docType := range lc.EpicRequires {
+		gap := checkDocPresence(docType, "required", "epic", epicID, shortID, existingDocs)
+		if gap != nil {
+			gaps = append(gaps, *gap)
 		}
 	}
 
 	// Check recommended docs
-	for _, docType := range epicRecommendedDocs {
-		if !existingDocs[docType] {
-			gaps = append(gaps, LineageGap{
-				DocumentType:  docType,
-				Status:        "missing",
-				Severity:      "recommended",
-				EntityType:    "epic",
-				EntityID:      epicID,
-				EntityShortID: shortID,
-			})
+	for _, docType := range lc.EpicRecommended {
+		gap := checkDocPresence(docType, "recommended", "epic", epicID, shortID, existingDocs)
+		if gap != nil {
+			gaps = append(gaps, *gap)
 		}
 	}
 
 	return gaps, nil
 }
 
-func checkStoryDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string) ([]LineageGap, error) {
+// checkDocPresence returns a LineageGap if the document is missing or still in draft
+func checkDocPresence(docType, severity, entityType, entityID, entityShortID string, existingDocs map[string]string) *LineageGap {
+	status, exists := existingDocs[docType]
+	if !exists {
+		return &LineageGap{
+			DocumentType:  docType,
+			Status:        "missing",
+			Severity:      severity,
+			EntityType:    entityType,
+			EntityID:      entityID,
+			EntityShortID: entityShortID,
+		}
+	}
+	if status == "draft" {
+		return &LineageGap{
+			DocumentType:  docType,
+			Status:        "draft",
+			Severity:      severity,
+			EntityType:    entityType,
+			EntityID:      entityID,
+			EntityShortID: entityShortID,
+		}
+	}
+	return nil
+}
+
+func checkStoryDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string, lc LineageConfig) ([]LineageGap, error) {
 	var gaps []LineageGap
 
-	// Find stories with 5+ tasks (complexity threshold for DDD requirement)
-	query := `
+	query := fmt.Sprintf(`
 		SELECT s.id, s.name,
 			(SELECT COUNT(*) FROM createos_task t WHERE t.user_story_id = s.id) AS task_count
 		FROM createos_userstory s
 		WHERE s.epic_id = $1
-		AND (SELECT COUNT(*) FROM createos_task t WHERE t.user_story_id = s.id) >= 5
-	`
+		AND (SELECT COUNT(*) FROM createos_task t WHERE t.user_story_id = s.id) >= %d
+	`, lc.TaskThreshold)
+
 	rows, err := pool.Query(ctx, query, epicID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query stories: %w", err)
@@ -133,26 +233,32 @@ func checkStoryDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string)
 		complexStories = append(complexStories, s)
 	}
 
-	// For each complex story, check for DDD document
 	for _, story := range complexStories {
 		shortID := story.id
 		if len(shortID) > 8 {
 			shortID = shortID[:8]
 		}
 
-		var count int
+		var dddStatus *string
 		err := pool.QueryRow(ctx,
-			"SELECT COUNT(*) FROM createos_document WHERE user_story_id = $1 AND category = 'ddd' AND is_deleted = false",
+			"SELECT status FROM createos_document WHERE user_story_id = $1 AND category = 'ddd' AND is_deleted = false LIMIT 1",
 			story.id,
-		).Scan(&count)
-		if err != nil {
-			return nil, fmt.Errorf("failed to check DDD for story %s: %w", shortID, err)
-		}
+		).Scan(&dddStatus)
 
-		if count == 0 {
+		if err != nil {
+			// No row = missing
 			gaps = append(gaps, LineageGap{
 				DocumentType:  "ddd",
 				Status:        "missing",
+				Severity:      "recommended",
+				EntityType:    "story",
+				EntityID:      story.id,
+				EntityShortID: shortID,
+			})
+		} else if dddStatus != nil && *dddStatus == "draft" {
+			gaps = append(gaps, LineageGap{
+				DocumentType:  "ddd",
+				Status:        "draft",
 				Severity:      "recommended",
 				EntityType:    "story",
 				EntityID:      story.id,
@@ -162,4 +268,39 @@ func checkStoryDocuments(ctx context.Context, pool *pgxpool.Pool, epicID string)
 	}
 
 	return gaps, nil
+}
+
+// FixLineage auto-creates missing documents for an epic, returns what was created
+func FixLineage(ctx context.Context, pool *pgxpool.Pool, epicID string) ([]Document, error) {
+	gaps, err := CheckLineage(ctx, pool, epicID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Only fix "missing" gaps, not "draft" ones
+	var created []Document
+	for _, gap := range gaps {
+		if gap.Status != "missing" {
+			continue
+		}
+
+		opts := DocumentCreateOptions{
+			Category: gap.DocumentType,
+			Title:    fmt.Sprintf("%s — %s", gap.EntityShortID, strings.ToUpper(gap.DocumentType)),
+		}
+		if gap.EntityType == "epic" {
+			opts.EpicID = gap.EntityID
+		} else if gap.EntityType == "story" {
+			opts.UserStoryID = gap.EntityID
+		}
+
+		doc, err := CreateDocument(ctx, pool, opts)
+		if err != nil {
+			return created, fmt.Errorf("failed to create %s for %s %s: %w",
+				gap.DocumentType, gap.EntityType, gap.EntityShortID, err)
+		}
+		created = append(created, *doc)
+	}
+
+	return created, nil
 }
