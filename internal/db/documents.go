@@ -28,8 +28,9 @@ type Document struct {
 type DocumentCreateOptions struct {
 	Category    string
 	Title       string
-	EpicID      string // optional
-	UserStoryID string // optional
+	EpicID      string // optional — resolved via GetEpic (supports short ID prefix)
+	UserStoryID string // optional — used directly as full UUID
+	FullEpicID  string // optional — bypass GetEpic lookup when full UUID is known
 }
 
 // GetDefaultSiteID returns the first site ID in the current tenant schema.
@@ -76,7 +77,10 @@ func CreateDocument(ctx context.Context, pool *pgxpool.Pool, opts DocumentCreate
 	`
 
 	var epicID, storyID *string
-	if opts.EpicID != "" {
+	if opts.FullEpicID != "" {
+		// Direct UUID — skip GetEpic lookup
+		epicID = &opts.FullEpicID
+	} else if opts.EpicID != "" {
 		// Resolve full epic ID from short prefix
 		epic, err := GetEpic(ctx, pool, opts.EpicID)
 		if err != nil {

@@ -725,8 +725,8 @@ func spawnClaudeSession(prompt string) error {
 		return nil
 	}
 
-	// Pipe prompt via stdin to avoid CLI argument length limits
-	cmd := exec.Command(claudePath, "-p", "-")
+	// Pipe prompt via stdin — claude -p reads stdin when piped
+	cmd := exec.Command(claudePath, "-p")
 	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr

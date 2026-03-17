@@ -289,7 +289,7 @@ func FixLineage(ctx context.Context, pool *pgxpool.Pool, epicID string) ([]Docum
 			Title:    fmt.Sprintf("%s — %s", gap.EntityShortID, strings.ToUpper(gap.DocumentType)),
 		}
 		if gap.EntityType == "epic" {
-			opts.EpicID = gap.EntityID
+			opts.FullEpicID = gap.EntityID // Full UUID — skip GetEpic lookup
 		} else if gap.EntityType == "story" {
 			opts.UserStoryID = gap.EntityID
 		}

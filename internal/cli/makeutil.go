@@ -17,7 +17,7 @@ var makeScopes = map[string]string{
 	"root":     ".",
 	"platform": "lightwave-platform/src",
 	"cli":      "packages/lightwave-cli",
-	"gastown":  "gastown",
+	"augusta":  "packages/lightwave-sys",
 	"infra":    "Infrastructure/live",
 	"catalog":  "Infrastructure/catalog",
 }
