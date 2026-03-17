@@ -1,15 +1,21 @@
 package ux
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+)
 
-	"github.com/anthropics/anthropic-sdk-go"
+const (
+	defaultProxyURL = "http://localhost:3456"
+	proxyEnvVar     = "CLAUDE_CLI_BASE_URL"
 )
 
 const analysisSystemPrompt = `You are analyzing a UX feedback recording for LightWave Media.
@@ -38,24 +44,70 @@ type AnalysisResult struct {
 	RawText string
 }
 
-// AnalyzeWithClaude sends transcript + keyframes to Claude for UX analysis.
+// proxyBaseURL returns the Claude Code HTTP proxy URL.
+func proxyBaseURL() string {
+	if url := os.Getenv(proxyEnvVar); url != "" {
+		return url
+	}
+	return defaultProxyURL
+}
+
+// OpenAI-compatible request/response types for the Claude Code proxy.
+
+type chatRequest struct {
+	Model     string        `json:"model"`
+	Messages  []chatMessage `json:"messages"`
+	MaxTokens int           `json:"max_tokens"`
+}
+
+type chatMessage struct {
+	Role    string      `json:"role"`
+	Content interface{} `json:"content"` // string or []contentPart
+}
+
+type contentPart struct {
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *imageURL `json:"image_url,omitempty"`
+}
+
+type imageURL struct {
+	URL string `json:"url"`
+}
+
+type chatResponse struct {
+	Choices []chatChoice `json:"choices"`
+	Error   *chatError   `json:"error,omitempty"`
+}
+
+type chatChoice struct {
+	Message chatMessage `json:"message"`
+}
+
+type chatError struct {
+	Message string `json:"message"`
+	Type    string `json:"type"`
+}
+
+// AnalyzeWithClaude sends transcript + keyframes to Claude via the local proxy.
 func AnalyzeWithClaude(ctx context.Context, sessionID string, transcript string, framePaths []string) (*AnalysisResult, error) {
-	client := anthropic.NewClient()
+	// Build multimodal content parts
+	var parts []contentPart
 
-	// Build content blocks: transcript text + interleaved keyframe images
-	var blocks []anthropic.ContentBlockParamUnion
+	// Transcript as text
+	parts = append(parts, contentPart{
+		Type: "text",
+		Text: fmt.Sprintf(
+			"## Transcript\n\n%s\n\n## Screen Captures\n\nThe following images are keyframes extracted from the recording at regular intervals. Analyze them alongside the transcript above.",
+			transcript,
+		),
+	})
 
-	// Add transcript as the first text block
-	blocks = append(blocks, anthropic.NewTextBlock(fmt.Sprintf(
-		"## Transcript\n\n%s\n\n## Screen Captures\n\nThe following images are keyframes extracted from the recording at regular intervals. Analyze them alongside the transcript above.",
-		transcript,
-	)))
-
-	// Add each keyframe as a base64 image block
+	// Each keyframe as a base64 data URI image
 	for _, framePath := range framePaths {
 		data, err := os.ReadFile(framePath)
 		if err != nil {
-			continue // skip unreadable frames
+			continue
 		}
 
 		ext := strings.ToLower(filepath.Ext(framePath))
@@ -65,34 +117,71 @@ func AnalyzeWithClaude(ctx context.Context, sessionID string, transcript string,
 		}
 
 		encoded := base64.StdEncoding.EncodeToString(data)
-		blocks = append(blocks, anthropic.NewImageBlockBase64(mediaType, encoded))
+		parts = append(parts, contentPart{
+			Type: "image_url",
+			ImageURL: &imageURL{
+				URL: fmt.Sprintf("data:%s;base64,%s", mediaType, encoded),
+			},
+		})
 	}
 
-	message, err := client.Messages.New(ctx, anthropic.MessageNewParams{
-		Model:     "claude-sonnet-4-6",
+	reqBody := chatRequest{
+		Model:     "claude-sonnet-4",
 		MaxTokens: 8192,
-		System: []anthropic.TextBlockParam{
-			{Text: analysisSystemPrompt},
+		Messages: []chatMessage{
+			{Role: "system", Content: analysisSystemPrompt},
+			{Role: "user", Content: parts},
 		},
-		Messages: []anthropic.MessageParam{
-			anthropic.NewUserMessage(blocks...),
-		},
-	})
+	}
+
+	jsonBody, err := json.Marshal(reqBody)
 	if err != nil {
-		return nil, fmt.Errorf("claude api: %w", err)
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	url := proxyBaseURL() + "/v1/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewReader(jsonBody))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("proxy request to %s: %w", proxyBaseURL(), err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("proxy returned %d: %s", resp.StatusCode, string(body))
+	}
+
+	var chatResp chatResponse
+	if err := json.Unmarshal(body, &chatResp); err != nil {
+		return nil, fmt.Errorf("parse response: %w", err)
+	}
+
+	if chatResp.Error != nil {
+		return nil, fmt.Errorf("claude error: %s", chatResp.Error.Message)
+	}
+
+	if len(chatResp.Choices) == 0 {
+		return nil, fmt.Errorf("empty response from claude")
 	}
 
 	// Extract response text
-	var responseText string
-	for _, block := range message.Content {
-		if block.Type == "text" {
-			responseText += block.Text
-		}
+	responseText, ok := chatResp.Choices[0].Message.Content.(string)
+	if !ok {
+		return nil, fmt.Errorf("unexpected response content type")
 	}
 
 	// Parse improvement items from JSON response
 	var items []ImprovementItem
-	// Strip any markdown code fences if present
 	cleaned := strings.TrimSpace(responseText)
 	cleaned = strings.TrimPrefix(cleaned, "```json")
 	cleaned = strings.TrimPrefix(cleaned, "```")
@@ -100,13 +189,11 @@ func AnalyzeWithClaude(ctx context.Context, sessionID string, transcript string,
 	cleaned = strings.TrimSpace(cleaned)
 
 	if err := json.Unmarshal([]byte(cleaned), &items); err != nil {
-		// If parsing fails, still return the raw text
 		return &AnalysisResult{
 			RawText: responseText,
 		}, fmt.Errorf("parse items (raw text saved): %w", err)
 	}
 
-	// Assign sequential IDs
 	for i := range items {
 		items[i].ID = i + 1
 	}
