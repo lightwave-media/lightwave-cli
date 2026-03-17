@@ -63,6 +63,7 @@ func init() {
 	rootCmd.AddCommand(codegenCmd)
 	rootCmd.AddCommand(driftCmd)
 	rootCmd.AddCommand(lineageCmd)
+	rootCmd.AddCommand(docCmd)
 }
 
 // versionCmd shows version info
