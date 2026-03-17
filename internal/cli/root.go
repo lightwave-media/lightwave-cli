@@ -60,6 +60,9 @@ func init() {
 	rootCmd.AddCommand(cdnCmd)
 	rootCmd.AddCommand(setupCmd)
 	rootCmd.AddCommand(emailCmd)
+	rootCmd.AddCommand(codegenCmd)
+	rootCmd.AddCommand(driftCmd)
+	rootCmd.AddCommand(lineageCmd)
 }
 
 // versionCmd shows version info
