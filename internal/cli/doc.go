@@ -166,6 +166,52 @@ Examples:
 	},
 }
 
+var docUpdateCmd = &cobra.Command{
+	Use:   "update [doc-id]",
+	Short: "Update a document's status or title",
+	Long: `Update a document by short ID prefix.
+
+Valid statuses: draft, in_review, approved, published, archived, superseded
+
+Examples:
+  lw doc update 322973ad --status published
+  lw doc update 322973ad --title "Updated PRD Title"
+  lw doc update 322973ad --status published --title "Final PRD"`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		status, _ := cmd.Flags().GetString("status")
+		title, _ := cmd.Flags().GetString("title")
+
+		opts := db.DocumentUpdateOptions{}
+		if cmd.Flags().Changed("status") {
+			opts.Status = &status
+		}
+		if cmd.Flags().Changed("title") {
+			opts.Title = &title
+		}
+
+		ctx := context.Background()
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		doc, err := db.UpdateDocument(ctx, pool, args[0], opts)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("%s Updated %s document %s\n",
+			color.GreenString("✓"),
+			color.CyanString(strings.ToUpper(doc.Category)),
+			color.YellowString(doc.ShortID))
+		fmt.Printf("  Status: %s\n", doc.Status)
+		fmt.Printf("  Title:  %s\n", doc.Title)
+		return nil
+	},
+}
+
 func init() {
 	docCreateCmd.Flags().String("category", "", "Document category (prd, sad, nfr, ddd, api_spec, product_vision, market_analysis)")
 	docCreateCmd.Flags().String("epic", "", "Epic ID to link document to")
@@ -175,6 +221,10 @@ func init() {
 	docListCmd.Flags().String("category", "", "Filter by category")
 	docListCmd.Flags().String("epic", "", "Filter by epic ID")
 
+	docUpdateCmd.Flags().String("status", "", "New status (draft, in_review, approved, published, archived, superseded)")
+	docUpdateCmd.Flags().String("title", "", "New title")
+
 	docCmd.AddCommand(docCreateCmd)
 	docCmd.AddCommand(docListCmd)
+	docCmd.AddCommand(docUpdateCmd)
 }

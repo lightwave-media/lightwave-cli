@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -94,6 +95,103 @@ func CreateDocument(ctx context.Context, pool *pgxpool.Pool, opts DocumentCreate
 		doc.ShortID = doc.ID[:8]
 	}
 	return &doc, nil
+}
+
+// GetDocument finds a document by short ID prefix
+func GetDocument(ctx context.Context, pool *pgxpool.Pool, shortID string) (*Document, error) {
+	query := `
+		SELECT d.id::text, d.category, d.status, d.metadata->>'title',
+			d.epic_id::text, d.user_story_id::text, d.created_at
+		FROM createos_document d
+		WHERE d.id::text LIKE $1 || '%' AND d.is_deleted = false
+		LIMIT 2
+	`
+	rows, err := pool.Query(ctx, query, shortID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query document: %w", err)
+	}
+	defer rows.Close()
+
+	var docs []Document
+	for rows.Next() {
+		var d Document
+		var title, eid, sid *string
+		if err := rows.Scan(&d.ID, &d.Category, &d.Status, &title, &eid, &sid, &d.CreatedAt); err != nil {
+			return nil, fmt.Errorf("failed to scan document: %w", err)
+		}
+		if title != nil {
+			d.Title = *title
+		}
+		d.EpicID = eid
+		d.UserStoryID = sid
+		if len(d.ID) >= 8 {
+			d.ShortID = d.ID[:8]
+		}
+		docs = append(docs, d)
+	}
+
+	if len(docs) == 0 {
+		return nil, fmt.Errorf("no document found matching '%s'", shortID)
+	}
+	if len(docs) > 1 {
+		return nil, fmt.Errorf("ambiguous ID '%s' matches %d documents — use more characters", shortID, len(docs))
+	}
+	return &docs[0], nil
+}
+
+// DocumentUpdateOptions holds fields for updating a document
+type DocumentUpdateOptions struct {
+	Status *string
+	Title  *string
+}
+
+// UpdateDocument updates specified fields of a document
+func UpdateDocument(ctx context.Context, pool *pgxpool.Pool, shortID string, opts DocumentUpdateOptions) (*Document, error) {
+	doc, err := GetDocument(ctx, pool, shortID)
+	if err != nil {
+		return nil, err
+	}
+
+	setClauses := []string{}
+	args := []interface{}{}
+	argNum := 1
+
+	if opts.Status != nil {
+		setClauses = append(setClauses, fmt.Sprintf("status = $%d", argNum))
+		args = append(args, *opts.Status)
+		argNum++
+	}
+	if opts.Title != nil {
+		setClauses = append(setClauses, fmt.Sprintf("metadata = jsonb_set(metadata, '{title}', to_jsonb($%d::text))", argNum))
+		args = append(args, *opts.Title)
+		argNum++
+	}
+
+	if len(setClauses) == 0 {
+		return nil, fmt.Errorf("no fields to update")
+	}
+
+	setClauses = append(setClauses, fmt.Sprintf("updated_at = $%d", argNum))
+	args = append(args, time.Now())
+	argNum++
+
+	args = append(args, doc.ID)
+	query := fmt.Sprintf("UPDATE createos_document SET %s WHERE id = $%d",
+		strings.Join(setClauses, ", "), argNum)
+
+	_, err = pool.Exec(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update document: %w", err)
+	}
+
+	// Apply updates to returned doc
+	if opts.Status != nil {
+		doc.Status = *opts.Status
+	}
+	if opts.Title != nil {
+		doc.Title = *opts.Title
+	}
+	return doc, nil
 }
 
 // ListDocuments lists documents, optionally filtered by category and/or epic

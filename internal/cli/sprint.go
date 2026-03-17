@@ -4,9 +4,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lightwave-media/lightwave-cli/internal/db"
 	"github.com/lightwave-media/lightwave-cli/internal/github"
 	"github.com/olekukonko/tablewriter"
@@ -179,16 +182,27 @@ Examples:
 
 var sprintStartCmd = &cobra.Command{
 	Use:   "start [sprint-id]",
-	Short: "Mark a sprint as active with today's start date",
-	Long: `Mark a sprint as active and set its start date to today.
+	Short: "Start a sprint: check lineage, generate spec, spawn Claude Code",
+	Long: `Start a sprint with full automation:
+1. Load sprint spec from .claude/queue/{draft,pending}/
+2. Check lineage gate — refuse if required docs (from SST sprint_blockers) are missing
+3. Mark sprint as active with today's start date
+4. Generate spec prompt from YAML
+5. Spawn claude -p with the spec (or print prompt with --dry-run)
+6. Move spec file from draft/ → active/
+7. Sync tasks to GitHub (unless --no-github)
+
 If no sprint ID is given, starts the first planned sprint.
 
 Examples:
-  lw sprint start
-  lw sprint start cde4d931`,
+  lw sprint start cde4d931
+  lw sprint start --dry-run
+  lw sprint start --no-github`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+		skipGate, _ := cmd.Flags().GetBool("skip-gate")
 
 		pool, err := db.Connect(ctx)
 		if err != nil {
@@ -196,11 +210,11 @@ Examples:
 		}
 		defer db.Close()
 
+		// Resolve sprint
 		var sprintID string
 		if len(args) == 1 {
 			sprintID = args[0]
 		} else {
-			// Find first planned sprint
 			sprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{Status: "planned", Limit: 1})
 			if err != nil {
 				return err
@@ -211,27 +225,110 @@ Examples:
 			sprintID = sprints[0].ShortID
 		}
 
-		today := time.Now().Format("2006-01-02")
-		active := "active"
-		sprint, err := db.UpdateSprint(ctx, pool, sprintID, db.SprintUpdateOptions{
-			Status:    &active,
-			StartDate: &today,
-		})
+		sprint, err := db.GetSprint(ctx, pool, sprintID)
 		if err != nil {
 			return err
 		}
 
-		fmt.Printf("Started sprint %s: %s\n", color.YellowString(sprint.ShortID), sprint.Name)
+		fmt.Printf("Sprint %s: %s\n", color.YellowString(sprint.ShortID), sprint.Name)
+
+		// 1. Find sprint spec YAML
+		specPath, spec, err := FindSprintSpec(sprint.ShortID)
+		if err != nil {
+			fmt.Printf("%s No spec file found — generating prompt from database\n", color.YellowString("!"))
+			spec = nil
+		} else {
+			fmt.Printf("Spec: %s\n", color.CyanString(specPath))
+		}
+
+		// 2. Lineage gate
+		if !skipGate && sprint.EpicID != nil {
+			lc := db.LoadLineageConfig()
+			gaps, err := db.CheckLineage(ctx, pool, *sprint.EpicID)
+			if err != nil {
+				return fmt.Errorf("lineage check failed: %w", err)
+			}
+
+			// Check for blockers (required docs that are missing)
+			blockerSet := make(map[string]bool)
+			for _, b := range lc.SprintBlockers {
+				blockerSet[b] = true
+			}
+
+			var blockers []db.LineageGap
+			for _, gap := range gaps {
+				if gap.Status == "missing" && blockerSet[gap.DocumentType] {
+					blockers = append(blockers, gap)
+				}
+			}
+
+			if len(blockers) > 0 {
+				fmt.Printf("\n%s Sprint blocked by missing required documents:\n", color.RedString("BLOCKED"))
+				for _, b := range blockers {
+					fmt.Printf("  %s %s for %s %s\n",
+						color.RedString("✗"),
+						color.CyanString(strings.ToUpper(b.DocumentType)),
+						b.EntityType, b.EntityShortID)
+				}
+				fmt.Printf("\nRun %s to create them, or %s to bypass\n",
+					color.CyanString("lw lineage fix %s", sprint.ShortID),
+					color.YellowString("--skip-gate"))
+				return fmt.Errorf("lineage gate failed: %d blocking documents missing", len(blockers))
+			}
+
+			// Show warnings for non-blocking gaps
+			if len(gaps) > 0 {
+				fmt.Printf("%s %d lineage gaps (non-blocking)\n", color.YellowString("!"), len(gaps))
+			}
+		}
+
+		// 3. Generate prompt
+		var prompt string
+		if spec != nil {
+			prompt = GeneratePrompt(spec)
+		} else {
+			prompt = generatePromptFromDB(ctx, pool, sprint)
+		}
+
+		if dryRun {
+			fmt.Printf("\n%s\n", color.CyanString("--- Generated Prompt ---"))
+			fmt.Println(prompt)
+			fmt.Printf("%s\n", color.CyanString("--- End Prompt ---"))
+			return nil
+		}
+
+		// 4. Mark sprint as active
+		today := time.Now().Format("2006-01-02")
+		active := "active"
+		_, err = db.UpdateSprint(ctx, pool, sprint.ShortID, db.SprintUpdateOptions{
+			Status:    &active,
+			StartDate: &today,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to activate sprint: %w", err)
+		}
 		fmt.Printf("Status: %s  Start: %s\n", color.GreenString("active"), color.CyanString(today))
 
-		// Create GitHub issues for sprint tasks
+		// 5. Move spec file to active/
+		if specPath != "" {
+			newPath, err := MoveSpec(specPath, "active")
+			if err != nil {
+				fmt.Printf("%s Failed to move spec: %v\n", color.YellowString("Warning:"), err)
+			} else {
+				fmt.Printf("Spec moved → %s\n", color.CyanString(newPath))
+			}
+		}
+
+		// 6. GitHub sync
 		if !sprintStartNoGithub {
 			if err := syncSprintToGitHub(ctx, pool, sprint); err != nil {
 				fmt.Printf("%s GitHub sync: %v\n", color.YellowString("Warning:"), err)
 			}
 		}
 
-		return nil
+		// 7. Spawn Claude Code
+		fmt.Printf("\n%s Spawning Claude Code session...\n", color.GreenString("→"))
+		return spawnClaudeSession(prompt)
 	},
 }
 
@@ -291,6 +388,8 @@ func init() {
 	// sprint start flags
 	sprintStartCmd.Flags().BoolVar(&sprintStartNoGithub, "no-github", false, "Skip GitHub issue creation")
 	sprintStartCmd.Flags().IntVar(&sprintStartProject, "project", 0, "GitHub org project number to add issues to")
+	sprintStartCmd.Flags().Bool("dry-run", false, "Print generated prompt without spawning Claude Code")
+	sprintStartCmd.Flags().Bool("skip-gate", false, "Bypass lineage gate check")
 
 	// Add subcommands
 	sprintCmd.AddCommand(sprintListCmd)
@@ -409,4 +508,75 @@ func getSprintStatusColor(status string) tablewriter.Colors {
 	default:
 		return tablewriter.Colors{}
 	}
+}
+
+// generatePromptFromDB builds a prompt from database data when no spec YAML exists
+func generatePromptFromDB(ctx context.Context, pool *pgxpool.Pool, sprint *db.Sprint) string {
+	var b strings.Builder
+
+	b.WriteString(fmt.Sprintf("# Sprint: %s\n\n", sprint.Name))
+	b.WriteString(fmt.Sprintf("**Sprint ID:** %s\n\n", sprint.ShortID))
+
+	if sprint.Objectives != nil && *sprint.Objectives != "" {
+		b.WriteString("## Objective\n\n")
+		b.WriteString(*sprint.Objectives + "\n\n")
+	}
+
+	// Load tasks from DB
+	tasks, err := db.ListTasks(ctx, pool, db.TaskListOptions{
+		SprintID: sprint.ShortID,
+		Limit:    100,
+	})
+	if err == nil && len(tasks) > 0 {
+		b.WriteString("## Tasks\n\n")
+		b.WriteString("| # | Task | Type | Priority | Status |\n")
+		b.WriteString("|---|------|------|----------|--------|\n")
+		for i, t := range tasks {
+			if t.Status == "done" {
+				continue
+			}
+			b.WriteString(fmt.Sprintf("| %d | %s (`%s`) | %s | %s | %s |\n",
+				i+1, t.Title, t.ShortID, t.TaskType, t.Priority, t.Status))
+		}
+		b.WriteString("\n")
+	}
+
+	b.WriteString("## Instructions\n\n")
+	b.WriteString("1. Read relevant files before making changes\n")
+	b.WriteString("2. Work through tasks in priority order (P1 first)\n")
+	b.WriteString("3. After each task, run relevant tests to verify\n")
+	b.WriteString("4. Mark tasks as done via `lw task update <id> --status=done` when complete\n")
+
+	return b.String()
+}
+
+// spawnClaudeSession launches claude -p with the generated prompt
+func spawnClaudeSession(prompt string) error {
+	// Write prompt to temp file for claude -p
+	tmpFile, err := os.CreateTemp("", "lw-sprint-*.md")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmpFile.Name())
+
+	if _, err := tmpFile.WriteString(prompt); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write prompt: %w", err)
+	}
+	tmpFile.Close()
+
+	// Check if claude is available
+	claudePath, err := exec.LookPath("claude")
+	if err != nil {
+		fmt.Println(color.YellowString("claude not found in PATH — printing prompt instead:"))
+		fmt.Println(prompt)
+		return nil
+	}
+
+	// Spawn claude with the prompt file
+	cmd := exec.Command(claudePath, "-p", prompt)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
 }
