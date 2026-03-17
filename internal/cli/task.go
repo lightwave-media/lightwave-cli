@@ -259,6 +259,66 @@ Examples:
 	},
 }
 
+var taskNextApprovedCmd = &cobra.Command{
+	Use:   "next-approved",
+	Short: "Get next approved task from active sprint",
+	Long: `Return the next approved task ready for work in the active sprint.
+Priority: approved status > next_up > then by priority and created date.
+Used by scrum manager orchestrator.
+
+Examples:
+  lw task next-approved
+  lw task next-approved --sprint=<sprint-id>  # specific sprint`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		// Get active sprint (or specified sprint)
+		sprintID := taskSprintID
+		if sprintID == "" {
+			// Find active sprint
+			sprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{
+				Status: "active",
+				Limit:  1,
+			})
+			if err != nil {
+				return err
+			}
+			if len(sprints) == 0 {
+				fmt.Println(color.YellowString("No active sprint found"))
+				return nil
+			}
+			sprintID = sprints[0].ID
+		}
+
+		// Get approved and next_up tasks, ordered by priority
+		opts := db.TaskListOptions{
+			SprintID: sprintID,
+			Status:   "approved,next_up",
+			Limit:    1,
+		}
+
+		tasks, err := db.ListTasks(ctx, pool, opts)
+		if err != nil {
+			return err
+		}
+
+		if len(tasks) == 0 {
+			fmt.Println(color.YellowString("No approved tasks in active sprint"))
+			return nil
+		}
+
+		task := tasks[0]
+		printTaskDetails(&task)
+		return nil
+	},
+}
+
 func init() {
 	// task list flags
 	taskListCmd.Flags().StringVarP(&taskStatus, "status", "s", "", "Filter by status (comma-separated: approved,next_up,in_progress)")
@@ -297,6 +357,10 @@ func init() {
 	taskCmd.AddCommand(taskContextCmd)
 	taskCmd.AddCommand(taskCreateCmd)
 	taskCmd.AddCommand(taskUpdateCmd)
+	taskCmd.AddCommand(taskNextApprovedCmd)
+
+	// next-approved flags
+	taskNextApprovedCmd.Flags().StringVar(&taskSprintID, "sprint", "", "Sprint ID (defaults to active sprint)")
 }
 
 func printTaskTable(tasks []db.Task) {

@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/db"
+	"github.com/lightwave-media/lightwave-cli/internal/github"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
@@ -41,6 +43,12 @@ var (
 	sprintUpdateObjectives string
 	sprintUpdateStartDate  string
 	sprintUpdateEndDate    string
+)
+
+// Flags for sprint start
+var (
+	sprintStartNoGithub bool
+	sprintStartProject  int
 )
 
 var sprintListCmd = &cobra.Command{
@@ -169,6 +177,96 @@ Examples:
 	},
 }
 
+var sprintStartCmd = &cobra.Command{
+	Use:   "start [sprint-id]",
+	Short: "Mark a sprint as active with today's start date",
+	Long: `Mark a sprint as active and set its start date to today.
+If no sprint ID is given, starts the first planned sprint.
+
+Examples:
+  lw sprint start
+  lw sprint start cde4d931`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		var sprintID string
+		if len(args) == 1 {
+			sprintID = args[0]
+		} else {
+			// Find first planned sprint
+			sprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{Status: "planned", Limit: 1})
+			if err != nil {
+				return err
+			}
+			if len(sprints) == 0 {
+				return fmt.Errorf("no planned sprints found")
+			}
+			sprintID = sprints[0].ShortID
+		}
+
+		today := time.Now().Format("2006-01-02")
+		active := "active"
+		sprint, err := db.UpdateSprint(ctx, pool, sprintID, db.SprintUpdateOptions{
+			Status:    &active,
+			StartDate: &today,
+		})
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Started sprint %s: %s\n", color.YellowString(sprint.ShortID), sprint.Name)
+		fmt.Printf("Status: %s  Start: %s\n", color.GreenString("active"), color.CyanString(today))
+
+		// Create GitHub issues for sprint tasks
+		if !sprintStartNoGithub {
+			if err := syncSprintToGitHub(ctx, pool, sprint); err != nil {
+				fmt.Printf("%s GitHub sync: %v\n", color.YellowString("Warning:"), err)
+			}
+		}
+
+		return nil
+	},
+}
+
+var sprintStatusCmd = &cobra.Command{
+	Use:   "status",
+	Short: "Show active sprint status",
+	Long:  `Show the currently active sprint with task counts.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		sprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{Status: "active", Limit: 1})
+		if err != nil {
+			return err
+		}
+		if len(sprints) == 0 {
+			fmt.Println(color.YellowString("No active sprint"))
+			return nil
+		}
+
+		s := sprints[0]
+		fmt.Printf("Sprint: %s (%s)\n", color.CyanString(s.Name), color.YellowString(s.ShortID))
+		fmt.Printf("Status: %s\n", color.GreenString(s.Status))
+		if s.StartDate != nil {
+			fmt.Printf("Started: %s\n", s.StartDate.Format("2006-01-02"))
+		}
+		return nil
+	},
+}
+
 func init() {
 	// sprint list flags
 	sprintListCmd.Flags().StringVarP(&sprintListStatus, "status", "s", "", "Filter by status (active, completed, planned)")
@@ -190,10 +288,71 @@ func init() {
 	sprintUpdateCmd.Flags().StringVar(&sprintUpdateStartDate, "start-date", "", "Start date (YYYY-MM-DD)")
 	sprintUpdateCmd.Flags().StringVar(&sprintUpdateEndDate, "end-date", "", "End date (YYYY-MM-DD)")
 
+	// sprint start flags
+	sprintStartCmd.Flags().BoolVar(&sprintStartNoGithub, "no-github", false, "Skip GitHub issue creation")
+	sprintStartCmd.Flags().IntVar(&sprintStartProject, "project", 0, "GitHub org project number to add issues to")
+
 	// Add subcommands
 	sprintCmd.AddCommand(sprintListCmd)
 	sprintCmd.AddCommand(sprintCreateCmd)
 	sprintCmd.AddCommand(sprintUpdateCmd)
+	sprintCmd.AddCommand(sprintStartCmd)
+	sprintCmd.AddCommand(sprintStatusCmd)
+}
+
+func syncSprintToGitHub(ctx context.Context, pool interface{}, sprint *db.Sprint) error {
+	// Re-connect to get the typed pool for task queries
+	dbPool, err := db.Connect(ctx)
+	if err != nil {
+		return fmt.Errorf("database connection: %w", err)
+	}
+
+	tasks, err := db.ListTasks(ctx, dbPool, db.TaskListOptions{SprintID: sprint.ShortID, Limit: 100})
+	if err != nil {
+		return fmt.Errorf("listing sprint tasks: %w", err)
+	}
+
+	if len(tasks) == 0 {
+		fmt.Println(color.YellowString("No tasks in sprint — skipping GitHub sync"))
+		return nil
+	}
+
+	fmt.Printf("\nCreating GitHub issues for %d tasks...\n", len(tasks))
+
+	// Convert to github.TaskInfo
+	taskInfos := make([]github.TaskInfo, len(tasks))
+	for i, t := range tasks {
+		desc := ""
+		if t.Description != nil {
+			desc = *t.Description
+		}
+		taskInfos[i] = github.TaskInfo{
+			ShortID:      t.ShortID,
+			Title:        t.Title,
+			Description:  desc,
+			Priority:     t.Priority,
+			TaskType:     t.TaskType,
+			TaskCategory: t.TaskCategory,
+		}
+	}
+
+	results, err := github.SyncSprintTasks(
+		github.DefaultRepo,
+		github.DefaultOrg,
+		sprintStartProject,
+		taskInfos,
+	)
+
+	for shortID, url := range results {
+		fmt.Printf("  %s %s → %s\n", color.GreenString("✓"), shortID, color.BlueString(url))
+	}
+
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%s Created %d GitHub issues\n", color.GreenString("Done!"), len(results))
+	return nil
 }
 
 func printSprintTable(sprints []db.Sprint) {
