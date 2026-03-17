@@ -263,6 +263,10 @@ Examples:
 			}
 
 			if len(blockers) > 0 {
+				epicShort := *sprint.EpicID
+				if len(epicShort) > 8 {
+					epicShort = epicShort[:8]
+				}
 				fmt.Printf("\n%s Sprint blocked by missing required documents:\n", color.RedString("BLOCKED"))
 				for _, b := range blockers {
 					fmt.Printf("  %s %s for %s %s\n",
@@ -271,7 +275,7 @@ Examples:
 						b.EntityType, b.EntityShortID)
 				}
 				fmt.Printf("\nRun %s to create them, or %s to bypass\n",
-					color.CyanString("lw lineage fix %s", sprint.ShortID),
+					color.CyanString("lw lineage fix %s", epicShort),
 					color.YellowString("--skip-gate"))
 				return fmt.Errorf("lineage gate failed: %d blocking documents missing", len(blockers))
 			}
@@ -334,8 +338,8 @@ Examples:
 
 var sprintStatusCmd = &cobra.Command{
 	Use:   "status",
-	Short: "Show active sprint status",
-	Long:  `Show the currently active sprint with task counts.`,
+	Short: "Show active sprint status with task progress",
+	Long:  `Show the currently active sprint with task completion stats.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 
@@ -358,8 +362,169 @@ var sprintStatusCmd = &cobra.Command{
 		fmt.Printf("Sprint: %s (%s)\n", color.CyanString(s.Name), color.YellowString(s.ShortID))
 		fmt.Printf("Status: %s\n", color.GreenString(s.Status))
 		if s.StartDate != nil {
-			fmt.Printf("Started: %s\n", s.StartDate.Format("2006-01-02"))
+			days := int(time.Since(*s.StartDate).Hours() / 24)
+			fmt.Printf("Started: %s (%d days ago)\n", s.StartDate.Format("2006-01-02"), days)
 		}
+
+		// Task progress
+		tasks, err := db.ListTasks(ctx, pool, db.TaskListOptions{SprintID: s.ShortID, Limit: 100})
+		if err != nil {
+			return err
+		}
+
+		done, inProgress, total := 0, 0, len(tasks)
+		for _, t := range tasks {
+			switch t.Status {
+			case "done":
+				done++
+			case "in_progress":
+				inProgress++
+			}
+		}
+
+		if total > 0 {
+			pct := done * 100 / total
+			fmt.Printf("Tasks:   %s/%d done (%d%%)", color.GreenString("%d", done), total, pct)
+			if inProgress > 0 {
+				fmt.Printf(", %s in progress", color.YellowString("%d", inProgress))
+			}
+			fmt.Println()
+
+			// Show remaining tasks
+			remaining := total - done
+			if remaining > 0 {
+				fmt.Println()
+				for _, t := range tasks {
+					switch t.Status {
+					case "done":
+						fmt.Printf("  %s %s\n", color.GreenString("✓"), color.HiBlackString(t.Title))
+					case "in_progress":
+						fmt.Printf("  %s %s (%s)\n", color.YellowString("◐"), t.Title, t.ShortID)
+					default:
+						fmt.Printf("  %s %s (%s)\n", color.RedString("○"), t.Title, t.ShortID)
+					}
+				}
+			}
+		}
+
+		// Lineage status
+		if s.EpicID != nil {
+			gaps, err := db.CheckLineage(ctx, pool, *s.EpicID)
+			if err == nil && len(gaps) > 0 {
+				missing := 0
+				for _, g := range gaps {
+					if g.Status == "missing" {
+						missing++
+					}
+				}
+				if missing > 0 {
+					fmt.Printf("\nLineage: %s\n", color.RedString("%d missing docs", missing))
+				} else {
+					fmt.Printf("\nLineage: %s\n", color.YellowString("%d draft docs", len(gaps)))
+				}
+			} else if err == nil {
+				fmt.Printf("\nLineage: %s\n", color.GreenString("complete"))
+			}
+		}
+
+		return nil
+	},
+}
+
+var sprintCompleteCmd = &cobra.Command{
+	Use:   "complete [sprint-id]",
+	Short: "Complete a sprint: mark done, move spec, report results",
+	Long: `Complete a sprint:
+1. Mark sprint as completed with today's end date
+2. Move spec from active/ → done/
+3. Report task completion stats
+
+If no sprint ID is given, completes the active sprint.
+
+Examples:
+  lw sprint complete
+  lw sprint complete cde4d931`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		var sprintID string
+		if len(args) == 1 {
+			sprintID = args[0]
+		} else {
+			sprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{Status: "active", Limit: 1})
+			if err != nil {
+				return err
+			}
+			if len(sprints) == 0 {
+				return fmt.Errorf("no active sprint found")
+			}
+			sprintID = sprints[0].ShortID
+		}
+
+		sprint, err := db.GetSprint(ctx, pool, sprintID)
+		if err != nil {
+			return err
+		}
+
+		// Report task stats
+		tasks, err := db.ListTasks(ctx, pool, db.TaskListOptions{SprintID: sprint.ShortID, Limit: 100})
+		if err != nil {
+			return fmt.Errorf("failed to list tasks: %w", err)
+		}
+
+		done, total := 0, 0
+		for _, t := range tasks {
+			total++
+			if t.Status == "done" {
+				done++
+			}
+		}
+
+		fmt.Printf("Sprint %s: %s\n", color.YellowString(sprint.ShortID), sprint.Name)
+		fmt.Printf("Tasks: %s/%d completed\n", color.GreenString("%d", done), total)
+
+		if done < total {
+			remaining := total - done
+			fmt.Printf("%s %d tasks still open:\n", color.YellowString("!"), remaining)
+			for _, t := range tasks {
+				if t.Status != "done" {
+					fmt.Printf("  %s %s (%s) — %s\n",
+						color.RedString("○"),
+						t.Title, t.ShortID,
+						color.YellowString(t.Status))
+				}
+			}
+		}
+
+		// Mark sprint completed
+		today := time.Now().Format("2006-01-02")
+		completed := "completed"
+		_, err = db.UpdateSprint(ctx, pool, sprint.ShortID, db.SprintUpdateOptions{
+			Status:  &completed,
+			EndDate: &today,
+		})
+		if err != nil {
+			return fmt.Errorf("failed to complete sprint: %w", err)
+		}
+		fmt.Printf("Status: %s  End: %s\n", color.HiBlackString("completed"), color.CyanString(today))
+
+		// Move spec from active/ → done/
+		specPath, _, err := FindSprintSpec(sprint.ShortID)
+		if err == nil {
+			newPath, err := MoveSpec(specPath, "done")
+			if err != nil {
+				fmt.Printf("%s Failed to move spec: %v\n", color.YellowString("Warning:"), err)
+			} else {
+				fmt.Printf("Spec moved → %s\n", color.CyanString(newPath))
+			}
+		}
+
 		return nil
 	},
 }
@@ -397,6 +562,7 @@ func init() {
 	sprintCmd.AddCommand(sprintUpdateCmd)
 	sprintCmd.AddCommand(sprintStartCmd)
 	sprintCmd.AddCommand(sprintStatusCmd)
+	sprintCmd.AddCommand(sprintCompleteCmd)
 }
 
 func syncSprintToGitHub(ctx context.Context, pool interface{}, sprint *db.Sprint) error {
@@ -550,22 +716,8 @@ func generatePromptFromDB(ctx context.Context, pool *pgxpool.Pool, sprint *db.Sp
 	return b.String()
 }
 
-// spawnClaudeSession launches claude -p with the generated prompt
+// spawnClaudeSession launches claude -p with the generated prompt piped via stdin
 func spawnClaudeSession(prompt string) error {
-	// Write prompt to temp file for claude -p
-	tmpFile, err := os.CreateTemp("", "lw-sprint-*.md")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tmpFile.Name())
-
-	if _, err := tmpFile.WriteString(prompt); err != nil {
-		tmpFile.Close()
-		return fmt.Errorf("failed to write prompt: %w", err)
-	}
-	tmpFile.Close()
-
-	// Check if claude is available
 	claudePath, err := exec.LookPath("claude")
 	if err != nil {
 		fmt.Println(color.YellowString("claude not found in PATH — printing prompt instead:"))
@@ -573,9 +725,9 @@ func spawnClaudeSession(prompt string) error {
 		return nil
 	}
 
-	// Spawn claude with the prompt file
-	cmd := exec.Command(claudePath, "-p", prompt)
-	cmd.Stdin = os.Stdin
+	// Pipe prompt via stdin to avoid CLI argument length limits
+	cmd := exec.Command(claudePath, "-p", "-")
+	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
