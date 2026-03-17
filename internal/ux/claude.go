@@ -24,6 +24,7 @@ The user recorded their screen while navigating LightWave products and narrated 
 You will receive:
 1. Timestamped transcript segments (what the user said)
 2. Screen captures at key moments (what was on screen)
+3. Server logs from the backend and frontend (errors, warnings, HTTP failures) captured during the session
 
 Extract improvement items. For each item, provide:
 - severity: "critical" | "major" | "minor"
@@ -89,18 +90,21 @@ type chatError struct {
 	Type    string `json:"type"`
 }
 
-// AnalyzeWithClaude sends transcript + keyframes to Claude via the local proxy.
-func AnalyzeWithClaude(ctx context.Context, sessionID string, transcript string, framePaths []string) (*AnalysisResult, error) {
+// AnalyzeWithClaude sends transcript + keyframes + server logs to Claude via the local proxy.
+func AnalyzeWithClaude(ctx context.Context, sessionID string, transcript string, framePaths []string, serverLogs string) (*AnalysisResult, error) {
 	// Build multimodal content parts
 	var parts []contentPart
 
-	// Transcript as text
+	// Transcript + server logs as text
+	textContent := fmt.Sprintf("## Transcript\n\n%s", transcript)
+	if serverLogs != "" {
+		textContent += "\n" + serverLogs
+	}
+	textContent += "\n\n## Screen Captures\n\nThe following images are keyframes extracted from the recording at regular intervals. Analyze them alongside the transcript and server logs above."
+
 	parts = append(parts, contentPart{
 		Type: "text",
-		Text: fmt.Sprintf(
-			"## Transcript\n\n%s\n\n## Screen Captures\n\nThe following images are keyframes extracted from the recording at regular intervals. Analyze them alongside the transcript above.",
-			transcript,
-		),
+		Text: textContent,
 	})
 
 	// Each keyframe as a base64 data URI image

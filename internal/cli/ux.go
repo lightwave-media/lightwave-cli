@@ -105,6 +105,7 @@ var uxStartCmd = &cobra.Command{
 		}
 		fmt.Printf("   Screen:  %d\n", session.Screen)
 		fmt.Printf("   Audio:   %d\n", session.AudioDevice)
+		fmt.Printf("   Logs:    backend + frontend (docker)\n")
 		fmt.Printf("\n   Run %s to stop recording.\n", color.YellowString("lw ux stop"))
 
 		return nil

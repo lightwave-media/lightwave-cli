@@ -82,9 +82,12 @@ func Analyze(sessionID string) error {
 		return fmt.Errorf("collect frames: %w", err)
 	}
 
-	// Step 6: Send to Claude
+	// Step 6: Load server logs (if captured during recording)
+	serverLogs := loadServerLogs(sessionID)
+
+	// Step 7: Send to Claude
 	fmt.Printf("  Analyzing with Claude (%d frames)...\n", len(framePaths))
-	result, err := AnalyzeWithClaude(context.Background(), sessionID, transcript, framePaths)
+	result, err := AnalyzeWithClaude(context.Background(), sessionID, transcript, framePaths, serverLogs)
 	if err != nil && result == nil {
 		return fmt.Errorf("claude analysis: %w", err)
 	}
@@ -213,6 +216,59 @@ func loadTranscriptText(sessionID string) (string, error) {
 	}
 
 	return sb.String(), nil
+}
+
+// loadServerLogs reads backend and frontend container logs captured during recording.
+// Filters to errors, warnings, and HTTP request lines to keep context concise.
+func loadServerLogs(sessionID string) string {
+	var sb strings.Builder
+
+	for _, service := range []string{"backend", "frontend"} {
+		logPath := filepath.Join(SessionDir(sessionID), service+".log")
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			continue
+		}
+
+		raw := string(data)
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+
+		// Filter to interesting lines: errors, warnings, HTTP requests, exceptions
+		var filtered []string
+		for _, line := range strings.Split(raw, "\n") {
+			lower := strings.ToLower(line)
+			if strings.Contains(lower, "error") ||
+				strings.Contains(lower, "warning") ||
+				strings.Contains(lower, "exception") ||
+				strings.Contains(lower, "traceback") ||
+				strings.Contains(lower, " 4") && strings.Contains(lower, "http") || // 4xx status codes
+				strings.Contains(lower, " 5") && strings.Contains(lower, "http") || // 5xx status codes
+				strings.Contains(lower, "failed") ||
+				strings.Contains(lower, "denied") ||
+				strings.Contains(lower, "unauthorized") ||
+				strings.Contains(lower, "forbidden") {
+				filtered = append(filtered, line)
+			}
+		}
+
+		if len(filtered) == 0 {
+			continue
+		}
+
+		sb.WriteString(fmt.Sprintf("\n## %s Server Logs (errors/warnings only)\n\n", strings.Title(service)))
+		// Cap at 100 lines to avoid blowing up the prompt
+		if len(filtered) > 100 {
+			filtered = filtered[len(filtered)-100:]
+			sb.WriteString("(truncated to last 100 entries)\n")
+		}
+		for _, line := range filtered {
+			sb.WriteString(line + "\n")
+		}
+	}
+
+	return sb.String()
 }
 
 // runQuiet runs a command with stdout/stderr redirected to a log file in the session dir.

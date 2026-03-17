@@ -1,6 +1,7 @@
 package ux
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,14 +11,43 @@ import (
 	"time"
 )
 
-// StartRecording launches ffmpeg to record screen + mic audio.
+const composeProject = "lightwave-platform"
+
+// sessionPIDs tracks all background processes for a recording session.
+type sessionPIDs struct {
+	FFmpeg       int `json:"ffmpeg"`
+	BackendLogs  int `json:"backend_logs,omitempty"`
+	FrontendLogs int `json:"frontend_logs,omitempty"`
+}
+
+func pidsPath(sessionID string) string {
+	return SessionDir(sessionID) + "/pids.json"
+}
+
+func savePIDs(sessionID string, pids *sessionPIDs) error {
+	data, _ := json.Marshal(pids)
+	return os.WriteFile(pidsPath(sessionID), data, 0644)
+}
+
+func loadPIDs(sessionID string) (*sessionPIDs, error) {
+	data, err := os.ReadFile(pidsPath(sessionID))
+	if err != nil {
+		return nil, err
+	}
+	var pids sessionPIDs
+	return &pids, json.Unmarshal(data, &pids)
+}
+
+// StartRecording launches ffmpeg + log tailers for a UX session.
 func StartRecording(session *Session) error {
 	outputPath := RecordingPath(session.ID)
+	sessionDir := SessionDir(session.ID)
 
 	// AVFoundation input: "screen_index:audio_index"
 	input := fmt.Sprintf("%d:%d", session.Screen, session.AudioDevice)
 
-	cmd := exec.Command("ffmpeg",
+	// ── ffmpeg ──────────────────────────────────────────────────────────
+	ffmpegCmd := exec.Command("ffmpeg",
 		"-f", "avfoundation",
 		"-framerate", "5",
 		"-capture_cursor", "1",
@@ -31,43 +61,135 @@ func StartRecording(session *Session) error {
 		"-y",
 		outputPath,
 	)
+	ffmpegCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
-	// Detach from terminal — run in background
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
+	ffmpegLog, err := os.Create(sessionDir + "/ffmpeg.log")
+	if err != nil {
+		return fmt.Errorf("create ffmpeg log: %w", err)
+	}
+	ffmpegCmd.Stdout = ffmpegLog
+	ffmpegCmd.Stderr = ffmpegLog
+
+	if err := ffmpegCmd.Start(); err != nil {
+		ffmpegLog.Close()
+		return fmt.Errorf("start ffmpeg: %w", err)
+	}
+	ffmpegLog.Close()
+
+	pids := &sessionPIDs{FFmpeg: ffmpegCmd.Process.Pid}
+	ffmpegCmd.Process.Release()
+
+	// ── backend log tailer ──────────────────────────────────────────────
+	backendPid := startLogTailer(sessionDir, "backend")
+	if backendPid > 0 {
+		pids.BackendLogs = backendPid
 	}
 
-	// Send ffmpeg output to a log file for debugging
-	logPath := fmt.Sprintf("%s/ffmpeg.log", SessionDir(session.ID))
-	logFile, err := os.Create(logPath)
+	// ── frontend log tailer ─────────────────────────────────────────────
+	frontendPid := startLogTailer(sessionDir, "frontend")
+	if frontendPid > 0 {
+		pids.FrontendLogs = frontendPid
+	}
+
+	// Save all PIDs
+	if err := savePIDs(session.ID, pids); err != nil {
+		// Kill ffmpeg if we can't save PIDs
+		if p, err := os.FindProcess(pids.FFmpeg); err == nil {
+			p.Kill()
+		}
+		return fmt.Errorf("save pids: %w", err)
+	}
+
+	// Also write legacy pid file for backwards compat
+	os.WriteFile(PIDPath(session.ID), []byte(strconv.Itoa(pids.FFmpeg)), 0644)
+
+	return nil
+}
+
+// startLogTailer spawns `docker compose logs -f --since=now <service>` in the background.
+// Returns the PID, or 0 if the service isn't running.
+func startLogTailer(sessionDir, service string) int {
+	cmd := exec.Command("docker", "compose",
+		"-p", composeProject,
+		"logs", "-f", "--since", "0s", "--timestamps",
+		service,
+	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+
+	logFile, err := os.Create(fmt.Sprintf("%s/%s.log", sessionDir, service))
 	if err != nil {
-		return fmt.Errorf("create log file: %w", err)
+		return 0
 	}
 	cmd.Stdout = logFile
 	cmd.Stderr = logFile
 
 	if err := cmd.Start(); err != nil {
 		logFile.Close()
-		return fmt.Errorf("start ffmpeg: %w", err)
+		return 0
 	}
 	logFile.Close()
 
-	// Save PID
 	pid := cmd.Process.Pid
-	if err := os.WriteFile(PIDPath(session.ID), []byte(strconv.Itoa(pid)), 0644); err != nil {
-		// Kill the process if we can't save the PID
-		cmd.Process.Kill()
-		return fmt.Errorf("save pid: %w", err)
-	}
-
-	// Detach — don't wait for the process
 	cmd.Process.Release()
-
-	return nil
+	return pid
 }
 
-// StopRecording sends SIGINT to the ffmpeg process for graceful shutdown.
+// StopRecording stops all background processes for a session.
 func StopRecording(session *Session) error {
+	pids, err := loadPIDs(session.ID)
+	if err != nil {
+		// Fall back to legacy pid file
+		return stopLegacy(session)
+	}
+
+	// Stop log tailers first (SIGTERM is fine, they're just tailing)
+	for _, pid := range []int{pids.BackendLogs, pids.FrontendLogs} {
+		if pid > 0 {
+			if p, err := os.FindProcess(pid); err == nil {
+				p.Signal(syscall.SIGTERM)
+			}
+		}
+	}
+
+	// Stop ffmpeg with SIGINT for graceful container finalization
+	if pids.FFmpeg > 0 {
+		process, err := os.FindProcess(pids.FFmpeg)
+		if err != nil {
+			return fmt.Errorf("find ffmpeg process %d: %w", pids.FFmpeg, err)
+		}
+		if err := process.Signal(syscall.SIGINT); err != nil {
+			return fmt.Errorf("signal ffmpeg (pid %d): %w", pids.FFmpeg, err)
+		}
+
+		// Wait for ffmpeg to finalize the MP4
+		deadline := time.Now().Add(10 * time.Second)
+		for time.Now().Before(deadline) {
+			if err := process.Signal(syscall.Signal(0)); err != nil {
+				break
+			}
+			time.Sleep(200 * time.Millisecond)
+		}
+	}
+
+	// Update session metadata
+	now := time.Now()
+	session.StoppedAt = now.Format(time.RFC3339)
+	session.Status = StatusStopped
+
+	startTime, err := time.Parse(time.RFC3339, session.StartedAt)
+	if err == nil {
+		session.DurationSecs = int(now.Sub(startTime).Seconds())
+	}
+
+	// Clean up PID files
+	os.Remove(pidsPath(session.ID))
+	os.Remove(PIDPath(session.ID))
+
+	return session.Save()
+}
+
+// stopLegacy handles sessions that only have the old single-pid file.
+func stopLegacy(session *Session) error {
 	pidData, err := os.ReadFile(PIDPath(session.ID))
 	if err != nil {
 		return fmt.Errorf("read pid file: %w", err)
@@ -83,49 +205,52 @@ func StopRecording(session *Session) error {
 		return fmt.Errorf("find process %d: %w", pid, err)
 	}
 
-	// Send SIGINT for graceful MKV finalization
 	if err := process.Signal(syscall.SIGINT); err != nil {
 		return fmt.Errorf("signal ffmpeg (pid %d): %w", pid, err)
 	}
 
-	// Wait for process to exit (poll with timeout)
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := process.Signal(syscall.Signal(0)); err != nil {
-			// Process is gone
 			break
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 
-	// Update session metadata
 	now := time.Now()
 	session.StoppedAt = now.Format(time.RFC3339)
 	session.Status = StatusStopped
 
-	// Calculate duration
 	startTime, err := time.Parse(time.RFC3339, session.StartedAt)
 	if err == nil {
 		session.DurationSecs = int(now.Sub(startTime).Seconds())
 	}
 
-	// Clean up PID file
 	os.Remove(PIDPath(session.ID))
-
 	return session.Save()
 }
 
 // IsFFmpegRunning checks if the ffmpeg process for a session is still alive.
 func IsFFmpegRunning(session *Session) bool {
-	pidData, err := os.ReadFile(PIDPath(session.ID))
+	pids, err := loadPIDs(session.ID)
 	if err != nil {
-		return false
+		// Fall back to legacy pid file
+		pidData, err := os.ReadFile(PIDPath(session.ID))
+		if err != nil {
+			return false
+		}
+		pid, err := strconv.Atoi(strings.TrimSpace(string(pidData)))
+		if err != nil {
+			return false
+		}
+		process, err := os.FindProcess(pid)
+		if err != nil {
+			return false
+		}
+		return process.Signal(syscall.Signal(0)) == nil
 	}
-	pid, err := strconv.Atoi(strings.TrimSpace(string(pidData)))
-	if err != nil {
-		return false
-	}
-	process, err := os.FindProcess(pid)
+
+	process, err := os.FindProcess(pids.FFmpeg)
 	if err != nil {
 		return false
 	}
