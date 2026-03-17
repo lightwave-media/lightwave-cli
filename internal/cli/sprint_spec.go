@@ -53,6 +53,12 @@ func FindSprintSpec(sprintShortID string) (string, *SprintSpec, error) {
 	cfg := config.Get()
 	queueRoot := filepath.Join(cfg.Paths.LightwaveRoot, ".claude", "queue")
 
+	type match struct {
+		path string
+		spec *SprintSpec
+	}
+	var matches []match
+
 	// Search draft, pending, active directories
 	for _, dir := range []string{"draft", "pending", "active"} {
 		dirPath := filepath.Join(queueRoot, dir)
@@ -70,12 +76,18 @@ func FindSprintSpec(sprintShortID string) (string, *SprintSpec, error) {
 				continue
 			}
 			if strings.HasPrefix(spec.Sprint.ID, sprintShortID) {
-				return path, spec, nil
+				matches = append(matches, match{path, spec})
 			}
 		}
 	}
 
-	return "", nil, fmt.Errorf("no sprint spec found for ID %s in .claude/queue/{draft,pending,active}/", sprintShortID)
+	if len(matches) == 0 {
+		return "", nil, fmt.Errorf("no sprint spec found for ID %s in .claude/queue/{draft,pending,active}/", sprintShortID)
+	}
+	if len(matches) > 1 {
+		return "", nil, fmt.Errorf("ambiguous sprint ID '%s' matches %d spec files — use more characters", sprintShortID, len(matches))
+	}
+	return matches[0].path, matches[0].spec, nil
 }
 
 func parseSprintSpec(path string) (*SprintSpec, error) {
@@ -100,15 +112,8 @@ func MoveSpec(srcPath, destDir string) (string, error) {
 	}
 
 	destPath := filepath.Join(destDirPath, filepath.Base(srcPath))
-	data, err := os.ReadFile(srcPath)
-	if err != nil {
-		return "", err
-	}
-	if err := os.WriteFile(destPath, data, 0o644); err != nil {
-		return "", err
-	}
-	if err := os.Remove(srcPath); err != nil {
-		return destPath, fmt.Errorf("moved but failed to remove source: %w", err)
+	if err := os.Rename(srcPath, destPath); err != nil {
+		return "", fmt.Errorf("failed to move spec: %w", err)
 	}
 	return destPath, nil
 }

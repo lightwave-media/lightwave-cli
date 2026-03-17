@@ -32,14 +32,26 @@ type DocumentCreateOptions struct {
 	UserStoryID string // optional
 }
 
-// GetDefaultSiteID returns the first site ID in the current tenant schema
+// GetDefaultSiteID returns the first site ID in the current tenant schema.
+// If no site exists, auto-creates a default one for the current tenant.
 func GetDefaultSiteID(ctx context.Context, pool *pgxpool.Pool) (string, error) {
 	var siteID string
 	err := pool.QueryRow(ctx, "SELECT id::text FROM platform_site LIMIT 1").Scan(&siteID)
-	if err != nil {
-		return "", fmt.Errorf("no site found in current tenant — create one first: %w", err)
+	if err == nil {
+		return siteID, nil
 	}
-	return siteID, nil
+
+	// No site found — auto-create a default one
+	newID := uuid.New().String()
+	now := time.Now()
+	_, err = pool.Exec(ctx, `
+		INSERT INTO platform_site (id, domain, name, status, site_type, visibility, allow_search_indexing, created_at, updated_at)
+		VALUES ($1, $2, $3, 'active', 'platform', 'private', false, $4, $4)
+	`, newID, "cli.lightwave.local", "CLI Default Site", now)
+	if err != nil {
+		return "", fmt.Errorf("no site found and failed to create default: %w", err)
+	}
+	return newID, nil
 }
 
 // CreateDocument inserts a new document into createos_document
