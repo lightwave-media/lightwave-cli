@@ -3,11 +3,15 @@ package meta
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strings"
 	"time"
 )
 
@@ -20,17 +24,41 @@ const (
 // Client is an HTTP client for the Meta Graph API.
 type Client struct {
 	token      string
+	appSecret  string
 	apiVersion string
 	httpClient *http.Client
 }
 
 // NewClient creates a new Meta Graph API client.
-func NewClient(token string) *Client {
+// If appSecret is non-empty, appsecret_proof is added to every request.
+func NewClient(token string, appSecret ...string) *Client {
+	secret := ""
+	if len(appSecret) > 0 {
+		secret = appSecret[0]
+	}
 	return &Client{
 		token:      token,
+		appSecret:  secret,
 		apiVersion: defaultVersion,
 		httpClient: &http.Client{Timeout: httpTimeout},
 	}
+}
+
+// NewAppClient creates a client using an app access token ({app_id}|{app_secret}).
+// Required for app-level endpoints like webhook subscriptions.
+func NewAppClient(appID, appSecret string) *Client {
+	return &Client{
+		token:      appID + "|" + appSecret,
+		apiVersion: defaultVersion,
+		httpClient: &http.Client{Timeout: httpTimeout},
+	}
+}
+
+// appsecretProof computes HMAC-SHA256(token, appSecret) as hex.
+func (c *Client) appsecretProof() string {
+	mac := hmac.New(sha256.New, []byte(c.appSecret))
+	mac.Write([]byte(c.token))
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // APIError represents an error returned by the Meta Graph API.
@@ -52,6 +80,14 @@ type errorEnvelope struct {
 // do executes an HTTP request against the Graph API and returns the raw response body.
 func (c *Client) do(ctx context.Context, method, path string, body any) ([]byte, error) {
 	endpoint := fmt.Sprintf("%s/%s/%s", graphBaseURL, c.apiVersion, path)
+
+	if c.appSecret != "" {
+		sep := "?"
+		if strings.Contains(endpoint, "?") {
+			sep = "&"
+		}
+		endpoint += sep + "appsecret_proof=" + c.appsecretProof()
+	}
 
 	var reqBody io.Reader
 	if body != nil {
@@ -208,6 +244,168 @@ func (c *Client) DebugToken(ctx context.Context, inputToken string) (*TokenDebug
 	}
 
 	return &resp.Data, nil
+}
+
+// --- Marketing API Response Types ---
+
+// AdAccount represents a Meta ad account.
+type AdAccount struct {
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	AccountStatus int    `json:"account_status"`
+	Currency      string `json:"currency"`
+	Timezone      string `json:"timezone_name"`
+	AmountSpent   string `json:"amount_spent"`
+	Balance       string `json:"balance"`
+}
+
+// Campaign represents a Meta ad campaign.
+type Campaign struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	Status         string `json:"status"`
+	Objective      string `json:"objective"`
+	DailyBudget    string `json:"daily_budget"`
+	LifetimeBudget string `json:"lifetime_budget"`
+	CreatedTime    string `json:"created_time"`
+}
+
+// AdSet represents a Meta ad set.
+type AdSet struct {
+	ID          string          `json:"id"`
+	Name        string          `json:"name"`
+	Status      string          `json:"status"`
+	CampaignID  string          `json:"campaign_id"`
+	Targeting   json.RawMessage `json:"targeting"`
+	DailyBudget string          `json:"daily_budget"`
+	BidAmount   string          `json:"bid_amount"`
+}
+
+// Ad represents a Meta ad.
+type Ad struct {
+	ID       string     `json:"id"`
+	Name     string     `json:"name"`
+	Status   string     `json:"status"`
+	AdSetID  string     `json:"adset_id"`
+	Creative AdCreative `json:"creative"`
+}
+
+// AdCreative is a summary of the creative attached to an ad.
+type AdCreative struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+// InsightRow represents a single row of ad insights data.
+type InsightRow struct {
+	DateStart   string          `json:"date_start"`
+	DateStop    string          `json:"date_stop"`
+	Impressions string          `json:"impressions"`
+	Clicks      string          `json:"clicks"`
+	Spend       string          `json:"spend"`
+	CTR         string          `json:"ctr"`
+	CPC         string          `json:"cpc"`
+	CPM         string          `json:"cpm"`
+	Reach       string          `json:"reach"`
+	Actions     json.RawMessage `json:"actions,omitempty"`
+}
+
+type dataResponse[T any] struct {
+	Data []T `json:"data"`
+}
+
+// --- Marketing API Read Operations ---
+
+const (
+	adAccountFields = "id,name,account_status,currency,timezone_name,amount_spent,balance"
+	campaignFields  = "id,name,status,objective,daily_budget,lifetime_budget,created_time"
+	adSetFields     = "id,name,status,campaign_id,targeting,daily_budget,bid_amount"
+	adFields        = "id,name,status,adset_id,creative{id,name}"
+	insightFields   = "date_start,date_stop,impressions,clicks,spend,ctr,cpc,cpm,reach,actions"
+)
+
+// ListAdAccounts returns ad accounts accessible by the current user.
+func (c *Client) ListAdAccounts(ctx context.Context) ([]AdAccount, error) {
+	path := "me/adaccounts?fields=" + url.QueryEscape(adAccountFields) + "&limit=100"
+	data, err := c.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp dataResponse[AdAccount]
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to decode ad accounts: %w", err)
+	}
+	return resp.Data, nil
+}
+
+// ListCampaigns returns campaigns for the given ad account.
+func (c *Client) ListCampaigns(ctx context.Context, accountID string) ([]Campaign, error) {
+	path := accountID + "/campaigns?fields=" + url.QueryEscape(campaignFields) + "&limit=100"
+	data, err := c.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp dataResponse[Campaign]
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to decode campaigns: %w", err)
+	}
+	return resp.Data, nil
+}
+
+// ListAdSets returns ad sets for the given ad account, optionally filtered by campaign.
+func (c *Client) ListAdSets(ctx context.Context, accountID string, campaignID string) ([]AdSet, error) {
+	path := accountID + "/adsets?fields=" + url.QueryEscape(adSetFields) + "&limit=100"
+	if campaignID != "" {
+		path += "&filtering=" + url.QueryEscape(`[{"field":"campaign.id","operator":"EQUAL","value":"`+campaignID+`"}]`)
+	}
+	data, err := c.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp dataResponse[AdSet]
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to decode ad sets: %w", err)
+	}
+	return resp.Data, nil
+}
+
+// ListAds returns ads for the given ad account, optionally filtered by ad set.
+func (c *Client) ListAds(ctx context.Context, accountID string, adSetID string) ([]Ad, error) {
+	path := accountID + "/ads?fields=" + url.QueryEscape(adFields) + "&limit=100"
+	if adSetID != "" {
+		path += "&filtering=" + url.QueryEscape(`[{"field":"adset.id","operator":"EQUAL","value":"`+adSetID+`"}]`)
+	}
+	data, err := c.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp dataResponse[Ad]
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to decode ads: %w", err)
+	}
+	return resp.Data, nil
+}
+
+// GetInsights returns insights for any object (campaign, ad set, ad, or account).
+func (c *Client) GetInsights(ctx context.Context, objectID string, datePreset string) ([]InsightRow, error) {
+	path := objectID + "/insights?fields=" + url.QueryEscape(insightFields) + "&limit=100"
+	if datePreset != "" {
+		path += "&date_preset=" + url.QueryEscape(datePreset)
+	}
+	data, err := c.do(ctx, http.MethodGet, path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp dataResponse[InsightRow]
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to decode insights: %w", err)
+	}
+	return resp.Data, nil
 }
 
 // --- Write Operations ---

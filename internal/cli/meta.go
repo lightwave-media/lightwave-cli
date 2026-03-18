@@ -19,10 +19,11 @@ const (
 )
 
 var (
-	metaToken  string
-	metaWABAID string
-	metaAppID  string
-	metaOutput string
+	metaToken     string
+	metaAppSecret string
+	metaWABAID    string
+	metaAppID     string
+	metaOutput    string
 )
 
 // resolveMetaToken returns the token from flag or env.
@@ -56,12 +57,27 @@ func resolveAppID() string {
 	return defaultAppID
 }
 
+func resolveAppSecret() string {
+	if metaAppSecret != "" {
+		return metaAppSecret
+	}
+	return os.Getenv("META_APP_SECRET")
+}
+
 func newMetaClient() (*meta.Client, error) {
 	token, err := resolveMetaToken()
 	if err != nil {
 		return nil, err
 	}
-	return meta.NewClient(token), nil
+	return meta.NewClient(token, resolveAppSecret()), nil
+}
+
+func newMetaAppClient() (*meta.Client, error) {
+	secret := resolveAppSecret()
+	if secret == "" {
+		return nil, fmt.Errorf("no app secret: set --app-secret or META_APP_SECRET")
+	}
+	return meta.NewAppClient(resolveAppID(), secret), nil
 }
 
 // --- Parent Commands ---
@@ -224,7 +240,7 @@ var metaWebhookGetCmd = &cobra.Command{
 	Short: "Show webhook subscriptions",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
-		client, err := newMetaClient()
+		client, err := newMetaAppClient()
 		if err != nil {
 			return err
 		}
@@ -283,7 +299,7 @@ Examples:
   lw meta whatsapp webhook-set --url https://example.com/webhook --verify-token mytoken --fields messages`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
-		client, err := newMetaClient()
+		client, err := newMetaAppClient()
 		if err != nil {
 			return err
 		}
@@ -363,7 +379,7 @@ var metaTokenCheckCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		client := meta.NewClient(token)
+		client := meta.NewClient(token, resolveAppSecret())
 
 		info, err := client.DebugToken(ctx, token)
 		if err != nil {
@@ -421,7 +437,7 @@ var metaTokenDebugCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		client := meta.NewClient(token)
+		client := meta.NewClient(token, resolveAppSecret())
 
 		info, err := client.DebugToken(ctx, token)
 		if err != nil {
@@ -456,7 +472,7 @@ Examples:
 		if err != nil {
 			return err
 		}
-		client := meta.NewClient(token)
+		client := meta.NewClient(token, resolveAppSecret())
 
 		allPassed := true
 
@@ -494,12 +510,18 @@ Examples:
 			fmt.Printf("%-16s %s %d registered\n", "Phone Numbers", color.GreenString("✓"), len(numbers))
 		}
 
-		// 4. Webhook
-		subs, err := client.GetWebhookSubscriptions(ctx, resolveAppID())
-		if err != nil {
+		// 4. Webhook (requires app-level auth)
+		appClient, appErr := newMetaAppClient()
+		var subs []meta.WebhookSub
+		if appErr != nil {
+			fmt.Printf("%-16s %s %s\n", "Webhook", color.YellowString("?"), "META_APP_SECRET not set, skipping")
+		} else {
+			subs, err = appClient.GetWebhookSubscriptions(ctx, resolveAppID())
+		}
+		if appErr == nil && err != nil {
 			fmt.Printf("%-16s %s %s\n", "Webhook", color.RedString("✗"), err)
 			allPassed = false
-		} else {
+		} else if appErr == nil {
 			found := false
 			for _, s := range subs {
 				if s.Object == "whatsapp_business_account" && s.Active {
@@ -546,6 +568,7 @@ Examples:
 func init() {
 	// Persistent flags on meta parent
 	metaCmd.PersistentFlags().StringVar(&metaToken, "token", "", "Meta API access token (default: WHATSAPP_ACCESS_TOKEN env)")
+	metaCmd.PersistentFlags().StringVar(&metaAppSecret, "app-secret", "", "Meta App Secret for appsecret_proof (default: META_APP_SECRET env)")
 	metaCmd.PersistentFlags().StringVar(&metaWABAID, "waba-id", "", "WhatsApp Business Account ID (default: "+defaultWABAID+")")
 	metaCmd.PersistentFlags().StringVar(&metaAppID, "app-id", "", "Meta App ID (default: "+defaultAppID+")")
 	metaCmd.PersistentFlags().StringVar(&metaOutput, "output", "", "Output format: text or json")
@@ -600,4 +623,5 @@ func init() {
 	metaCmd.AddCommand(metaWhatsAppCmd)
 	metaCmd.AddCommand(metaTokenCmd)
 	metaCmd.AddCommand(metaDoctorCmd)
+	metaCmd.AddCommand(metaMarketingCmd)
 }
