@@ -216,6 +216,23 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 	fields := parseIssueBody(issue)
 	title := stripSprintPrefix(issue.Title)
 
+	// Helper to build a syncAction with common fields pre-filled
+	action := func(act, taskID string) syncAction {
+		a := syncAction{
+			IssueNumber: issue.Number,
+			IssueURL:    issue.URL,
+			Action:      act,
+			TaskID:      taskID,
+			Title:       title,
+			Deps:        fields.deps,
+			Epic:        fields.epic,
+			Priority:    fields.priority,
+			TaskType:    fields.taskType,
+			HasAC:       fields.acceptanceCriteria != "",
+		}
+		return a
+	}
+
 	// Try to find existing task: first by Task ID in body, then by notion_id
 	ghRef := fmt.Sprintf("gh-%d", issue.Number)
 	var existingTask *db.Task
@@ -237,18 +254,20 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 				status := "done"
 				if _, err := db.UpdateTask(ctx, pool, existingTask.ID, db.TaskUpdateOptions{Status: &status}); err != nil {
 					result.Errors = append(result.Errors, fmt.Sprintf("#%d: close %s: %v", issue.Number, existingTask.ShortID, err))
-					result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "close", TaskID: existingTask.ShortID, Title: title, Error: err.Error()})
+					a := action("close", existingTask.ShortID)
+					a.Error = err.Error()
+					result.Actions = append(result.Actions, a)
 					return
 				}
 			}
 			result.Closed = append(result.Closed, fmt.Sprintf("#%d → %s", issue.Number, existingTask.ShortID))
-			result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "close", TaskID: existingTask.ShortID, Title: title})
+			result.Actions = append(result.Actions, action("close", existingTask.ShortID))
 		} else {
 			if !jsonOut {
 				fmt.Printf("%s %s %s (closed)\n", prefix, color.HiBlackString("SKIP"), truncate(title, 40))
 			}
 			result.Skipped = append(result.Skipped, fmt.Sprintf("#%d (closed)", issue.Number))
-			result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "skip", Title: title})
+			result.Actions = append(result.Actions, action("skip", ""))
 		}
 		return
 	}
@@ -296,7 +315,7 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 				fmt.Printf("%s %s %s (task %s in sync)\n", prefix, color.HiBlackString("SKIP"), truncate(title, 40), color.YellowString(shortID))
 			}
 			result.Skipped = append(result.Skipped, fmt.Sprintf("#%d → %s", issue.Number, shortID))
-			result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "skip", TaskID: shortID, Title: title, Deps: fields.deps})
+			result.Actions = append(result.Actions, action("skip", shortID))
 			return
 		}
 
@@ -307,26 +326,31 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 		if !dryRun {
 			if _, err := db.UpdateTask(ctx, pool, existingTask.ID, opts); err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("#%d: update %s: %v", issue.Number, shortID, err))
-				result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "update", TaskID: shortID, Title: title, Changes: changes, Error: err.Error()})
+				a := action("update", shortID)
+				a.Changes = changes
+				a.Error = err.Error()
+				result.Actions = append(result.Actions, a)
 				return
 			}
 		}
 		result.Updated = append(result.Updated, fmt.Sprintf("#%d → %s", issue.Number, shortID))
-		result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "update", TaskID: shortID, Title: title, Changes: changes, Deps: fields.deps})
+		a := action("update", shortID)
+		a.Changes = changes
+		result.Actions = append(result.Actions, a)
 		return
 	}
 
 	// No existing task — create one
-	suffix := ""
-	if len(fields.deps) > 0 && !jsonOut {
-		suffix = color.HiBlackString(" deps:[%s]", strings.Join(fields.deps, ","))
-	}
 	if !jsonOut {
+		suffix := ""
+		if len(fields.deps) > 0 {
+			suffix = color.HiBlackString(" deps:[%s]", strings.Join(fields.deps, ","))
+		}
 		fmt.Printf("%s %s %s%s\n", prefix, color.GreenString("CREATE"), truncate(title, 45), suffix)
 	}
 	if dryRun {
 		result.Created = append(result.Created, fmt.Sprintf("#%d → %s", issue.Number, title))
-		result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "create", Title: title, Deps: fields.deps})
+		result.Actions = append(result.Actions, action("create", ""))
 		return
 	}
 
@@ -349,7 +373,9 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 	newTask, err := db.CreateTask(ctx, pool, createOpts)
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("#%d: create: %v", issue.Number, err))
-		result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "create", Title: title, Error: err.Error()})
+		a := action("create", "")
+		a.Error = err.Error()
+		result.Actions = append(result.Actions, a)
 		return
 	}
 
@@ -359,7 +385,7 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 	}
 
 	result.Created = append(result.Created, fmt.Sprintf("#%d → %s", issue.Number, newTask.ShortID))
-	result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "create", TaskID: newTask.ShortID, Title: title, Deps: fields.deps})
+	result.Actions = append(result.Actions, action("create", newTask.ShortID))
 }
 
 // stampTaskID prepends **Task ID:** to a GitHub Issue body via gh issue edit

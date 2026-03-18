@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -135,6 +136,29 @@ func TestParseIssueBodyEmpty(t *testing.T) {
 	}
 	if f.taskType != "feature" {
 		t.Errorf("taskType = %q, want feature (default)", f.taskType)
+	}
+}
+
+func TestParseIssueBodyAcceptanceCriteria(t *testing.T) {
+	body := `**Priority:** P2 High
+
+**Acceptance Criteria:**
+- Issues labeled ready are eligible for pickup
+- Priority ordering via issue labels (p1/p2/p3/p4)
+- Removes dependency on lw task next-approved
+
+**Dependencies:** None (first task)`
+
+	f := parseIssueBody(ghIssue{Body: body})
+
+	if f.acceptanceCriteria == "" {
+		t.Fatal("expected acceptance criteria to be extracted")
+	}
+	if !strings.Contains(f.acceptanceCriteria, "Issues labeled ready") {
+		t.Errorf("AC = %q, want to contain 'Issues labeled ready'", f.acceptanceCriteria)
+	}
+	if !strings.Contains(f.acceptanceCriteria, "Removes dependency") {
+		t.Errorf("AC = %q, want to contain 'Removes dependency'", f.acceptanceCriteria)
 	}
 }
 
