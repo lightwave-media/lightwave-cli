@@ -17,6 +17,7 @@ import (
 var (
 	githubSyncDryRun bool
 	githubSyncAll    bool
+	githubSyncJSON   bool
 )
 
 var githubSyncCmd = &cobra.Command{
@@ -35,15 +36,18 @@ Extracts structured fields from issue body:
 Maps GitHub labels: bug → bug, enhancement → feature, documentation → docs.
 Strips [Sprint N] prefix from titles.
 
+On CREATE, stamps **Task ID:** back into the GitHub Issue body.
 With --all, also syncs closed issues (marks their tasks as done).
+With --json, outputs structured JSON for orchestrator consumption.
 
 Examples:
   lw github sync
   lw github sync --all
-  lw github sync --dry-run`,
+  lw github sync --dry-run
+  lw github sync --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
-		return runGitHubSync(ctx, githubSyncDryRun, githubSyncAll)
+		return runGitHubSync(ctx, githubSyncDryRun, githubSyncAll, githubSyncJSON)
 	},
 }
 
@@ -66,6 +70,17 @@ type ghMile struct {
 	Title string `json:"title"`
 }
 
+// syncAction represents one sync operation for JSON output
+type syncAction struct {
+	IssueNumber int      `json:"issue_number"`
+	Action      string   `json:"action"` // create, update, close, skip
+	TaskID      string   `json:"task_id,omitempty"`
+	Title       string   `json:"title"`
+	Changes     []string `json:"changes,omitempty"`
+	Deps        []string `json:"deps,omitempty"`
+	Error       string   `json:"error,omitempty"`
+}
+
 // syncResult tracks what happened during sync
 type syncResult struct {
 	Created []string
@@ -73,12 +88,13 @@ type syncResult struct {
 	Closed  []string
 	Skipped []string
 	Errors  []string
+	Actions []syncAction // structured log for JSON mode
 }
 
 // epicCache avoids repeated DB lookups for the same epic name
 type epicCache struct {
 	pool  *pgxpool.Pool
-	cache map[string]*db.Epic // name → epic (nil = not found)
+	cache map[string]*db.Epic
 }
 
 func newEpicCache(pool *pgxpool.Pool) *epicCache {
@@ -98,8 +114,8 @@ func (ec *epicCache) resolve(ctx context.Context, name string) *db.Epic {
 	return epic
 }
 
-func runGitHubSync(ctx context.Context, dryRun, includeAll bool) error {
-	if dryRun {
+func runGitHubSync(ctx context.Context, dryRun, includeAll, jsonOut bool) error {
+	if dryRun && !jsonOut {
 		fmt.Println(color.YellowString("DRY RUN — no changes will be made"))
 		fmt.Println()
 	}
@@ -109,14 +125,21 @@ func runGitHubSync(ctx context.Context, dryRun, includeAll bool) error {
 	if includeAll {
 		state = "all"
 	}
-	fmt.Printf(color.CyanString("Fetching %s issues from %s...\n"), state, defaultGHRepo)
+	if !jsonOut {
+		fmt.Printf(color.CyanString("Fetching %s issues from %s...\n"), state, defaultGHRepo)
+	}
 	issues, err := fetchIssues(state)
 	if err != nil {
 		return fmt.Errorf("fetching issues: %w", err)
 	}
-	fmt.Printf("Found %s issues\n\n", color.GreenString("%d", len(issues)))
+	if !jsonOut {
+		fmt.Printf("Found %s issues\n\n", color.GreenString("%d", len(issues)))
+	}
 
 	if len(issues) == 0 {
+		if jsonOut {
+			fmt.Println("[]")
+		}
 		return nil
 	}
 
@@ -132,10 +155,16 @@ func runGitHubSync(ctx context.Context, dryRun, includeAll bool) error {
 	// 3. Sync each issue
 	result := syncResult{}
 	for _, issue := range issues {
-		syncOneIssue(ctx, pool, epics, issue, dryRun, &result)
+		syncOneIssue(ctx, pool, epics, issue, dryRun, jsonOut, &result)
 	}
 
-	// 4. Print summary
+	// 4. Output
+	if jsonOut {
+		out, _ := json.MarshalIndent(result.Actions, "", "  ")
+		fmt.Println(string(out))
+		return nil
+	}
+
 	fmt.Println()
 	fmt.Println(color.CyanString("Sync Summary"))
 	fmt.Printf("  Created: %s\n", color.GreenString("%d", len(result.Created)))
@@ -175,7 +204,7 @@ func fetchIssues(state string) ([]ghIssue, error) {
 	return issues, nil
 }
 
-func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, issue ghIssue, dryRun bool, result *syncResult) {
+func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, issue ghIssue, dryRun, jsonOut bool, result *syncResult) {
 	prefix := fmt.Sprintf("  #%-4d", issue.Number)
 
 	// Extract structured fields from issue body
@@ -196,18 +225,25 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 	// Handle closed issues
 	if issue.State == "CLOSED" || issue.State == "closed" {
 		if existingTask != nil && existingTask.Status != "done" && existingTask.Status != "cancelled" {
-			fmt.Printf("%s %s %s (task %s → done)\n", prefix, color.BlueString("CLOSE"), truncate(title, 40), color.YellowString(existingTask.ShortID))
+			if !jsonOut {
+				fmt.Printf("%s %s %s (task %s → done)\n", prefix, color.BlueString("CLOSE"), truncate(title, 40), color.YellowString(existingTask.ShortID))
+			}
 			if !dryRun {
 				status := "done"
 				if _, err := db.UpdateTask(ctx, pool, existingTask.ID, db.TaskUpdateOptions{Status: &status}); err != nil {
 					result.Errors = append(result.Errors, fmt.Sprintf("#%d: close %s: %v", issue.Number, existingTask.ShortID, err))
+					result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "close", TaskID: existingTask.ShortID, Title: title, Error: err.Error()})
 					return
 				}
 			}
 			result.Closed = append(result.Closed, fmt.Sprintf("#%d → %s", issue.Number, existingTask.ShortID))
+			result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "close", TaskID: existingTask.ShortID, Title: title})
 		} else {
-			fmt.Printf("%s %s %s (closed)\n", prefix, color.HiBlackString("SKIP"), truncate(title, 40))
+			if !jsonOut {
+				fmt.Printf("%s %s %s (closed)\n", prefix, color.HiBlackString("SKIP"), truncate(title, 40))
+			}
 			result.Skipped = append(result.Skipped, fmt.Sprintf("#%d (closed)", issue.Number))
+			result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "skip", Title: title})
 		}
 		return
 	}
@@ -224,45 +260,68 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 		shortID := existingTask.ShortID
 		needsUpdate := false
 		opts := db.TaskUpdateOptions{}
+		var changes []string
 
 		if fields.priority != "" && fields.priority != existingTask.Priority {
 			opts.Priority = &fields.priority
 			needsUpdate = true
+			changes = append(changes, fmt.Sprintf("priority: %s → %s", existingTask.Priority, fields.priority))
 		}
 		if title != existingTask.Title {
 			opts.Title = &title
 			needsUpdate = true
+			changes = append(changes, "title")
 		}
 		if epicID != "" && (existingTask.EpicID == nil || *existingTask.EpicID != epicID) {
 			opts.EpicID = &epicID
 			needsUpdate = true
+			changes = append(changes, "epic")
+		}
+
+		// Sync description from issue body
+		newDesc := formatDescription(issue)
+		if existingTask.Description != nil && *existingTask.Description != newDesc {
+			opts.Description = &newDesc
+			needsUpdate = true
+			changes = append(changes, "description")
 		}
 
 		if !needsUpdate {
-			fmt.Printf("%s %s %s (task %s in sync)\n", prefix, color.HiBlackString("SKIP"), truncate(title, 40), color.YellowString(shortID))
+			if !jsonOut {
+				fmt.Printf("%s %s %s (task %s in sync)\n", prefix, color.HiBlackString("SKIP"), truncate(title, 40), color.YellowString(shortID))
+			}
 			result.Skipped = append(result.Skipped, fmt.Sprintf("#%d → %s", issue.Number, shortID))
+			result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "skip", TaskID: shortID, Title: title, Deps: fields.deps})
 			return
 		}
 
-		fmt.Printf("%s %s %s (task %s)\n", prefix, color.YellowString("UPDATE"), truncate(title, 40), color.YellowString(shortID))
+		if !jsonOut {
+			changeStr := color.HiBlackString(" [%s]", strings.Join(changes, ", "))
+			fmt.Printf("%s %s %s (task %s)%s\n", prefix, color.YellowString("UPDATE"), truncate(title, 35), color.YellowString(shortID), changeStr)
+		}
 		if !dryRun {
 			if _, err := db.UpdateTask(ctx, pool, existingTask.ID, opts); err != nil {
 				result.Errors = append(result.Errors, fmt.Sprintf("#%d: update %s: %v", issue.Number, shortID, err))
+				result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "update", TaskID: shortID, Title: title, Changes: changes, Error: err.Error()})
 				return
 			}
 		}
 		result.Updated = append(result.Updated, fmt.Sprintf("#%d → %s", issue.Number, shortID))
+		result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "update", TaskID: shortID, Title: title, Changes: changes, Deps: fields.deps})
 		return
 	}
 
 	// No existing task — create one
 	suffix := ""
-	if len(fields.deps) > 0 {
+	if len(fields.deps) > 0 && !jsonOut {
 		suffix = color.HiBlackString(" deps:[%s]", strings.Join(fields.deps, ","))
 	}
-	fmt.Printf("%s %s %s%s\n", prefix, color.GreenString("CREATE"), truncate(title, 45), suffix)
+	if !jsonOut {
+		fmt.Printf("%s %s %s%s\n", prefix, color.GreenString("CREATE"), truncate(title, 45), suffix)
+	}
 	if dryRun {
 		result.Created = append(result.Created, fmt.Sprintf("#%d → %s", issue.Number, title))
+		result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "create", Title: title, Deps: fields.deps})
 		return
 	}
 
@@ -284,10 +343,58 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 	newTask, err := db.CreateTask(ctx, pool, createOpts)
 	if err != nil {
 		result.Errors = append(result.Errors, fmt.Sprintf("#%d: create: %v", issue.Number, err))
+		result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "create", Title: title, Error: err.Error()})
 		return
 	}
 
+	// Stamp task ID back into GitHub Issue body
+	if fields.taskID == "" {
+		stampTaskID(issue.Number, newTask.ShortID, jsonOut)
+	}
+
 	result.Created = append(result.Created, fmt.Sprintf("#%d → %s", issue.Number, newTask.ShortID))
+	result.Actions = append(result.Actions, syncAction{IssueNumber: issue.Number, Action: "create", TaskID: newTask.ShortID, Title: title, Deps: fields.deps})
+}
+
+// stampTaskID prepends **Task ID:** to a GitHub Issue body via gh issue edit
+func stampTaskID(issueNumber int, taskID string, jsonOut bool) {
+	cmd := exec.Command("gh", "issue", "view",
+		fmt.Sprintf("%d", issueNumber),
+		"--repo", defaultGHRepo,
+		"--json", "body",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		if !jsonOut {
+			fmt.Printf("    %s stamp task ID: %v\n", color.YellowString("Warning:"), err)
+		}
+		return
+	}
+
+	var issueData struct {
+		Body string `json:"body"`
+	}
+	if err := json.Unmarshal(out, &issueData); err != nil {
+		return
+	}
+
+	newBody := fmt.Sprintf("**Task ID:** %s\n%s", taskID, issueData.Body)
+
+	editCmd := exec.Command("gh", "issue", "edit",
+		fmt.Sprintf("%d", issueNumber),
+		"--repo", defaultGHRepo,
+		"--body", newBody,
+	)
+	if err := editCmd.Run(); err != nil {
+		if !jsonOut {
+			fmt.Printf("    %s stamp task ID: %v\n", color.YellowString("Warning:"), err)
+		}
+		return
+	}
+
+	if !jsonOut {
+		fmt.Printf("    %s stamped Task ID %s into issue #%d\n", color.GreenString("✓"), taskID, issueNumber)
+	}
 }
 
 // parsedFields holds all structured data extracted from an issue body
@@ -414,5 +521,6 @@ func truncate(s string, n int) string {
 func init() {
 	githubSyncCmd.Flags().BoolVar(&githubSyncDryRun, "dry-run", false, "Show what would be synced without making changes")
 	githubSyncCmd.Flags().BoolVar(&githubSyncAll, "all", false, "Include closed issues (marks their tasks as done)")
+	githubSyncCmd.Flags().BoolVar(&githubSyncJSON, "json", false, "Output structured JSON (for orchestrator)")
 	githubCmd.AddCommand(githubSyncCmd)
 }
