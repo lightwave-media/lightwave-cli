@@ -160,6 +160,13 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 	}
 	fmt.Println()
 
+	// Step 2: Sync task statuses to GitHub Projects board
+	fmt.Println(color.CyanString("Step 2: GitHub Projects sync"))
+	if err := runProjectsSync(ctx, dryRun); err != nil {
+		fmt.Printf("  %s projects sync: %v (continuing)\n", color.YellowString("Warning:"), err)
+	}
+	fmt.Println()
+
 	if dryRun {
 		fmt.Println(color.YellowString("[DRY RUN] Would call Elixir orchestrator run-once"))
 		result.Action = "idle"

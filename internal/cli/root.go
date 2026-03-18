@@ -66,6 +66,7 @@ func init() {
 	rootCmd.AddCommand(driftCmd)
 	rootCmd.AddCommand(lineageCmd)
 	rootCmd.AddCommand(docCmd)
+	rootCmd.AddCommand(heartbeatCmd)
 }
 
 // versionCmd shows version info
