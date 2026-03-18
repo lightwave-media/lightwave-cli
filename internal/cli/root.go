@@ -60,6 +60,7 @@ func init() {
 	rootCmd.AddCommand(cdnCmd)
 	rootCmd.AddCommand(setupCmd)
 	rootCmd.AddCommand(emailCmd)
+	rootCmd.AddCommand(metaCmd)
 	rootCmd.AddCommand(codegenCmd)
 	rootCmd.AddCommand(driftCmd)
 	rootCmd.AddCommand(lineageCmd)
