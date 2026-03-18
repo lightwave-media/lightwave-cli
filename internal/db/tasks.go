@@ -177,6 +177,37 @@ func GetTask(ctx context.Context, pool *pgxpool.Pool, taskID string) (*Task, err
 	return &t, nil
 }
 
+// GetTaskByNotionID finds a task by its notion_id field (used for external refs like "gh-52")
+func GetTaskByNotionID(ctx context.Context, pool *pgxpool.Pool, notionID string) (*Task, error) {
+	query := `
+		SELECT
+			id, title, description, status, priority,
+			task_type, task_category, agent_status, assigned_agent,
+			epic_id, sprint_id, due_date, do_date,
+			branch_name, pr_url, created_at, updated_at
+		FROM createos_task
+		WHERE notion_id = $1
+		LIMIT 1
+	`
+
+	var t Task
+	err := pool.QueryRow(ctx, query, notionID).Scan(
+		&t.ID, &t.Title, &t.Description, &t.Status, &t.Priority,
+		&t.TaskType, &t.TaskCategory, &t.AgentStatus, &t.AssignedAgent,
+		&t.EpicID, &t.SprintID, &t.DueDate, &t.DoDate,
+		&t.BranchName, &t.PRUrl, &t.CreatedAt, &t.UpdatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("task not found by notion_id %s: %w", notionID, err)
+	}
+
+	if len(t.ID) >= 8 {
+		t.ShortID = t.ID[:8]
+	}
+
+	return &t, nil
+}
+
 // StatusDisplay returns a human-readable status with color hint
 func (t *Task) StatusDisplay() string {
 	switch t.Status {
@@ -211,6 +242,7 @@ type TaskCreateOptions struct {
 	EpicID      string
 	SprintID    string
 	StoryID     string
+	NotionID    string // external ref key (e.g. "gh-52" for GitHub Issue #52)
 }
 
 // CreateTask inserts a new task into createos_task
@@ -218,7 +250,10 @@ func CreateTask(ctx context.Context, pool *pgxpool.Pool, opts TaskCreateOptions)
 	id := uuid.New().String()
 	now := time.Now()
 
-	notionID := "cli-" + id[:8]
+	notionID := opts.NotionID
+	if notionID == "" {
+		notionID = "cli-" + id[:8]
+	}
 
 	query := `
 		INSERT INTO createos_task (id, title, description, acceptance_criteria, priority, task_type, task_category,
