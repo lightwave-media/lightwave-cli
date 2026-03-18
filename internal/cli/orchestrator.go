@@ -135,6 +135,32 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 	}
 	fmt.Println()
 
+	// Step 1: Pick next ready issue from GitHub
+	fmt.Println(color.CyanString("Step 1: GitHub Issues pick"))
+	readyIssues, pickErr := fetchReadyIssues("")
+	if pickErr != nil {
+		fmt.Printf("  %s github pick: %v (continuing)\n", color.YellowString("Warning:"), pickErr)
+	} else if len(readyIssues) == 0 {
+		fmt.Println("  No issues labeled 'ready' — idle")
+		result.Action = "idle"
+		fmt.Println(color.GreenString("Iteration complete"))
+		return nil
+	} else {
+		picked := readyIssues[0]
+		fields := parseIssueBody(picked)
+		title := stripSprintPrefix(picked.Title)
+		fmt.Printf("  Next: #%d %s", picked.Number, truncate(title, 45))
+		if fields.priority != "" {
+			fmt.Printf(" [%s]", fields.priority)
+		}
+		fmt.Println()
+		result.TaskTitle = title
+		if fields.taskID != "" {
+			result.TaskID = fields.taskID
+		}
+	}
+	fmt.Println()
+
 	if dryRun {
 		fmt.Println(color.YellowString("[DRY RUN] Would call Elixir orchestrator run-once"))
 		result.Action = "idle"

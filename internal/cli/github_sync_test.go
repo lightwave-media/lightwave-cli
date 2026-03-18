@@ -171,6 +171,31 @@ func TestTruncate(t *testing.T) {
 	}
 }
 
+func TestIssuePriorityRank(t *testing.T) {
+	tests := []struct {
+		labels []ghLabel
+		body   string
+		want   int
+	}{
+		{[]ghLabel{{Name: "p1"}}, "", 1},
+		{[]ghLabel{{Name: "P2 High"}}, "", 2},
+		{[]ghLabel{{Name: "ready"}, {Name: "p3"}}, "", 3},
+		{[]ghLabel{{Name: "p4"}}, "", 4},
+		// Fallback to body priority
+		{nil, "**Priority:** P1 Urgent", 1},
+		{nil, "**Priority:** P2 High", 2},
+		// No priority at all
+		{nil, "", 5},
+	}
+	for _, tt := range tests {
+		issue := ghIssue{Labels: tt.labels, Body: tt.body}
+		got := issuePriorityRank(issue)
+		if got != tt.want {
+			t.Errorf("issuePriorityRank(labels=%v, body=%q) = %d, want %d", tt.labels, tt.body, got, tt.want)
+		}
+	}
+}
+
 func TestMapLabelsToType(t *testing.T) {
 	tests := []struct {
 		labels []ghLabel

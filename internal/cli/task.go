@@ -270,6 +270,9 @@ Examples:
   lw task next-approved
   lw task next-approved --sprint=<sprint-id>  # specific sprint`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Println(color.HiBlackString("Hint: use `lw github pick` for GitHub-native task selection"))
+		fmt.Println()
+
 		ctx := context.Background()
 
 		pool, err := db.Connect(ctx)
