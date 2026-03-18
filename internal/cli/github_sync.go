@@ -32,6 +32,7 @@ Extracts structured fields from issue body:
   - **Epic:**           → fuzzy-matches to existing epic by name
   - **Type:**           → overrides label-based type detection
   - **Dependencies:**   → extracted task IDs shown in output
+  - **Acceptance Criteria:** → populates task AC field
 
 Maps GitHub labels: bug → bug, enhancement → feature, documentation → docs.
 Strips [Sprint N] prefix from titles.
@@ -93,7 +94,7 @@ type syncResult struct {
 	Closed  []string
 	Skipped []string
 	Errors  []string
-	Actions []syncAction // structured log for JSON mode
+	Actions []syncAction
 }
 
 // epicCache avoids repeated DB lookups for the same epic name
@@ -148,12 +149,11 @@ func runGitHubSync(ctx context.Context, dryRun, includeAll, jsonOut bool) error 
 		return nil
 	}
 
-	// 2. Connect to DB
-	pool, err := db.Connect(ctx)
+	// 2. Connect to DB (don't close — caller may need the pool after us)
+	pool, err := db.GetPool(ctx)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
 	}
-	defer db.Close()
 
 	epics := newEpicCache(pool)
 
@@ -196,9 +196,10 @@ func fetchIssues(state string) ([]ghIssue, error) {
 		"--limit", "200",
 	)
 
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("gh issue list failed: %w", err)
+		// Include stderr in error for auth/network diagnostics
+		return nil, fmt.Errorf("gh issue list failed: %w\n%s", err, string(out))
 	}
 
 	var issues []ghIssue
@@ -212,13 +213,12 @@ func fetchIssues(state string) ([]ghIssue, error) {
 func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, issue ghIssue, dryRun, jsonOut bool, result *syncResult) {
 	prefix := fmt.Sprintf("  #%-4d", issue.Number)
 
-	// Extract structured fields from issue body
 	fields := parseIssueBody(issue)
 	title := stripSprintPrefix(issue.Title)
 
 	// Helper to build a syncAction with common fields pre-filled
 	action := func(act, taskID string) syncAction {
-		a := syncAction{
+		return syncAction{
 			IssueNumber: issue.Number,
 			IssueURL:    issue.URL,
 			Action:      act,
@@ -230,7 +230,6 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 			TaskType:    fields.taskType,
 			HasAC:       fields.acceptanceCriteria != "",
 		}
-		return a
 	}
 
 	// Try to find existing task: first by Task ID in body, then by notion_id
@@ -245,7 +244,7 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 	}
 
 	// Handle closed issues
-	if issue.State == "CLOSED" || issue.State == "closed" {
+	if strings.EqualFold(issue.State, "closed") {
 		if existingTask != nil && existingTask.Status != "done" && existingTask.Status != "cancelled" {
 			if !jsonOut {
 				fmt.Printf("%s %s %s (task %s → done)\n", prefix, color.BlueString("CLOSE"), truncate(title, 40), color.YellowString(existingTask.ShortID))
@@ -302,9 +301,28 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 			changes = append(changes, "epic")
 		}
 
-		// Sync description from issue body
+		// Sync description — only compare the issue body portion to avoid
+		// false diffs from the "Synced from" header changing format
 		newDesc := formatDescription(issue)
-		if existingTask.Description != nil && *existingTask.Description != newDesc {
+		if existingTask.Description != nil {
+			existingDesc := *existingTask.Description
+			// If the existing description doesn't start with our sync header,
+			// it was set before sync existed. Only update if the issue body
+			// contains meaningful content beyond what the task already has.
+			if strings.HasPrefix(existingDesc, "Synced from GitHub Issue #") {
+				// Same format — compare directly
+				if existingDesc != newDesc {
+					opts.Description = &newDesc
+					needsUpdate = true
+					changes = append(changes, "description")
+				}
+			} else {
+				// Legacy description — adopt sync format on first sync
+				opts.Description = &newDesc
+				needsUpdate = true
+				changes = append(changes, "description")
+			}
+		} else {
 			opts.Description = &newDesc
 			needsUpdate = true
 			changes = append(changes, "description")
@@ -379,7 +397,7 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 		return
 	}
 
-	// Stamp task ID back into GitHub Issue body
+	// Stamp task ID back into GitHub Issue body (only if not already present)
 	if fields.taskID == "" {
 		stampTaskID(issue.Number, newTask.ShortID, jsonOut)
 	}
@@ -388,14 +406,15 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 	result.Actions = append(result.Actions, action("create", newTask.ShortID))
 }
 
-// stampTaskID prepends **Task ID:** to a GitHub Issue body via gh issue edit
+// stampTaskID prepends **Task ID:** to a GitHub Issue body via gh issue edit.
+// Guards against double-stamping by checking if the body already contains a Task ID.
 func stampTaskID(issueNumber int, taskID string, jsonOut bool) {
 	cmd := exec.Command("gh", "issue", "view",
 		fmt.Sprintf("%d", issueNumber),
 		"--repo", defaultGHRepo,
 		"--json", "body",
 	)
-	out, err := cmd.Output()
+	out, err := cmd.CombinedOutput()
 	if err != nil {
 		if !jsonOut {
 			fmt.Printf("    %s stamp task ID: %v\n", color.YellowString("Warning:"), err)
@@ -410,6 +429,11 @@ func stampTaskID(issueNumber int, taskID string, jsonOut bool) {
 		return
 	}
 
+	// Guard: don't double-stamp
+	if taskIDRe.MatchString(issueData.Body) {
+		return
+	}
+
 	newBody := fmt.Sprintf("**Task ID:** %s\n%s", taskID, issueData.Body)
 
 	editCmd := exec.Command("gh", "issue", "edit",
@@ -417,15 +441,15 @@ func stampTaskID(issueNumber int, taskID string, jsonOut bool) {
 		"--repo", defaultGHRepo,
 		"--body", newBody,
 	)
-	if err := editCmd.Run(); err != nil {
+	if editErr := editCmd.Run(); editErr != nil {
 		if !jsonOut {
-			fmt.Printf("    %s stamp task ID: %v\n", color.YellowString("Warning:"), err)
+			fmt.Printf("    %s stamp task ID: %v\n", color.YellowString("Warning:"), editErr)
 		}
 		return
 	}
 
 	if !jsonOut {
-		fmt.Printf("    %s stamped Task ID %s into issue #%d\n", color.GreenString("✓"), taskID, issueNumber)
+		fmt.Printf("    stamped Task ID %s into issue #%d\n", color.GreenString(taskID), issueNumber)
 	}
 }
 
@@ -445,9 +469,12 @@ var (
 	epicRe         = regexp.MustCompile(`\*\*Epic:\*\*\s*([^\n]+)`)
 	typeRe         = regexp.MustCompile(`\*\*Type:\*\*\s*([^\n]+)`)
 	depsRe         = regexp.MustCompile(`\*\*Dependencies:\*\*\s*([^\n]+)`)
-	depTaskIDRe    = regexp.MustCompile(`([a-f0-9]{8})`)
 	sprintPrefixRe = regexp.MustCompile(`^\[Sprint \d+\]\s*`)
-	acRe           = regexp.MustCompile(`(?s)\*\*Acceptance Criteria:\*\*\s*\n((?:- [^\n]+\n?)+)`)
+	// Match bulleted AC lists using - or * markers
+	acRe = regexp.MustCompile(`(?s)\*\*Acceptance Criteria:\*\*\s*\n((?:[-*] [^\n]+\n?)+)`)
+	// Dep task IDs: exactly 8 hex chars bounded by word boundaries to avoid
+	// false positives on hex substrings in URLs or prose
+	depTaskIDRe = regexp.MustCompile(`\b([a-f0-9]{8})\b`)
 )
 
 func parseIssueBody(issue ghIssue) parsedFields {
@@ -471,18 +498,21 @@ func parseIssueBody(issue ghIssue) parsedFields {
 		f.taskType = mapLabelsToType(issue.Labels)
 	}
 
-	// Dependencies: extract task IDs
+	// Dependencies: extract task IDs (deduplicated)
 	if m := depsRe.FindStringSubmatch(body); len(m) >= 2 {
 		raw := m[1]
-		lowerRaw := strings.ToLower(raw)
-		if !strings.Contains(lowerRaw, "none") {
+		if !strings.Contains(strings.ToLower(raw), "none") {
+			seen := map[string]bool{}
 			for _, dm := range depTaskIDRe.FindAllString(raw, -1) {
-				f.deps = append(f.deps, dm)
+				if !seen[dm] {
+					f.deps = append(f.deps, dm)
+					seen[dm] = true
+				}
 			}
 		}
 	}
 
-	// Acceptance Criteria: extract bulleted list
+	// Acceptance Criteria: extract bulleted list (- or * markers)
 	if m := acRe.FindStringSubmatch(body); len(m) >= 2 {
 		f.acceptanceCriteria = strings.TrimSpace(m[1])
 	}
@@ -551,6 +581,9 @@ func formatDescription(issue ghIssue) string {
 }
 
 func truncate(s string, n int) string {
+	if n < 4 {
+		n = 4
+	}
 	if len(s) <= n {
 		return s
 	}
