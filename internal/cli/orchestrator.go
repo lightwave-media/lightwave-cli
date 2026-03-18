@@ -135,19 +135,18 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 	}
 	fmt.Println()
 
-	// Step 1: Pick next ready issue from GitHub
+	// Step 1: Pick next ready issue from GitHub (priority-sorted, dep-checked)
 	fmt.Println(color.CyanString("Step 1: GitHub Issues pick"))
-	readyIssues, pickErr := fetchReadyIssues("")
+	picked, pickErr := pickNextReady(ctx, "")
 	if pickErr != nil {
 		fmt.Printf("  %s github pick: %v (continuing)\n", color.YellowString("Warning:"), pickErr)
-	} else if len(readyIssues) == 0 {
-		fmt.Println("  No issues labeled 'ready' — idle")
+	} else if picked == nil {
+		fmt.Println("  No actionable ready issues — idle")
 		result.Action = "idle"
 		fmt.Println(color.GreenString("Iteration complete"))
 		return nil
 	} else {
-		picked := readyIssues[0]
-		fields := parseIssueBody(picked)
+		fields := parseIssueBody(*picked)
 		title := stripSprintPrefix(picked.Title)
 		fmt.Printf("  Next: #%d %s", picked.Number, truncate(title, 45))
 		if fields.priority != "" {

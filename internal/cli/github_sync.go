@@ -334,6 +334,7 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 			}
 			result.Skipped = append(result.Skipped, fmt.Sprintf("#%d → %s", issue.Number, shortID))
 			result.Actions = append(result.Actions, action("skip", shortID))
+			syncPriorityLabel(issue, fields.priority, dryRun, jsonOut)
 			return
 		}
 
@@ -355,6 +356,7 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 		a := action("update", shortID)
 		a.Changes = changes
 		result.Actions = append(result.Actions, a)
+		syncPriorityLabel(issue, fields.priority, dryRun, jsonOut)
 		return
 	}
 
@@ -404,6 +406,9 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 
 	result.Created = append(result.Created, fmt.Sprintf("#%d → %s", issue.Number, newTask.ShortID))
 	result.Actions = append(result.Actions, action("create", newTask.ShortID))
+
+	// Sync priority label to GitHub if missing
+	syncPriorityLabel(issue, fields.priority, dryRun, jsonOut)
 }
 
 // stampTaskID prepends **Task ID:** to a GitHub Issue body via gh issue edit.
@@ -588,6 +593,53 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n-3] + "..."
+}
+
+// syncPriorityLabel ensures an issue has a matching p1/p2/p3/p4 label
+// based on its body priority field. This enables label-based priority sorting
+// in `lw github pick` without requiring manual labeling.
+func syncPriorityLabel(issue ghIssue, priority string, dryRun, jsonOut bool) {
+	if priority == "" {
+		return
+	}
+
+	// Determine which label should exist
+	var wantLabel string
+	switch priority {
+	case "p1_urgent":
+		wantLabel = "p1"
+	case "p2_high":
+		wantLabel = "p2"
+	case "p3_medium":
+		wantLabel = "p3"
+	case "p4_low":
+		wantLabel = "p4"
+	default:
+		return
+	}
+
+	// Check if any priority label already exists
+	for _, l := range issue.Labels {
+		lower := strings.ToLower(l.Name)
+		if lower == "p1" || lower == "p2" || lower == "p3" || lower == "p4" {
+			return // Already has a priority label
+		}
+	}
+
+	if dryRun {
+		return
+	}
+
+	cmd := exec.Command("gh", "issue", "edit",
+		fmt.Sprintf("%d", issue.Number),
+		"--repo", defaultGHRepo,
+		"--add-label", wantLabel,
+	)
+	if err := cmd.Run(); err != nil {
+		if !jsonOut {
+			fmt.Printf("    %s label sync: %v\n", color.YellowString("Warning:"), err)
+		}
+	}
 }
 
 func init() {

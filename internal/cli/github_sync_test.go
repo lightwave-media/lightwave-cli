@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -193,6 +194,35 @@ func TestIssuePriorityRank(t *testing.T) {
 		if got != tt.want {
 			t.Errorf("issuePriorityRank(labels=%v, body=%q) = %d, want %d", tt.labels, tt.body, got, tt.want)
 		}
+	}
+}
+
+func TestDepsOKNoPool(t *testing.T) {
+	// Without a DB pool, depsOK should always return true
+	issue := ghIssue{Body: "**Dependencies:** abcd1234, ef567890"}
+	if !depsOK(context.Background(), nil, issue) {
+		t.Error("depsOK(nil pool) should be true")
+	}
+}
+
+func TestDepsOKNoDeps(t *testing.T) {
+	issue := ghIssue{Body: "**Dependencies:** None"}
+	if !depsOK(context.Background(), nil, issue) {
+		t.Error("depsOK(no deps) should be true")
+	}
+}
+
+func TestSortByPriority(t *testing.T) {
+	issues := []ghIssue{
+		{Number: 1, Labels: []ghLabel{{Name: "p3"}}},
+		{Number: 2, Labels: []ghLabel{{Name: "p1"}}},
+		{Number: 3, Labels: []ghLabel{{Name: "p2"}}},
+		{Number: 4},
+	}
+	sortByPriority(issues)
+	if issues[0].Number != 2 || issues[1].Number != 3 || issues[2].Number != 1 || issues[3].Number != 4 {
+		got := []int{issues[0].Number, issues[1].Number, issues[2].Number, issues[3].Number}
+		t.Errorf("sortByPriority order = %v, want [2 3 1 4]", got)
 	}
 }
 
