@@ -285,32 +285,70 @@ func runGitHubQueue(ctx context.Context, milestone string) error {
 	return nil
 }
 
-// depsOK checks whether all dependencies of an issue are satisfied (done/cancelled).
-// If no DB pool is available or the issue has no deps, returns true.
+// depsOK checks whether all dependencies of an issue are satisfied.
+// Primary: checks GitHub Issues (closed = done). Fallback: lw task DB.
 func depsOK(ctx context.Context, pool *pgxpool.Pool, issue ghIssue) bool {
 	fields := parseIssueBody(issue)
 	if len(fields.deps) == 0 {
 		return true
 	}
 
-	if pool == nil {
-		return true
-	}
+	// Build a set of closed task IDs from GitHub Issues for fast lookup
+	closedTaskIDs := closedIssueTaskIDs()
 
 	for _, depID := range fields.deps {
-		task, err := db.GetTask(ctx, pool, depID)
-		if err != nil {
-			// Dep not found in DB — can't verify, assume not blocking
+		// Primary: check if dep task ID appears in any closed GitHub issue
+		if closedTaskIDs[depID] {
 			continue
 		}
-		switch task.Status {
-		case "done", "cancelled", "archived":
-			continue
-		default:
-			return false
+
+		// Fallback: check lw task DB
+		if pool != nil {
+			task, err := db.GetTask(ctx, pool, depID)
+			if err != nil {
+				continue // Can't verify — don't block
+			}
+			switch task.Status {
+			case "done", "cancelled", "archived":
+				continue
+			default:
+				return false
+			}
 		}
+		// No DB and not found in closed issues — don't block
 	}
 	return true
+}
+
+// closedIssueTaskIDs fetches all closed issues and extracts their Task IDs.
+// Returns a set of task IDs that are "done" (their issue is closed).
+func closedIssueTaskIDs() map[string]bool {
+	cmd := exec.Command("gh", "issue", "list",
+		"--repo", defaultGHRepo,
+		"--state", "closed",
+		"--json", "body",
+		"--limit", "100",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+
+	var issues []struct {
+		Body string `json:"body"`
+	}
+	if json.Unmarshal(out, &issues) != nil {
+		return nil
+	}
+
+	ids := make(map[string]bool)
+	for _, i := range issues {
+		f := parseIssueBody(ghIssue{Body: i.Body})
+		if f.taskID != "" {
+			ids[f.taskID] = true
+		}
+	}
+	return ids
 }
 
 // sortByPriority sorts issues in place by priority rank (p1 first).

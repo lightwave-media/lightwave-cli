@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 
 	"github.com/fatih/color"
@@ -196,6 +198,19 @@ Examples:
 		}
 
 		fmt.Printf("Created task %s: %s\n", color.YellowString(task.ShortID), task.Title)
+
+		// Auto-create GitHub Issue
+		issueNum, issueErr := createGitHubIssueForTask(task)
+		if issueErr != nil {
+			fmt.Printf("  %s GitHub issue: %v\n", color.YellowString("Warning:"), issueErr)
+		} else if issueNum > 0 {
+			// Store cross-reference
+			notionID := fmt.Sprintf("gh-%d", issueNum)
+			if _, err := db.UpdateTaskNotionID(ctx, pool, task.ID, notionID); err != nil {
+				fmt.Printf("  %s store issue ref: %v\n", color.YellowString("Warning:"), err)
+			}
+		}
+
 		return nil
 	},
 }
@@ -320,6 +335,99 @@ Examples:
 		printTaskDetails(&task)
 		return nil
 	},
+}
+
+// createGitHubIssueForTask creates a GitHub Issue for a newly created task.
+// Returns the issue number (0 if creation failed).
+func createGitHubIssueForTask(task *db.Task) (int, error) {
+	// Build issue body with task metadata
+	var body strings.Builder
+	body.WriteString(fmt.Sprintf("**Task ID:** %s\n", task.ShortID))
+	body.WriteString(fmt.Sprintf("**Priority:** %s\n", task.Priority))
+	body.WriteString(fmt.Sprintf("**Type:** %s\n", task.TaskType))
+	if task.Description != nil && *task.Description != "" {
+		body.WriteString(fmt.Sprintf("\n%s\n", *task.Description))
+	}
+
+	// Map priority to label
+	priorityLabel := "p3"
+	switch {
+	case strings.Contains(task.Priority, "p1"):
+		priorityLabel = "p1"
+	case strings.Contains(task.Priority, "p2"):
+		priorityLabel = "p2"
+	case strings.Contains(task.Priority, "p4"):
+		priorityLabel = "p4"
+	}
+
+	// Map task type to label
+	typeLabel := "enhancement"
+	if task.TaskType == "fix" || task.TaskType == "hotfix" {
+		typeLabel = "bug"
+	}
+
+	ghArgs := []string{
+		"issue", "create",
+		"--repo", defaultGHRepo,
+		"--title", task.Title,
+		"--body", body.String(),
+		"--label", fmt.Sprintf("%s,%s", priorityLabel, typeLabel),
+	}
+
+	cmd := exec.Command("gh", ghArgs...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return 0, fmt.Errorf("gh issue create: %w\n%s", err, string(out))
+	}
+
+	// Parse issue URL from output to get number
+	outStr := strings.TrimSpace(string(out))
+	parts := strings.Split(outStr, "/")
+	if len(parts) > 0 {
+		var num int
+		if _, err := fmt.Sscanf(parts[len(parts)-1], "%d", &num); err == nil {
+			fmt.Printf("  GitHub issue #%d created: %s\n", num, color.BlueString(outStr))
+
+			// Add to Projects board
+			addIssueToProject(num)
+
+			return num, nil
+		}
+	}
+
+	return 0, nil
+}
+
+// addIssueToProject adds an issue to the GitHub Projects board.
+func addIssueToProject(issueNumber int) {
+	// First get the node ID of the issue
+	cmd := exec.Command("gh", "issue", "view",
+		fmt.Sprintf("%d", issueNumber),
+		"--repo", defaultGHRepo,
+		"--json", "id",
+	)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return
+	}
+
+	var resp struct {
+		ID string `json:"id"`
+	}
+	if json.Unmarshal(out, &resp) != nil || resp.ID == "" {
+		return
+	}
+
+	// Add to project
+	addCmd := exec.Command("gh", "project", "item-add", "2",
+		"--owner", "lightwave-media",
+		"--url", fmt.Sprintf("https://github.com/%s/issues/%d", defaultGHRepo, issueNumber),
+	)
+	if addOut, addErr := addCmd.CombinedOutput(); addErr != nil {
+		fmt.Printf("  %s add to projects: %v\n%s", color.YellowString("Warning:"), addErr, string(addOut))
+	} else {
+		fmt.Println("  Added to Projects board")
+	}
 }
 
 func init() {

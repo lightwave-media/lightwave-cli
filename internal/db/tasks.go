@@ -414,6 +414,23 @@ func UpdateTask(ctx context.Context, pool *pgxpool.Pool, taskID string, opts Tas
 	return task, nil
 }
 
+// UpdateTaskNotionID sets the notion_id field on a task (used for GitHub issue cross-reference).
+func UpdateTaskNotionID(ctx context.Context, pool *pgxpool.Pool, taskID string, notionID string) (*Task, error) {
+	task, err := GetTask(ctx, pool, taskID)
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = pool.Exec(ctx,
+		"UPDATE createos_task SET notion_id = $1, updated_at = $2 WHERE id = $3",
+		notionID, time.Now(), task.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to update notion_id: %w", err)
+	}
+
+	return task, nil
+}
+
 // TaskContext is a task with resolved epic and sprint names
 type TaskContext struct {
 	Task

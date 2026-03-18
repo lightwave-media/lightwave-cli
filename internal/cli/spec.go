@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"time"
 
@@ -231,30 +230,48 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 	if fields.priority != "" {
 		sb.WriteString(fmt.Sprintf("**Priority:** %s  \n", fields.priority))
 	}
-	sb.WriteString(fmt.Sprintf("**Type:** %s  \n\n", fields.taskType))
+	sb.WriteString(fmt.Sprintf("**Type:** %s  \n", fields.taskType))
+	sessionType := inferSessionTypeFromIssue(issue)
+	sb.WriteString(fmt.Sprintf("**Session Type:** %s  \n", sessionType))
+	sb.WriteString(fmt.Sprintf("**Working Dir:** %s  \n\n", sessionType.WorkingDir()))
 
 	// Epic
 	if fields.epic != "" {
 		sb.WriteString(fmt.Sprintf("**Epic:** %s  \n\n", fields.epic))
 	}
 
-	// User Story — extract from body
-	userStoryRe := regexp.MustCompile(`(?s)\*\*User Story:\*\*\s*([^\n]+(?:\n(?!\*\*)[^\n]+)*)`)
-	if m := userStoryRe.FindStringSubmatch(issue.Body); len(m) >= 2 {
-		sb.WriteString("## User Story\n\n")
-		sb.WriteString(strings.TrimSpace(m[1]))
-		sb.WriteString("\n\n")
-	}
-
-	// Description — everything between known fields
-	descRe := regexp.MustCompile(`(?s)\n\n([^*][^\n]+(?:\n(?!\*\*)[^\n]+)*)`)
-	if m := descRe.FindStringSubmatch(issue.Body); len(m) >= 2 {
-		desc := strings.TrimSpace(m[1])
-		if desc != "" && !strings.HasPrefix(desc, "Synced from") {
-			sb.WriteString("## Description\n\n")
-			sb.WriteString(desc)
+	// User Story — extract from body (find text between **User Story:** and next **Field:**)
+	if idx := strings.Index(issue.Body, "**User Story:**"); idx >= 0 {
+		rest := issue.Body[idx+len("**User Story:**"):]
+		// Find next bold field marker
+		if end := strings.Index(rest, "\n**"); end >= 0 {
+			rest = rest[:end]
+		}
+		story := strings.TrimSpace(rest)
+		if story != "" {
+			sb.WriteString("## User Story\n\n")
+			sb.WriteString(story)
 			sb.WriteString("\n\n")
 		}
+	}
+
+	// Description — non-field text lines from the body
+	var descLines []string
+	for _, line := range strings.Split(issue.Body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "**") || strings.HasPrefix(trimmed, "Synced from") {
+			continue
+		}
+		// Skip bullet items (they belong to AC or deps)
+		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
+			continue
+		}
+		descLines = append(descLines, trimmed)
+	}
+	if len(descLines) > 0 {
+		sb.WriteString("## Description\n\n")
+		sb.WriteString(strings.Join(descLines, "\n"))
+		sb.WriteString("\n\n")
 	}
 
 	// Acceptance Criteria
@@ -342,6 +359,13 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 	}
 	sb.WriteString("\n")
 
+	// Git workflow
+	branchName := IssueBranchName(issue.Number, title, fields.taskType)
+	sb.WriteString("## Git Workflow\n\n")
+	sb.WriteString(fmt.Sprintf("**Branch:** `%s`  \n", branchName))
+	sb.WriteString(fmt.Sprintf("**PR Body Must Include:** `Closes #%d`  \n\n", issue.Number))
+	sb.WriteString("This ensures GitHub auto-closes the issue and the Projects board card moves to Done on merge.\n\n")
+
 	// Metadata
 	sb.WriteString("---\n\n")
 	sb.WriteString(fmt.Sprintf("**Generated:** %s  \n", time.Now().Format("2006-01-02 15:04:05 MST")))
@@ -368,10 +392,182 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 	return nil
 }
 
+var specValidateCmd = &cobra.Command{
+	Use:   "validate <issue-number>",
+	Short: "Validate spec against SST schemas before session spawn",
+	Long: `Run architect validation on a GitHub Issue before spawning a coding session.
+
+Checks:
+  - Issue has acceptance criteria (not just placeholders)
+  - Issue has a valid task type
+  - Dependencies are satisfied (done/cancelled/archived)
+  - Required SST schemas exist for the task type
+
+On pass: adds approval comment to the issue.
+On fail: labels issue 'needs-architecture-review' and alerts Joel.
+
+Examples:
+  lw spec validate 58
+  lw spec validate 58 --dry-run`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		issueNum := args[0]
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+		result, err := validateIssueSpec(ctx, issueNum, dryRun)
+		if err != nil {
+			return err
+		}
+		if !result.passed {
+			return fmt.Errorf("validation failed: %d issue(s)", len(result.failures))
+		}
+		return nil
+	},
+}
+
+// validationResult captures the outcome of spec validation.
+type validationResult struct {
+	passed   bool
+	failures []string
+}
+
+// validateIssueSpec runs architect validation on a GitHub issue.
+// Returns the result and any error. Used by CLI and orchestrator.
+func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*validationResult, error) {
+	// Fetch issue
+	ghCmd := exec.Command("gh", "issue", "view", issueNum,
+		"--repo", defaultGHRepo,
+		"--json", "number,title,body,labels,url",
+	)
+	out, err := ghCmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("gh issue view failed: %w\n%s", err, string(out))
+	}
+
+	var issue ghIssue
+	if err := json.Unmarshal(out, &issue); err != nil {
+		return nil, fmt.Errorf("parse issue: %w", err)
+	}
+
+	fields := parseIssueBody(issue)
+	title := stripSprintPrefix(issue.Title)
+
+	fmt.Printf("Validating: #%d %s\n\n", issue.Number, title)
+
+	result := &validationResult{passed: true}
+
+	// Check 1: Acceptance criteria exist and aren't placeholders
+	if fields.acceptanceCriteria == "" {
+		result.failures = append(result.failures, "Missing acceptance criteria")
+	}
+
+	// Check 2: Task type is valid
+	validTypes := map[string]bool{"feature": true, "bug": true, "chore": true, "enhancement": true}
+	if fields.taskType == "" {
+		result.failures = append(result.failures, "Missing task type")
+	} else if !validTypes[fields.taskType] {
+		result.failures = append(result.failures, fmt.Sprintf("Unknown task type: %s", fields.taskType))
+	}
+
+	// Check 3: Dependencies are satisfied (GitHub Issues primary, DB fallback)
+	if len(fields.deps) > 0 {
+		closedIDs := closedIssueTaskIDs()
+		pool, _ := db.GetPool(ctx)
+		for _, dep := range fields.deps {
+			// Primary: check closed GitHub Issues
+			if closedIDs[dep] {
+				continue
+			}
+			// Fallback: check DB
+			if pool != nil {
+				task, taskErr := db.GetTask(ctx, pool, dep)
+				if taskErr != nil {
+					result.failures = append(result.failures, fmt.Sprintf("Dependency %s not found", dep))
+					continue
+				}
+				switch task.Status {
+				case "done", "cancelled", "archived":
+					continue
+				default:
+					result.failures = append(result.failures, fmt.Sprintf("Dependency %s is %s (not done)", dep, task.Status))
+				}
+			}
+		}
+	}
+
+	// Check 4: Task ID exists
+	if fields.taskID == "" {
+		result.failures = append(result.failures, "Missing Task ID in issue body")
+	}
+
+	// Print results
+	if len(result.failures) > 0 {
+		result.passed = false
+		fmt.Println(color.RedString("VALIDATION FAILED"))
+		for _, f := range result.failures {
+			fmt.Printf("  %s %s\n", color.RedString("✗"), f)
+		}
+
+		if !dryRun {
+			// Label issue
+			labelCmd := exec.Command("gh", "issue", "edit", issueNum,
+				"--repo", defaultGHRepo,
+				"--add-label", "needs-architecture-review",
+			)
+			if labelOut, labelErr := labelCmd.CombinedOutput(); labelErr != nil {
+				fmt.Printf("  %s add label: %v\n%s", color.YellowString("Warning:"), labelErr, string(labelOut))
+			}
+
+			// Comment on issue
+			comment := fmt.Sprintf("## Architect Validation Failed\n\n%s\n\nPlease address these issues before this task can be spawned.",
+				formatFailures(result.failures))
+			commentCmd := exec.Command("gh", "issue", "comment", issueNum,
+				"--repo", defaultGHRepo,
+				"--body", comment,
+			)
+			if commentOut, commentErr := commentCmd.CombinedOutput(); commentErr != nil {
+				fmt.Printf("  %s comment: %v\n%s", color.YellowString("Warning:"), commentErr, string(commentOut))
+			}
+
+			// Alert Joel
+			notifyJoel(fmt.Sprintf("Architect validation FAILED for #%s: %s — %s",
+				issueNum, title, strings.Join(result.failures, "; ")))
+		}
+	} else {
+		fmt.Println(color.GreenString("VALIDATION PASSED"))
+
+		if !dryRun {
+			// Comment approval on issue
+			comment := fmt.Sprintf("## Architect Validation Passed\n\nAll checks passed at %s. Ready for session spawn.",
+				time.Now().Format("2006-01-02 15:04:05 MST"))
+			commentCmd := exec.Command("gh", "issue", "comment", issueNum,
+				"--repo", defaultGHRepo,
+				"--body", comment,
+			)
+			if commentOut, commentErr := commentCmd.CombinedOutput(); commentErr != nil {
+				fmt.Printf("  %s comment: %v\n%s", color.YellowString("Warning:"), commentErr, string(commentOut))
+			}
+			fmt.Printf("  Approval logged on issue #%s\n", issueNum)
+		}
+	}
+
+	return result, nil
+}
+
+func formatFailures(failures []string) string {
+	var sb strings.Builder
+	for _, f := range failures {
+		sb.WriteString(fmt.Sprintf("- ✗ %s\n", f))
+	}
+	return sb.String()
+}
+
 func init() {
 	specGenerateCmd.Flags().StringVar(&specOutputDir, "output-dir", "", "Output directory (defaults to /tmp)")
 	specFromIssueCmd.Flags().StringVar(&specOutputDir, "output-dir", "", "Output directory (defaults to /tmp)")
+	specValidateCmd.Flags().Bool("dry-run", false, "Show validation results without labeling/commenting")
 
 	specCmd.AddCommand(specGenerateCmd)
 	specCmd.AddCommand(specFromIssueCmd)
+	specCmd.AddCommand(specValidateCmd)
 }

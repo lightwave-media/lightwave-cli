@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -85,6 +88,7 @@ type iterationResult struct {
 	ActiveAgent  string    `json:"active_agent,omitempty"`
 	TaskID       string    `json:"task_id,omitempty"`
 	TaskTitle    string    `json:"task_title,omitempty"`
+	SessionType  string    `json:"session_type,omitempty"`
 	Action       string    `json:"action"` // "idle", "monitoring_pr", "spawned", "blocked"
 	SpawnedAgent string    `json:"spawned_agent,omitempty"`
 	Error        string    `json:"error,omitempty"`
@@ -128,10 +132,10 @@ func runOrchestrator(ctx context.Context, intervalStr string, dryRun bool) error
 
 // runOrchestrationIteration syncs GitHub Issues then delegates to the Elixir orchestrator via HTTP.
 func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterationResult) error {
-	// Step 0: Sync GitHub Issues → lw task DB
-	fmt.Println(color.CyanString("Step 0: GitHub Issues sync"))
+	// Step 0: Sync GitHub Issues → lw task DB (background cache, non-critical)
+	fmt.Println(color.CyanString("Step 0: DB cache sync (non-critical)"))
 	if err := runGitHubSync(ctx, dryRun, false, false); err != nil {
-		fmt.Printf("  %s github sync: %v (continuing)\n", color.YellowString("Warning:"), err)
+		fmt.Printf("  %s db cache sync: %v (continuing — GitHub Issues is source of truth)\n", color.YellowString("Info:"), err)
 	}
 	fmt.Println()
 
@@ -157,11 +161,30 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 		if fields.taskID != "" {
 			result.TaskID = fields.taskID
 		}
+		sessionType := inferSessionTypeFromIssue(*picked)
+		result.SessionType = sessionType.String()
+		fmt.Printf("  Session type: %s (%s)\n", color.CyanString(sessionType.String()), sessionType.WorkingDir())
 	}
 	fmt.Println()
 
-	// Step 2: Sync task statuses to GitHub Projects board
-	fmt.Println(color.CyanString("Step 2: GitHub Projects sync"))
+	// Step 2: Architect validation (if we picked an issue)
+	if picked != nil {
+		issueNum := fmt.Sprintf("%d", picked.Number)
+		fmt.Println(color.CyanString("Step 2: Architect validation"))
+		valResult, valErr := validateIssueSpec(ctx, issueNum, dryRun)
+		if valErr != nil {
+			fmt.Printf("  %s validation: %v (continuing)\n", color.YellowString("Warning:"), valErr)
+		} else if !valResult.passed {
+			fmt.Println("  Issue failed validation — skipping spawn")
+			result.Action = "blocked"
+			fmt.Println(color.GreenString("Iteration complete"))
+			return nil
+		}
+		fmt.Println()
+	}
+
+	// Step 3: Sync task statuses to GitHub Projects board
+	fmt.Println(color.CyanString("Step 3: GitHub Projects sync"))
 	if err := runProjectsSync(ctx, dryRun); err != nil {
 		fmt.Printf("  %s projects sync: %v (continuing)\n", color.YellowString("Warning:"), err)
 	}
@@ -304,6 +327,168 @@ func showOrchestratorStatus(ctx context.Context) error {
 	return nil
 }
 
+var orchestratorE2ECmd = &cobra.Command{
+	Use:   "e2e-test",
+	Short: "Run end-to-end test of the orchestration pipeline",
+	Long: `Creates a test GitHub Issue, runs the pipeline steps (pick, validate, spec),
+verifies each step, then cleans up. Tests the controllable pipeline stages.
+
+Examples:
+  lw orchestrator e2e-test`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		return runE2ETest(ctx)
+	},
+}
+
+func runE2ETest(ctx context.Context) error {
+	start := time.Now()
+	var passed, failed int
+
+	fmt.Println(color.CyanString("E2E Pipeline Test"))
+	fmt.Println()
+
+	// Step 1: Create test issue
+	fmt.Println(color.CyanString("Step 1: Create test issue"))
+	testBody := `**Task ID:** e2e00000
+**Priority:** P1 Urgent
+**Type:** chore
+
+E2E test issue — auto-generated, will be cleaned up.
+
+**Acceptance Criteria:**
+- Pipeline picks this issue
+- Spec generates correctly
+- Validation passes
+
+**Dependencies:** None`
+
+	createCmd := exec.Command("gh", "issue", "create",
+		"--repo", defaultGHRepo,
+		"--title", "[E2E Test] Pipeline verification",
+		"--body", testBody,
+		"--label", "ready,p1,enhancement",
+	)
+	createOut, err := createCmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("create test issue: %w\n%s", err, string(createOut))
+	}
+
+	// Extract issue number from URL
+	issueURL := strings.TrimSpace(string(createOut))
+	parts := strings.Split(issueURL, "/")
+	issueNum := parts[len(parts)-1]
+	fmt.Printf("  Created test issue #%s\n", issueNum)
+	passed++
+
+	// Cleanup function
+	defer func() {
+		fmt.Println()
+		fmt.Println(color.CyanString("Cleanup"))
+		cleanCmd := exec.Command("gh", "issue", "close", issueNum,
+			"--repo", defaultGHRepo, "--reason", "not planned")
+		cleanCmd.Run()
+		delCmd := exec.Command("gh", "issue", "delete", issueNum,
+			"--repo", defaultGHRepo, "--yes")
+		delCmd.Run()
+		fmt.Printf("  Cleaned up test issue #%s\n", issueNum)
+	}()
+
+	fmt.Println()
+
+	// Step 2: Pick — verify the test issue is picked
+	fmt.Println(color.CyanString("Step 2: Verify picker finds test issue"))
+	picked, pickErr := pickNextReady(ctx, "")
+	if pickErr != nil {
+		fmt.Printf("  %s pick failed: %v\n", color.RedString("FAIL"), pickErr)
+		failed++
+	} else if picked == nil {
+		fmt.Printf("  %s no issue picked\n", color.RedString("FAIL"))
+		failed++
+	} else {
+		fmt.Printf("  %s picked #%d: %s\n", color.GreenString("PASS"), picked.Number, picked.Title)
+		passed++
+	}
+	fmt.Println()
+
+	// Step 3: Validate spec
+	fmt.Println(color.CyanString("Step 3: Architect validation"))
+	valResult, valErr := validateIssueSpec(ctx, issueNum, true)
+	if valErr != nil {
+		fmt.Printf("  %s validation error: %v\n", color.RedString("FAIL"), valErr)
+		failed++
+	} else if !valResult.passed {
+		fmt.Printf("  %s validation failed: %v\n", color.RedString("FAIL"), valResult.failures)
+		failed++
+	} else {
+		fmt.Printf("  %s validation passed\n", color.GreenString("PASS"))
+		passed++
+	}
+	fmt.Println()
+
+	// Step 4: Generate spec
+	fmt.Println(color.CyanString("Step 4: Spec generation"))
+	specErr := generateSpecFromIssue(issueNum, "/tmp")
+	if specErr != nil {
+		fmt.Printf("  %s spec generation failed: %v\n", color.RedString("FAIL"), specErr)
+		failed++
+	} else {
+		specPath := fmt.Sprintf("/tmp/spec-e2e00000.md")
+		if _, err := os.Stat(specPath); err == nil {
+			fmt.Printf("  %s spec generated: %s\n", color.GreenString("PASS"), specPath)
+			passed++
+			// Cleanup spec file
+			os.Remove(specPath)
+		} else {
+			fmt.Printf("  %s spec file not found\n", color.RedString("FAIL"))
+			failed++
+		}
+	}
+	fmt.Println()
+
+	// Step 5: Verify branch name generation
+	fmt.Println(color.CyanString("Step 5: Branch name generation"))
+	var testIssueNum int
+	fmt.Sscanf(issueNum, "%d", &testIssueNum)
+	branchName := IssueBranchName(testIssueNum, "[E2E Test] Pipeline verification", "chore")
+	if strings.HasPrefix(branchName, "chore/issue-") {
+		fmt.Printf("  %s branch: %s\n", color.GreenString("PASS"), branchName)
+		passed++
+	} else {
+		fmt.Printf("  %s unexpected branch: %s\n", color.RedString("FAIL"), branchName)
+		failed++
+	}
+	fmt.Println()
+
+	// Step 6: Verify session type inference
+	fmt.Println(color.CyanString("Step 6: Session type inference"))
+	sessionType := InferSessionType([]string{"ready", "p1", "enhancement"})
+	if sessionType == SessionBackend {
+		fmt.Printf("  %s session type: %s (correct default)\n", color.GreenString("PASS"), sessionType)
+		passed++
+	} else {
+		fmt.Printf("  %s unexpected session type: %s\n", color.RedString("FAIL"), sessionType)
+		failed++
+	}
+
+	// Summary
+	elapsed := time.Since(start)
+	fmt.Println()
+	fmt.Println(color.CyanString("E2E Test Results"))
+	fmt.Printf("  Passed: %s\n", color.GreenString("%d", passed))
+	if failed > 0 {
+		fmt.Printf("  Failed: %s\n", color.RedString("%d", failed))
+	} else {
+		fmt.Printf("  Failed: %d\n", failed)
+	}
+	fmt.Printf("  Duration: %s\n", elapsed.Round(time.Millisecond))
+
+	if failed > 0 {
+		return fmt.Errorf("%d test(s) failed", failed)
+	}
+	return nil
+}
+
 func init() {
 	orchestratorStartCmd.Flags().StringVar(&orchestratorInterval, "interval", "30m", "Loop interval (e.g. 30m, 5m)")
 	orchestratorStartCmd.Flags().BoolVar(&orchestratorDryRun, "dry-run", false, "Dry run mode - don't make actual changes")
@@ -312,4 +497,5 @@ func init() {
 	orchestratorCmd.AddCommand(orchestratorStartCmd)
 	orchestratorCmd.AddCommand(orchestratorRunOnceCmd)
 	orchestratorCmd.AddCommand(orchestratorStatusCmd)
+	orchestratorCmd.AddCommand(orchestratorE2ECmd)
 }

@@ -189,6 +189,13 @@ func monitorExistingPR(ctx context.Context, pool interface{}, task *db.Task) err
 					mgr := agent.NewManager()
 					_ = mgr.Kill(*task.AssignedAgent, false)
 				}
+
+				// Close linked GitHub Issue and sync Projects board
+				if issueNum := taskIssueNumber(ctx, task); issueNum > 0 {
+					closeLinkedIssue(issueNum)
+					syncProjectStatus(issueNum, "done")
+				}
+
 				notifyJoel(fmt.Sprintf("Task %s DONE — PR #%d merged", task.ShortID, prNumber))
 				return nil
 			}
@@ -275,8 +282,114 @@ func monitorNewPR(ctx context.Context, pool interface{}, task *db.Task, branch s
 	}
 }
 
+// taskIssueNumber resolves the GitHub Issue number linked to a task.
+// Checks notion_id (gh-N) first, then falls back to parsing the description.
+func taskIssueNumber(ctx context.Context, task *db.Task) int {
+	pool, err := db.GetPool(ctx)
+	if err != nil {
+		return parseIssueNumFromDesc(task)
+	}
+
+	// Try notion_id first
+	var notionID string
+	row := pool.QueryRow(ctx, "SELECT COALESCE(notion_id, '') FROM createos_task WHERE id = $1", task.ID)
+	if err := row.Scan(&notionID); err == nil && strings.HasPrefix(notionID, "gh-") {
+		var num int
+		if _, err := fmt.Sscanf(notionID[3:], "%d", &num); err == nil {
+			return num
+		}
+	}
+
+	return parseIssueNumFromDesc(task)
+}
+
+// parseIssueNumFromDesc extracts issue number from "Synced from GitHub Issue #N" in description.
+func parseIssueNumFromDesc(task *db.Task) int {
+	if task.Description == nil {
+		return 0
+	}
+	desc := *task.Description
+	prefix := "Synced from GitHub Issue #"
+	idx := strings.Index(desc, prefix)
+	if idx < 0 {
+		return 0
+	}
+	rest := desc[idx+len(prefix):]
+	var num int
+	if _, err := fmt.Sscanf(rest, "%d", &num); err == nil {
+		return num
+	}
+	return 0
+}
+
+// closeLinkedIssue closes a GitHub Issue as completed.
+func closeLinkedIssue(issueNumber int) {
+	cmd := exec.Command("gh", "issue", "close",
+		fmt.Sprintf("%d", issueNumber),
+		"--repo", defaultGHRepo,
+		"--reason", "completed",
+	)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		fmt.Printf("  %s close issue #%d: %v\n%s", color.YellowString("Warning:"), issueNumber, err, string(out))
+	} else {
+		fmt.Printf("  Closed issue #%d\n", issueNumber)
+	}
+}
+
+var githubCloseDoneCmd = &cobra.Command{
+	Use:   "close-done <task-id>",
+	Short: "Close GitHub Issue and move Projects card for a done task",
+	Long: `Manually trigger the post-merge actions for a task:
+  1. Close the linked GitHub Issue
+  2. Move the Projects board card to Done
+
+Useful when a PR was merged outside the monitor-pr workflow.
+
+Examples:
+  lw github close-done abc123`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		taskID := args[0]
+
+		pool, err := db.GetPool(ctx)
+		if err != nil {
+			return fmt.Errorf("database: %w", err)
+		}
+
+		task, err := db.GetTask(ctx, pool, taskID)
+		if err != nil {
+			return err
+		}
+
+		issueNum := taskIssueNumber(ctx, task)
+		if issueNum == 0 {
+			return fmt.Errorf("no linked GitHub Issue found for task %s", taskID)
+		}
+
+		fmt.Printf("Task: %s (%s)\n", task.Title, task.ShortID)
+		fmt.Printf("Issue: #%d\n\n", issueNum)
+
+		closeLinkedIssue(issueNum)
+		syncProjectStatus(issueNum, "done")
+
+		// Update task status to done if not already
+		if task.Status != "done" && task.Status != "cancelled" && task.Status != "archived" {
+			status := "done"
+			if _, err := db.UpdateTask(ctx, pool, task.ID, db.TaskUpdateOptions{Status: &status}); err != nil {
+				fmt.Printf("  %s update task: %v\n", color.RedString("Error:"), err)
+			} else {
+				fmt.Printf("  Task status → done\n")
+			}
+		}
+
+		return nil
+	},
+}
+
 func init() {
 	githubMonitorPRCmd.Flags().IntVar(&githubMonitorTimeout, "timeout", 300, "Timeout in seconds")
 
 	githubCmd.AddCommand(githubMonitorPRCmd)
+	githubCmd.AddCommand(githubCloseDoneCmd)
 }
