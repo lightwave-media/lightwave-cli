@@ -1,0 +1,167 @@
+package cli
+
+import (
+	"testing"
+)
+
+func TestNormalizePriority(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"P1 Urgent", "p1_urgent"},
+		{"P2 High", "p2_high"},
+		{"P3 Medium", "p3_medium"},
+		{"P4 Low", "p4_low"},
+		{"p1_urgent", "p1_urgent"},
+		{"high", "p2_high"},
+		{"unknown", "p3_medium"},
+	}
+	for _, tt := range tests {
+		got := normalizePriority(tt.input)
+		if got != tt.want {
+			t.Errorf("normalizePriority(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestNormalizeType(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"chore", "chore"},
+		{"bug", "bug"},
+		{"fix", "bug"},
+		{"hotfix", "bug"},
+		{"feature", "feature"},
+		{"enhancement", "feature"},
+		{"docs", "docs"},
+		{"documentation", "docs"},
+		{"custom", "custom"},
+	}
+	for _, tt := range tests {
+		got := normalizeType(tt.input)
+		if got != tt.want {
+			t.Errorf("normalizeType(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestStripSprintPrefix(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"[Sprint 6] Actual title", "Actual title"},
+		{"[Sprint 12] Long sprint", "Long sprint"},
+		{"No prefix here", "No prefix here"},
+		{"[Sprint 1]No space", "No space"},
+	}
+	for _, tt := range tests {
+		got := stripSprintPrefix(tt.input)
+		if got != tt.want {
+			t.Errorf("stripSprintPrefix(%q) = %q, want %q", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestParseIssueBodyFull(t *testing.T) {
+	body := `**Task ID:** 4ff8bbfe
+**Epic:** Scrum Manager v2 — GitHub-Native Flow Management
+**Priority:** P1 Urgent
+**Type:** chore
+
+Some description here.
+
+**Dependencies:** db0512f6, a17e2134`
+
+	issue := ghIssue{
+		Body:   body,
+		Labels: []ghLabel{{Name: "enhancement"}},
+	}
+
+	f := parseIssueBody(issue)
+
+	if f.taskID != "4ff8bbfe" {
+		t.Errorf("taskID = %q, want 4ff8bbfe", f.taskID)
+	}
+	if f.priority != "p1_urgent" {
+		t.Errorf("priority = %q, want p1_urgent", f.priority)
+	}
+	if f.epic != "Scrum Manager v2 — GitHub-Native Flow Management" {
+		t.Errorf("epic = %q", f.epic)
+	}
+	if f.taskType != "chore" {
+		t.Errorf("taskType = %q, want chore (body Type overrides label)", f.taskType)
+	}
+	if len(f.deps) != 2 || f.deps[0] != "db0512f6" || f.deps[1] != "a17e2134" {
+		t.Errorf("deps = %v, want [db0512f6 a17e2134]", f.deps)
+	}
+}
+
+func TestParseIssueBodyNoDeps(t *testing.T) {
+	body := `**Task ID:** abcd1234
+**Dependencies:** None (first task)`
+
+	f := parseIssueBody(ghIssue{Body: body})
+
+	if len(f.deps) != 0 {
+		t.Errorf("deps = %v, want empty (None should be filtered)", f.deps)
+	}
+}
+
+func TestParseIssueBodyLabelFallback(t *testing.T) {
+	body := `**Task ID:** abcd1234`
+
+	f := parseIssueBody(ghIssue{
+		Body:   body,
+		Labels: []ghLabel{{Name: "bug"}},
+	})
+
+	if f.taskType != "bug" {
+		t.Errorf("taskType = %q, want bug (label fallback)", f.taskType)
+	}
+}
+
+func TestParseIssueBodyEmpty(t *testing.T) {
+	f := parseIssueBody(ghIssue{Body: ""})
+
+	if f.taskID != "" {
+		t.Errorf("taskID = %q, want empty", f.taskID)
+	}
+	if f.priority != "" {
+		t.Errorf("priority = %q, want empty", f.priority)
+	}
+	if f.taskType != "feature" {
+		t.Errorf("taskType = %q, want feature (default)", f.taskType)
+	}
+}
+
+func TestTruncate(t *testing.T) {
+	if got := truncate("short", 10); got != "short" {
+		t.Errorf("truncate short = %q", got)
+	}
+	if got := truncate("this is a very long string", 10); got != "this is..." {
+		t.Errorf("truncate long = %q", got)
+	}
+}
+
+func TestMapLabelsToType(t *testing.T) {
+	tests := []struct {
+		labels []ghLabel
+		want   string
+	}{
+		{[]ghLabel{{Name: "bug"}}, "bug"},
+		{[]ghLabel{{Name: "enhancement"}}, "feature"},
+		{[]ghLabel{{Name: "documentation"}}, "docs"},
+		{[]ghLabel{{Name: "help wanted"}}, "feature"},
+		{nil, "feature"},
+	}
+	for _, tt := range tests {
+		got := mapLabelsToType(tt.labels)
+		if got != tt.want {
+			t.Errorf("mapLabelsToType(%v) = %q, want %q", tt.labels, got, tt.want)
+		}
+	}
+}

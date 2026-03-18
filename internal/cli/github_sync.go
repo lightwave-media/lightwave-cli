@@ -16,23 +16,34 @@ import (
 
 var (
 	githubSyncDryRun bool
+	githubSyncAll    bool
 )
 
 var githubSyncCmd = &cobra.Command{
 	Use:   "sync",
 	Short: "Sync GitHub Issues into lw task system",
-	Long: `Pull open GitHub Issues from the repo and create or update
-matching tasks in the local task database.
+	Long: `Pull GitHub Issues from the repo and create or update matching
+tasks in the local task database.
 
-Maps issue body fields (Task ID, Priority, Dependencies) to task records.
-Maps GitHub labels to task type (bug/enhancement → bug/feature).
+Extracts structured fields from issue body:
+  - **Task ID:**        → matches existing task by short ID
+  - **Priority:**       → maps to p1_urgent/p2_high/p3_medium/p4_low
+  - **Epic:**           → fuzzy-matches to existing epic by name
+  - **Type:**           → overrides label-based type detection
+  - **Dependencies:**   → extracted task IDs shown in output
+
+Maps GitHub labels: bug → bug, enhancement → feature, documentation → docs.
+Strips [Sprint N] prefix from titles.
+
+With --all, also syncs closed issues (marks their tasks as done).
 
 Examples:
   lw github sync
+  lw github sync --all
   lw github sync --dry-run`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
-		return runGitHubSync(ctx, githubSyncDryRun)
+		return runGitHubSync(ctx, githubSyncDryRun, githubSyncAll)
 	},
 }
 
@@ -59,23 +70,51 @@ type ghMile struct {
 type syncResult struct {
 	Created []string
 	Updated []string
+	Closed  []string
 	Skipped []string
 	Errors  []string
 }
 
-func runGitHubSync(ctx context.Context, dryRun bool) error {
+// epicCache avoids repeated DB lookups for the same epic name
+type epicCache struct {
+	pool  *pgxpool.Pool
+	cache map[string]*db.Epic // name → epic (nil = not found)
+}
+
+func newEpicCache(pool *pgxpool.Pool) *epicCache {
+	return &epicCache{pool: pool, cache: make(map[string]*db.Epic)}
+}
+
+func (ec *epicCache) resolve(ctx context.Context, name string) *db.Epic {
+	key := strings.ToLower(strings.TrimSpace(name))
+	if key == "" {
+		return nil
+	}
+	if epic, ok := ec.cache[key]; ok {
+		return epic
+	}
+	epic, _ := db.FindEpicByName(ctx, ec.pool, name)
+	ec.cache[key] = epic
+	return epic
+}
+
+func runGitHubSync(ctx context.Context, dryRun, includeAll bool) error {
 	if dryRun {
 		fmt.Println(color.YellowString("DRY RUN — no changes will be made"))
 		fmt.Println()
 	}
 
-	// 1. Fetch open issues from GitHub
-	fmt.Printf(color.CyanString("Fetching open issues from %s...\n"), defaultGHRepo)
-	issues, err := fetchOpenIssues()
+	// 1. Fetch issues from GitHub
+	state := "open"
+	if includeAll {
+		state = "all"
+	}
+	fmt.Printf(color.CyanString("Fetching %s issues from %s...\n"), state, defaultGHRepo)
+	issues, err := fetchIssues(state)
 	if err != nil {
 		return fmt.Errorf("fetching issues: %w", err)
 	}
-	fmt.Printf("Found %s open issues\n\n", color.GreenString("%d", len(issues)))
+	fmt.Printf("Found %s issues\n\n", color.GreenString("%d", len(issues)))
 
 	if len(issues) == 0 {
 		return nil
@@ -88,10 +127,12 @@ func runGitHubSync(ctx context.Context, dryRun bool) error {
 	}
 	defer db.Close()
 
+	epics := newEpicCache(pool)
+
 	// 3. Sync each issue
 	result := syncResult{}
 	for _, issue := range issues {
-		syncOneIssue(ctx, pool, issue, dryRun, &result)
+		syncOneIssue(ctx, pool, epics, issue, dryRun, &result)
 	}
 
 	// 4. Print summary
@@ -99,6 +140,9 @@ func runGitHubSync(ctx context.Context, dryRun bool) error {
 	fmt.Println(color.CyanString("Sync Summary"))
 	fmt.Printf("  Created: %s\n", color.GreenString("%d", len(result.Created)))
 	fmt.Printf("  Updated: %s\n", color.YellowString("%d", len(result.Updated)))
+	if len(result.Closed) > 0 {
+		fmt.Printf("  Closed:  %s\n", color.BlueString("%d", len(result.Closed)))
+	}
 	fmt.Printf("  Skipped: %s\n", color.HiBlackString("%d", len(result.Skipped)))
 	if len(result.Errors) > 0 {
 		fmt.Printf("  Errors:  %s\n", color.RedString("%d", len(result.Errors)))
@@ -110,12 +154,12 @@ func runGitHubSync(ctx context.Context, dryRun bool) error {
 	return nil
 }
 
-func fetchOpenIssues() ([]ghIssue, error) {
+func fetchIssues(state string) ([]ghIssue, error) {
 	cmd := exec.Command("gh", "issue", "list",
 		"--repo", defaultGHRepo,
-		"--state", "open",
+		"--state", state,
 		"--json", "number,title,body,state,labels,milestone,url",
-		"--limit", "100",
+		"--limit", "200",
 	)
 
 	out, err := cmd.Output()
@@ -131,24 +175,49 @@ func fetchOpenIssues() ([]ghIssue, error) {
 	return issues, nil
 }
 
-func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, issue ghIssue, dryRun bool, result *syncResult) {
+func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, issue ghIssue, dryRun bool, result *syncResult) {
 	prefix := fmt.Sprintf("  #%-4d", issue.Number)
 
 	// Extract structured fields from issue body
-	taskID := extractTaskID(issue.Body)
-	priority := extractPriority(issue.Body)
-	taskType := mapLabelsToType(issue.Labels)
+	fields := parseIssueBody(issue)
 	title := stripSprintPrefix(issue.Title)
 
 	// Try to find existing task: first by Task ID in body, then by notion_id
 	ghRef := fmt.Sprintf("gh-%d", issue.Number)
 	var existingTask *db.Task
 
-	if taskID != "" {
-		existingTask, _ = db.GetTask(ctx, pool, taskID)
+	if fields.taskID != "" {
+		existingTask, _ = db.GetTask(ctx, pool, fields.taskID)
 	}
 	if existingTask == nil {
 		existingTask, _ = db.GetTaskByNotionID(ctx, pool, ghRef)
+	}
+
+	// Handle closed issues
+	if issue.State == "CLOSED" || issue.State == "closed" {
+		if existingTask != nil && existingTask.Status != "done" && existingTask.Status != "cancelled" {
+			fmt.Printf("%s %s %s (task %s → done)\n", prefix, color.BlueString("CLOSE"), truncate(title, 40), color.YellowString(existingTask.ShortID))
+			if !dryRun {
+				status := "done"
+				if _, err := db.UpdateTask(ctx, pool, existingTask.ID, db.TaskUpdateOptions{Status: &status}); err != nil {
+					result.Errors = append(result.Errors, fmt.Sprintf("#%d: close %s: %v", issue.Number, existingTask.ShortID, err))
+					return
+				}
+			}
+			result.Closed = append(result.Closed, fmt.Sprintf("#%d → %s", issue.Number, existingTask.ShortID))
+		} else {
+			fmt.Printf("%s %s %s (closed)\n", prefix, color.HiBlackString("SKIP"), truncate(title, 40))
+			result.Skipped = append(result.Skipped, fmt.Sprintf("#%d (closed)", issue.Number))
+		}
+		return
+	}
+
+	// Resolve epic from body
+	var epicID string
+	if fields.epic != "" {
+		if epic := epics.resolve(ctx, fields.epic); epic != nil {
+			epicID = epic.ID
+		}
 	}
 
 	if existingTask != nil {
@@ -156,12 +225,16 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, issue ghIssue, dryRun
 		needsUpdate := false
 		opts := db.TaskUpdateOptions{}
 
-		if priority != "" && priority != existingTask.Priority {
-			opts.Priority = &priority
+		if fields.priority != "" && fields.priority != existingTask.Priority {
+			opts.Priority = &fields.priority
 			needsUpdate = true
 		}
 		if title != existingTask.Title {
 			opts.Title = &title
+			needsUpdate = true
+		}
+		if epicID != "" && (existingTask.EpicID == nil || *existingTask.EpicID != epicID) {
+			opts.EpicID = &epicID
 			needsUpdate = true
 		}
 
@@ -183,7 +256,11 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, issue ghIssue, dryRun
 	}
 
 	// No existing task — create one
-	fmt.Printf("%s %s %s\n", prefix, color.GreenString("CREATE"), truncate(title, 50))
+	suffix := ""
+	if len(fields.deps) > 0 {
+		suffix = color.HiBlackString(" deps:[%s]", strings.Join(fields.deps, ","))
+	}
+	fmt.Printf("%s %s %s%s\n", prefix, color.GreenString("CREATE"), truncate(title, 45), suffix)
 	if dryRun {
 		result.Created = append(result.Created, fmt.Sprintf("#%d → %s", issue.Number, title))
 		return
@@ -193,12 +270,15 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, issue ghIssue, dryRun
 	createOpts := db.TaskCreateOptions{
 		Title:       title,
 		Description: desc,
-		Priority:    priority,
-		TaskType:    taskType,
+		Priority:    fields.priority,
+		TaskType:    fields.taskType,
 		NotionID:    ghRef,
 	}
-	if priority == "" {
+	if createOpts.Priority == "" {
 		createOpts.Priority = "p3_medium"
+	}
+	if epicID != "" {
+		createOpts.EpicID = epicID
 	}
 
 	newTask, err := db.CreateTask(ctx, pool, createOpts)
@@ -210,24 +290,58 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, issue ghIssue, dryRun
 	result.Created = append(result.Created, fmt.Sprintf("#%d → %s", issue.Number, newTask.ShortID))
 }
 
-var taskIDRe = regexp.MustCompile(`\*\*Task ID:\*\*\s*([a-f0-9]{8})`)
-var priorityRe = regexp.MustCompile(`\*\*Priority:\*\*\s*(P[1-4][^\n]*)`)
-var sprintPrefixRe = regexp.MustCompile(`^\[Sprint \d+\]\s*`)
-
-func extractTaskID(body string) string {
-	m := taskIDRe.FindStringSubmatch(body)
-	if len(m) >= 2 {
-		return m[1]
-	}
-	return ""
+// parsedFields holds all structured data extracted from an issue body
+type parsedFields struct {
+	taskID   string
+	priority string
+	epic     string
+	taskType string
+	deps     []string
 }
 
-func extractPriority(body string) string {
-	m := priorityRe.FindStringSubmatch(body)
-	if len(m) >= 2 {
-		return normalizePriority(strings.TrimSpace(m[1]))
+var (
+	taskIDRe       = regexp.MustCompile(`\*\*Task ID:\*\*\s*([a-f0-9]{8})`)
+	priorityRe     = regexp.MustCompile(`\*\*Priority:\*\*\s*(P[1-4][^\n]*)`)
+	epicRe         = regexp.MustCompile(`\*\*Epic:\*\*\s*([^\n]+)`)
+	typeRe         = regexp.MustCompile(`\*\*Type:\*\*\s*([^\n]+)`)
+	depsRe         = regexp.MustCompile(`\*\*Dependencies:\*\*\s*([^\n]+)`)
+	depTaskIDRe    = regexp.MustCompile(`([a-f0-9]{8})`)
+	sprintPrefixRe = regexp.MustCompile(`^\[Sprint \d+\]\s*`)
+)
+
+func parseIssueBody(issue ghIssue) parsedFields {
+	body := issue.Body
+	f := parsedFields{}
+
+	if m := taskIDRe.FindStringSubmatch(body); len(m) >= 2 {
+		f.taskID = m[1]
 	}
-	return ""
+	if m := priorityRe.FindStringSubmatch(body); len(m) >= 2 {
+		f.priority = normalizePriority(strings.TrimSpace(m[1]))
+	}
+	if m := epicRe.FindStringSubmatch(body); len(m) >= 2 {
+		f.epic = strings.TrimSpace(m[1])
+	}
+
+	// Type: body field overrides label detection
+	if m := typeRe.FindStringSubmatch(body); len(m) >= 2 {
+		f.taskType = normalizeType(strings.TrimSpace(m[1]))
+	} else {
+		f.taskType = mapLabelsToType(issue.Labels)
+	}
+
+	// Dependencies: extract task IDs
+	if m := depsRe.FindStringSubmatch(body); len(m) >= 2 {
+		raw := m[1]
+		lowerRaw := strings.ToLower(raw)
+		if !strings.Contains(lowerRaw, "none") {
+			for _, dm := range depTaskIDRe.FindAllString(raw, -1) {
+				f.deps = append(f.deps, dm)
+			}
+		}
+	}
+
+	return f
 }
 
 func normalizePriority(raw string) string {
@@ -243,6 +357,21 @@ func normalizePriority(raw string) string {
 		return "p4_low"
 	default:
 		return "p3_medium"
+	}
+}
+
+func normalizeType(raw string) string {
+	switch strings.ToLower(raw) {
+	case "bug", "fix", "hotfix":
+		return "bug"
+	case "feature", "enhancement":
+		return "feature"
+	case "chore":
+		return "chore"
+	case "docs", "documentation":
+		return "docs"
+	default:
+		return raw
 	}
 }
 
@@ -284,5 +413,6 @@ func truncate(s string, n int) string {
 
 func init() {
 	githubSyncCmd.Flags().BoolVar(&githubSyncDryRun, "dry-run", false, "Show what would be synced without making changes")
+	githubSyncCmd.Flags().BoolVar(&githubSyncAll, "all", false, "Include closed issues (marks their tasks as done)")
 	githubCmd.AddCommand(githubSyncCmd)
 }

@@ -128,6 +128,33 @@ func GetEpic(ctx context.Context, pool *pgxpool.Pool, shortID string) (*Epic, er
 	return &epics[0], nil
 }
 
+// FindEpicByName searches for an epic by name (case-insensitive substring match)
+func FindEpicByName(ctx context.Context, pool *pgxpool.Pool, name string) (*Epic, error) {
+	query := `
+		SELECT e.id, e.name, e.status, e.priority, e.github_repo,
+			e.start_date, e.target_date, e.created_at, e.updated_at,
+			COALESCE((SELECT COUNT(*) FROM createos_task t WHERE t.epic_id = e.id), 0) AS task_count
+		FROM createos_epic e
+		WHERE LOWER(e.name) LIKE '%' || LOWER($1) || '%'
+		ORDER BY LENGTH(e.name) ASC
+		LIMIT 1
+	`
+
+	var e Epic
+	err := pool.QueryRow(ctx, query, name).Scan(
+		&e.ID, &e.Name, &e.Status, &e.Priority, &e.GithubRepo,
+		&e.StartDate, &e.TargetDate, &e.CreatedAt, &e.UpdatedAt,
+		&e.TaskCount,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("no epic found matching name '%s': %w", name, err)
+	}
+	if len(e.ID) >= 8 {
+		e.ShortID = e.ID[:8]
+	}
+	return &e, nil
+}
+
 // EpicCreateOptions holds fields for creating an epic
 type EpicCreateOptions struct {
 	Name     string

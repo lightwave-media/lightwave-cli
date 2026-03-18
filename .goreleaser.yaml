@@ -1,0 +1,45 @@
+version: 2
+
+builds:
+  - main: ./cmd/lw
+    binary: lw
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/lightwave-media/lightwave-cli/internal/version.Version={{.Version}}
+      - -X github.com/lightwave-media/lightwave-cli/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/lightwave-media/lightwave-cli/internal/version.Date={{.Date}}
+
+archives:
+  - format: tar.gz
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^wip:"
+      - "^docs:"
+      - "^test:"
+
+brews:
+  - repository:
+      owner: lightwave-media
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    directory: Formula
+    homepage: "https://github.com/lightwave-media/lightwave-cli"
+    description: "LightWave CLI - Task management and platform operations"
+    license: "MIT"
+    test: |
+      assert_match "lw version", shell_output("#{bin}/lw version")

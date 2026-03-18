@@ -5,6 +5,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/lightwave-media/lightwave-cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -72,9 +73,9 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("lw version 2.1.0 (Go)")
-		fmt.Println("Built with direct PostgreSQL access")
-		fmt.Println("Native runtime: LightWave Augusta (packages/lightwave-sys)")
+		fmt.Printf("lw version %s\n", version.Version)
+		fmt.Printf("  commit: %s\n", version.Commit)
+		fmt.Printf("  built:  %s\n", version.Date)
 	},
 }
 

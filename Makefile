@@ -1,17 +1,27 @@
-.PHONY: build install clean test run deps
+.PHONY: build install clean test run deps fmt lint release-local
 
 # Binary name
 BINARY=lw
 BINARY_PATH=./cmd/lw
-VERSION?=2.1.0
+
+# Version from git tags (falls back to "dev")
+VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "none")
+DATE=$(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+
+# ldflags for version injection
+LDFLAGS=-s -w \
+	-X github.com/lightwave-media/lightwave-cli/internal/version.Version=$(VERSION) \
+	-X github.com/lightwave-media/lightwave-cli/internal/version.Commit=$(COMMIT) \
+	-X github.com/lightwave-media/lightwave-cli/internal/version.Date=$(DATE)
 
 # Build the binary
 build:
-	go build -o $(BINARY) $(BINARY_PATH)
+	go build -ldflags "$(LDFLAGS)" -o $(BINARY) $(BINARY_PATH)
 
 # Install to GOPATH/bin
 install:
-	go install $(BINARY_PATH)
+	go install -ldflags "$(LDFLAGS)" $(BINARY_PATH)
 
 # Install to /usr/local/bin
 install-global: build
@@ -52,17 +62,6 @@ fmt:
 lint:
 	golangci-lint run
 
-# Build for multiple platforms (without native - for Linux)
-build-cross:
-	GOOS=darwin GOARCH=amd64 go build -o $(BINARY)-darwin-amd64 $(BINARY_PATH)
-	GOOS=darwin GOARCH=arm64 go build -o $(BINARY)-darwin-arm64 $(BINARY_PATH)
-	GOOS=linux GOARCH=amd64 go build -o $(BINARY)-linux-amd64 $(BINARY_PATH)
-	GOOS=linux GOARCH=arm64 go build -o $(BINARY)-linux-arm64 $(BINARY_PATH)
-
-# Create release tarballs
-release: build build-cross
-	@mkdir -p dist
-	tar -czf dist/lw_$(VERSION)_linux_amd64.tar.gz $(BINARY)-linux-amd64
-	tar -czf dist/lw_$(VERSION)_linux_arm64.tar.gz $(BINARY)-linux-arm64
-	@echo "Release tarballs created in dist/"
-	@shasum -a 256 dist/*.tar.gz
+# Test GoReleaser locally (snapshot, no publish)
+release-local:
+	goreleaser release --snapshot --clean
