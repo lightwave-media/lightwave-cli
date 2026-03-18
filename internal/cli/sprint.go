@@ -505,6 +505,13 @@ Examples:
 			}
 		}
 
+		// Gate: refuse to complete with open tasks unless --force
+		force, _ := cmd.Flags().GetBool("force")
+		if done < total && !force {
+			fmt.Printf("\nUse %s to complete anyway\n", color.YellowString("--force"))
+			return fmt.Errorf("sprint has %d open tasks", total-done)
+		}
+
 		// Mark sprint completed
 		today := time.Now().Format("2006-01-02")
 		completed := "completed"
@@ -653,6 +660,80 @@ Examples:
 	},
 }
 
+var sprintAutoPlanCmd = &cobra.Command{
+	Use:   "auto-plan [epic-id]",
+	Short: "Create a sprint from approved tasks in an epic",
+	Long: `Pulls all approved tasks from an epic that aren't already in a sprint,
+creates a new sprint, and assigns tasks to it.
+
+Examples:
+  lw sprint auto-plan abc123
+  lw sprint auto-plan abc123 --dry-run
+  lw sprint auto-plan abc123 --name="Sprint 5"`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
+		name, _ := cmd.Flags().GetString("name")
+
+		_, _, err = autoPlanSprint(ctx, pool, args[0], name, dryRun)
+		return err
+	},
+}
+
+var sprintCheckCmd = &cobra.Command{
+	Use:   "check",
+	Short: "Check if active sprint is complete (exit 0 if done, 1 if not)",
+	Long: `Checks if all tasks in the active sprint are done.
+Returns exit code 0 if complete, 1 if not. Designed for scripting.
+
+Examples:
+  lw sprint check`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		sprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{Status: "active", Limit: 1})
+		if err != nil {
+			return err
+		}
+		if len(sprints) == 0 {
+			return fmt.Errorf("no active sprint")
+		}
+
+		s := sprints[0]
+		tasks, err := db.ListTasks(ctx, pool, db.TaskListOptions{SprintID: s.ShortID, Limit: 100})
+		if err != nil {
+			return err
+		}
+
+		done := 0
+		for _, t := range tasks {
+			if t.Status == "done" {
+				done++
+			}
+		}
+
+		if done == len(tasks) && len(tasks) > 0 {
+			fmt.Printf("Sprint complete — all %d tasks done\n", done)
+			return nil
+		}
+
+		fmt.Printf("Sprint in progress: %d/%d tasks done\n", done, len(tasks))
+		return fmt.Errorf("sprint incomplete: %d/%d done", done, len(tasks))
+	},
+}
+
 func init() {
 	// sprint list flags
 	sprintListCmd.Flags().StringVarP(&sprintListStatus, "status", "s", "", "Filter by status (active, completed, planned)")
@@ -680,6 +761,13 @@ func init() {
 	sprintStartCmd.Flags().Bool("dry-run", false, "Print generated prompt without spawning Claude Code")
 	sprintStartCmd.Flags().Bool("skip-gate", false, "Bypass lineage gate check")
 
+	// sprint complete flags
+	sprintCompleteCmd.Flags().Bool("force", false, "Complete sprint even with open tasks")
+
+	// sprint auto-plan flags
+	sprintAutoPlanCmd.Flags().Bool("dry-run", false, "Show what would be planned without creating")
+	sprintAutoPlanCmd.Flags().String("name", "", "Override auto-generated sprint name")
+
 	// Add subcommands
 	sprintCmd.AddCommand(sprintListCmd)
 	sprintCmd.AddCommand(sprintCreateCmd)
@@ -688,6 +776,8 @@ func init() {
 	sprintCmd.AddCommand(sprintStatusCmd)
 	sprintCmd.AddCommand(sprintCompleteCmd)
 	sprintCmd.AddCommand(sprintPlanCmd)
+	sprintCmd.AddCommand(sprintAutoPlanCmd)
+	sprintCmd.AddCommand(sprintCheckCmd)
 }
 
 func syncSprintToGitHub(ctx context.Context, pool interface{}, sprint *db.Sprint) error {
@@ -856,4 +946,76 @@ func spawnClaudeSession(prompt string) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+// autoPlanSprint creates a sprint from approved, unsprinted tasks in an epic.
+// Returns the created sprint (nil if no tasks or dry run), task count, and error.
+func autoPlanSprint(ctx context.Context, pool *pgxpool.Pool, epicID, nameOverride string, dryRun bool) (*db.Sprint, int, error) {
+	epic, err := db.GetEpic(ctx, pool, epicID)
+	if err != nil {
+		return nil, 0, fmt.Errorf("resolving epic: %w", err)
+	}
+
+	tasks, err := db.ListTasks(ctx, pool, db.TaskListOptions{
+		Status: "approved",
+		EpicID: epic.ID,
+		Limit:  100,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("listing tasks: %w", err)
+	}
+
+	// Filter for tasks not already in a sprint
+	var ready []db.Task
+	for _, t := range tasks {
+		if t.SprintID == nil {
+			ready = append(ready, t)
+		}
+	}
+
+	if len(ready) == 0 {
+		fmt.Println(color.YellowString("No approved tasks ready for sprint"))
+		return nil, 0, nil
+	}
+
+	// Auto-name: "Sprint N" from last sprint count in epic
+	sprintName := nameOverride
+	if sprintName == "" {
+		existing, _ := db.ListSprints(ctx, pool, db.SprintListOptions{EpicID: epic.ID, Limit: 100})
+		sprintName = fmt.Sprintf("Sprint %d", len(existing)+1)
+	}
+
+	if dryRun {
+		fmt.Printf("[DRY RUN] Would create %s with %d tasks:\n", color.CyanString(sprintName), len(ready))
+		for _, t := range ready {
+			fmt.Printf("  %s %s (%s)\n", color.YellowString("→"), t.Title, t.ShortID)
+		}
+		return nil, len(ready), nil
+	}
+
+	sprint, err := db.CreateSprint(ctx, pool, db.SprintCreateOptions{
+		Name:   sprintName,
+		Status: "planned",
+		EpicID: epic.ID,
+	})
+	if err != nil {
+		return nil, 0, fmt.Errorf("creating sprint: %w", err)
+	}
+
+	for _, t := range ready {
+		sid := sprint.ID
+		_, err := db.UpdateTask(ctx, pool, t.ShortID, db.TaskUpdateOptions{
+			SprintID: &sid,
+		})
+		if err != nil {
+			fmt.Printf("  %s Failed to assign %s: %v\n", color.YellowString("!"), t.ShortID, err)
+		}
+	}
+
+	fmt.Printf("Sprint %s: %s\n", color.YellowString(sprint.ShortID), sprint.Name)
+	for _, t := range ready {
+		fmt.Printf("  %s %s (%s)\n", color.GreenString("→"), t.Title, t.ShortID)
+	}
+
+	return sprint, len(ready), nil
 }

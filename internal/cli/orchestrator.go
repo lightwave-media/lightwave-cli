@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/lightwave-media/lightwave-cli/internal/db"
 	"github.com/spf13/cobra"
 )
 
@@ -91,6 +92,7 @@ type iterationResult struct {
 	SessionType  string    `json:"session_type,omitempty"`
 	Action       string    `json:"action"` // "idle", "monitoring_pr", "spawned", "blocked"
 	SpawnedAgent string    `json:"spawned_agent,omitempty"`
+	SprintAction string    `json:"sprint_action,omitempty"` // "sprint_completed", "sprint_started", "sprint_planned"
 	Error        string    `json:"error,omitempty"`
 }
 
@@ -194,6 +196,13 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 	fmt.Println(color.CyanString("Step 4: Sweep merged PRs"))
 	if err := runSweepMerged(ctx, dryRun); err != nil {
 		fmt.Printf("  %s sweep merged: %v (continuing)\n", color.YellowString("Warning:"), err)
+	}
+	fmt.Println()
+
+	// Step 5: Sprint lifecycle — auto-complete/start/plan sprints
+	fmt.Println(color.CyanString("Step 5: Sprint lifecycle"))
+	if err := sprintLifecycleCheck(ctx, dryRun, result); err != nil {
+		fmt.Printf("  %s sprint lifecycle: %v (continuing)\n", color.YellowString("Warning:"), err)
 	}
 	fmt.Println()
 
@@ -330,6 +339,152 @@ func showOrchestratorStatus(ctx context.Context) error {
 	fmt.Println(color.CyanString("Queue:"))
 	fmt.Printf("  Depth: %d\n", status.QueueDepth)
 	fmt.Printf("  Idle: %v\n", status.Idle)
+
+	return nil
+}
+
+// sprintLifecycleCheck manages the automated sprint lifecycle:
+// 1. Active sprint with all tasks done → complete it
+// 2. No active sprint + planned sprint exists → activate it
+// 3. No active/planned sprint + approved tasks exist → auto-plan a new sprint
+func sprintLifecycleCheck(ctx context.Context, dryRun bool, result *iterationResult) error {
+	pool, err := db.Connect(ctx)
+	if err != nil {
+		return fmt.Errorf("database connection: %w", err)
+	}
+
+	// Check for active sprint
+	activeSprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{Status: "active", Limit: 1})
+	if err != nil {
+		return fmt.Errorf("listing active sprints: %w", err)
+	}
+
+	if len(activeSprints) > 0 {
+		s := activeSprints[0]
+		tasks, err := db.ListTasks(ctx, pool, db.TaskListOptions{SprintID: s.ShortID, Limit: 100})
+		if err != nil {
+			return fmt.Errorf("listing sprint tasks: %w", err)
+		}
+
+		done := 0
+		for _, t := range tasks {
+			if t.Status == "done" {
+				done++
+			}
+		}
+
+		if done == len(tasks) && len(tasks) > 0 {
+			fmt.Printf("  Sprint %s: all %d tasks done\n", color.CyanString(s.Name), done)
+			if dryRun {
+				fmt.Printf("  [DRY RUN] Would complete sprint %s\n", s.ShortID)
+				result.SprintAction = "sprint_completed"
+				return nil
+			}
+			today := time.Now().Format("2006-01-02")
+			completed := "completed"
+			_, err = db.UpdateSprint(ctx, pool, s.ShortID, db.SprintUpdateOptions{
+				Status:  &completed,
+				EndDate: &today,
+			})
+			if err != nil {
+				return fmt.Errorf("completing sprint: %w", err)
+			}
+			specPath, _, specErr := FindSprintSpec(s.ShortID)
+			if specErr == nil {
+				MoveSpec(specPath, "done")
+			}
+			fmt.Printf("  %s Sprint %s completed\n", color.GreenString("✓"), s.ShortID)
+			result.SprintAction = "sprint_completed"
+		} else {
+			fmt.Printf("  Sprint %s: %d/%d tasks done — continuing\n", color.CyanString(s.Name), done, len(tasks))
+		}
+		return nil
+	}
+
+	// No active sprint — check for planned
+	plannedSprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{Status: "planned", Limit: 1})
+	if err != nil {
+		return fmt.Errorf("listing planned sprints: %w", err)
+	}
+
+	if len(plannedSprints) > 0 {
+		s := plannedSprints[0]
+		fmt.Printf("  Planned sprint found: %s (%s)\n", color.CyanString(s.Name), s.ShortID)
+		if dryRun {
+			fmt.Printf("  [DRY RUN] Would start sprint %s\n", s.ShortID)
+			result.SprintAction = "sprint_started"
+			return nil
+		}
+		today := time.Now().Format("2006-01-02")
+		active := "active"
+		_, err = db.UpdateSprint(ctx, pool, s.ShortID, db.SprintUpdateOptions{
+			Status:    &active,
+			StartDate: &today,
+		})
+		if err != nil {
+			return fmt.Errorf("activating sprint: %w", err)
+		}
+		sprint, _ := db.GetSprint(ctx, pool, s.ShortID)
+		if sprint != nil {
+			if syncErr := syncSprintToGitHub(ctx, pool, sprint); syncErr != nil {
+				fmt.Printf("  %s GitHub sync: %v\n", color.YellowString("Warning:"), syncErr)
+			}
+		}
+		fmt.Printf("  %s Sprint %s activated\n", color.GreenString("✓"), s.ShortID)
+		result.SprintAction = "sprint_started"
+		return nil
+	}
+
+	// No planned sprint — check for approved tasks without a sprint
+	tasks, err := db.ListTasks(ctx, pool, db.TaskListOptions{Status: "approved", Limit: 100})
+	if err != nil {
+		return fmt.Errorf("listing approved tasks: %w", err)
+	}
+
+	// Group unsprinted tasks by epic
+	epicTasks := map[string][]db.Task{}
+	for _, t := range tasks {
+		if t.SprintID == nil && t.EpicID != nil {
+			epicTasks[*t.EpicID] = append(epicTasks[*t.EpicID], t)
+		}
+	}
+
+	if len(epicTasks) == 0 {
+		fmt.Println("  No approved tasks without a sprint — idle")
+		return nil
+	}
+
+	// Pick the epic with the most unsprinted tasks
+	var bestEpicID string
+	var bestCount int
+	for epicID, epTasks := range epicTasks {
+		if len(epTasks) > bestCount {
+			bestEpicID = epicID
+			bestCount = len(epTasks)
+		}
+	}
+
+	epicShort := bestEpicID
+	if len(epicShort) > 8 {
+		epicShort = epicShort[:8]
+	}
+
+	fmt.Printf("  Found %d approved tasks for epic %s\n", bestCount, epicShort)
+
+	if dryRun {
+		fmt.Printf("  [DRY RUN] Would auto-plan sprint for epic %s\n", epicShort)
+		result.SprintAction = "sprint_planned"
+		return nil
+	}
+
+	sprint, count, err := autoPlanSprint(ctx, pool, epicShort, "", false)
+	if err != nil {
+		return fmt.Errorf("auto-planning sprint: %w", err)
+	}
+	if sprint != nil {
+		fmt.Printf("  %s Created %s with %d tasks\n", color.GreenString("✓"), sprint.Name, count)
+		result.SprintAction = "sprint_planned"
+	}
 
 	return nil
 }
