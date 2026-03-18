@@ -73,11 +73,16 @@ type ghMile struct {
 // syncAction represents one sync operation for JSON output
 type syncAction struct {
 	IssueNumber int      `json:"issue_number"`
+	IssueURL    string   `json:"issue_url,omitempty"`
 	Action      string   `json:"action"` // create, update, close, skip
 	TaskID      string   `json:"task_id,omitempty"`
 	Title       string   `json:"title"`
 	Changes     []string `json:"changes,omitempty"`
 	Deps        []string `json:"deps,omitempty"`
+	Epic        string   `json:"epic,omitempty"`
+	Priority    string   `json:"priority,omitempty"`
+	TaskType    string   `json:"task_type,omitempty"`
+	HasAC       bool     `json:"has_ac,omitempty"`
 	Error       string   `json:"error,omitempty"`
 }
 
@@ -327,11 +332,12 @@ func syncOneIssue(ctx context.Context, pool *pgxpool.Pool, epics *epicCache, iss
 
 	desc := formatDescription(issue)
 	createOpts := db.TaskCreateOptions{
-		Title:       title,
-		Description: desc,
-		Priority:    fields.priority,
-		TaskType:    fields.taskType,
-		NotionID:    ghRef,
+		Title:              title,
+		Description:        desc,
+		AcceptanceCriteria: fields.acceptanceCriteria,
+		Priority:           fields.priority,
+		TaskType:           fields.taskType,
+		NotionID:           ghRef,
 	}
 	if createOpts.Priority == "" {
 		createOpts.Priority = "p3_medium"
@@ -399,11 +405,12 @@ func stampTaskID(issueNumber int, taskID string, jsonOut bool) {
 
 // parsedFields holds all structured data extracted from an issue body
 type parsedFields struct {
-	taskID   string
-	priority string
-	epic     string
-	taskType string
-	deps     []string
+	taskID             string
+	priority           string
+	epic               string
+	taskType           string
+	deps               []string
+	acceptanceCriteria string
 }
 
 var (
@@ -414,6 +421,7 @@ var (
 	depsRe         = regexp.MustCompile(`\*\*Dependencies:\*\*\s*([^\n]+)`)
 	depTaskIDRe    = regexp.MustCompile(`([a-f0-9]{8})`)
 	sprintPrefixRe = regexp.MustCompile(`^\[Sprint \d+\]\s*`)
+	acRe           = regexp.MustCompile(`(?s)\*\*Acceptance Criteria:\*\*\s*\n((?:- [^\n]+\n?)+)`)
 )
 
 func parseIssueBody(issue ghIssue) parsedFields {
@@ -446,6 +454,11 @@ func parseIssueBody(issue ghIssue) parsedFields {
 				f.deps = append(f.deps, dm)
 			}
 		}
+	}
+
+	// Acceptance Criteria: extract bulleted list
+	if m := acRe.FindStringSubmatch(body); len(m) >= 2 {
+		f.acceptanceCriteria = strings.TrimSpace(m[1])
 	}
 
 	return f

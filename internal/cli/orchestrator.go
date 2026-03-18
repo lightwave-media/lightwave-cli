@@ -126,8 +126,15 @@ func runOrchestrator(ctx context.Context, intervalStr string, dryRun bool) error
 	}
 }
 
-// runOrchestrationIteration delegates to the Elixir orchestrator via HTTP.
+// runOrchestrationIteration syncs GitHub Issues then delegates to the Elixir orchestrator via HTTP.
 func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterationResult) error {
+	// Step 0: Sync GitHub Issues → lw task DB
+	fmt.Println(color.CyanString("Step 0: GitHub Issues sync"))
+	if err := runGitHubSync(ctx, dryRun, false, false); err != nil {
+		fmt.Printf("  %s github sync: %v (continuing)\n", color.YellowString("Warning:"), err)
+	}
+	fmt.Println()
+
 	if dryRun {
 		fmt.Println(color.YellowString("[DRY RUN] Would call Elixir orchestrator run-once"))
 		result.Action = "idle"
