@@ -190,6 +190,13 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 	}
 	fmt.Println()
 
+	// Step 4: Sweep merged PRs — close issues + move Projects cards
+	fmt.Println(color.CyanString("Step 4: Sweep merged PRs"))
+	if err := runSweepMerged(ctx, dryRun); err != nil {
+		fmt.Printf("  %s sweep merged: %v (continuing)\n", color.YellowString("Warning:"), err)
+	}
+	fmt.Println()
+
 	if dryRun {
 		fmt.Println(color.YellowString("[DRY RUN] Would call Elixir orchestrator run-once"))
 		result.Action = "idle"
