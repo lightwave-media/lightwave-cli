@@ -147,10 +147,7 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 	if pickErr != nil {
 		fmt.Printf("  %s github pick: %v (continuing)\n", color.YellowString("Warning:"), pickErr)
 	} else if picked == nil {
-		fmt.Println("  No actionable ready issues — idle")
-		result.Action = "idle"
-		fmt.Println(color.GreenString("Iteration complete"))
-		return nil
+		fmt.Println("  No actionable ready issues")
 	} else {
 		fields := parseIssueBody(*picked)
 		title := stripSprintPrefix(picked.Title)
@@ -179,8 +176,6 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 		} else if !valResult.passed {
 			fmt.Println("  Issue failed validation — skipping spawn")
 			result.Action = "blocked"
-			fmt.Println(color.GreenString("Iteration complete"))
-			return nil
 		}
 		fmt.Println()
 	}
@@ -205,6 +200,15 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 		fmt.Printf("  %s sprint lifecycle: %v (continuing)\n", color.YellowString("Warning:"), err)
 	}
 	fmt.Println()
+
+	// Skip Elixir delegation if no issue picked or validation blocked
+	if picked == nil || result.Action == "blocked" {
+		if result.Action == "" {
+			result.Action = "idle"
+		}
+		fmt.Println(color.GreenString("Iteration complete"))
+		return nil
+	}
 
 	if dryRun {
 		fmt.Println(color.YellowString("[DRY RUN] Would call Elixir orchestrator run-once"))
