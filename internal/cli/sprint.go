@@ -979,7 +979,9 @@ func generatePromptFromDB(ctx context.Context, pool *pgxpool.Pool, sprint *db.Sp
 	return b.String()
 }
 
-// spawnClaudeSession launches claude -p with the generated prompt piped via stdin
+// spawnClaudeSession launches a NEW claude session with the generated prompt.
+// If already inside Claude Code (CLAUDECODE env var set), writes the prompt to a
+// file and prints instructions instead of nesting sessions.
 func spawnClaudeSession(prompt string) error {
 	claudePath, err := exec.LookPath("claude")
 	if err != nil {
@@ -988,7 +990,19 @@ func spawnClaudeSession(prompt string) error {
 		return nil
 	}
 
-	// Pipe prompt via stdin — claude -p reads stdin when piped
+	// Detect nesting: CLAUDECODE is set when running inside a Claude Code session
+	if os.Getenv("CLAUDECODE") != "" {
+		// Write prompt to temp file so a new session can pick it up
+		promptFile := filepath.Join(os.TempDir(), "lw-sprint-prompt.md")
+		if err := os.WriteFile(promptFile, []byte(prompt), 0o644); err != nil {
+			return fmt.Errorf("writing prompt file: %w", err)
+		}
+		fmt.Printf("%s Sprint activated. Prompt written to %s\n", color.GreenString("✓"), color.CyanString(promptFile))
+		fmt.Printf("Start a new session: %s\n", color.CyanString("cat %s | claude -p", promptFile))
+		return nil
+	}
+
+	// Not inside Claude Code — spawn directly
 	cmd := exec.Command(claudePath, "-p")
 	cmd.Stdin = strings.NewReader(prompt)
 	cmd.Stdout = os.Stdout

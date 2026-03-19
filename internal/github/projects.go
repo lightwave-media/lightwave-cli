@@ -232,10 +232,27 @@ func buildIssueBody(task TaskInfo) string {
 func buildLabels(task TaskInfo) []string {
 	var labels []string
 	if task.Priority != "" {
-		labels = append(labels, task.Priority)
+		labels = append(labels, priorityToLabel(task.Priority))
 	}
 	if task.TaskCategory != "" {
 		labels = append(labels, task.TaskCategory)
 	}
 	return labels
+}
+
+// priorityToLabel maps DB priority values to GitHub label names.
+// DB stores "p1_urgent", "p2_high", etc. GitHub labels are "p1", "p2", etc.
+func priorityToLabel(priority string) string {
+	switch {
+	case strings.HasPrefix(priority, "p1"):
+		return "p1"
+	case strings.HasPrefix(priority, "p2"):
+		return "p2"
+	case strings.HasPrefix(priority, "p3"):
+		return "p3"
+	case strings.HasPrefix(priority, "p4"):
+		return "p4"
+	default:
+		return priority
+	}
 }
