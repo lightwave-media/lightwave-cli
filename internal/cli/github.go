@@ -185,10 +185,6 @@ func monitorExistingPR(ctx context.Context, pool interface{}, task *db.Task) err
 						fmt.Printf("  %s update task: %v\n", color.RedString("Error:"), err)
 					}
 				}
-				if task.AssignedAgent != nil {
-					mgr := agent.NewManager()
-					_ = mgr.Kill(*task.AssignedAgent, false)
-				}
 
 				// Close linked GitHub Issue and sync Projects board
 				if issueNum := taskIssueNumber(ctx, task); issueNum > 0 {
