@@ -233,6 +233,15 @@ Examples:
 			return err
 		}
 
+		// Guard: refuse if another sprint is already active
+		activeSprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{Status: "active", Limit: 1})
+		if err != nil {
+			return fmt.Errorf("checking active sprints: %w", err)
+		}
+		if len(activeSprints) > 0 && activeSprints[0].ID != sprint.ID {
+			return fmt.Errorf("sprint %s is already active — complete it first", activeSprints[0].ShortID)
+		}
+
 		fmt.Printf("Sprint %s: %s\n", color.YellowString(sprint.ShortID), sprint.Name)
 
 		// 1. Find sprint spec YAML
@@ -450,6 +459,7 @@ Examples:
 	Args: cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
+		dryRun, _ := cmd.Flags().GetBool("dry-run")
 		pool, err := db.Connect(ctx)
 		if err != nil {
 			return fmt.Errorf("database connection failed: %w", err)
@@ -489,6 +499,12 @@ Examples:
 			}
 		}
 
+		// Zero-task guard
+		force, _ := cmd.Flags().GetBool("force")
+		if total == 0 && !force {
+			return fmt.Errorf("sprint %s has no tasks", sprint.ShortID)
+		}
+
 		fmt.Printf("Sprint %s: %s\n", color.YellowString(sprint.ShortID), sprint.Name)
 		fmt.Printf("Tasks: %s/%d completed\n", color.GreenString("%d", done), total)
 
@@ -506,10 +522,29 @@ Examples:
 		}
 
 		// Gate: refuse to complete with open tasks unless --force
-		force, _ := cmd.Flags().GetBool("force")
 		if done < total && !force {
 			fmt.Printf("\nUse %s to complete anyway\n", color.YellowString("--force"))
 			return fmt.Errorf("sprint has %d open tasks", total-done)
+		}
+
+		// Show GitHub cleanup summary
+		var issuestoClose []int
+		for _, t := range tasks {
+			if t.Status == "done" {
+				if issueNum := taskIssueNumber(ctx, &t); issueNum > 0 {
+					issuestoClose = append(issuestoClose, issueNum)
+				}
+			}
+		}
+
+		if dryRun {
+			fmt.Printf("\n%s\n", color.YellowString("[DRY RUN] Would perform:"))
+			fmt.Printf("  Mark sprint %s as completed\n", sprint.ShortID)
+			if len(issuestoClose) > 0 {
+				fmt.Printf("  Close %d GitHub Issues: %v\n", len(issuestoClose), issuestoClose)
+				fmt.Printf("  Move %d Projects cards to Done\n", len(issuestoClose))
+			}
+			return nil
 		}
 
 		// Mark sprint completed
@@ -523,6 +558,12 @@ Examples:
 			return fmt.Errorf("failed to complete sprint: %w", err)
 		}
 		fmt.Printf("Status: %s  End: %s\n", color.HiBlackString("completed"), color.CyanString(today))
+
+		// Close linked GitHub Issues and sync Projects board
+		for _, issueNum := range issuestoClose {
+			closeLinkedIssue(issueNum)
+			syncProjectStatus(issueNum, "done")
+		}
 
 		// Move spec from active/ → done/
 		specPath, _, err := FindSprintSpec(sprint.ShortID)
@@ -717,6 +758,10 @@ Examples:
 			return err
 		}
 
+		if len(tasks) == 0 {
+			return fmt.Errorf("sprint %s has no tasks", s.ShortID)
+		}
+
 		done := 0
 		for _, t := range tasks {
 			if t.Status == "done" {
@@ -724,7 +769,7 @@ Examples:
 			}
 		}
 
-		if done == len(tasks) && len(tasks) > 0 {
+		if done == len(tasks) {
 			fmt.Printf("Sprint complete — all %d tasks done\n", done)
 			return nil
 		}
@@ -763,6 +808,7 @@ func init() {
 
 	// sprint complete flags
 	sprintCompleteCmd.Flags().Bool("force", false, "Complete sprint even with open tasks")
+	sprintCompleteCmd.Flags().Bool("dry-run", false, "Show what would happen without making changes")
 
 	// sprint auto-plan flags
 	sprintAutoPlanCmd.Flags().Bool("dry-run", false, "Show what would be planned without creating")
@@ -780,14 +826,8 @@ func init() {
 	sprintCmd.AddCommand(sprintCheckCmd)
 }
 
-func syncSprintToGitHub(ctx context.Context, pool interface{}, sprint *db.Sprint) error {
-	// Re-connect to get the typed pool for task queries
-	dbPool, err := db.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("database connection: %w", err)
-	}
-
-	tasks, err := db.ListTasks(ctx, dbPool, db.TaskListOptions{SprintID: sprint.ShortID, Limit: 100})
+func syncSprintToGitHub(ctx context.Context, pool *pgxpool.Pool, sprint *db.Sprint) error {
+	tasks, err := db.ListTasks(ctx, pool, db.TaskListOptions{SprintID: sprint.ShortID, Limit: 100})
 	if err != nil {
 		return fmt.Errorf("listing sprint tasks: %w", err)
 	}
@@ -823,15 +863,23 @@ func syncSprintToGitHub(ctx context.Context, pool interface{}, sprint *db.Sprint
 		taskInfos,
 	)
 
-	for shortID, url := range results {
-		fmt.Printf("  %s %s → %s\n", color.GreenString("✓"), shortID, color.BlueString(url))
+	for shortID, ref := range results {
+		fmt.Printf("  %s %s → %s\n", color.GreenString("✓"), shortID, color.BlueString(ref.URL))
+
+		// Store issue linkage: set notion_id to gh-N so taskIssueNumber() can resolve it
+		if ref.Number > 0 {
+			ghRef := fmt.Sprintf("gh-%d", ref.Number)
+			if _, linkErr := db.UpdateTaskNotionID(ctx, pool, shortID, ghRef); linkErr != nil {
+				fmt.Printf("    %s link task %s → %s: %v\n", color.YellowString("Warning:"), shortID, ghRef, linkErr)
+			}
+		}
 	}
 
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("%s Created %d GitHub issues\n", color.GreenString("Done!"), len(results))
+	fmt.Printf("%s Synced %d GitHub issues\n", color.GreenString("Done!"), len(results))
 	return nil
 }
 

@@ -93,6 +93,10 @@ type iterationResult struct {
 	Action       string    `json:"action"` // "idle", "monitoring_pr", "spawned", "blocked"
 	SpawnedAgent string    `json:"spawned_agent,omitempty"`
 	SprintAction string    `json:"sprint_action,omitempty"` // "sprint_completed", "sprint_started", "sprint_planned"
+	SprintID     string    `json:"sprint_id,omitempty"`
+	SprintName   string    `json:"sprint_name,omitempty"`
+	TasksDone    int       `json:"tasks_done,omitempty"`
+	TasksTotal   int       `json:"tasks_total,omitempty"`
 	Error        string    `json:"error,omitempty"`
 }
 
@@ -365,6 +369,9 @@ func sprintLifecycleCheck(ctx context.Context, dryRun bool, result *iterationRes
 
 	if len(activeSprints) > 0 {
 		s := activeSprints[0]
+		result.SprintID = s.ShortID
+		result.SprintName = s.Name
+
 		tasks, err := db.ListTasks(ctx, pool, db.TaskListOptions{SprintID: s.ShortID, Limit: 100})
 		if err != nil {
 			return fmt.Errorf("listing sprint tasks: %w", err)
@@ -376,6 +383,8 @@ func sprintLifecycleCheck(ctx context.Context, dryRun bool, result *iterationRes
 				done++
 			}
 		}
+		result.TasksDone = done
+		result.TasksTotal = len(tasks)
 
 		if done == len(tasks) && len(tasks) > 0 {
 			fmt.Printf("  Sprint %s: all %d tasks done\n", color.CyanString(s.Name), done)
@@ -393,6 +402,17 @@ func sprintLifecycleCheck(ctx context.Context, dryRun bool, result *iterationRes
 			if err != nil {
 				return fmt.Errorf("completing sprint: %w", err)
 			}
+
+			// Close linked GitHub Issues and sync Projects board
+			for _, t := range tasks {
+				if t.Status == "done" {
+					if issueNum := taskIssueNumber(ctx, &t); issueNum > 0 {
+						closeLinkedIssue(issueNum)
+						syncProjectStatus(issueNum, "done")
+					}
+				}
+			}
+
 			specPath, _, specErr := FindSprintSpec(s.ShortID)
 			if specErr == nil {
 				MoveSpec(specPath, "done")
@@ -413,6 +433,8 @@ func sprintLifecycleCheck(ctx context.Context, dryRun bool, result *iterationRes
 
 	if len(plannedSprints) > 0 {
 		s := plannedSprints[0]
+		result.SprintID = s.ShortID
+		result.SprintName = s.Name
 		fmt.Printf("  Planned sprint found: %s (%s)\n", color.CyanString(s.Name), s.ShortID)
 		if dryRun {
 			fmt.Printf("  [DRY RUN] Would start sprint %s\n", s.ShortID)

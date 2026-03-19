@@ -22,8 +22,8 @@ type TaskInfo struct {
 	TaskCategory string
 }
 
-// ghIssue represents a created GitHub issue.
-type ghIssue struct {
+// IssueRef holds the URL and number of a GitHub issue.
+type IssueRef struct {
 	URL    string `json:"url"`
 	Number int    `json:"number"`
 }
@@ -75,18 +75,34 @@ func AddToProject(org string, projectNumber int, issueURL string) error {
 }
 
 // SyncSprintTasks creates GitHub issues for each task and adds them to the org project.
-// Returns a map of task ShortID → issue URL for tasks that were successfully created.
-func SyncSprintTasks(repo, org string, projectNumber int, tasks []TaskInfo) (map[string]string, error) {
-	results := make(map[string]string)
+// Deduplicates by checking existing open issues for [shortID] title prefix.
+// Returns a map of task ShortID → IssueRef for tasks that were created or already existed.
+func SyncSprintTasks(repo, org string, projectNumber int, tasks []TaskInfo) (map[string]IssueRef, error) {
+	results := make(map[string]IssueRef)
 	var errors []string
 
+	// Fetch existing open issues to dedup
+	existing, err := fetchExistingIssues(repo)
+	if err != nil {
+		// Non-fatal — fall through to create all
+		existing = map[string]IssueRef{}
+	}
+
 	for _, task := range tasks {
+		// Dedup: skip if issue already exists for this task
+		if ref, ok := existing[task.ShortID]; ok {
+			results[task.ShortID] = ref
+			continue
+		}
+
 		issueURL, err := CreateIssue(repo, task)
 		if err != nil {
 			errors = append(errors, fmt.Sprintf("  %s: %v", task.ShortID, err))
 			continue
 		}
-		results[task.ShortID] = issueURL
+
+		num := issueNumberFromURL(issueURL)
+		results[task.ShortID] = IssueRef{URL: issueURL, Number: num}
 
 		if projectNumber > 0 {
 			if err := AddToProject(org, projectNumber, issueURL); err != nil {
@@ -100,6 +116,56 @@ func SyncSprintTasks(repo, org string, projectNumber int, tasks []TaskInfo) (map
 	}
 
 	return results, nil
+}
+
+// fetchExistingIssues returns open issues indexed by [shortID] title prefix.
+func fetchExistingIssues(repo string) (map[string]IssueRef, error) {
+	cmd := exec.Command("gh", "issue", "list",
+		"--repo", repo,
+		"--state", "open",
+		"--json", "number,title,url",
+		"--limit", "200",
+	)
+
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("gh issue list: %w", err)
+	}
+
+	var issues []struct {
+		Number int    `json:"number"`
+		Title  string `json:"title"`
+		URL    string `json:"url"`
+	}
+	if err := json.Unmarshal(out, &issues); err != nil {
+		return nil, fmt.Errorf("parse issues: %w", err)
+	}
+
+	result := make(map[string]IssueRef)
+	for _, iss := range issues {
+		// Extract [shortID] from title prefix like "[abc12345] Task title"
+		if strings.HasPrefix(iss.Title, "[") {
+			end := strings.Index(iss.Title, "]")
+			if end > 1 {
+				shortID := iss.Title[1:end]
+				result[shortID] = IssueRef{URL: iss.URL, Number: iss.Number}
+			}
+		}
+	}
+
+	return result, nil
+}
+
+// issueNumberFromURL extracts the issue number from a GitHub issue URL.
+// e.g. "https://github.com/owner/repo/issues/123" → 123
+func issueNumberFromURL(url string) int {
+	parts := strings.Split(url, "/")
+	if len(parts) == 0 {
+		return 0
+	}
+	var num int
+	fmt.Sscanf(parts[len(parts)-1], "%d", &num)
+	return num
 }
 
 // ListProjectItems returns issue URLs already in a project (to avoid duplicates).
