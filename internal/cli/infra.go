@@ -104,8 +104,7 @@ Examples:
 			return err
 		}
 
-		fmt.Println(result.Output)
-
+		// Output already streamed live — just print the summary
 		if result.HasChanges {
 			fmt.Println(color.YellowString("\n⚠ Changes detected"))
 		} else {

@@ -1,9 +1,11 @@
 package infra
 
 import (
-	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -40,7 +42,8 @@ func (t *TerragruntRunner) GetWorkingDir() string {
 	return filepath.Join(t.infraRoot, "live", t.env, t.region)
 }
 
-// Plan runs terragrunt plan for a specific unit/stack
+// Plan runs terragrunt plan for a specific unit/stack.
+// Output streams to terminal in real-time and is captured for change detection.
 func (t *TerragruntRunner) Plan(ctx context.Context, path string) (*PlanResult, error) {
 	workDir := filepath.Join(t.GetWorkingDir(), path)
 
@@ -52,22 +55,27 @@ func (t *TerragruntRunner) Plan(ctx context.Context, path string) (*PlanResult, 
 	cmd.Dir = workDir
 	cmd.Env = append(os.Environ(), "TF_IN_AUTOMATION=1")
 
-	output, err := cmd.CombinedOutput()
+	// Stream to terminal AND capture for parsing
+	var buf bytes.Buffer
+	cmd.Stdout = io.MultiWriter(os.Stdout, &buf)
+	cmd.Stderr = io.MultiWriter(os.Stderr, &buf)
+
+	err := cmd.Run()
+	output := buf.String()
 	result := &PlanResult{
-		Output: string(output),
+		Output: output,
 	}
 
 	if err != nil {
-		// Check if it's just "no changes" (which returns 0)
-		if strings.Contains(result.Output, "No changes") {
+		if strings.Contains(output, "No changes") {
 			return result, nil
 		}
-		return result, fmt.Errorf("plan failed: %w", err)
+		return result, fmt.Errorf("plan failed: %w\n\n%s", err, lastLines(output, 30))
 	}
 
 	// Parse output for change counts
-	result.HasChanges = strings.Contains(result.Output, "Plan:") &&
-		!strings.Contains(result.Output, "Plan: 0 to add, 0 to change, 0 to destroy")
+	result.HasChanges = strings.Contains(output, "Plan:") &&
+		!strings.Contains(output, "Plan: 0 to add, 0 to change, 0 to destroy")
 
 	return result, nil
 }
@@ -105,6 +113,12 @@ func (t *TerragruntRunner) RunAll(ctx context.Context, command string) error {
 	return cmd.Run()
 }
 
+// terraformOutput represents a single terraform output value
+type terraformOutput struct {
+	Value interface{} `json:"value"`
+	Type  interface{} `json:"type"`
+}
+
 // Output gets outputs from a specific unit
 func (t *TerragruntRunner) Output(ctx context.Context, path string) (map[string]string, error) {
 	workDir := filepath.Join(t.GetWorkingDir(), path)
@@ -115,20 +129,29 @@ func (t *TerragruntRunner) Output(ctx context.Context, path string) (map[string]
 
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil, fmt.Errorf("output failed: %w", err)
+		return nil, fmt.Errorf("output failed: %w\n\n%s", err, string(output))
 	}
 
-	// Parse JSON output (simplified - in production use encoding/json)
-	result := make(map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(string(output)))
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.Contains(line, ":") {
-			parts := strings.SplitN(line, ":", 2)
-			if len(parts) == 2 {
-				key := strings.TrimSpace(strings.Trim(parts[0], "\""))
-				result[key] = strings.TrimSpace(parts[1])
-			}
+	// Terragrunt may emit log lines before the JSON — find the JSON object
+	raw := string(output)
+	jsonStart := strings.Index(raw, "{")
+	if jsonStart < 0 {
+		return nil, fmt.Errorf("no JSON found in output:\n%s", raw)
+	}
+
+	var parsed map[string]terraformOutput
+	if err := json.Unmarshal([]byte(raw[jsonStart:]), &parsed); err != nil {
+		return nil, fmt.Errorf("failed to parse output JSON: %w\n\n%s", err, raw)
+	}
+
+	result := make(map[string]string, len(parsed))
+	for key, out := range parsed {
+		switch v := out.Value.(type) {
+		case string:
+			result[key] = v
+		default:
+			b, _ := json.Marshal(v)
+			result[key] = string(b)
 		}
 	}
 
@@ -162,17 +185,27 @@ func (t *TerragruntRunner) ListUnits(ctx context.Context) ([]string, error) {
 	return units, err
 }
 
-// Validate runs terragrunt validate
+// Validate runs terragrunt validate with live output streaming
 func (t *TerragruntRunner) Validate(ctx context.Context, path string) error {
 	workDir := filepath.Join(t.GetWorkingDir(), path)
 
 	cmd := exec.CommandContext(ctx, "terragrunt", "validate")
 	cmd.Dir = workDir
 	cmd.Env = append(os.Environ(), "TF_IN_AUTOMATION=1")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
 
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("validate failed: %s", string(output))
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("validate failed: %w", err)
 	}
 	return nil
+}
+
+// lastLines returns the last n lines from s, useful for error context
+func lastLines(s string, n int) string {
+	lines := strings.Split(strings.TrimRight(s, "\n"), "\n")
+	if len(lines) <= n {
+		return s
+	}
+	return "...\n" + strings.Join(lines[len(lines)-n:], "\n")
 }
