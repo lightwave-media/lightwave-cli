@@ -29,8 +29,7 @@ Wraps terragrunt commands with sensible defaults for the LightWave infrastructur
 Examples:
   lw infra list                    # List all units
   lw infra plan services/platform  # Plan a specific unit
-  lw infra apply services/platform # Apply changes
-  lw infra status                  # Show overall status`,
+  lw infra apply services/platform # Apply changes`,
 }
 
 var infraListCmd = &cobra.Command{

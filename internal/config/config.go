@@ -10,11 +10,17 @@ import (
 
 // Config holds all CLI configuration
 type Config struct {
-	Environment string         `mapstructure:"environment"`
-	Database    DatabaseConfig `mapstructure:"database"`
-	API         APIConfig      `mapstructure:"api"`
-	Tenant      string         `mapstructure:"tenant"`
-	Paths       PathsConfig    `mapstructure:"paths"`
+	Environment  string             `mapstructure:"environment"`
+	Database     DatabaseConfig     `mapstructure:"database"`
+	API          APIConfig          `mapstructure:"api"`
+	Orchestrator OrchestratorConfig `mapstructure:"orchestrator"`
+	Tenant       string             `mapstructure:"tenant"`
+	Paths        PathsConfig        `mapstructure:"paths"`
+}
+
+// OrchestratorConfig for Elixir Phoenix orchestrator access
+type OrchestratorConfig struct {
+	URL string `mapstructure:"url"`
 }
 
 // DatabaseConfig for direct PostgreSQL access (Tier 2)
@@ -108,6 +114,10 @@ func setDefaults() {
 	viper.SetDefault("api.staging", "https://api.staging.lightwave-media.ltd/api/createos")
 	viper.SetDefault("api.production", "https://api.lightwave-media.ltd/api/createos")
 
+	// Orchestrator defaults (Elixir Phoenix)
+	viper.SetDefault("orchestrator.url", "http://localhost:4000")
+	viper.BindEnv("orchestrator.url", "LW_ORCHESTRATOR_URL")
+
 	// Paths
 	viper.SetDefault("paths.lightwave_root", filepath.Join(home, "dev", "lightwave-media"))
 	viper.SetDefault("paths.platform", filepath.Join(home, "dev", "lightwave-media", "lightwave-platform", "src"))
@@ -131,6 +141,11 @@ func (c *Config) GetAPIURL() string {
 	default:
 		return c.API.Local
 	}
+}
+
+// GetOrchestratorURL returns the orchestrator URL for the current environment
+func (c *Config) GetOrchestratorURL() string {
+	return c.Orchestrator.URL
 }
 
 // GetAgentKey returns the agent key from environment

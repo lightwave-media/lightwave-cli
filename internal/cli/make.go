@@ -15,7 +15,6 @@ var makeCmd = &cobra.Command{
 Scopes: root, platform, cli, augusta, infra, catalog
 
 Examples:
-  lw make help                  # List all scopes
   lw make platform              # List targets in platform
   lw make platform test         # Run platform test target
   lw make root check            # Run root check target
@@ -29,6 +28,9 @@ Examples:
 		}
 
 		scope := args[0]
+		if scope == "help" {
+			return showMakeHelp()
+		}
 		if len(args) == 1 {
 			return listMakeTargets(scope)
 		}

@@ -201,7 +201,7 @@ Examples:
   lw process tree
   lw process tree 1234`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Use pstree if available, otherwise fall back to ps
+		// Try pstree first (available via Homebrew on macOS)
 		pstreeArgs := []string{"-g", "2"}
 		if len(args) > 0 {
 			pstreeArgs = append(pstreeArgs, "-p", args[0])
@@ -209,9 +209,8 @@ Examples:
 
 		out, err := exec.Command("pstree", pstreeArgs...).Output()
 		if err != nil {
-			// Fall back to ps forest
-			psArgs := []string{"axjf"}
-			out, err = exec.Command("ps", psArgs...).Output()
+			// macOS-compatible fallback (ps -ej gives job control format)
+			out, err = exec.Command("ps", "-ej").Output()
 			if err != nil {
 				return fmt.Errorf("failed to get process tree: %w", err)
 			}

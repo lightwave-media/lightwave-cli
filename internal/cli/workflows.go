@@ -931,7 +931,7 @@ func resolveOrchestratorBaseURL() string {
 		return ""
 	}
 
-	return deriveBaseURL(cfg.GetAPIURL())
+	return strings.TrimRight(cfg.GetOrchestratorURL(), "/")
 }
 
 func deriveBaseURL(apiURL string) string {
