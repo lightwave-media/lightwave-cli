@@ -10,7 +10,9 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/db"
+	"github.com/lightwave-media/lightwave-cli/internal/sst"
 	"github.com/spf13/cobra"
 )
 
@@ -89,19 +91,20 @@ Examples:
 
 // pickedIssue is the JSON output for orchestrator consumption
 type pickedIssue struct {
-	Found      bool     `json:"found"`
-	Number     int      `json:"number,omitempty"`
-	Title      string   `json:"title,omitempty"`
-	URL        string   `json:"url,omitempty"`
-	TaskID     string   `json:"task_id,omitempty"`
-	Priority   string   `json:"priority,omitempty"`
-	TaskType   string   `json:"task_type,omitempty"`
-	Epic       string   `json:"epic,omitempty"`
-	Deps       []string `json:"deps,omitempty"`
-	DepsStatus string   `json:"deps_status,omitempty"` // "satisfied", "blocked", "unknown"
-	HasAC      bool     `json:"has_ac,omitempty"`
-	Milestone  string   `json:"milestone,omitempty"`
-	Labels     []string `json:"labels,omitempty"`
+	Found          bool     `json:"found"`
+	Number         int      `json:"number,omitempty"`
+	Title          string   `json:"title,omitempty"`
+	URL            string   `json:"url,omitempty"`
+	TaskID         string   `json:"task_id,omitempty"`
+	Priority       string   `json:"priority,omitempty"`
+	TaskType       string   `json:"task_type,omitempty"`
+	Epic           string   `json:"epic,omitempty"`
+	Deps           []string `json:"deps,omitempty"`
+	DepsStatus     string   `json:"deps_status,omitempty"` // "satisfied", "blocked", "unknown"
+	HasAC          bool     `json:"has_ac,omitempty"`
+	Milestone      string   `json:"milestone,omitempty"`
+	Labels         []string `json:"labels,omitempty"`
+	StrategyScore  int      `json:"strategy_score,omitempty"`
 }
 
 // pickNextReady returns the highest-priority ready issue with satisfied deps.
@@ -195,10 +198,11 @@ func runGitHubPick(ctx context.Context, milestone string, jsonOut bool) error {
 			TaskType:   fields.taskType,
 			Epic:       fields.epic,
 			Deps:       fields.deps,
-			DepsStatus: "satisfied",
-			HasAC:      fields.acceptanceCriteria != "",
-			Milestone:  ms,
-			Labels:     labels,
+			DepsStatus:    "satisfied",
+			HasAC:         fields.acceptanceCriteria != "",
+			Milestone:     ms,
+			Labels:        labels,
+			StrategyScore: strategyScoreForIssue(*picked),
 		}, "", "  ")
 		fmt.Println(string(out))
 		return nil
@@ -225,6 +229,12 @@ func runGitHubPick(ctx context.Context, milestone string, jsonOut bool) error {
 	}
 	if fields.acceptanceCriteria != "" {
 		fmt.Printf("  AC: %s\n", color.GreenString("yes"))
+	}
+	if strategy := loadStrategyOrNil(); strategy != nil {
+		score := strategy.Score(issueToContext(*picked))
+		if score > 0 {
+			fmt.Printf("  Strategy: %s\n", color.GreenString("%d", score))
+		}
 	}
 
 	queueSize := len(issues) - 1 - skippedBlocked
@@ -254,6 +264,8 @@ func runGitHubQueue(ctx context.Context, milestone string) error {
 
 	pool, _ := db.GetPool(ctx)
 
+	strategy := loadStrategyOrNil()
+
 	fmt.Printf(color.CyanString("Ready Queue")+" (%d issues)\n\n", len(issues))
 	for i, issue := range issues {
 		fields := parseIssueBody(issue)
@@ -273,6 +285,12 @@ func runGitHubQueue(ctx context.Context, milestone string) error {
 		fmt.Printf("  %s %d. #%-4d [%s] %s", statusIcon, i+1, issue.Number, priStr, truncate(title, 42))
 		if fields.taskID != "" {
 			fmt.Printf(" (%s)", color.YellowString(fields.taskID))
+		}
+		if strategy != nil {
+			score := strategy.Score(issueToContext(issue))
+			if score > 0 {
+				fmt.Printf(" s:%d", score)
+			}
 		}
 		if !ok && len(fields.deps) > 0 {
 			fmt.Printf(" %s", color.YellowString("blocked:[%s]", strings.Join(fields.deps, ",")))
@@ -351,11 +369,62 @@ func closedIssueTaskIDs() map[string]bool {
 	return ids
 }
 
-// sortByPriority sorts issues in place by priority rank (p1 first).
+// sortByPriority sorts issues by priority rank (p1 first), using strategy
+// alignment as a tiebreaker within the same priority level.
 func sortByPriority(issues []ghIssue) {
+	strategy := loadStrategyOrNil()
+
 	sort.SliceStable(issues, func(i, j int) bool {
-		return issuePriorityRank(issues[i]) < issuePriorityRank(issues[j])
+		ri, rj := issuePriorityRank(issues[i]), issuePriorityRank(issues[j])
+		if ri != rj {
+			return ri < rj
+		}
+		// Same priority — use strategy alignment as tiebreaker (higher score wins)
+		if strategy != nil {
+			si := strategy.Score(issueToContext(issues[i]))
+			sj := strategy.Score(issueToContext(issues[j]))
+			return si > sj
+		}
+		return false
 	})
+}
+
+// loadStrategyOrNil loads the strategy YAML from SST. Returns nil on error
+// (strategy scoring is a best-effort enhancement, never blocks task picking).
+func loadStrategyOrNil() *sst.Strategy {
+	cfg := config.Get()
+	root := cfg.Paths.LightwaveRoot
+	if root == "" {
+		return nil
+	}
+	s, err := sst.LoadStrategy(root)
+	if err != nil {
+		return nil
+	}
+	return s
+}
+
+// strategyScoreForIssue returns the strategy alignment score for an issue.
+func strategyScoreForIssue(issue ghIssue) int {
+	if strategy := loadStrategyOrNil(); strategy != nil {
+		return strategy.Score(issueToContext(issue))
+	}
+	return 0
+}
+
+// issueToContext extracts scoring context from a GitHub Issue.
+func issueToContext(issue ghIssue) sst.IssueContext {
+	labels := make([]string, len(issue.Labels))
+	for i, l := range issue.Labels {
+		labels[i] = l.Name
+	}
+	fields := parseIssueBody(issue)
+	return sst.IssueContext{
+		Labels: labels,
+		Epic:   fields.epic,
+		Title:  issue.Title,
+		Body:   issue.Body,
+	}
 }
 
 // fetchReadyIssues queries GitHub for open issues with the "ready" label.

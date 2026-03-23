@@ -145,8 +145,8 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 	}
 	fmt.Println()
 
-	// Step 1: Pick next ready issue from GitHub (priority-sorted, dep-checked)
-	fmt.Println(color.CyanString("Step 1: GitHub Issues pick"))
+	// Step 1: Pick next ready issue from GitHub (priority+strategy sorted, dep-checked)
+	fmt.Println(color.CyanString("Step 1: GitHub Issues pick (strategy-aligned)"))
 	picked, pickErr := pickNextReady(ctx, "")
 	if pickErr != nil {
 		fmt.Printf("  %s github pick: %v (continuing)\n", color.YellowString("Warning:"), pickErr)
@@ -158,6 +158,10 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 		fmt.Printf("  Next: #%d %s", picked.Number, truncate(title, 45))
 		if fields.priority != "" {
 			fmt.Printf(" [%s]", fields.priority)
+		}
+		score := strategyScoreForIssue(*picked)
+		if score > 0 {
+			fmt.Printf(" [strategy:%d]", score)
 		}
 		fmt.Println()
 		result.TaskTitle = title
