@@ -475,8 +475,8 @@ var (
 	typeRe         = regexp.MustCompile(`\*\*Type:\*\*\s*([^\n]+)`)
 	depsRe         = regexp.MustCompile(`\*\*Dependencies:\*\*\s*([^\n]+)`)
 	sprintPrefixRe = regexp.MustCompile(`^\[Sprint \d+\]\s*`)
-	// Match bulleted AC lists using - or * markers
-	acRe = regexp.MustCompile(`(?s)\*\*Acceptance Criteria:\*\*\s*\n((?:[-*] [^\n]+\n?)+)`)
+	// Match bulleted AC lists: bold (**Acceptance Criteria:**) or heading (## Acceptance Criteria)
+	acRe = regexp.MustCompile(`(?s)(?:\*\*Acceptance Criteria:\*\*|##\s+Acceptance Criteria)\s*\n((?:[-*] (?:\[.\] )?[^\n]+\n?)+)`)
 	// Dep task IDs: exactly 8 hex chars bounded by word boundaries to avoid
 	// false positives on hex substrings in URLs or prose
 	depTaskIDRe = regexp.MustCompile(`\b([a-f0-9]{8})\b`)

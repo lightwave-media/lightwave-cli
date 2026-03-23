@@ -17,12 +17,12 @@ type Strategy struct {
 
 // Pillar is a strategic priority area with matching rules.
 type Pillar struct {
-	ID          string      `yaml:"id"`
-	Name        string      `yaml:"name"`
-	Description string      `yaml:"description"`
-	Weight      int         `yaml:"weight"`
-	Horizon     string      `yaml:"horizon"`
-	Match       MatchRules  `yaml:"match"`
+	ID          string     `yaml:"id"`
+	Name        string     `yaml:"name"`
+	Description string     `yaml:"description"`
+	Weight      int        `yaml:"weight"`
+	Horizon     string     `yaml:"horizon"`
+	Match       MatchRules `yaml:"match"`
 }
 
 // MatchRules define how to detect alignment from issue metadata.

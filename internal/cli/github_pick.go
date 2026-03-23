@@ -91,20 +91,20 @@ Examples:
 
 // pickedIssue is the JSON output for orchestrator consumption
 type pickedIssue struct {
-	Found          bool     `json:"found"`
-	Number         int      `json:"number,omitempty"`
-	Title          string   `json:"title,omitempty"`
-	URL            string   `json:"url,omitempty"`
-	TaskID         string   `json:"task_id,omitempty"`
-	Priority       string   `json:"priority,omitempty"`
-	TaskType       string   `json:"task_type,omitempty"`
-	Epic           string   `json:"epic,omitempty"`
-	Deps           []string `json:"deps,omitempty"`
-	DepsStatus     string   `json:"deps_status,omitempty"` // "satisfied", "blocked", "unknown"
-	HasAC          bool     `json:"has_ac,omitempty"`
-	Milestone      string   `json:"milestone,omitempty"`
-	Labels         []string `json:"labels,omitempty"`
-	StrategyScore  int      `json:"strategy_score,omitempty"`
+	Found         bool     `json:"found"`
+	Number        int      `json:"number,omitempty"`
+	Title         string   `json:"title,omitempty"`
+	URL           string   `json:"url,omitempty"`
+	TaskID        string   `json:"task_id,omitempty"`
+	Priority      string   `json:"priority,omitempty"`
+	TaskType      string   `json:"task_type,omitempty"`
+	Epic          string   `json:"epic,omitempty"`
+	Deps          []string `json:"deps,omitempty"`
+	DepsStatus    string   `json:"deps_status,omitempty"` // "satisfied", "blocked", "unknown"
+	HasAC         bool     `json:"has_ac,omitempty"`
+	Milestone     string   `json:"milestone,omitempty"`
+	Labels        []string `json:"labels,omitempty"`
+	StrategyScore int      `json:"strategy_score,omitempty"`
 }
 
 // pickNextReady returns the highest-priority ready issue with satisfied deps.
@@ -189,15 +189,15 @@ func runGitHubPick(ctx context.Context, milestone string, jsonOut bool) error {
 			ms = picked.Milestone.Title
 		}
 		out, _ := json.MarshalIndent(pickedIssue{
-			Found:      true,
-			Number:     picked.Number,
-			Title:      title,
-			URL:        picked.URL,
-			TaskID:     fields.taskID,
-			Priority:   fields.priority,
-			TaskType:   fields.taskType,
-			Epic:       fields.epic,
-			Deps:       fields.deps,
+			Found:         true,
+			Number:        picked.Number,
+			Title:         title,
+			URL:           picked.URL,
+			TaskID:        fields.taskID,
+			Priority:      fields.priority,
+			TaskType:      fields.taskType,
+			Epic:          fields.epic,
+			Deps:          fields.deps,
 			DepsStatus:    "satisfied",
 			HasAC:         fields.acceptanceCriteria != "",
 			Milestone:     ms,

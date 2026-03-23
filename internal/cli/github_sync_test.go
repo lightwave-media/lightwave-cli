@@ -141,7 +141,8 @@ func TestParseIssueBodyEmpty(t *testing.T) {
 }
 
 func TestParseIssueBodyAcceptanceCriteria(t *testing.T) {
-	body := `**Priority:** P2 High
+	t.Run("bold format", func(t *testing.T) {
+		body := `**Priority:** P2 High
 
 **Acceptance Criteria:**
 - Issues labeled ready are eligible for pickup
@@ -150,17 +151,40 @@ func TestParseIssueBodyAcceptanceCriteria(t *testing.T) {
 
 **Dependencies:** None (first task)`
 
-	f := parseIssueBody(ghIssue{Body: body})
+		f := parseIssueBody(ghIssue{Body: body})
 
-	if f.acceptanceCriteria == "" {
-		t.Fatal("expected acceptance criteria to be extracted")
-	}
-	if !strings.Contains(f.acceptanceCriteria, "Issues labeled ready") {
-		t.Errorf("AC = %q, want to contain 'Issues labeled ready'", f.acceptanceCriteria)
-	}
-	if !strings.Contains(f.acceptanceCriteria, "Removes dependency") {
-		t.Errorf("AC = %q, want to contain 'Removes dependency'", f.acceptanceCriteria)
-	}
+		if f.acceptanceCriteria == "" {
+			t.Fatal("expected acceptance criteria to be extracted")
+		}
+		if !strings.Contains(f.acceptanceCriteria, "Issues labeled ready") {
+			t.Errorf("AC = %q, want to contain 'Issues labeled ready'", f.acceptanceCriteria)
+		}
+		if !strings.Contains(f.acceptanceCriteria, "Removes dependency") {
+			t.Errorf("AC = %q, want to contain 'Removes dependency'", f.acceptanceCriteria)
+		}
+	})
+
+	t.Run("heading with checkboxes", func(t *testing.T) {
+		body := `**Priority:** P1 Urgent
+
+## Acceptance Criteria
+- [ ] cineos.io DNS points to ALB
+- [ ] ACM certificate covers cineos.io
+
+**Dependencies:** abcd1234`
+
+		f := parseIssueBody(ghIssue{Body: body})
+
+		if f.acceptanceCriteria == "" {
+			t.Fatal("expected acceptance criteria to be extracted")
+		}
+		if !strings.Contains(f.acceptanceCriteria, "cineos.io DNS points to ALB") {
+			t.Errorf("AC = %q, want to contain 'cineos.io DNS points to ALB'", f.acceptanceCriteria)
+		}
+		if !strings.Contains(f.acceptanceCriteria, "ACM certificate covers cineos.io") {
+			t.Errorf("AC = %q, want to contain 'ACM certificate covers cineos.io'", f.acceptanceCriteria)
+		}
+	})
 }
 
 func TestTruncate(t *testing.T) {
