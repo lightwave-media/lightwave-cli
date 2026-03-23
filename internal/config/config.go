@@ -110,7 +110,7 @@ func setDefaults() {
 	viper.SetDefault("database.password", "postgres")
 
 	// API defaults
-	viper.SetDefault("api.local", "http://local.lightwave-media.site:8000/api/createos")
+	viper.SetDefault("api.local", "http://api.local.lightwave-media.ltd/api/createos")
 	viper.SetDefault("api.staging", "https://api.staging.lightwave-media.ltd/api/createos")
 	viper.SetDefault("api.production", "https://api.lightwave-media.ltd/api/createos")
 

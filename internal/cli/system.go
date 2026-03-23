@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
@@ -248,43 +249,57 @@ type WindowInfo struct {
 	Layer       int32  `json:"layer"`
 }
 
-// listWindows uses osascript to list windows
+// escapeAppleScript escapes a string for safe use inside AppleScript double-quoted strings.
+// Replaces backslashes and double quotes with their escaped forms.
+func escapeAppleScript(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
+// listWindows uses JXA (JavaScript for Automation) to list windows.
+// JXA produces valid JSON natively, avoiding the fragile string-concat AppleScript approach.
 func listWindows() ([]WindowInfo, error) {
 	script := `
-		set output to ""
-		tell application "System Events"
-			repeat with proc in (every process whose visible is true)
-				set procName to name of proc
-				set procID to unix id of proc
-				try
-					repeat with win in (every window of proc)
-						set winTitle to name of win
-						set output to output & "{\"app\":\"" & procName & "\",\"title\":\"" & winTitle & "\",\"pid\":" & procID & "},"
-					end repeat
-				end try
-			end repeat
-		end tell
-		return "[" & text 1 thru -2 of output & "]"
+		var se = Application("System Events");
+		var results = [];
+		var procs = se.processes.whose({visible: true})();
+		for (var i = 0; i < procs.length; i++) {
+			var proc = procs[i];
+			var procName = proc.name();
+			var procPid = proc.unixId();
+			try {
+				var wins = proc.windows();
+				for (var j = 0; j < wins.length; j++) {
+					var winTitle = "";
+					try { winTitle = wins[j].name(); } catch(e) {}
+					results.push({app: procName, title: winTitle || "", pid: procPid});
+				}
+			} catch(e) {}
+		}
+		JSON.stringify(results);
 	`
 
-	out, err := exec.Command("osascript", "-e", script).Output()
+	out, err := exec.Command("osascript", "-l", "JavaScript", "-e", script).Output()
 	if err != nil {
 		return nil, fmt.Errorf("failed to list windows: %w", err)
 	}
 
-	// Parse the JSON output
 	var rawWindows []struct {
 		App   string `json:"app"`
 		Title string `json:"title"`
 		PID   uint32 `json:"pid"`
 	}
 
-	if err := json.Unmarshal(out, &rawWindows); err != nil {
-		// Return empty list if parsing fails (e.g., no windows)
+	trimmed := strings.TrimSpace(string(out))
+	if trimmed == "" || trimmed == "[]" {
 		return []WindowInfo{}, nil
 	}
 
-	// Convert to WindowInfo
+	if err := json.Unmarshal([]byte(trimmed), &rawWindows); err != nil {
+		return []WindowInfo{}, nil
+	}
+
 	windows := make([]WindowInfo, len(rawWindows))
 	for i, w := range rawWindows {
 		windows[i] = WindowInfo{
@@ -301,8 +316,6 @@ func listWindows() ([]WindowInfo, error) {
 
 // focusWindow focuses a window using AppleScript
 func focusWindow(windowID uint32) error {
-	// For now, we focus by index since we don't have real window IDs
-	// In production, we'd use the Rust library via FFI
 	windows, err := listWindows()
 	if err != nil {
 		return err
@@ -320,22 +333,67 @@ func focusWindow(windowID uint32) error {
 				set frontmost to true
 			end tell
 		end tell
-	`, window.AppName)
+	`, escapeAppleScript(window.AppName))
 
 	_, err = exec.Command("osascript", "-e", script).Output()
 	return err
 }
 
-// captureWindow captures a screenshot using screencapture
+// captureWindow captures a screenshot of a specific window using screencapture -l
 func captureWindow(windowID uint32) ([]byte, error) {
-	// Use screencapture for now
+	windows, err := listWindows()
+	if err != nil {
+		return nil, err
+	}
+
+	if int(windowID) > len(windows) || windowID == 0 {
+		return nil, fmt.Errorf("window ID %d not found", windowID)
+	}
+
+	window := windows[windowID-1]
+
+	// Get the CGWindowID for the target app's window via JXA + CoreGraphics
+	// screencapture -l <cgwindowid> captures a specific window
+	jxaScript := fmt.Sprintf(`
+		ObjC.import('CoreGraphics');
+		var windows = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, $.kCGNullWindowID);
+		var count = ObjC.unwrap(windows).length;
+		var targetPid = %d;
+		var found = [];
+		for (var i = 0; i < count; i++) {
+			var w = ObjC.unwrap(windows)[i];
+			var pid = ObjC.unwrap(w.kCGWindowOwnerPID);
+			var layer = ObjC.unwrap(w.kCGWindowLayer);
+			if (pid === targetPid && layer === 0) {
+				found.push(ObjC.unwrap(w.kCGWindowNumber));
+			}
+		}
+		found.length > 0 ? found[0].toString() : "";
+	`, window.PID)
+
+	cgIDOut, err := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript).Output()
+	if err != nil {
+		// Fallback: capture frontmost window after focusing the app
+		_ = focusWindow(windowID)
+		tmpFile := fmt.Sprintf("/tmp/lw_screenshot_%d.png", os.Getpid())
+		defer os.Remove(tmpFile)
+		if err := exec.Command("screencapture", "-x", "-o", "-w", tmpFile).Run(); err != nil {
+			return nil, fmt.Errorf("failed to capture screenshot: %w", err)
+		}
+		return os.ReadFile(tmpFile)
+	}
+
+	cgID := strings.TrimSpace(string(cgIDOut))
+	if cgID == "" {
+		return nil, fmt.Errorf("could not find CGWindowID for window %d (app: %s, pid: %d)", windowID, window.AppName, window.PID)
+	}
+
 	tmpFile := fmt.Sprintf("/tmp/lw_screenshot_%d.png", os.Getpid())
 	defer os.Remove(tmpFile)
 
-	// -x = no sound, -o = no shadow
-	err := exec.Command("screencapture", "-x", "-o", tmpFile).Run()
-	if err != nil {
-		return nil, fmt.Errorf("failed to capture screenshot: %w", err)
+	// -x = no sound, -o = no shadow, -l = specific window by CGWindowID
+	if err := exec.Command("screencapture", "-x", "-o", "-l", cgID, tmpFile).Run(); err != nil {
+		return nil, fmt.Errorf("failed to capture window screenshot: %w", err)
 	}
 
 	return os.ReadFile(tmpFile)
@@ -370,9 +428,10 @@ func setClipboard(text string) error {
 	return cmd.Wait()
 }
 
-// sendNotification sends a macOS notification
+// sendNotification sends a macOS notification with properly escaped strings
 func sendNotification(title, body string) error {
-	script := fmt.Sprintf(`display notification "%s" with title "%s"`, body, title)
+	script := fmt.Sprintf(`display notification "%s" with title "%s"`,
+		escapeAppleScript(body), escapeAppleScript(title))
 	_, err := exec.Command("osascript", "-e", script).Output()
 	return err
 }
@@ -383,5 +442,5 @@ func runAppleScript(script string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("AppleScript error: %w", err)
 	}
-	return string(out), nil
+	return strings.TrimRight(string(out), "\n"), nil
 }

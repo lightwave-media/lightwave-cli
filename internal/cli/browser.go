@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/fatih/color"
@@ -33,15 +35,14 @@ var browserOpenCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		url := args[0]
 
-		// Use AppleScript to open URL in Chrome
+		// Use JXA — handles URLs with special chars safely
 		script := fmt.Sprintf(`
-			tell application "Google Chrome"
-				activate
-				open location "%s"
-			end tell
-		`, url)
+			var chrome = Application("Google Chrome");
+			chrome.activate();
+			chrome.openLocation("%s");
+		`, escapeJSString(url))
 
-		if _, err := exec.Command("osascript", "-e", script).Output(); err != nil {
+		if _, err := exec.Command("osascript", "-l", "JavaScript", "-e", script).Output(); err != nil {
 			return fmt.Errorf("failed to open URL: %w", err)
 		}
 
@@ -74,15 +75,20 @@ var browserTabsCmd = &cobra.Command{
 			if len(title) > 40 {
 				title = title[:37] + "..."
 			}
-			url := tab.URL
-			if len(url) > 50 {
-				url = url[:47] + "..."
+			tabURL := tab.URL
+			if len(tabURL) > 50 {
+				tabURL = tabURL[:47] + "..."
+			}
+
+			id := tab.ID
+			if len(id) > 8 {
+				id = id[:8]
 			}
 
 			table.Append([]string{
-				tab.ID[:8],
+				id,
 				title,
-				url,
+				tabURL,
 			})
 		}
 
@@ -93,7 +99,7 @@ var browserTabsCmd = &cobra.Command{
 
 var browserScreenshotCmd = &cobra.Command{
 	Use:   "screenshot [output-file]",
-	Short: "Take a screenshot of the current page",
+	Short: "Take a screenshot of the Chrome window",
 	Args:  cobra.MaximumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		outputFile := "screenshot.png"
@@ -101,23 +107,43 @@ var browserScreenshotCmd = &cobra.Command{
 			outputFile = args[0]
 		}
 
-		// Use screencapture focused on Chrome
+		// Get Chrome's CGWindowID via JXA and capture that specific window
+		jxaScript := `
+			ObjC.import('CoreGraphics');
+			var windows = $.CGWindowListCopyWindowInfo($.kCGWindowListOptionOnScreenOnly, $.kCGNullWindowID);
+			var count = ObjC.unwrap(windows).length;
+			var found = "";
+			for (var i = 0; i < count; i++) {
+				var w = ObjC.unwrap(windows)[i];
+				var name = ObjC.unwrap(w.kCGWindowOwnerName);
+				var layer = ObjC.unwrap(w.kCGWindowLayer);
+				if (name === "Google Chrome" && layer === 0) {
+					found = ObjC.unwrap(w.kCGWindowNumber).toString();
+					break;
+				}
+			}
+			found;
+		`
+
+		cgIDOut, err := exec.Command("osascript", "-l", "JavaScript", "-e", jxaScript).Output()
+		cgID := strings.TrimSpace(string(cgIDOut))
+
 		tmpFile := fmt.Sprintf("/tmp/lw_browser_screenshot_%d.png", os.Getpid())
 		defer os.Remove(tmpFile)
 
-		// Focus Chrome first
-		focusScript := `
-			tell application "Google Chrome"
-				activate
-			end tell
-		`
-		exec.Command("osascript", "-e", focusScript).Run()
-		time.Sleep(200 * time.Millisecond)
+		if err != nil || cgID == "" {
+			// Fallback: focus Chrome and capture frontmost window
+			focusScript := `var chrome = Application("Google Chrome"); chrome.activate();`
+			exec.Command("osascript", "-l", "JavaScript", "-e", focusScript).Run()
+			time.Sleep(200 * time.Millisecond)
 
-		// Capture the Chrome window
-		err := exec.Command("screencapture", "-x", "-o", tmpFile).Run()
-		if err != nil {
-			return fmt.Errorf("failed to capture screenshot: %w", err)
+			if err := exec.Command("screencapture", "-x", "-o", "-w", tmpFile).Run(); err != nil {
+				return fmt.Errorf("failed to capture screenshot: %w", err)
+			}
+		} else {
+			if err := exec.Command("screencapture", "-x", "-o", "-l", cgID, tmpFile).Run(); err != nil {
+				return fmt.Errorf("failed to capture Chrome window: %w", err)
+			}
 		}
 
 		data, err := os.ReadFile(tmpFile)
@@ -147,18 +173,32 @@ var browserClickCmd = &cobra.Command{
 			return fmt.Errorf("invalid y coordinate: %s", args[1])
 		}
 
-		// Use AppleScript to click
-		script := fmt.Sprintf(`
-			tell application "System Events"
-				click at {%d, %d}
-			end tell
-		`, int(x), int(y))
+		// Use cliclick (Homebrew) for reliable coordinate clicking
+		// Falls back to AppleScript mouse event via JXA
+		ix, iy := int(x), int(y)
 
-		if _, err := exec.Command("osascript", "-e", script).Output(); err != nil {
-			return fmt.Errorf("failed to click: %w", err)
+		if _, err := exec.LookPath("cliclick"); err == nil {
+			if err := exec.Command("cliclick", fmt.Sprintf("c:%d,%d", ix, iy)).Run(); err != nil {
+				return fmt.Errorf("failed to click at (%d, %d): %w", ix, iy, err)
+			}
+		} else {
+			// JXA + CoreGraphics mouse events
+			script := fmt.Sprintf(`
+				ObjC.import('CoreGraphics');
+				var point = $.CGPointMake(%d, %d);
+				var mouseDown = $.CGEventCreateMouseEvent(null, $.kCGEventLeftMouseDown, point, $.kCGMouseButtonLeft);
+				var mouseUp = $.CGEventCreateMouseEvent(null, $.kCGEventLeftMouseUp, point, $.kCGMouseButtonLeft);
+				$.CGEventPost($.kCGHIDEventTap, mouseDown);
+				$.CGEventPost($.kCGHIDEventTap, mouseUp);
+				"ok";
+			`, ix, iy)
+
+			if _, err := exec.Command("osascript", "-l", "JavaScript", "-e", script).Output(); err != nil {
+				return fmt.Errorf("failed to click at (%d, %d): %w", ix, iy, err)
+			}
 		}
 
-		fmt.Printf("%s Clicked at (%d, %d)\n", color.GreenString("✓"), int(x), int(y))
+		fmt.Printf("%s Clicked at (%d, %d)\n", color.GreenString("✓"), ix, iy)
 		return nil
 	},
 }
@@ -170,14 +210,16 @@ var browserTypeCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		text := args[0]
 
+		// Use AppleScript keystroke which handles most printable chars.
+		// Escape backslashes and quotes for the AppleScript string.
 		script := fmt.Sprintf(`
 			tell application "System Events"
 				keystroke "%s"
 			end tell
-		`, text)
+		`, escapeAppleScript(text))
 
 		if _, err := exec.Command("osascript", "-e", script).Output(); err != nil {
-			return fmt.Errorf("failed to type: %w", err)
+			return fmt.Errorf("failed to type text: %w", err)
 		}
 
 		fmt.Printf("%s Typed text\n", color.GreenString("✓"))
@@ -193,12 +235,11 @@ var browserNavigateCmd = &cobra.Command{
 		url := args[0]
 
 		script := fmt.Sprintf(`
-			tell application "Google Chrome"
-				set URL of active tab of front window to "%s"
-			end tell
-		`, url)
+			var chrome = Application("Google Chrome");
+			chrome.windows[0].activeTab.url = "%s";
+		`, escapeJSString(url))
 
-		if _, err := exec.Command("osascript", "-e", script).Output(); err != nil {
+		if _, err := exec.Command("osascript", "-l", "JavaScript", "-e", script).Output(); err != nil {
 			return fmt.Errorf("failed to navigate: %w", err)
 		}
 
@@ -214,21 +255,21 @@ var browserExecuteCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		js := args[0]
 
+		// Use JXA to execute JS in Chrome — pass the JS code safely
 		script := fmt.Sprintf(`
-			tell application "Google Chrome"
-				tell active tab of front window
-					execute javascript "%s"
-				end tell
-			end tell
-		`, js)
+			var chrome = Application("Google Chrome");
+			var tab = chrome.windows[0].activeTab;
+			tab.execute({javascript: %s});
+		`, jxaStringLiteral(js))
 
-		out, err := exec.Command("osascript", "-e", script).Output()
+		out, err := exec.Command("osascript", "-l", "JavaScript", "-e", script).Output()
 		if err != nil {
 			return fmt.Errorf("failed to execute JavaScript: %w", err)
 		}
 
-		if len(out) > 0 {
-			fmt.Println(string(out))
+		result := strings.TrimSpace(string(out))
+		if result != "" {
+			fmt.Println(result)
 		}
 		return nil
 	},
@@ -259,24 +300,29 @@ Examples:
 		}
 
 		chromeCmd := exec.Command(chromePath, chromeArgs...)
+		chromeCmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		chromeCmd.Stdout = nil
+		chromeCmd.Stderr = nil
+
 		if err := chromeCmd.Start(); err != nil {
 			return fmt.Errorf("failed to start Chrome: %w", err)
 		}
 
+		pid := chromeCmd.Process.Pid
+		_ = chromeCmd.Process.Release()
+
 		fmt.Printf("%s Chrome started with remote debugging on port %d\n",
 			color.GreenString("✓"), browserDebugPort)
-		fmt.Printf("   PID: %d\n", chromeCmd.Process.Pid)
+		fmt.Printf("   PID: %d\n", pid)
 
 		return nil
 	},
 }
 
 func init() {
-	// Browser flags
 	browserCmd.PersistentFlags().IntVar(&browserDebugPort, "port", 9222, "Chrome debugging port")
 	browserStartCmd.Flags().BoolVar(&browserHeadless, "headless", false, "Start in headless mode")
 
-	// Add browser subcommands
 	browserCmd.AddCommand(browserOpenCmd)
 	browserCmd.AddCommand(browserTabsCmd)
 	browserCmd.AddCommand(browserScreenshotCmd)
@@ -286,12 +332,11 @@ func init() {
 	browserCmd.AddCommand(browserExecuteCmd)
 	browserCmd.AddCommand(browserStartCmd)
 
-	// Add browser to root
 	rootCmd.AddCommand(browserCmd)
 }
 
 // =============================================================================
-// CDP Helper Functions
+// Helper Functions
 // =============================================================================
 
 // BrowserTab represents a browser tab
@@ -302,12 +347,29 @@ type BrowserTab struct {
 	Type  string `json:"type"`
 }
 
+// escapeJSString escapes a string for safe embedding in a JavaScript double-quoted string.
+func escapeJSString(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	s = strings.ReplaceAll(s, "\n", `\n`)
+	s = strings.ReplaceAll(s, "\r", `\r`)
+	return s
+}
+
+// jxaStringLiteral returns a properly quoted and escaped JXA string literal
+// for embedding arbitrary JavaScript code inside a JXA script.
+func jxaStringLiteral(s string) string {
+	// Use JSON encoding which handles all escaping correctly
+	b, _ := json.Marshal(s)
+	return string(b)
+}
+
 // getBrowserTabs fetches tabs via CDP
 func getBrowserTabs() ([]BrowserTab, error) {
-	url := fmt.Sprintf("http://localhost:%d/json/list", browserDebugPort)
+	tabURL := fmt.Sprintf("http://localhost:%d/json/list", browserDebugPort)
 
 	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(url)
+	resp, err := client.Get(tabURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to Chrome (is it running with --remote-debugging-port=%d?): %w",
 			browserDebugPort, err)

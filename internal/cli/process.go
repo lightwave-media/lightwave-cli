@@ -82,10 +82,10 @@ Examples:
 
 var processSpawnCmd = &cobra.Command{
 	Use:   "spawn <command> [args...]",
-	Short: "Spawn a new process",
-	Long: `Spawn a new process and return its PID.
+	Short: "Spawn a new background process",
+	Long: `Spawn a new process detached from the current terminal.
 
-The process runs in the background.
+The process runs in the background and survives CLI exit.
 
 Examples:
   lw process spawn sleep 60
@@ -96,15 +96,22 @@ Examples:
 		commandArgs := args[1:]
 
 		proc := exec.Command(command, commandArgs...)
-		proc.Stdout = os.Stdout
-		proc.Stderr = os.Stderr
+		// Detach from parent: redirect to /dev/null and start a new process group
+		proc.Stdout = nil
+		proc.Stderr = nil
+		proc.Stdin = nil
+		proc.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 
 		if err := proc.Start(); err != nil {
 			return fmt.Errorf("failed to spawn process: %w", err)
 		}
 
+		// Release the process so it isn't reaped when we exit
+		pid := proc.Process.Pid
+		_ = proc.Process.Release()
+
 		fmt.Printf("%s Process spawned\n", color.GreenString("✓"))
-		fmt.Printf("   PID: %d\n", proc.Process.Pid)
+		fmt.Printf("   PID: %d\n", pid)
 		fmt.Printf("   Command: %s %s\n", command, strings.Join(commandArgs, " "))
 
 		return nil
@@ -113,7 +120,7 @@ Examples:
 
 var processKillCmd = &cobra.Command{
 	Use:   "kill <pid>",
-	Short: "Kill a process",
+	Short: "Kill a process (SIGTERM)",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		pid, err := strconv.Atoi(args[0])
@@ -127,10 +134,10 @@ var processKillCmd = &cobra.Command{
 		}
 
 		if err := process.Signal(syscall.SIGTERM); err != nil {
-			return fmt.Errorf("failed to kill process: %w", err)
+			return fmt.Errorf("failed to kill process %d: %w", pid, err)
 		}
 
-		fmt.Printf("%s Process %d killed\n", color.GreenString("✓"), pid)
+		fmt.Printf("%s Process %d terminated (SIGTERM)\n", color.GreenString("✓"), pid)
 		return nil
 	},
 }
@@ -151,10 +158,10 @@ var processForceKillCmd = &cobra.Command{
 		}
 
 		if err := process.Signal(syscall.SIGKILL); err != nil {
-			return fmt.Errorf("failed to kill process: %w", err)
+			return fmt.Errorf("failed to force kill process %d: %w", pid, err)
 		}
 
-		fmt.Printf("%s Process %d force killed\n", color.GreenString("✓"), pid)
+		fmt.Printf("%s Process %d force killed (SIGKILL)\n", color.GreenString("✓"), pid)
 		return nil
 	},
 }
@@ -222,7 +229,6 @@ Examples:
 }
 
 func init() {
-	// Add process subcommands
 	processCmd.AddCommand(processListCmd)
 	processCmd.AddCommand(processSpawnCmd)
 	processCmd.AddCommand(processKillCmd)
@@ -230,7 +236,6 @@ func init() {
 	processCmd.AddCommand(processInfoCmd)
 	processCmd.AddCommand(processTreeCmd)
 
-	// Add process to root
 	rootCmd.AddCommand(processCmd)
 }
 
@@ -269,7 +274,6 @@ func listProcesses() ([]ProcessEntry, error) {
 	var processes []ProcessEntry
 
 	for i, line := range lines {
-		// Skip header
 		if i == 0 {
 			continue
 		}
@@ -295,38 +299,45 @@ func listProcesses() ([]ProcessEntry, error) {
 	return processes, nil
 }
 
-// getProcessInfo gets detailed information about a process
+// getProcessInfo gets detailed information about a process.
+// Uses two separate ps calls to avoid fragile field-count parsing of lstart.
 func getProcessInfo(pid int) (*ProcessInfo, error) {
-	out, err := exec.Command("ps", "-p", strconv.Itoa(pid), "-o", "pid,ppid,user,stat,%cpu,%mem,lstart,command").Output()
+	pidStr := strconv.Itoa(pid)
+
+	// First call: fixed-width fields
+	out, err := exec.Command("ps", "-p", pidStr, "-o", "pid=,ppid=,user=,stat=,%cpu=,%mem=").Output()
 	if err != nil {
 		return nil, fmt.Errorf("process %d not found: %w", pid, err)
 	}
 
-	lines := strings.Split(string(out), "\n")
-	if len(lines) < 2 {
+	fields := strings.Fields(strings.TrimSpace(string(out)))
+	if len(fields) < 6 {
 		return nil, fmt.Errorf("process %d not found", pid)
-	}
-
-	fields := strings.Fields(lines[1])
-	if len(fields) < 8 {
-		return nil, fmt.Errorf("failed to parse process info")
 	}
 
 	pidVal, _ := strconv.Atoi(fields[0])
 	ppidVal, _ := strconv.Atoi(fields[1])
 
-	// lstart takes 5 fields (e.g., "Thu Jan 2 15:04:05 2025")
-	started := strings.Join(fields[6:11], " ")
-	command := strings.Join(fields[11:], " ")
+	info := &ProcessInfo{
+		PID:    pidVal,
+		PPID:   ppidVal,
+		User:   fields[2],
+		State:  fields[3],
+		CPU:    fields[4] + "%",
+		Memory: fields[5] + "%",
+	}
 
-	return &ProcessInfo{
-		PID:     pidVal,
-		PPID:    ppidVal,
-		User:    fields[2],
-		State:   fields[3],
-		CPU:     fields[4] + "%",
-		Memory:  fields[5] + "%",
-		Started: started,
-		Command: command,
-	}, nil
+	// Second call: lstart (variable-width, 5 tokens like "Sat Mar 22 10:30:00 2026")
+	lsOut, err := exec.Command("ps", "-p", pidStr, "-o", "lstart=").Output()
+	if err == nil {
+		info.Started = strings.TrimSpace(string(lsOut))
+	}
+
+	// Third call: command (can contain spaces, grab entire line)
+	cmdOut, err := exec.Command("ps", "-p", pidStr, "-o", "command=").Output()
+	if err == nil {
+		info.Command = strings.TrimSpace(string(cmdOut))
+	}
+
+	return info, nil
 }
