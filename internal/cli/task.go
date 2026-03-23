@@ -181,9 +181,12 @@ Examples:
 		}
 		defer db.Close()
 
+		// Interpret escape sequences in description (CLI doesn't expand \n)
+		desc := strings.ReplaceAll(taskCreateDescription, `\n`, "\n")
+
 		opts := db.TaskCreateOptions{
 			Title:       taskCreateTitle,
-			Description: taskCreateDescription,
+			Description: desc,
 			Priority:    taskCreatePriority,
 			TaskType:    taskCreateType,
 			Category:    taskCreateCategory,
@@ -255,7 +258,8 @@ Examples:
 			opts.Title = &taskUpdateTitle
 		}
 		if cmd.Flags().Changed("description") {
-			opts.Description = &taskUpdateDescription
+			desc := strings.ReplaceAll(taskUpdateDescription, `\n`, "\n")
+			opts.Description = &desc
 		}
 		if cmd.Flags().Changed("epic") {
 			opts.EpicID = &taskUpdateEpic

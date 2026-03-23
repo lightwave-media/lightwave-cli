@@ -1017,16 +1017,22 @@ func doWorkflowRequest(req *http.Request) (int, []byte, error) {
 }
 
 func formatContractHTTPError(status int, body []byte, fallbackRunID string) error {
+	authHint := ""
+	if status == 401 {
+		authHint = "\n\nSet LW_SERVICE_TOKEN or LW_AGENT_KEY to authenticate with the Elixir orchestrator."
+	}
+
 	var envelope contractErrorEnvelope
 	if err := json.Unmarshal(body, &envelope); err == nil && envelope.Error.Code != "" {
 		runID := firstNonEmpty(envelope.Error.RunID, fallbackRunID)
 		details := compactDetails(envelope.Error.Details)
 		return fmt.Errorf(
-			"code=%s message=%q run_id=%s details=%s",
+			"code=%s message=%q run_id=%s details=%s%s",
 			envelope.Error.Code,
 			envelope.Error.Message,
 			runID,
 			details,
+			authHint,
 		)
 	}
 
@@ -1039,7 +1045,7 @@ func formatContractHTTPError(status int, body []byte, fallbackRunID string) erro
 		runID = "unknown"
 	}
 
-	return fmt.Errorf("status=%d message=%q run_id=%s", status, message, runID)
+	return fmt.Errorf("status=%d message=%q run_id=%s%s", status, message, runID, authHint)
 }
 
 func extractErrorMessage(body []byte) string {
