@@ -469,7 +469,7 @@ type parsedFields struct {
 }
 
 var (
-	taskIDRe        = regexp.MustCompile(`\*\*Task ID:\*\*\s*([a-f0-9]{8})`)
+	taskIDRe        = regexp.MustCompile("\\*\\*Task ID:\\*\\*\\s*`?([a-f0-9]{8})`?")
 	priorityRe      = regexp.MustCompile(`\*\*Priority:\*\*\s*(P[1-4][^\n]*)`)
 	epicRe          = regexp.MustCompile(`\*\*Epic:\*\*\s*([^\n]+)`)
 	typeRe          = regexp.MustCompile(`\*\*Type:\*\*\s*([^\n]+)`)
@@ -487,8 +487,10 @@ func parseIssueBody(issue ghIssue) parsedFields {
 	body := issue.Body
 	f := parsedFields{}
 
-	if m := taskIDRe.FindStringSubmatch(body); len(m) >= 2 {
-		f.taskID = m[1]
+	// Use last match — issues may have duplicate Task ID lines from
+	// legacy creation + metadata append; the last one is canonical.
+	if matches := taskIDRe.FindAllStringSubmatch(body, -1); len(matches) > 0 {
+		f.taskID = matches[len(matches)-1][1]
 	}
 	if m := priorityRe.FindStringSubmatch(body); len(m) >= 2 {
 		f.priority = normalizePriority(strings.TrimSpace(m[1]))

@@ -129,6 +129,20 @@ func TestParseIssueBodyLabelFallback(t *testing.T) {
 	}
 }
 
+func TestParseIssueBodyDuplicateTaskID(t *testing.T) {
+	body := `**Task ID:** 30345b6c
+Fix the 530/526 errors.
+
+**Task ID:** ` + "`7e5da4f6`" + `
+**Priority:** P1 Urgent`
+
+	f := parseIssueBody(ghIssue{Body: body})
+
+	if f.taskID != "7e5da4f6" {
+		t.Errorf("taskID = %q, want 7e5da4f6 (last match wins)", f.taskID)
+	}
+}
+
 func TestParseIssueBodyEmpty(t *testing.T) {
 	f := parseIssueBody(ghIssue{Body: ""})
 
