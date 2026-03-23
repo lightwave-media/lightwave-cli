@@ -129,25 +129,28 @@ func generateSpec(tc *db.TaskContext) string {
 		sb.WriteString(fmt.Sprintf("%s\n\n", *tc.StoryName))
 	}
 
-	// Description
+	// Acceptance criteria — extract from description first
+	var acLines []string
 	if tc.Description != nil && *tc.Description != "" {
-		sb.WriteString("## Description\n\n")
-		sb.WriteString(fmt.Sprintf("%s\n\n", *tc.Description))
+		acLines = extractACFromDescription(*tc.Description)
 	}
 
-	// Acceptance criteria — extract from description or warn
-	sb.WriteString("## Acceptance Criteria\n\n")
-	acFound := false
+	// Description — strip AC section and metadata cruft to avoid duplication
 	if tc.Description != nil && *tc.Description != "" {
-		acLines := extractACFromDescription(*tc.Description)
-		if len(acLines) > 0 {
-			acFound = true
-			for _, line := range acLines {
-				sb.WriteString("- [ ] " + line + "\n")
-			}
+		cleaned := stripDescriptionSections(*tc.Description)
+		if cleaned != "" {
+			sb.WriteString("## Description\n\n")
+			sb.WriteString(cleaned + "\n\n")
 		}
 	}
-	if !acFound {
+
+	// Acceptance criteria
+	sb.WriteString("## Acceptance Criteria\n\n")
+	if len(acLines) > 0 {
+		for _, line := range acLines {
+			sb.WriteString("- [ ] " + line + "\n")
+		}
+	} else {
 		sb.WriteString("**WARNING: No acceptance criteria defined.**\n")
 		sb.WriteString("Add acceptance criteria to the task description before spawning a session.\n")
 	}
@@ -279,7 +282,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 	var descLines []string
 	for _, line := range strings.Split(issue.Body, "\n") {
 		trimmed := strings.TrimSpace(line)
-		if trimmed == "" || strings.HasPrefix(trimmed, "**") || strings.HasPrefix(trimmed, "Synced from") {
+		if trimmed == "" || strings.HasPrefix(trimmed, "**") || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "Synced from") {
 			continue
 		}
 		// Skip bullet items (they belong to AC or deps)
@@ -300,8 +303,12 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 		for _, line := range strings.Split(fields.acceptanceCriteria, "\n") {
 			line = strings.TrimSpace(line)
 			if line != "" {
-				// Convert "- item" to "- [ ] item" for checkboxes
-				if strings.HasPrefix(line, "- ") {
+				// Strip existing checkbox/bullet prefix, then add clean checkbox
+				if strings.HasPrefix(line, "- [ ] ") {
+					sb.WriteString("- [ ] " + line[6:] + "\n")
+				} else if strings.HasPrefix(line, "- [x] ") {
+					sb.WriteString("- [ ] " + line[6:] + "\n")
+				} else if strings.HasPrefix(line, "- ") {
 					sb.WriteString("- [ ] " + line[2:] + "\n")
 				} else if strings.HasPrefix(line, "* ") {
 					sb.WriteString("- [ ] " + line[2:] + "\n")
@@ -583,6 +590,47 @@ func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*vali
 	return result, nil
 }
 
+// stripDescriptionSections removes the Acceptance Criteria section and metadata
+// cruft (duplicate Task ID, Priority, Type blocks) from a description, since
+// these are rendered separately in the spec.
+func stripDescriptionSections(desc string) string {
+	lines := strings.Split(desc, "\n")
+	var out []string
+	inACSection := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(trimmed)
+
+		// Skip metadata cruft from GitHub issue sync
+		if strings.HasPrefix(trimmed, "**Task ID:**") ||
+			strings.HasPrefix(trimmed, "**Priority:**") ||
+			strings.HasPrefix(trimmed, "**Type:**") ||
+			strings.HasPrefix(trimmed, "**Session:**") ||
+			strings.HasPrefix(trimmed, "**Epic:**") {
+			continue
+		}
+
+		// Skip AC section header and contents
+		if strings.Contains(lower, "acceptance criteria") && (strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "**")) {
+			inACSection = true
+			continue
+		}
+		if inACSection {
+			if strings.HasPrefix(trimmed, "#") || (strings.HasPrefix(trimmed, "**") && !strings.HasPrefix(trimmed, "**-") && !strings.Contains(lower, "acceptance")) {
+				inACSection = false
+				// Fall through to include this line
+			} else {
+				continue
+			}
+		}
+
+		out = append(out, line)
+	}
+
+	return strings.TrimSpace(strings.Join(out, "\n"))
+}
+
 // extractACFromDescription parses acceptance criteria from a task description.
 // Looks for lines starting with "- " or "* " after an "Acceptance Criteria" heading,
 // or falls back to any bullet list items in the description.
@@ -613,14 +661,15 @@ func extractACFromDescription(desc string) []string {
 		}
 
 		if inACSection {
-			if strings.HasPrefix(trimmed, "- ") {
-				acLines = append(acLines, strings.TrimPrefix(trimmed, "- "))
-			} else if strings.HasPrefix(trimmed, "* ") {
-				acLines = append(acLines, strings.TrimPrefix(trimmed, "* "))
-			} else if strings.HasPrefix(trimmed, "- [ ] ") {
+			// Check checkbox prefixes before plain bullet to avoid partial stripping
+			if strings.HasPrefix(trimmed, "- [ ] ") {
 				acLines = append(acLines, strings.TrimPrefix(trimmed, "- [ ] "))
 			} else if strings.HasPrefix(trimmed, "- [x] ") {
 				acLines = append(acLines, strings.TrimPrefix(trimmed, "- [x] "))
+			} else if strings.HasPrefix(trimmed, "- ") {
+				acLines = append(acLines, strings.TrimPrefix(trimmed, "- "))
+			} else if strings.HasPrefix(trimmed, "* ") {
+				acLines = append(acLines, strings.TrimPrefix(trimmed, "* "))
 			}
 		}
 	}
