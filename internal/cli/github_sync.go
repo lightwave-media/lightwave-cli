@@ -580,9 +580,33 @@ func formatDescription(issue ghIssue) string {
 		fmt.Sprintf("URL: %s", issue.URL),
 	}
 	if issue.Body != "" {
-		parts = append(parts, "", issue.Body)
+		// Strip metadata fields that are already stored as task columns
+		cleaned := stripIssueMeta(issue.Body)
+		if cleaned != "" {
+			parts = append(parts, "", cleaned)
+		}
 	}
 	return strings.Join(parts, "\n")
+}
+
+// stripIssueMeta removes structured metadata fields from issue body that are
+// already stored in dedicated task columns (Task ID, Priority, Type, Session, Epic).
+// Keeps content sections like Acceptance Criteria, Dependencies, and free-form text.
+func stripIssueMeta(body string) string {
+	lines := strings.Split(body, "\n")
+	var out []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "**Task ID:**") ||
+			strings.HasPrefix(trimmed, "**Priority:**") ||
+			strings.HasPrefix(trimmed, "**Type:**") ||
+			strings.HasPrefix(trimmed, "**Session:**") ||
+			strings.HasPrefix(trimmed, "**Epic:**") {
+			continue
+		}
+		out = append(out, line)
+	}
+	return strings.TrimSpace(strings.Join(out, "\n"))
 }
 
 func truncate(s string, n int) string {
