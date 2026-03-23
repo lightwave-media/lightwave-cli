@@ -250,6 +250,9 @@ func runOrchestrationIteration(ctx context.Context, dryRun bool, result *iterati
 		return fmt.Errorf("read response: %w", err)
 	}
 
+	if resp.StatusCode == 401 {
+		return fmt.Errorf("orchestrator returned 401: %s\n\nSet LW_SERVICE_TOKEN or LW_AGENT_KEY to authenticate with the Elixir orchestrator.", string(body))
+	}
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("orchestrator returned %d: %s", resp.StatusCode, string(body))
 	}
@@ -316,6 +319,9 @@ func showOrchestratorStatus(ctx context.Context) error {
 		return fmt.Errorf("read response: %w", err)
 	}
 
+	if resp.StatusCode == 401 {
+		return fmt.Errorf("orchestrator returned 401: %s\n\nSet LW_SERVICE_TOKEN or LW_AGENT_KEY to authenticate with the Elixir orchestrator.", string(body))
+	}
 	if resp.StatusCode != 200 {
 		return fmt.Errorf("orchestrator returned %d: %s", resp.StatusCode, string(body))
 	}

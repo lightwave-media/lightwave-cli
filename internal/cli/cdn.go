@@ -30,6 +30,9 @@ var cdnPushCmd = &cobra.Command{
 var cdnPullCmd = &cobra.Command{
 	Use:   "pull",
 	Short: "Pull assets from CDN",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return cmd.Help()
+	},
 }
 
 var cdnPullMediaCmd = &cobra.Command{

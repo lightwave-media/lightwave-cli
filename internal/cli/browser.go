@@ -364,15 +364,26 @@ func jxaStringLiteral(s string) string {
 	return string(b)
 }
 
-// getBrowserTabs fetches tabs via CDP
+// getBrowserTabs fetches tabs via CDP, falling back to JXA if CDP is unavailable.
 func getBrowserTabs() ([]BrowserTab, error) {
+	// Try CDP first
+	tabs, err := getBrowserTabsCDP()
+	if err == nil {
+		return tabs, nil
+	}
+
+	// Fallback: JXA — Chrome's AppleScript/JXA API exposes windows[].tabs[]
+	return getBrowserTabsJXA()
+}
+
+// getBrowserTabsCDP fetches tabs via Chrome DevTools Protocol.
+func getBrowserTabsCDP() ([]BrowserTab, error) {
 	tabURL := fmt.Sprintf("http://localhost:%d/json/list", browserDebugPort)
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Get(tabURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to Chrome (is it running with --remote-debugging-port=%d?): %w",
-			browserDebugPort, err)
+		return nil, fmt.Errorf("CDP unavailable on port %d: %w", browserDebugPort, err)
 	}
 	defer resp.Body.Close()
 
@@ -395,4 +406,37 @@ func getBrowserTabs() ([]BrowserTab, error) {
 	}
 
 	return pages, nil
+}
+
+// getBrowserTabsJXA fetches tabs using Chrome's JXA (JavaScript for Automation) API.
+func getBrowserTabsJXA() ([]BrowserTab, error) {
+	script := `
+		var chrome = Application("Google Chrome");
+		var result = [];
+		var windows = chrome.windows();
+		for (var w = 0; w < windows.length; w++) {
+			var tabs = windows[w].tabs();
+			for (var t = 0; t < tabs.length; t++) {
+				result.push({
+					id: w + "-" + t,
+					title: tabs[t].title(),
+					url: tabs[t].url(),
+					type: "page"
+				});
+			}
+		}
+		JSON.stringify(result);
+	`
+
+	out, err := exec.Command("osascript", "-l", "JavaScript", "-e", script).Output()
+	if err != nil {
+		return nil, fmt.Errorf("JXA tab listing failed (is Chrome running?): %w", err)
+	}
+
+	var tabs []BrowserTab
+	if err := json.Unmarshal(out, &tabs); err != nil {
+		return nil, fmt.Errorf("failed to parse JXA tab output: %w", err)
+	}
+
+	return tabs, nil
 }

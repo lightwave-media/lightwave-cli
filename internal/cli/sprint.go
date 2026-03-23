@@ -110,6 +110,18 @@ Examples:
 			return fmt.Errorf("--name is required")
 		}
 
+		// Validate date formats
+		if sprintCreateStartDate != "" {
+			if _, err := time.Parse("2006-01-02", sprintCreateStartDate); err != nil {
+				return fmt.Errorf("invalid --start-date %q: must be YYYY-MM-DD", sprintCreateStartDate)
+			}
+		}
+		if sprintCreateEndDate != "" {
+			if _, err := time.Parse("2006-01-02", sprintCreateEndDate); err != nil {
+				return fmt.Errorf("invalid --end-date %q: must be YYYY-MM-DD", sprintCreateEndDate)
+			}
+		}
+
 		ctx := context.Background()
 
 		pool, err := db.Connect(ctx)
@@ -148,6 +160,18 @@ Examples:
   lw sprint update 74ce --start-date=2026-03-14 --end-date=2026-03-21`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Validate date formats
+		if cmd.Flags().Changed("start-date") {
+			if _, err := time.Parse("2006-01-02", sprintUpdateStartDate); err != nil {
+				return fmt.Errorf("invalid --start-date %q: must be YYYY-MM-DD", sprintUpdateStartDate)
+			}
+		}
+		if cmd.Flags().Changed("end-date") {
+			if _, err := time.Parse("2006-01-02", sprintUpdateEndDate); err != nil {
+				return fmt.Errorf("invalid --end-date %q: must be YYYY-MM-DD", sprintUpdateEndDate)
+			}
+		}
+
 		ctx := context.Background()
 
 		pool, err := db.Connect(ctx)

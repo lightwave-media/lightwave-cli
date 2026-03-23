@@ -8,12 +8,13 @@ import (
 )
 
 var (
-	driftSchema       string
-	driftJSON         bool
-	driftOutput       string
-	driftOrphans      bool
-	driftReconcile    bool
-	driftReconcileAll bool
+	driftSchema          string
+	driftJSON            bool
+	driftOutput          string
+	driftOrphans         bool
+	driftReconcile       bool
+	driftReconcileAll    bool
+	driftReconcileDryRun bool
 )
 
 var driftCmd = &cobra.Command{
@@ -97,6 +98,10 @@ Use 'lw drift report' first to preview changes.`,
 			return fmt.Errorf("specify --schema <name> or --all")
 		}
 
+		if driftReconcileDryRun {
+			parts = append(parts, "--dry-run")
+		}
+
 		return runMake(dir, "dj-manage", fmt.Sprintf("CMD=%s", strings.Join(parts, " ")))
 	},
 }
@@ -111,6 +116,7 @@ func init() {
 	// drift reconcile flags
 	driftReconcileCmd.Flags().StringVar(&driftSchema, "schema", "", "specific schema to reconcile")
 	driftReconcileCmd.Flags().BoolVar(&driftReconcileAll, "all", false, "reconcile all schemas")
+	driftReconcileCmd.Flags().BoolVar(&driftReconcileDryRun, "dry-run", false, "preview changes without applying")
 
 	driftCmd.AddCommand(driftReportCmd)
 	driftCmd.AddCommand(driftReconcileCmd)

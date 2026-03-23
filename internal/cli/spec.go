@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/db"
 	"github.com/spf13/cobra"
 )
@@ -57,10 +58,18 @@ Examples:
 		// Generate spec
 		spec := generateSpec(tc)
 
-		// Determine output directory
+		// Determine output directory — prefer workspace specs/ over /tmp
 		outDir := specOutputDir
 		if outDir == "" {
-			outDir = "/tmp"
+			cfg := config.Get()
+			if cfg != nil && cfg.Paths.LightwaveRoot != "" {
+				outDir = filepath.Join(cfg.Paths.LightwaveRoot, "specs")
+			} else {
+				outDir = "specs"
+			}
+			if err := os.MkdirAll(outDir, 0o755); err != nil {
+				outDir = "/tmp" // fallback
+			}
 		}
 
 		// Create spec file
@@ -126,11 +135,22 @@ func generateSpec(tc *db.TaskContext) string {
 		sb.WriteString(fmt.Sprintf("%s\n\n", *tc.Description))
 	}
 
-	// Acceptance criteria (placeholder - would come from task details)
+	// Acceptance criteria — extract from description or warn
 	sb.WriteString("## Acceptance Criteria\n\n")
-	sb.WriteString("- [ ] Requirement 1\n")
-	sb.WriteString("- [ ] Requirement 2\n")
-	sb.WriteString("- [ ] Requirement 3\n")
+	acFound := false
+	if tc.Description != nil && *tc.Description != "" {
+		acLines := extractACFromDescription(*tc.Description)
+		if len(acLines) > 0 {
+			acFound = true
+			for _, line := range acLines {
+				sb.WriteString("- [ ] " + line + "\n")
+			}
+		}
+	}
+	if !acFound {
+		sb.WriteString("**WARNING: No acceptance criteria defined.**\n")
+		sb.WriteString("Add acceptance criteria to the task description before spawning a session.\n")
+	}
 	sb.WriteString("- [ ] All tests passing\n\n")
 
 	// Anti-slop checklist from CLAUDE.md
@@ -293,7 +313,8 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 		sb.WriteString("- [ ] All tests passing\n\n")
 	} else {
 		sb.WriteString("## Acceptance Criteria\n\n")
-		sb.WriteString("- [ ] (extract from issue body)\n")
+		sb.WriteString("**WARNING: No acceptance criteria found in issue body.**\n")
+		sb.WriteString("Add an `**Acceptance Criteria:**` section to the issue before spawning.\n")
 		sb.WriteString("- [ ] All tests passing\n\n")
 	}
 
@@ -373,9 +394,17 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 
 	spec := sb.String()
 
-	// Write to file
+	// Write to file — prefer workspace specs/ over /tmp
 	if outDir == "" {
-		outDir = "/tmp"
+		cfg := config.Get()
+		if cfg != nil && cfg.Paths.LightwaveRoot != "" {
+			outDir = filepath.Join(cfg.Paths.LightwaveRoot, "specs")
+		} else {
+			outDir = "specs"
+		}
+		if mkErr := os.MkdirAll(outDir, 0o755); mkErr != nil {
+			outDir = "/tmp" // fallback
+		}
 	}
 	filename := fmt.Sprintf("spec-issue-%s.md", issueNum)
 	if fields.taskID != "" {
@@ -554,6 +583,51 @@ func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*vali
 	return result, nil
 }
 
+// extractACFromDescription parses acceptance criteria from a task description.
+// Looks for lines starting with "- " or "* " after an "Acceptance Criteria" heading,
+// or falls back to any bullet list items in the description.
+func extractACFromDescription(desc string) []string {
+	lines := strings.Split(desc, "\n")
+	var acLines []string
+	inACSection := false
+
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		lower := strings.ToLower(trimmed)
+
+		// Detect AC heading
+		if strings.Contains(lower, "acceptance criteria") {
+			inACSection = true
+			continue
+		}
+
+		// End of AC section at next heading
+		if inACSection && strings.HasPrefix(trimmed, "#") {
+			break
+		}
+		if inACSection && strings.HasPrefix(trimmed, "**") && !strings.HasPrefix(trimmed, "**-") {
+			// Next bold field marker — end AC section
+			if !strings.Contains(lower, "acceptance") {
+				break
+			}
+		}
+
+		if inACSection {
+			if strings.HasPrefix(trimmed, "- ") {
+				acLines = append(acLines, strings.TrimPrefix(trimmed, "- "))
+			} else if strings.HasPrefix(trimmed, "* ") {
+				acLines = append(acLines, strings.TrimPrefix(trimmed, "* "))
+			} else if strings.HasPrefix(trimmed, "- [ ] ") {
+				acLines = append(acLines, strings.TrimPrefix(trimmed, "- [ ] "))
+			} else if strings.HasPrefix(trimmed, "- [x] ") {
+				acLines = append(acLines, strings.TrimPrefix(trimmed, "- [x] "))
+			}
+		}
+	}
+
+	return acLines
+}
+
 func formatFailures(failures []string) string {
 	var sb strings.Builder
 	for _, f := range failures {
@@ -563,8 +637,8 @@ func formatFailures(failures []string) string {
 }
 
 func init() {
-	specGenerateCmd.Flags().StringVar(&specOutputDir, "output-dir", "", "Output directory (defaults to /tmp)")
-	specFromIssueCmd.Flags().StringVar(&specOutputDir, "output-dir", "", "Output directory (defaults to /tmp)")
+	specGenerateCmd.Flags().StringVar(&specOutputDir, "output-dir", "", "Output directory (defaults to specs/)")
+	specFromIssueCmd.Flags().StringVar(&specOutputDir, "output-dir", "", "Output directory (defaults to specs/)")
 	specValidateCmd.Flags().Bool("dry-run", false, "Show validation results without labeling/commenting")
 
 	specCmd.AddCommand(specGenerateCmd)

@@ -48,6 +48,7 @@ type heartbeatData struct {
 	PRs         []prSummary   `json:"prs"`
 	Issues      issueSummary  `json:"issues"`
 	ActionItems []string      `json:"action_items,omitempty"`
+	Warnings    []string      `json:"warnings,omitempty"`
 	WhatsApp    string        `json:"whatsapp,omitempty"`
 }
 
@@ -91,10 +92,16 @@ func runHeartbeat(ctx context.Context, windowStr string, jsonOut bool) error {
 	}
 
 	// 1. Sprint status
-	data.Sprint = collectSprintStatus(ctx)
+	data.Sprint, err = collectSprintStatus(ctx)
+	if err != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("Sprint data unavailable: %v", err))
+	}
 
 	// 2. Recent PRs
-	data.PRs = collectRecentPRs(window)
+	data.PRs, err = collectRecentPRs(window)
+	if err != nil {
+		data.Warnings = append(data.Warnings, fmt.Sprintf("PR data unavailable: %v", err))
+	}
 
 	// 3. Recent issue activity
 	data.Issues = collectIssueActivity(window)
@@ -115,18 +122,21 @@ func runHeartbeat(ctx context.Context, windowStr string, jsonOut bool) error {
 	return nil
 }
 
-func collectSprintStatus(ctx context.Context) *sprintStatus {
+func collectSprintStatus(ctx context.Context) (*sprintStatus, error) {
 	pool, err := db.GetPool(ctx)
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("DB connection failed: %v", err)
 	}
 
 	sprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{
 		Status: "active",
 		Limit:  1,
 	})
-	if err != nil || len(sprints) == 0 {
-		return nil
+	if err != nil {
+		return nil, fmt.Errorf("listing sprints: %v", err)
+	}
+	if len(sprints) == 0 {
+		return nil, nil // no active sprint is not an error
 	}
 
 	sprint := sprints[0]
@@ -135,7 +145,7 @@ func collectSprintStatus(ctx context.Context) *sprintStatus {
 		Limit:    200,
 	})
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("listing tasks: %v", err)
 	}
 
 	ss := &sprintStatus{
@@ -155,10 +165,10 @@ func collectSprintStatus(ctx context.Context) *sprintStatus {
 			ss.Blocked++
 		}
 	}
-	return ss
+	return ss, nil
 }
 
-func collectRecentPRs(window time.Duration) []prSummary {
+func collectRecentPRs(window time.Duration) ([]prSummary, error) {
 	cmd := exec.Command("gh", "pr", "list",
 		"--repo", defaultGHRepo,
 		"--state", "all",
@@ -167,7 +177,7 @@ func collectRecentPRs(window time.Duration) []prSummary {
 	)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("gh pr list failed: %v", err)
 	}
 
 	var prs []struct {
@@ -178,7 +188,7 @@ func collectRecentPRs(window time.Duration) []prSummary {
 		UpdatedAt   string `json:"updatedAt"`
 	}
 	if err := json.Unmarshal(out, &prs); err != nil {
-		return nil
+		return nil, fmt.Errorf("parsing PR list: %v", err)
 	}
 
 	cutoff := time.Now().Add(-window)
@@ -198,7 +208,7 @@ func collectRecentPRs(window time.Duration) []prSummary {
 			})
 		}
 	}
-	return recent
+	return recent, nil
 }
 
 func collectIssueActivity(window time.Duration) issueSummary {
@@ -323,6 +333,15 @@ func formatWhatsApp(data heartbeatData) string {
 		}
 		for _, i := range data.Issues.Closed {
 			b.WriteString(fmt.Sprintf("  x #%d %s\n", i.Number, truncate(i.Title, 45)))
+		}
+		b.WriteString("\n")
+	}
+
+	// Warnings
+	if len(data.Warnings) > 0 {
+		b.WriteString("*Warnings:*\n")
+		for _, w := range data.Warnings {
+			b.WriteString(fmt.Sprintf("  ! %s\n", w))
 		}
 		b.WriteString("\n")
 	}

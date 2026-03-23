@@ -155,6 +155,8 @@ var uxStopCmd = &cobra.Command{
 
 // ── analyze ─────────────────────────────────────────────────────────────
 
+var uxAnalyzeForce bool
+
 var uxAnalyzeCmd = &cobra.Command{
 	Use:   "analyze [session-id]",
 	Short: "Transcribe and analyze a recording with Claude",
@@ -169,6 +171,11 @@ var uxAnalyzeCmd = &cobra.Command{
 		}
 		if err != nil {
 			return err
+		}
+
+		// Guard: refuse to re-analyze unless --force
+		if session.Status == ux.StatusAnalyzed && !uxAnalyzeForce {
+			return fmt.Errorf("session %s already analyzed — use --force to re-analyze", session.ID)
 		}
 
 		fmt.Printf("Analyzing session %s...\n", color.CyanString(session.ID))
@@ -187,6 +194,31 @@ var uxAnalyzeCmd = &cobra.Command{
 		fmt.Printf("\n%s Found %d improvement items:\n\n", color.GreenString("✓"), len(items))
 		printItems(items)
 
+		return nil
+	},
+}
+
+// ── delete ──────────────────────────────────────────────────────────────
+
+var uxDeleteCmd = &cobra.Command{
+	Use:   "delete <session-id>",
+	Short: "Delete a UX recording session",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		session, err := ux.LoadSession(args[0])
+		if err != nil {
+			return err
+		}
+
+		if session.Status == ux.StatusRecording {
+			return fmt.Errorf("session %s is still recording — stop it first with 'lw ux stop %s'", session.ID, session.ID)
+		}
+
+		if err := ux.DeleteSession(session.ID); err != nil {
+			return fmt.Errorf("failed to delete session: %w", err)
+		}
+
+		fmt.Printf("%s Deleted session %s\n", color.GreenString("✓"), session.ID)
 		return nil
 	},
 }
@@ -508,6 +540,8 @@ func downloadWhisperModel(dest string) error {
 func init() {
 	uxStartCmd.Flags().StringVar(&uxStartName, "name", "", "Name/description for this session")
 
+	uxAnalyzeCmd.Flags().BoolVar(&uxAnalyzeForce, "force", false, "Re-analyze an already-analyzed session")
+
 	uxBacklogCmd.Flags().StringVar(&uxBacklogEpic, "epic", "", "Epic ID to assign tasks to")
 	uxBacklogCmd.Flags().StringVar(&uxBacklogSprint, "sprint", "", "Sprint ID to assign tasks to")
 
@@ -520,6 +554,7 @@ func init() {
 	uxCmd.AddCommand(uxPlayCmd)
 	uxCmd.AddCommand(uxDevicesCmd)
 	uxCmd.AddCommand(uxBacklogCmd)
+	uxCmd.AddCommand(uxDeleteCmd)
 
 	rootCmd.AddCommand(uxCmd)
 }

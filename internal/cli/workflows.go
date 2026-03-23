@@ -15,7 +15,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
 
@@ -529,27 +531,33 @@ func runWorkflowRuns(ctx context.Context, out io.Writer) error {
 		return writeJSON(out, resp)
 	}
 
-	fmt.Fprintf(out, "count=%d\n", resp.Count)
-	fmt.Fprintln(out, "run_id\tstatus\tphase\tagent_id\tprd_id\tepic_id\tsprint_id\ttask_id\terror_code\tverify_status\treview_status")
-	for _, run := range resp.Runs {
-		verifyStatus, reviewStatus := evidenceStatuses(run.Evidence)
-		fmt.Fprintf(
-			out,
-			"%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
-			run.RunID,
-			run.Status,
-			run.Phase,
-			run.AgentID,
-			run.PRDID,
-			run.EpicID,
-			run.SprintID,
-			run.TaskID,
-			run.ErrorCode,
-			verifyStatus,
-			reviewStatus,
-		)
+	fmt.Fprintf(out, "%s %d runs\n\n", color.CyanString("Found"), resp.Count)
+
+	if len(resp.Runs) == 0 {
+		return nil
 	}
 
+	table := tablewriter.NewWriter(out)
+	table.SetHeader([]string{"Run ID", "Status", "Phase", "Epic", "Task", "Error"})
+	table.SetBorder(false)
+	table.SetColumnSeparator(" ")
+
+	for _, run := range resp.Runs {
+		runID := run.RunID
+		if len(runID) > 8 {
+			runID = runID[:8]
+		}
+		table.Append([]string{
+			runID,
+			run.Status,
+			run.Phase,
+			run.EpicID,
+			run.TaskID,
+			run.ErrorCode,
+		})
+	}
+
+	table.Render()
 	return nil
 }
 
@@ -602,21 +610,37 @@ func runWorkflowDecisions(ctx context.Context, out io.Writer) error {
 		return writeJSON(out, resp)
 	}
 
-	fmt.Fprintf(out, "count=%d\n", resp.Count)
-	fmt.Fprintln(out, "decision_id\trun_id\tstatus\ttype\tpriority\treason_code")
+	fmt.Fprintf(out, "%s %d decisions\n\n", color.CyanString("Found"), resp.Count)
+
+	if len(resp.Decisions) == 0 {
+		return nil
+	}
+
+	table := tablewriter.NewWriter(out)
+	table.SetHeader([]string{"Decision ID", "Run ID", "Status", "Type", "Priority", "Reason"})
+	table.SetBorder(false)
+	table.SetColumnSeparator(" ")
+
 	for _, decision := range resp.Decisions {
-		fmt.Fprintf(
-			out,
-			"%s\t%s\t%s\t%s\t%s\t%s\n",
-			decision.DecisionID,
-			decision.RunID,
+		decID := decision.DecisionID
+		if len(decID) > 8 {
+			decID = decID[:8]
+		}
+		runID := decision.RunID
+		if len(runID) > 8 {
+			runID = runID[:8]
+		}
+		table.Append([]string{
+			decID,
+			runID,
 			decision.Status,
 			decision.Type,
 			decision.Priority,
 			decision.ReasonCode,
-		)
+		})
 	}
 
+	table.Render()
 	return nil
 }
 
@@ -738,10 +762,8 @@ func runWorkflowKPIs(ctx context.Context, out io.Writer) error {
 		return writeJSON(out, resp)
 	}
 
-	fmt.Fprintf(out, "status=%s\n", resp.Status)
-	fmt.Fprintf(out, "generated_at=%s\n", resp.Snapshot.GeneratedAt)
-	fmt.Fprintf(out, "sample_size=%d\n", resp.Snapshot.SampleSize)
-	fmt.Fprintln(out, "metric\tvalue\ttarget\tpasses_gate\tnumerator\tdenominator")
+	fmt.Fprintf(out, "%s KPI Snapshot — %s (sample: %d)\n\n",
+		color.CyanString("Workflow"), resp.Snapshot.GeneratedAt, resp.Snapshot.SampleSize)
 
 	metricOrder := []string{
 		"first_pass_compliant_completion_rate",
@@ -751,24 +773,33 @@ func runWorkflowKPIs(ctx context.Context, out io.Writer) error {
 		"end_to_end_git_test_flow_success",
 	}
 
+	table := tablewriter.NewWriter(out)
+	table.SetHeader([]string{"Metric", "Value", "Target", "Gate", "N", "D"})
+	table.SetBorder(false)
+	table.SetColumnSeparator(" ")
+
 	for _, metricKey := range metricOrder {
 		metric, ok := resp.Snapshot.KPIs[metricKey]
 		if !ok {
 			continue
 		}
 
-		fmt.Fprintf(
-			out,
-			"%s\t%.4f\t%.4f\t%t\t%d\t%d\n",
+		gateStr := color.RedString("FAIL")
+		if metric.PassesGate {
+			gateStr = color.GreenString("PASS")
+		}
+
+		table.Append([]string{
 			metricKey,
-			metric.Value,
-			metric.Target,
-			metric.PassesGate,
-			metric.Numerator,
-			metric.Denominator,
-		)
+			fmt.Sprintf("%.4f", metric.Value),
+			fmt.Sprintf("%.4f", metric.Target),
+			gateStr,
+			fmt.Sprintf("%d", metric.Numerator),
+			fmt.Sprintf("%d", metric.Denominator),
+		})
 	}
 
+	table.Render()
 	return nil
 }
 

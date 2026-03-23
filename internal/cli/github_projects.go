@@ -37,7 +37,8 @@ Examples:
 	},
 }
 
-const (
+// Default GitHub Project V2 IDs — override via flags if the project changes
+var (
 	projectID     = "PVT_kwDODlnoUM4BJWJU"
 	statusFieldID = "PVTSSF_lADODlnoUM4BJWJUzg5iZUk"
 	statusTodo    = "f75ad846"
@@ -264,5 +265,7 @@ func syncProjectStatus(issueNumber int, taskStatus string) {
 
 func init() {
 	githubProjectsSyncCmd.Flags().BoolVar(&githubProjectsSyncDryRun, "dry-run", false, "Show what would change without making changes")
+	githubProjectsSyncCmd.Flags().StringVar(&projectID, "project-id", projectID, "GitHub Project V2 node ID")
+	githubProjectsSyncCmd.Flags().StringVar(&statusFieldID, "status-field-id", statusFieldID, "Status field ID on the project")
 	githubCmd.AddCommand(githubProjectsSyncCmd)
 }

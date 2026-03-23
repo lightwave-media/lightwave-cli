@@ -210,11 +210,12 @@ func runCodegenJourneys(cmd *cobra.Command, args []string) error {
 
 	// Run prettier on generated files if not dry-run
 	if !codegenDryRun && generated > 0 {
-		prettierPath, err := exec.LookPath("npx")
-		if err == nil {
+		if _, err := exec.LookPath("npx"); err == nil {
 			fmt.Print("Running prettier on generated files... ")
-			prettierCmd := exec.Command(prettierPath, "prettier", "--write",
-				filepath.Join(outputDir, "**", "*.generated.spec.ts"))
+			// Use shell expansion for glob — exec.Command doesn't expand globs
+			globPattern := filepath.Join(outputDir, "**", "*.generated.spec.ts")
+			prettierCmd := exec.Command("sh", "-c",
+				fmt.Sprintf("npx prettier --write '%s'", globPattern))
 			prettierCmd.Dir = root
 			if err := prettierCmd.Run(); err == nil {
 				fmt.Println(color.GreenString("done"))
@@ -285,7 +286,7 @@ func generatePlaywrightTest(spec *JourneySpec, category, name string) string {
 import { test, expect } from "@playwright/test";
 
 const TENANT = process.env.TENANT ?? "lightwave-media";
-const API_BASE = process.env.API_BASE ?? "https://local.lightwave-media.site";
+const API_BASE = process.env.API_BASE ?? "https://api.local.lightwave-media.ltd";
 const APP_DOMAIN =
   process.env.APP_DOMAIN ?? "https://app.local.lightwave-media.site";
 

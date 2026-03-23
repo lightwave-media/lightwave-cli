@@ -468,99 +468,155 @@ Examples:
   lw meta doctor --send-test --to +12125551234`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
-		token, err := resolveMetaToken()
-		if err != nil {
-			return err
-		}
-		client := meta.NewClient(token, resolveAppSecret())
 
 		allPassed := true
 
-		// 1. Token check
+		// 1. Environment prerequisites — check all required vars
+		fmt.Println(color.CyanString("Prerequisites"))
+
+		tokenSource := "not found"
+		token := ""
+		if metaToken != "" {
+			token = metaToken
+			tokenSource = "--token flag"
+		} else if v := os.Getenv("WHATSAPP_ACCESS_TOKEN"); v != "" {
+			token = v
+			tokenSource = "WHATSAPP_ACCESS_TOKEN env"
+		}
+		if token == "" {
+			fmt.Printf("  %-20s %s set --token or WHATSAPP_ACCESS_TOKEN\n", "Access Token", color.RedString("✗"))
+			allPassed = false
+		} else {
+			fmt.Printf("  %-20s %s (%s)\n", "Access Token", color.GreenString("✓"), tokenSource)
+		}
+
+		wabaID := resolveWABAID()
+		wabaSource := "default"
+		if metaWABAID != "" {
+			wabaSource = "--waba-id flag"
+		} else if os.Getenv("META_WABA_ID") != "" {
+			wabaSource = "META_WABA_ID env"
+		}
+		fmt.Printf("  %-20s %s %s (%s)\n", "WABA ID", color.GreenString("✓"), wabaID, wabaSource)
+
+		appID := resolveAppID()
+		appIDSource := "default"
+		if metaAppID != "" {
+			appIDSource = "--app-id flag"
+		} else if os.Getenv("META_APP_ID") != "" {
+			appIDSource = "META_APP_ID env"
+		}
+		fmt.Printf("  %-20s %s %s (%s)\n", "App ID", color.GreenString("✓"), appID, appIDSource)
+
+		appSecret := resolveAppSecret()
+		if appSecret == "" {
+			fmt.Printf("  %-20s %s set --app-secret or META_APP_SECRET (needed for webhooks)\n", "App Secret", color.YellowString("?"))
+		} else {
+			fmt.Printf("  %-20s %s set\n", "App Secret", color.GreenString("✓"))
+		}
+
+		phoneID := os.Getenv("WHATSAPP_PHONE_NUMBER_ID")
+		if phoneID == "" {
+			fmt.Printf("  %-20s %s WHATSAPP_PHONE_NUMBER_ID not set (needed for sending)\n", "Phone Number ID", color.YellowString("?"))
+		} else {
+			fmt.Printf("  %-20s %s %s\n", "Phone Number ID", color.GreenString("✓"), phoneID)
+		}
+
+		// Short-circuit if no token
+		if token == "" {
+			fmt.Println()
+			return fmt.Errorf("cannot run API checks without an access token")
+		}
+
+		client := meta.NewClient(token, appSecret)
+		fmt.Println()
+		fmt.Println(color.CyanString("API Checks"))
+
+		// 2. Token validation
 		info, err := client.DebugToken(ctx, token)
 		if err != nil {
-			fmt.Printf("%-16s %s %s\n", "Token", color.RedString("✗"), err)
+			fmt.Printf("  %-20s %s %s\n", "Token Valid", color.RedString("✗"), err)
 			allPassed = false
 		} else if !info.IsValid {
-			fmt.Printf("%-16s %s invalid\n", "Token", color.RedString("✗"))
+			fmt.Printf("  %-20s %s token is invalid or expired\n", "Token Valid", color.RedString("✗"))
 			allPassed = false
 		} else {
 			expiryStr := "never expires"
 			if info.ExpiresAt != 0 {
 				expiryStr = "expires " + time.Unix(info.ExpiresAt, 0).Format("2006-01-02")
 			}
-			fmt.Printf("%-16s %s %s (%s)\n", "Token", color.GreenString("✓"), "valid", expiryStr)
+			fmt.Printf("  %-20s %s %s (%s)\n", "Token Valid", color.GreenString("✓"), info.Type, expiryStr)
 		}
 
-		// 2. Permissions
+		// 3. Permissions
 		if info != nil && len(info.Scopes) > 0 {
-			fmt.Printf("%-16s %s %s\n", "Permissions", color.GreenString("✓"), strings.Join(info.Scopes, ", "))
+			fmt.Printf("  %-20s %s %s\n", "Permissions", color.GreenString("✓"), strings.Join(info.Scopes, ", "))
 		} else if info != nil {
-			fmt.Printf("%-16s %s no scopes found\n", "Permissions", color.YellowString("?"))
+			fmt.Printf("  %-20s %s no scopes found\n", "Permissions", color.YellowString("?"))
 		}
 
-		// 3. Phone numbers
-		numbers, err := client.ListPhoneNumbers(ctx, resolveWABAID())
+		// 4. Phone numbers
+		numbers, err := client.ListPhoneNumbers(ctx, wabaID)
 		if err != nil {
-			fmt.Printf("%-16s %s %s\n", "Phone Numbers", color.RedString("✗"), err)
+			fmt.Printf("  %-20s %s %s\n", "Phone Numbers", color.RedString("✗"), err)
 			allPassed = false
 		} else if len(numbers) == 0 {
-			fmt.Printf("%-16s %s none registered\n", "Phone Numbers", color.YellowString("?"))
+			fmt.Printf("  %-20s %s none registered on WABA %s\n", "Phone Numbers", color.YellowString("?"), wabaID)
 		} else {
-			fmt.Printf("%-16s %s %d registered\n", "Phone Numbers", color.GreenString("✓"), len(numbers))
+			fmt.Printf("  %-20s %s %d registered\n", "Phone Numbers", color.GreenString("✓"), len(numbers))
 		}
 
-		// 4. Webhook (requires app-level auth)
-		appClient, appErr := newMetaAppClient()
-		var subs []meta.WebhookSub
-		if appErr != nil {
-			fmt.Printf("%-16s %s %s\n", "Webhook", color.YellowString("?"), "META_APP_SECRET not set, skipping")
-		} else {
-			subs, err = appClient.GetWebhookSubscriptions(ctx, resolveAppID())
-		}
-		if appErr == nil && err != nil {
-			fmt.Printf("%-16s %s %s\n", "Webhook", color.RedString("✗"), err)
-			allPassed = false
-		} else if appErr == nil {
-			found := false
-			for _, s := range subs {
-				if s.Object == "whatsapp_business_account" && s.Active {
-					found = true
-					fmt.Printf("%-16s %s %s\n", "Webhook", color.GreenString("✓"), s.CallbackURL)
-					break
-				}
-			}
-			if !found {
-				fmt.Printf("%-16s %s not configured\n", "Webhook", color.RedString("✗"))
-				allPassed = false
-			}
-		}
-
-		// 5. Optional send test
-		if doctorSendTest {
-			if doctorSendTo == "" {
-				fmt.Printf("%-16s %s --to flag required with --send-test\n", "Send Test", color.RedString("✗"))
+		// 5. Webhook (requires app-level auth)
+		if appSecret != "" {
+			appClient := meta.NewAppClient(appID, appSecret)
+			subs, webhookErr := appClient.GetWebhookSubscriptions(ctx, appID)
+			if webhookErr != nil {
+				fmt.Printf("  %-20s %s %s\n", "Webhook", color.RedString("✗"), webhookErr)
 				allPassed = false
 			} else {
-				phoneID := os.Getenv("WHATSAPP_PHONE_NUMBER_ID")
-				if phoneID == "" {
-					fmt.Printf("%-16s %s WHATSAPP_PHONE_NUMBER_ID not set\n", "Send Test", color.RedString("✗"))
+				found := false
+				for _, s := range subs {
+					if s.Object == "whatsapp_business_account" && s.Active {
+						found = true
+						fmt.Printf("  %-20s %s %s\n", "Webhook", color.GreenString("✓"), s.CallbackURL)
+						break
+					}
+				}
+				if !found {
+					fmt.Printf("  %-20s %s no active whatsapp_business_account subscription\n", "Webhook", color.RedString("✗"))
+					allPassed = false
+				}
+			}
+		} else {
+			fmt.Printf("  %-20s %s skipped (no app secret)\n", "Webhook", color.YellowString("-"))
+		}
+
+		// 6. Optional send test
+		if doctorSendTest {
+			fmt.Println()
+			fmt.Println(color.CyanString("Send Test"))
+			if doctorSendTo == "" {
+				fmt.Printf("  %-20s %s --to flag required with --send-test\n", "Send Test", color.RedString("✗"))
+				allPassed = false
+			} else if phoneID == "" {
+				fmt.Printf("  %-20s %s WHATSAPP_PHONE_NUMBER_ID not set\n", "Send Test", color.RedString("✗"))
+				allPassed = false
+			} else {
+				_, sendErr := client.SendTextMessage(ctx, phoneID, doctorSendTo, "LightWave doctor test")
+				if sendErr != nil {
+					fmt.Printf("  %-20s %s %s\n", "Send Test", color.RedString("✗"), sendErr)
 					allPassed = false
 				} else {
-					_, err := client.SendTextMessage(ctx, phoneID, doctorSendTo, "LightWave doctor test")
-					if err != nil {
-						fmt.Printf("%-16s %s %s\n", "Send Test", color.RedString("✗"), err)
-						allPassed = false
-					} else {
-						fmt.Printf("%-16s %s message sent to %s\n", "Send Test", color.GreenString("✓"), doctorSendTo)
-					}
+					fmt.Printf("  %-20s %s message sent to %s\n", "Send Test", color.GreenString("✓"), doctorSendTo)
 				}
 			}
 		}
 
+		fmt.Println()
 		if !allPassed {
 			return fmt.Errorf("some checks failed")
 		}
+		fmt.Println(color.GreenString("All checks passed"))
 		return nil
 	},
 }

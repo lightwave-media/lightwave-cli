@@ -157,6 +157,15 @@ func LoadSession(id string) (*Session, error) {
 	return &s, nil
 }
 
+// DeleteSession removes a session directory and all its contents.
+func DeleteSession(id string) error {
+	dir := SessionDir(id)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return fmt.Errorf("session %s not found", id)
+	}
+	return os.RemoveAll(dir)
+}
+
 // ListSessions returns all sessions sorted by ID (newest first).
 func ListSessions() ([]*Session, error) {
 	dir := SessionsDir()
