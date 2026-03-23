@@ -203,6 +203,7 @@ func init() {
 	dbTenantCmd.AddCommand(dbTenantListCmd)
 	dbTenantCmd.AddCommand(dbTenantCreateCmd)
 
+	dbCmd.AddCommand(dbLocalCmd)
 	dbCmd.AddCommand(dbMigrateCmd)
 	dbCmd.AddCommand(dbFreshCmd)
 	dbCmd.AddCommand(dbTenantCmd)
