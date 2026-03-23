@@ -123,8 +123,9 @@ func pickNextReady(ctx context.Context, milestone string) (*ghIssue, error) {
 
 	// Find first issue with satisfied dependencies
 	pool, _ := db.GetPool(ctx)
+	closedIDs := closedIssueTaskIDs()
 	for i := range issues {
-		if depsOK(ctx, pool, issues[i]) {
+		if depsOK(ctx, pool, issues[i], closedIDs) {
 			return &issues[i], nil
 		}
 	}
@@ -155,10 +156,11 @@ func runGitHubPick(ctx context.Context, milestone string, jsonOut bool) error {
 
 	// Check deps to find the first actionable issue
 	pool, _ := db.GetPool(ctx)
+	closedIDs := closedIssueTaskIDs()
 	var picked *ghIssue
 	var skippedBlocked int
 	for i := range issues {
-		if depsOK(ctx, pool, issues[i]) {
+		if depsOK(ctx, pool, issues[i], closedIDs) {
 			picked = &issues[i]
 			break
 		}
@@ -263,6 +265,7 @@ func runGitHubQueue(ctx context.Context, milestone string) error {
 	sortByPriority(issues)
 
 	pool, _ := db.GetPool(ctx)
+	closedIDs := closedIssueTaskIDs()
 
 	strategy := loadStrategyOrNil()
 
@@ -276,7 +279,7 @@ func runGitHubQueue(ctx context.Context, milestone string) error {
 			priStr = "  "
 		}
 
-		ok := depsOK(ctx, pool, issue)
+		ok := depsOK(ctx, pool, issue, closedIDs)
 		statusIcon := color.GreenString("*")
 		if !ok {
 			statusIcon = color.YellowString("~")
@@ -305,18 +308,21 @@ func runGitHubQueue(ctx context.Context, milestone string) error {
 
 // depsOK checks whether all dependencies of an issue are satisfied.
 // Primary: checks GitHub Issues (closed = done). Fallback: lw task DB.
-func depsOK(ctx context.Context, pool *pgxpool.Pool, issue ghIssue) bool {
+// Pass a pre-fetched closedIDs map to avoid redundant API calls in loops.
+// If closedIDs is nil, it will be fetched (one-shot use case).
+func depsOK(ctx context.Context, pool *pgxpool.Pool, issue ghIssue, closedIDs map[string]bool) bool {
 	fields := parseIssueBody(issue)
 	if len(fields.deps) == 0 {
 		return true
 	}
 
-	// Build a set of closed task IDs from GitHub Issues for fast lookup
-	closedTaskIDs := closedIssueTaskIDs()
+	if closedIDs == nil {
+		closedIDs = closedIssueTaskIDs()
+	}
 
 	for _, depID := range fields.deps {
 		// Primary: check if dep task ID appears in any closed GitHub issue
-		if closedTaskIDs[depID] {
+		if closedIDs[depID] {
 			continue
 		}
 

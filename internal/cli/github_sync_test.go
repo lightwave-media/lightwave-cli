@@ -224,14 +224,14 @@ func TestIssuePriorityRank(t *testing.T) {
 func TestDepsOKNoPool(t *testing.T) {
 	// Without a DB pool, depsOK should always return true
 	issue := ghIssue{Body: "**Dependencies:** abcd1234, ef567890"}
-	if !depsOK(context.Background(), nil, issue) {
+	if !depsOK(context.Background(), nil, issue, nil) {
 		t.Error("depsOK(nil pool) should be true")
 	}
 }
 
 func TestDepsOKNoDeps(t *testing.T) {
 	issue := ghIssue{Body: "**Dependencies:** None"}
-	if !depsOK(context.Background(), nil, issue) {
+	if !depsOK(context.Background(), nil, issue, nil) {
 		t.Error("depsOK(no deps) should be true")
 	}
 }
