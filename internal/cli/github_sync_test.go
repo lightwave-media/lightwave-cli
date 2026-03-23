@@ -59,6 +59,9 @@ func TestStripSprintPrefix(t *testing.T) {
 		{"[Sprint 12] Long sprint", "Long sprint"},
 		{"No prefix here", "No prefix here"},
 		{"[Sprint 1]No space", "No space"},
+		{"[e80b91c8] APM: instrument Django", "APM: instrument Django"},
+		{"[abcd1234] Some task", "Some task"},
+		{"[ABCD1234] Not hex lowercase", "[ABCD1234] Not hex lowercase"},
 	}
 	for _, tt := range tests {
 		got := stripSprintPrefix(tt.input)

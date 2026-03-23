@@ -469,12 +469,13 @@ type parsedFields struct {
 }
 
 var (
-	taskIDRe       = regexp.MustCompile(`\*\*Task ID:\*\*\s*([a-f0-9]{8})`)
-	priorityRe     = regexp.MustCompile(`\*\*Priority:\*\*\s*(P[1-4][^\n]*)`)
-	epicRe         = regexp.MustCompile(`\*\*Epic:\*\*\s*([^\n]+)`)
-	typeRe         = regexp.MustCompile(`\*\*Type:\*\*\s*([^\n]+)`)
-	depsRe         = regexp.MustCompile(`\*\*Dependencies:\*\*\s*([^\n]+)`)
-	sprintPrefixRe = regexp.MustCompile(`^\[Sprint \d+\]\s*`)
+	taskIDRe        = regexp.MustCompile(`\*\*Task ID:\*\*\s*([a-f0-9]{8})`)
+	priorityRe      = regexp.MustCompile(`\*\*Priority:\*\*\s*(P[1-4][^\n]*)`)
+	epicRe          = regexp.MustCompile(`\*\*Epic:\*\*\s*([^\n]+)`)
+	typeRe          = regexp.MustCompile(`\*\*Type:\*\*\s*([^\n]+)`)
+	depsRe          = regexp.MustCompile(`\*\*Dependencies:\*\*\s*([^\n]+)`)
+	sprintPrefixRe  = regexp.MustCompile(`^\[Sprint \d+\]\s*`)
+	shortIDPrefixRe = regexp.MustCompile(`^\[[a-f0-9]{8}\]\s*`)
 	// Match bulleted AC lists: bold (**Acceptance Criteria:**) or heading (## Acceptance Criteria)
 	acRe = regexp.MustCompile(`(?s)(?:\*\*Acceptance Criteria:\*\*|##\s+Acceptance Criteria)\s*\n((?:[-*] (?:\[.\] )?[^\n]+\n?)+)`)
 	// Dep task IDs: exactly 8 hex chars bounded by word boundaries to avoid
@@ -571,7 +572,9 @@ func mapLabelsToType(labels []ghLabel) string {
 }
 
 func stripSprintPrefix(title string) string {
-	return sprintPrefixRe.ReplaceAllString(title, "")
+	title = sprintPrefixRe.ReplaceAllString(title, "")
+	title = shortIDPrefixRe.ReplaceAllString(title, "")
+	return title
 }
 
 func formatDescription(issue ghIssue) string {
