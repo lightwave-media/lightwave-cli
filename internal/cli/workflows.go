@@ -461,18 +461,29 @@ func runWorkflowRPI(ctx context.Context, out io.Writer) error {
 		return writeJSON(out, outPayload)
 	}
 
-	fmt.Fprintf(out, "status=%s\n", resp.Status)
-	fmt.Fprintf(out, "workflow_type=%s\n", resp.WorkflowType)
-	fmt.Fprintf(out, "run_id=%s\n", runID)
-	fmt.Fprintf(out, "session_id=%s\n", resp.Result.SessionID)
-	fmt.Fprintf(out, "result_status=%s\n", resp.Result.Status)
-	fmt.Fprintf(out, "policy.traceability_required=%t\n", opts.RequireTraceability)
-	fmt.Fprintf(out, "policy.approval_required=%t\n", opts.RequireApproval)
-	fmt.Fprintf(out, "policy.evidence_required=%t\n", opts.RequireEvidence)
-	fmt.Fprintf(out, "policy.preflight_enforced=%t\n", boolFromMap(resp.Result.PreflightValidation, "enforced?"))
-	fmt.Fprintf(out, "policy.aws_profile_matches=%t\n", boolFromMap(resp.Result.PreflightValidation, "aws_profile_matches?"))
-	fmt.Fprintf(out, "evidence.verify_status=%s\n", verifyStatus)
-	fmt.Fprintf(out, "evidence.review_status=%s\n", reviewStatus)
+	// Structured text output
+	statusColor := color.GreenString
+	if resp.Status != "completed" {
+		statusColor = color.YellowString
+	}
+	fmt.Fprintf(out, "%s %s\n", color.CyanString("Workflow:"), resp.WorkflowType)
+	fmt.Fprintf(out, "%s %s\n", color.CyanString("Run ID: "), runID)
+	fmt.Fprintf(out, "%s %s\n", color.CyanString("Status: "), statusColor(resp.Status))
+	fmt.Fprintf(out, "%s %s (%s)\n\n", color.CyanString("Session:"), resp.Result.SessionID, resp.Result.Status)
+
+	// Policy gates
+	fmt.Fprintf(out, "%s\n", color.CyanString("Policy Gates:"))
+	printGate(out, "Traceability required", opts.RequireTraceability)
+	printGate(out, "Approval required", opts.RequireApproval)
+	printGate(out, "Evidence required", opts.RequireEvidence)
+	printGate(out, "Preflight enforced", boolFromMap(resp.Result.PreflightValidation, "enforced?"))
+	printGate(out, "AWS profile matches", boolFromMap(resp.Result.PreflightValidation, "aws_profile_matches?"))
+	fmt.Fprintln(out)
+
+	// Evidence
+	fmt.Fprintf(out, "%s\n", color.CyanString("Evidence:"))
+	fmt.Fprintf(out, "  Verify: %s\n", verifyStatus)
+	fmt.Fprintf(out, "  Review: %s\n", reviewStatus)
 
 	return nil
 }
@@ -540,7 +551,7 @@ func runWorkflowRuns(ctx context.Context, out io.Writer) error {
 	table := tablewriter.NewWriter(out)
 	table.SetHeader([]string{"Run ID", "Status", "Phase", "Epic", "Task", "Error"})
 	table.SetBorder(false)
-	table.SetColumnSeparator(" ")
+	table.SetColumnSeparator("|")
 
 	for _, run := range resp.Runs {
 		runID := run.RunID
@@ -619,7 +630,7 @@ func runWorkflowDecisions(ctx context.Context, out io.Writer) error {
 	table := tablewriter.NewWriter(out)
 	table.SetHeader([]string{"Decision ID", "Run ID", "Status", "Type", "Priority", "Reason"})
 	table.SetBorder(false)
-	table.SetColumnSeparator(" ")
+	table.SetColumnSeparator("|")
 
 	for _, decision := range resp.Decisions {
 		decID := decision.DecisionID
@@ -776,7 +787,7 @@ func runWorkflowKPIs(ctx context.Context, out io.Writer) error {
 	table := tablewriter.NewWriter(out)
 	table.SetHeader([]string{"Metric", "Value", "Target", "Gate", "N", "D"})
 	table.SetBorder(false)
-	table.SetColumnSeparator(" ")
+	table.SetColumnSeparator("|")
 
 	for _, metricKey := range metricOrder {
 		metric, ok := resp.Snapshot.KPIs[metricKey]
@@ -1093,6 +1104,14 @@ func writeJSON(out io.Writer, payload any) error {
 
 	_, err = fmt.Fprintln(out, string(encoded))
 	return err
+}
+
+func printGate(out io.Writer, name string, ok bool) {
+	icon := color.GreenString("✓")
+	if !ok {
+		icon = color.RedString("✗")
+	}
+	fmt.Fprintf(out, "  %s %s\n", icon, name)
 }
 
 func boolFromMap(m map[string]any, key string) bool {

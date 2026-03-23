@@ -239,7 +239,11 @@ var browserNavigateCmd = &cobra.Command{
 			chrome.windows[0].activeTab.url = "%s";
 		`, escapeJSString(url))
 
-		if _, err := exec.Command("osascript", "-l", "JavaScript", "-e", script).Output(); err != nil {
+		if out, err := exec.Command("osascript", "-l", "JavaScript", "-e", script).CombinedOutput(); err != nil {
+			detail := strings.TrimSpace(string(out))
+			if detail != "" {
+				return fmt.Errorf("failed to navigate: %s", detail)
+			}
 			return fmt.Errorf("failed to navigate: %w", err)
 		}
 
@@ -262,8 +266,12 @@ var browserExecuteCmd = &cobra.Command{
 			tab.execute({javascript: %s});
 		`, jxaStringLiteral(js))
 
-		out, err := exec.Command("osascript", "-l", "JavaScript", "-e", script).Output()
+		out, err := exec.Command("osascript", "-l", "JavaScript", "-e", script).CombinedOutput()
 		if err != nil {
+			detail := strings.TrimSpace(string(out))
+			if detail != "" {
+				return fmt.Errorf("failed to execute JavaScript: %s", detail)
+			}
 			return fmt.Errorf("failed to execute JavaScript: %w", err)
 		}
 

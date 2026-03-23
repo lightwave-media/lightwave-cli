@@ -200,6 +200,8 @@ var uxAnalyzeCmd = &cobra.Command{
 
 // ── delete ──────────────────────────────────────────────────────────────
 
+var uxDeleteForce bool
+
 var uxDeleteCmd = &cobra.Command{
 	Use:   "delete <session-id>",
 	Short: "Delete a UX recording session",
@@ -212,6 +214,10 @@ var uxDeleteCmd = &cobra.Command{
 
 		if session.Status == ux.StatusRecording {
 			return fmt.Errorf("session %s is still recording — stop it first with 'lw ux stop %s'", session.ID, session.ID)
+		}
+
+		if session.Status == ux.StatusAnalyzed && !uxDeleteForce {
+			return fmt.Errorf("session %s has analysis data — use --force to delete", session.ID)
 		}
 
 		if err := ux.DeleteSession(session.ID); err != nil {
@@ -554,6 +560,7 @@ func init() {
 	uxCmd.AddCommand(uxPlayCmd)
 	uxCmd.AddCommand(uxDevicesCmd)
 	uxCmd.AddCommand(uxBacklogCmd)
+	uxDeleteCmd.Flags().BoolVar(&uxDeleteForce, "force", false, "Delete even if session has analysis data")
 	uxCmd.AddCommand(uxDeleteCmd)
 
 	rootCmd.AddCommand(uxCmd)
