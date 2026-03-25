@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/spf13/cobra"
@@ -106,6 +107,18 @@ func runDjangoShellCode(code string) error {
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
+
+	// Resolve relative COMPOSE_FILE paths to absolute (same fix as runMake)
+	if composeFile := os.Getenv("COMPOSE_FILE"); composeFile != "" {
+		parts := strings.Split(composeFile, ":")
+		for i, p := range parts {
+			if !filepath.IsAbs(p) {
+				parts[i] = filepath.Join(cfg.Paths.LightwaveRoot, p)
+			}
+		}
+		c.Env = append(os.Environ(), "COMPOSE_FILE="+strings.Join(parts, ":"))
+	}
+
 	return c.Run()
 }
 

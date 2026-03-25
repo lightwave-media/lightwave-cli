@@ -32,7 +32,9 @@ func resolveMakeDir(scope string) (string, error) {
 	return filepath.Join(cfg.Paths.LightwaveRoot, rel), nil
 }
 
-// runMake runs a make target in the given directory, streaming output
+// runMake runs a make target in the given directory, streaming output.
+// It resolves COMPOSE_FILE paths to absolute so docker compose works
+// regardless of which subdirectory the Makefile lives in.
 func runMake(dir, target string, extraArgs ...string) error {
 	args := []string{target}
 	args = append(args, extraArgs...)
@@ -42,6 +44,20 @@ func runMake(dir, target string, extraArgs ...string) error {
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
+
+	// COMPOSE_FILE may contain relative paths (set by .envrc at workspace root).
+	// When cmd.Dir differs from the workspace root, docker compose resolves
+	// those relative paths from cmd.Dir and fails. Fix: make them absolute.
+	cfg := config.Get()
+	if composeFile := os.Getenv("COMPOSE_FILE"); composeFile != "" {
+		parts := strings.Split(composeFile, ":")
+		for i, p := range parts {
+			if !filepath.IsAbs(p) {
+				parts[i] = filepath.Join(cfg.Paths.LightwaveRoot, p)
+			}
+		}
+		cmd.Env = append(os.Environ(), "COMPOSE_FILE="+strings.Join(parts, ":"))
+	}
 
 	return cmd.Run()
 }
