@@ -30,6 +30,7 @@ var (
 	taskEpicID      string
 	taskSprintID    string
 	taskLimit       int
+	taskJSON        bool
 )
 
 // Flags for task create
@@ -66,7 +67,8 @@ Examples:
   lw task list --status=approved
   lw task list --status=approved,next_up
   lw task list --priority=p1_urgent
-  lw task list --status=in_progress --limit=10`,
+  lw task list --status=in_progress --limit=10
+  lw task list --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
 
@@ -96,8 +98,18 @@ Examples:
 		}
 
 		if len(tasks) == 0 {
+			if taskJSON {
+				fmt.Println("[]")
+				return nil
+			}
 			fmt.Println(color.YellowString("No tasks found matching filters"))
 			return nil
+		}
+
+		if taskJSON {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(tasks)
 		}
 
 		// Display as table
@@ -126,6 +138,12 @@ var taskInfoCmd = &cobra.Command{
 		task, err := db.GetTask(ctx, pool, taskID)
 		if err != nil {
 			return err
+		}
+
+		if taskJSON {
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(task)
 		}
 
 		// Display task details
@@ -341,6 +359,37 @@ Examples:
 	},
 }
 
+var taskDoneCmd = &cobra.Command{
+	Use:   "done <task-id>",
+	Short: "Mark a task as done (shortcut for update --status=done)",
+	Long: `Mark a task as done. Shortcut for: lw task update <id> --status=done
+
+Examples:
+  lw task done abc123`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		taskID := args[0]
+
+		pool, err := db.Connect(ctx)
+		if err != nil {
+			return fmt.Errorf("database connection failed: %w", err)
+		}
+		defer db.Close()
+
+		status := "done"
+		opts := db.TaskUpdateOptions{Status: &status}
+
+		task, err := db.UpdateTask(ctx, pool, taskID, opts)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Task %s marked as %s\n", color.YellowString(task.ShortID), color.GreenString("done"))
+		return nil
+	},
+}
+
 // createGitHubIssueForTask creates a GitHub Issue for a newly created task.
 // Returns the issue number (0 if creation failed).
 func createGitHubIssueForTask(task *db.Task) (int, error) {
@@ -444,6 +493,10 @@ func init() {
 	taskListCmd.Flags().StringVar(&taskEpicID, "epic", "", "Filter by epic ID")
 	taskListCmd.Flags().StringVar(&taskSprintID, "sprint", "", "Filter by sprint ID")
 	taskListCmd.Flags().IntVarP(&taskLimit, "limit", "n", 50, "Limit number of results")
+	taskListCmd.Flags().BoolVar(&taskJSON, "json", false, "Output as JSON")
+
+	// task info flags
+	taskInfoCmd.Flags().BoolVar(&taskJSON, "json", false, "Output as JSON")
 
 	// task create flags
 	taskCreateCmd.Flags().StringVar(&taskCreateTitle, "title", "", "Task title (required)")
@@ -473,6 +526,7 @@ func init() {
 	taskCmd.AddCommand(taskCreateCmd)
 	taskCmd.AddCommand(taskUpdateCmd)
 	taskCmd.AddCommand(taskNextApprovedCmd)
+	taskCmd.AddCommand(taskDoneCmd)
 
 	// next-approved flags
 	taskNextApprovedCmd.Flags().StringVar(&taskSprintID, "sprint", "", "Sprint ID (defaults to active sprint)")

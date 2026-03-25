@@ -12,25 +12,25 @@ import (
 
 // Task represents a createOS task
 type Task struct {
-	ID            string     `db:"id"`
-	Title         string     `db:"title"`
-	Description   *string    `db:"description"`
-	Status        string     `db:"status"`
-	Priority      string     `db:"priority"`
-	TaskType      string     `db:"task_type"`
-	TaskCategory  string     `db:"task_category"`
-	AgentStatus   *string    `db:"agent_status"`
-	AssignedAgent *string    `db:"assigned_agent"`
-	EpicID        *string    `db:"epic_id"`
-	SprintID      *string    `db:"sprint_id"`
-	DueDate       *time.Time `db:"due_date"`
-	DoDate        *time.Time `db:"do_date"`
-	BranchName    *string    `db:"branch_name"`
-	PRUrl         *string    `db:"pr_url"`
-	CreatedAt     time.Time  `db:"created_at"`
-	UpdatedAt     time.Time  `db:"updated_at"`
+	ID            string     `db:"id" json:"id"`
+	Title         string     `db:"title" json:"title"`
+	Description   *string    `db:"description" json:"description,omitempty"`
+	Status        string     `db:"status" json:"status"`
+	Priority      string     `db:"priority" json:"priority"`
+	TaskType      string     `db:"task_type" json:"task_type"`
+	TaskCategory  string     `db:"task_category" json:"task_category"`
+	AgentStatus   *string    `db:"agent_status" json:"agent_status,omitempty"`
+	AssignedAgent *string    `db:"assigned_agent" json:"assigned_agent,omitempty"`
+	EpicID        *string    `db:"epic_id" json:"epic_id,omitempty"`
+	SprintID      *string    `db:"sprint_id" json:"sprint_id,omitempty"`
+	DueDate       *time.Time `db:"due_date" json:"due_date,omitempty"`
+	DoDate        *time.Time `db:"do_date" json:"do_date,omitempty"`
+	BranchName    *string    `db:"branch_name" json:"branch_name,omitempty"`
+	PRUrl         *string    `db:"pr_url" json:"pr_url,omitempty"`
+	CreatedAt     time.Time  `db:"created_at" json:"created_at"`
+	UpdatedAt     time.Time  `db:"updated_at" json:"updated_at"`
 	// Computed
-	ShortID string
+	ShortID string `json:"short_id"`
 }
 
 // TaskListOptions for filtering tasks
