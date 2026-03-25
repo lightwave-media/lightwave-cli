@@ -304,6 +304,7 @@ func init() {
 
 	// Add to aws command
 	awsCmd.AddCommand(ecsCmd)
+	awsCmd.AddCommand(ecrCmd)
 	awsCmd.AddCommand(logsCmd)
 }
 
