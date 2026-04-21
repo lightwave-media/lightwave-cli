@@ -55,17 +55,13 @@ Examples:
 		}
 
 		table := tablewriter.NewWriter(os.Stdout)
-		table.SetHeader([]string{"Company", "Agent", "Status", "Current Task"})
+		table.SetHeader([]string{"Company", "Agent", "Status"})
 		table.SetBorder(false)
 		table.SetColumnSeparator(" ")
 
 		for _, a := range agents {
 			status := agentStatusColor(a.Status)
-			currentTask := a.CurrentIssue
-			if currentTask == "" {
-				currentTask = "-"
-			}
-			table.Append([]string{a.CompanyName, a.Name, status, truncateStr(currentTask, 50)})
+			table.Append([]string{a.CompanyName, a.Name, status})
 		}
 		table.Render()
 		return nil
@@ -144,12 +140,13 @@ func printAgentDetail(a paperclip.Agent) error {
 	fmt.Printf("%s %s\n", color.CyanString("Company:"), a.CompanyName)
 	fmt.Printf("%s  %s\n", color.CyanString("Status:"), agentStatusColor(a.Status))
 
-	if a.CurrentIssue != "" {
-		fmt.Printf("%s    %s\n", color.CyanString("Task:"), a.CurrentIssue)
+	if !a.LastHeartbeatAt.IsZero() {
+		ago := time.Since(a.LastHeartbeatAt).Truncate(time.Second)
+		fmt.Printf("%s %s (%s ago)\n", color.CyanString("Heartbeat:"), a.LastHeartbeatAt.Format(time.RFC3339), ago)
 	}
-	if !a.LastHeartbeat.IsZero() {
-		ago := time.Since(a.LastHeartbeat).Truncate(time.Second)
-		fmt.Printf("%s %s (%s ago)\n", color.CyanString("Heartbeat:"), a.LastHeartbeat.Format(time.RFC3339), ago)
+	if a.SpentMonthlyCents > 0 {
+		fmt.Printf("%s  $%.2f / $%.2f\n", color.CyanString("Cost MTD:"),
+			float64(a.SpentMonthlyCents)/100, float64(a.BudgetMonthlyCents)/100)
 	}
 	return nil
 }
@@ -191,9 +188,9 @@ Examples:
 		}
 
 		issue := paperclip.Issue{
-			Title:     description,
-			AgentName: agentName,
-			AgentID:   target.ID,
+			Title:           description,
+			Status:          "todo",
+			AssigneeAgentID: target.ID,
 		}
 
 		created, err := client.CreateIssue(ctx, target.CompanyID, issue)
@@ -285,48 +282,29 @@ Examples:
 		ctx := context.Background()
 		client := paperclip.NewClient()
 
-		companies, err := client.ListCompanies(ctx)
+		agents, err := client.ListAllAgents(ctx)
 		if err != nil {
 			return err
 		}
 
-		// Aggregate costs from all issues per agent
 		type agentCost struct {
-			AgentName string  `json:"agent_name"`
-			Company   string  `json:"company"`
-			Tasks     int     `json:"tasks"`
-			TotalCost float64 `json:"total_cost"`
-		}
-		costMap := map[string]*agentCost{}
-
-		for _, co := range companies {
-			issues, err := client.ListIssues(ctx, co.ID)
-			if err != nil {
-				return fmt.Errorf("cost %s: %w", co.Name, err)
-			}
-			for _, iss := range issues {
-				name := iss.AgentName
-				if name == "" {
-					name = "(unassigned)"
-				}
-				key := co.Name + "/" + name
-				ac, ok := costMap[key]
-				if !ok {
-					ac = &agentCost{AgentName: name, Company: co.Name}
-					costMap[key] = ac
-				}
-				ac.Tasks++
-				ac.TotalCost += iss.Cost
-			}
+			AgentName   string `json:"agent_name"`
+			Company     string `json:"company"`
+			SpentCents  int    `json:"spent_cents"`
+			BudgetCents int    `json:"budget_cents"`
 		}
 
-		// Filter if agent name specified
-		var costs []*agentCost
-		for _, ac := range costMap {
-			if len(args) > 0 && ac.AgentName != args[0] {
+		var costs []agentCost
+		for _, a := range agents {
+			if len(args) > 0 && a.Name != args[0] {
 				continue
 			}
-			costs = append(costs, ac)
+			costs = append(costs, agentCost{
+				AgentName:   a.Name,
+				Company:     a.CompanyName,
+				SpentCents:  a.SpentMonthlyCents,
+				BudgetCents: a.BudgetMonthlyCents,
+			})
 		}
 
 		if agentJSON {
@@ -345,22 +323,26 @@ Examples:
 		}
 
 		table := tablewriter.NewWriter(os.Stdout)
-		table.SetHeader([]string{"Company", "Agent", "Tasks", "Total Cost"})
+		table.SetHeader([]string{"Company", "Agent", "Spent MTD", "Budget"})
 		table.SetBorder(false)
 		table.SetColumnSeparator(" ")
 
-		var totalCost float64
+		var totalSpent int
 		for _, ac := range costs {
+			budget := "-"
+			if ac.BudgetCents > 0 {
+				budget = fmt.Sprintf("$%.2f", float64(ac.BudgetCents)/100)
+			}
 			table.Append([]string{
 				ac.Company,
 				ac.AgentName,
-				fmt.Sprintf("%d", ac.Tasks),
-				fmt.Sprintf("$%.2f", ac.TotalCost),
+				fmt.Sprintf("$%.2f", float64(ac.SpentCents)/100),
+				budget,
 			})
-			totalCost += ac.TotalCost
+			totalSpent += ac.SpentCents
 		}
 		table.Render()
-		fmt.Printf("\n%s $%.2f\n", color.CyanString("Total:"), totalCost)
+		fmt.Printf("\n%s $%.2f\n", color.CyanString("Total MTD:"), float64(totalSpent)/100)
 		return nil
 	},
 }

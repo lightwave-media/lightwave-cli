@@ -29,37 +29,27 @@ type Company struct {
 
 // Agent represents a Paperclip agent within a company.
 type Agent struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name"`
-	Title         string    `json:"title,omitempty"`
-	Status        string    `json:"status"`
-	CompanyID     string    `json:"companyId"`
-	CompanyName   string    `json:"-"` // populated by client after join
-	CurrentIssue  string    `json:"currentIssue,omitempty"`
-	LastHeartbeat time.Time `json:"lastHeartbeat,omitzero"`
+	ID                 string    `json:"id"`
+	Name               string    `json:"name"`
+	Title              string    `json:"title,omitempty"`
+	Status             string    `json:"status"`
+	CompanyID          string    `json:"companyId"`
+	CompanyName        string    `json:"-"` // populated by client after join
+	SpentMonthlyCents  int       `json:"spentMonthlyCents"`
+	BudgetMonthlyCents int       `json:"budgetMonthlyCents"`
+	LastHeartbeatAt    time.Time `json:"lastHeartbeatAt"`
 }
 
 // Issue represents a Paperclip issue (work item). Called "task" in the CLI.
 type Issue struct {
-	ID          string    `json:"id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description,omitempty"`
-	Status      string    `json:"status"`
-	AgentName   string    `json:"agentName,omitempty"`
-	AgentID     string    `json:"agentId,omitempty"`
-	CompanyID   string    `json:"companyId"`
-	CreatedAt   time.Time `json:"createdAt,omitzero"`
-	UpdatedAt   time.Time `json:"updatedAt,omitzero"`
-	Cost        float64   `json:"cost,omitempty"`
-}
-
-// CostEntry represents per-agent cost data.
-type CostEntry struct {
-	AgentName   string  `json:"agentName"`
-	AgentID     string  `json:"agentId"`
-	CompanyName string  `json:"-"` // populated by client
-	TotalCost   float64 `json:"totalCost"`
-	TaskCount   int     `json:"taskCount"`
+	ID              string    `json:"id"`
+	Title           string    `json:"title"`
+	Description     string    `json:"description,omitempty"`
+	Status          string    `json:"status"`
+	AssigneeAgentID string    `json:"assigneeAgentId,omitempty"`
+	CompanyID       string    `json:"companyId"`
+	CreatedAt       time.Time `json:"createdAt"`
+	UpdatedAt       time.Time `json:"updatedAt"`
 }
 
 // NewClient creates a Paperclip API client using the configured URL.
