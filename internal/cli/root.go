@@ -47,6 +47,7 @@ func init() {
 	rootCmd.AddCommand(specCmd)
 	rootCmd.AddCommand(githubCmd)
 	rootCmd.AddCommand(orchestratorCmd)
+	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(awsCmd)
 	rootCmd.AddCommand(infraCmd)
 	rootCmd.AddCommand(configCmd)

@@ -14,12 +14,18 @@ type Config struct {
 	Database     DatabaseConfig     `mapstructure:"database"`
 	API          APIConfig          `mapstructure:"api"`
 	Orchestrator OrchestratorConfig `mapstructure:"orchestrator"`
+	Paperclip    PaperclipConfig    `mapstructure:"paperclip"`
 	Tenant       string             `mapstructure:"tenant"`
 	Paths        PathsConfig        `mapstructure:"paths"`
 }
 
 // OrchestratorConfig for Elixir Phoenix orchestrator access
 type OrchestratorConfig struct {
+	URL string `mapstructure:"url"`
+}
+
+// PaperclipConfig for Paperclip AI agent orchestration
+type PaperclipConfig struct {
 	URL string `mapstructure:"url"`
 }
 
@@ -118,6 +124,10 @@ func setDefaults() {
 	viper.SetDefault("orchestrator.url", "http://localhost:4000")
 	viper.BindEnv("orchestrator.url", "LW_ORCHESTRATOR_URL")
 
+	// Paperclip defaults
+	viper.SetDefault("paperclip.url", "http://localhost:3100")
+	viper.BindEnv("paperclip.url", "PAPERCLIP_URL")
+
 	// Paths
 	viper.SetDefault("paths.lightwave_root", filepath.Join(home, "dev", "lightwave-media"))
 	viper.SetDefault("paths.platform", filepath.Join(home, "dev", "lightwave-media", "lightwave-platform", "src"))
@@ -146,6 +156,11 @@ func (c *Config) GetAPIURL() string {
 // GetOrchestratorURL returns the orchestrator URL for the current environment
 func (c *Config) GetOrchestratorURL() string {
 	return c.Orchestrator.URL
+}
+
+// GetPaperclipURL returns the Paperclip API base URL
+func (c *Config) GetPaperclipURL() string {
+	return c.Paperclip.URL
 }
 
 // GetAgentKey returns the agent key from environment
