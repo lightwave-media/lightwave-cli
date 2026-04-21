@@ -235,8 +235,6 @@ func init() {
 	processCmd.AddCommand(processForceKillCmd)
 	processCmd.AddCommand(processInfoCmd)
 	processCmd.AddCommand(processTreeCmd)
-
-	rootCmd.AddCommand(processCmd)
 }
 
 // =============================================================================

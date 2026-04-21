@@ -339,8 +339,6 @@ func init() {
 	browserCmd.AddCommand(browserNavigateCmd)
 	browserCmd.AddCommand(browserExecuteCmd)
 	browserCmd.AddCommand(browserStartCmd)
-
-	rootCmd.AddCommand(browserCmd)
 }
 
 // =============================================================================

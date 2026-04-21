@@ -68,6 +68,13 @@ func init() {
 	rootCmd.AddCommand(docCmd)
 	rootCmd.AddCommand(heartbeatCmd)
 	rootCmd.AddCommand(auditCmd)
+
+	// Commands registered here instead of in their own files
+	rootCmd.AddCommand(browserCmd)
+	rootCmd.AddCommand(processCmd)
+	rootCmd.AddCommand(systemCmd)
+	rootCmd.AddCommand(uxCmd)
+	rootCmd.AddCommand(workflowsCmd)
 }
 
 // versionCmd shows version info

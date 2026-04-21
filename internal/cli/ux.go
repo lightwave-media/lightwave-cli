@@ -562,6 +562,4 @@ func init() {
 	uxCmd.AddCommand(uxBacklogCmd)
 	uxDeleteCmd.Flags().BoolVar(&uxDeleteForce, "force", false, "Delete even if session has analysis data")
 	uxCmd.AddCommand(uxDeleteCmd)
-
-	rootCmd.AddCommand(uxCmd)
 }

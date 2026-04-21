@@ -99,7 +99,7 @@ Use 'lw drift report' first to preview changes.`,
 		}
 
 		if driftReconcileDryRun {
-			parts = append(parts, "--dry-run")
+			parts = append(parts, "--check")
 		}
 
 		return runMake(dir, "dj-manage", fmt.Sprintf("CMD=%s", strings.Join(parts, " ")))

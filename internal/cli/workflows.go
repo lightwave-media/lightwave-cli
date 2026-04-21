@@ -207,7 +207,6 @@ func init() {
 	workflowsCmd.AddCommand(workflowsDecisionsCmd)
 	workflowsCmd.AddCommand(workflowsReviewCmd)
 	workflowsCmd.AddCommand(workflowsKPIsCmd)
-	rootCmd.AddCommand(workflowsCmd)
 }
 
 type rpiRequestOptions struct {

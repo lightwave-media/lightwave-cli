@@ -19,9 +19,8 @@ Examples:
   lw make platform test         # Run platform test target
   lw make root check            # Run root check target
   lw make cli build -- -j4      # Pass extra args to make`,
-	Args:                  cobra.ArbitraryArgs,
-	DisableFlagParsing:    false,
-	DisableFlagsInUseLine: true,
+	Args:               cobra.ArbitraryArgs,
+	DisableFlagParsing: true,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
 			return showMakeHelp()
@@ -41,13 +40,7 @@ Examples:
 			return err
 		}
 
-		// Pass remaining args (after --) to make
-		var extra []string
-		if cmd.ArgsLenAtDash() >= 0 && cmd.ArgsLenAtDash() < len(args) {
-			extra = args[cmd.ArgsLenAtDash():]
-		}
-
-		return runMake(dir, target, extra...)
+		return runMake(dir, target, args[2:]...)
 	},
 }
 

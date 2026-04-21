@@ -227,9 +227,6 @@ func init() {
 	systemCmd.AddCommand(clipboardCmd)
 	systemCmd.AddCommand(notifyCmd)
 	systemCmd.AddCommand(applescriptCmd)
-
-	// Add system to root
-	rootCmd.AddCommand(systemCmd)
 }
 
 // =============================================================================
