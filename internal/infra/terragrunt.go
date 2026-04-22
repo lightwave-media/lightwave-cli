@@ -102,7 +102,12 @@ func (t *TerragruntRunner) Apply(ctx context.Context, path string, autoApprove b
 func (t *TerragruntRunner) RunAll(ctx context.Context, command string) error {
 	workDir := t.GetWorkingDir()
 
-	args := []string{"run-all", command, "--terragrunt-non-interactive"}
+	args := []string{
+		"run-all", command,
+		"--terragrunt-non-interactive",
+		// Exclude Terragrunt-generated directories from run-all discovery
+		"--terragrunt-exclude-dir", "**/.terragrunt-stack/**",
+	}
 
 	cmd := exec.CommandContext(ctx, "terragrunt", args...)
 	cmd.Dir = workDir
@@ -168,12 +173,12 @@ func (t *TerragruntRunner) ListUnits(ctx context.Context) ([]string, error) {
 			return nil // Skip errors
 		}
 
-		// Skip .terragrunt-cache directories
-		if info.IsDir() && strings.Contains(path, ".terragrunt-cache") {
+		// Skip generated Terragrunt cache and stack expansion directories
+		if info.IsDir() && (strings.Contains(path, ".terragrunt-cache") || strings.Contains(path, ".terragrunt-stack")) {
 			return filepath.SkipDir
 		}
 
-		if info.Name() == "terragrunt.hcl" && !strings.Contains(path, ".terragrunt-cache") {
+		if info.Name() == "terragrunt.hcl" && !strings.Contains(path, ".terragrunt-cache") && !strings.Contains(path, ".terragrunt-stack") {
 			relPath, _ := filepath.Rel(workDir, filepath.Dir(path))
 			if relPath != "." {
 				units = append(units, relPath)
