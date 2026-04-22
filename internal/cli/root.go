@@ -69,6 +69,7 @@ func init() {
 	rootCmd.AddCommand(docCmd)
 	rootCmd.AddCommand(heartbeatCmd)
 	rootCmd.AddCommand(auditCmd)
+	rootCmd.AddCommand(healthCmd)
 
 	// Commands registered here instead of in their own files
 	rootCmd.AddCommand(browserCmd)
