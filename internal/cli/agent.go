@@ -90,8 +90,9 @@ Examples:
 
 		if len(args) > 0 {
 			name := args[0]
+			normalized := normalizeAgentName(name)
 			for _, a := range agents {
-				if a.Name == name {
+				if normalizeAgentName(a.Name) == normalized {
 					return printAgentDetail(a)
 				}
 			}
@@ -177,9 +178,10 @@ Examples:
 		}
 
 		var target *paperclip.Agent
-		for _, a := range agents {
-			if a.Name == agentName {
-				target = &a
+		normalized := normalizeAgentName(agentName)
+		for i, a := range agents {
+			if normalizeAgentName(a.Name) == normalized {
+				target = &agents[i]
 				break
 			}
 		}
@@ -366,7 +368,17 @@ func truncateStr(s string, max int) string {
 	if len(s) <= max {
 		return s
 	}
+	if max <= 3 {
+		return s[:max]
+	}
 	return s[:max-3] + "..."
+}
+
+// normalizeAgentName converts a user-supplied agent name to a canonical form for
+// comparison. It lowercases the input and replaces hyphens with spaces so that
+// "backend-engineer" and "Backend Engineer" both resolve to "backend engineer".
+func normalizeAgentName(name string) string {
+	return strings.ToLower(strings.ReplaceAll(name, "-", " "))
 }
 
 func init() {

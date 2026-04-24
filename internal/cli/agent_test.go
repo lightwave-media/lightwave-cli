@@ -97,42 +97,35 @@ func TestAgentNameMatchingBehavior(t *testing.T) {
 		{Name: "Frontend Engineer", CompanyName: "LightWave Media LLC"},
 	}
 
-	exactMatchFind := func(name string) *paperclip.Agent {
+	normalizedFind := func(name string) *paperclip.Agent {
+		normalized := normalizeAgentName(name)
 		for i, a := range agents {
-			if a.Name == name {
+			if normalizeAgentName(a.Name) == normalized {
 				return &agents[i]
 			}
 		}
 		return nil
 	}
 
-	// --- Exact match: currently works ---
+	// --- Exact match: works ---
 	t.Run("exact_case_match_works", func(t *testing.T) {
-		if got := exactMatchFind("Backend Engineer"); got == nil {
+		if got := normalizedFind("Backend Engineer"); got == nil {
 			t.Error("exact match 'Backend Engineer' should find agent")
 		}
 	})
 
-	// --- Kebab-case: currently FAILS (documents bug) ---
-	t.Run("kebab_case_should_match_BUG", func(t *testing.T) {
-		if got := exactMatchFind("backend-engineer"); got != nil {
-			t.Log("bug appears to be fixed: kebab-case now resolves correctly")
-			return
+	// --- Kebab-case: fixed by normalizeAgentName ---
+	t.Run("kebab_case_should_match", func(t *testing.T) {
+		if got := normalizedFind("backend-engineer"); got == nil {
+			t.Error("kebab-case 'backend-engineer' should resolve to 'Backend Engineer' via normalizeAgentName")
 		}
-		// Document the current broken behaviour explicitly so CI flags it.
-		t.Error("BUG LIGA-21: lw agent status backend-engineer returns 'not found'; " +
-			"agent.go:94 uses exact case match but help text shows kebab-case examples; " +
-			"fix: normalize name comparison (strings.EqualFold + kebab→space)")
 	})
 
-	// --- Lowercase with spaces: currently FAILS (documents bug) ---
-	t.Run("lowercase_space_should_match_BUG", func(t *testing.T) {
-		if got := exactMatchFind("backend engineer"); got != nil {
-			t.Log("bug appears to be fixed: lowercase match now resolves correctly")
-			return
+	// --- Lowercase with spaces: fixed by normalizeAgentName ---
+	t.Run("lowercase_space_should_match", func(t *testing.T) {
+		if got := normalizedFind("backend engineer"); got == nil {
+			t.Error("lowercase 'backend engineer' should resolve to 'Backend Engineer' via normalizeAgentName")
 		}
-		t.Error("BUG LIGA-21: lw agent status 'backend engineer' returns 'not found'; " +
-			"fix: add case-insensitive comparison (strings.EqualFold)")
 	})
 }
 
