@@ -146,7 +146,7 @@ func extractPRNumber(prURL string) (int, error) {
 }
 
 // monitorExistingPR polls an existing PR until it's merged, changes are requested, or timeout.
-func monitorExistingPR(ctx context.Context, pool interface{}, task *db.Task) error {
+func monitorExistingPR(ctx context.Context, _ interface{}, task *db.Task) error {
 	if task.PRUrl == nil || *task.PRUrl == "" {
 		return fmt.Errorf("task has no PR URL")
 	}

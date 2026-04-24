@@ -631,7 +631,7 @@ E2E test issue — auto-generated, will be cleaned up.
 		fmt.Printf("  %s spec generation failed: %v\n", color.RedString("FAIL"), specErr)
 		failed++
 	} else {
-		specPath := fmt.Sprintf("/tmp/spec-e2e00000.md")
+		specPath := "/tmp/spec-e2e00000.md"
 		if _, err := os.Stat(specPath); err == nil {
 			fmt.Printf("  %s spec generated: %s\n", color.GreenString("PASS"), specPath)
 			passed++

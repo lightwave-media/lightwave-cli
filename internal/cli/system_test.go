@@ -130,6 +130,9 @@ func TestWindowInfoFields(t *testing.T) {
 	if w.ID != 1 {
 		t.Error("ID mismatch")
 	}
+	if w.PID != 1234 {
+		t.Error("PID mismatch")
+	}
 	if w.Title != "Test Window" {
 		t.Error("Title mismatch")
 	}

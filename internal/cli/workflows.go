@@ -975,28 +975,6 @@ func resolveOrchestratorBaseURL() string {
 	return strings.TrimRight(cfg.GetOrchestratorURL(), "/")
 }
 
-func deriveBaseURL(apiURL string) string {
-	trimmed := strings.TrimSpace(apiURL)
-	if trimmed == "" {
-		return ""
-	}
-
-	parsed, err := url.Parse(trimmed)
-	if err != nil {
-		return strings.TrimRight(trimmed, "/")
-	}
-
-	path := strings.TrimRight(parsed.Path, "/")
-	path = strings.TrimSuffix(path, "/api/createos")
-	path = strings.TrimSuffix(path, "/api")
-	parsed.Path = path
-	parsed.RawPath = ""
-	parsed.RawQuery = ""
-	parsed.Fragment = ""
-
-	return strings.TrimRight(parsed.String(), "/")
-}
-
 func setServiceToken(headers http.Header) {
 	token := strings.TrimSpace(workflowsServiceToken)
 	if token == "" {

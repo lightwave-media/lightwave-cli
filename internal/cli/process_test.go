@@ -87,6 +87,18 @@ func TestProcessInfoFields(t *testing.T) {
 		Started: "Sat Mar 22 10:30:00 2026",
 	}
 
+	if info.PID != 1234 {
+		t.Error("PID mismatch")
+	}
+	if info.PPID != 1 {
+		t.Error("PPID mismatch")
+	}
+	if info.User != "testuser" {
+		t.Error("User mismatch")
+	}
+	if info.Command != "/usr/bin/test --flag" {
+		t.Error("Command mismatch")
+	}
 	if info.State != "S" {
 		t.Error("State mismatch")
 	}

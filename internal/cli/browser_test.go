@@ -162,4 +162,10 @@ func TestBrowserTabFields(t *testing.T) {
 	if tab.ID != "abc12345-def6-7890" {
 		t.Error("ID mismatch")
 	}
+	if tab.Title != "Test Page" {
+		t.Error("Title mismatch")
+	}
+	if tab.URL != "https://example.com" {
+		t.Error("URL mismatch")
+	}
 }

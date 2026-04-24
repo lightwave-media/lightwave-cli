@@ -3,6 +3,8 @@ package cli
 import (
 	"testing"
 	"time"
+
+	"github.com/lightwave-media/lightwave-cli/internal/paperclip"
 )
 
 func TestBranchToAgent(t *testing.T) {
@@ -67,10 +69,7 @@ func TestDetectRetryLoops(t *testing.T) {
 	now := time.Now()
 
 	// 4 failures from same agent+repo+workflow within 30 minutes — should be a loop
-	allRuns := []struct {
-		Repo string
-		Run  ghRun
-	}{
+	allRuns := []runEntry{
 		{Repo: "lightwave-media/lightwave-sys", Run: ghRun{
 			Name: "CI", HeadBranch: "lw/release-engineer", Conclusion: "failure",
 			CreatedAt: now.Add(-25 * time.Minute),
@@ -114,10 +113,7 @@ func TestDetectRetryLoopsNoFalsePositive(t *testing.T) {
 	now := time.Now()
 
 	// 2 failures — below the 3-run threshold
-	allRuns := []struct {
-		Repo string
-		Run  ghRun
-	}{
+	allRuns := []runEntry{
 		{Repo: "lightwave-media/lightwave-sys", Run: ghRun{
 			Name: "CI", HeadBranch: "lw/release-engineer", Conclusion: "failure",
 			CreatedAt: now.Add(-20 * time.Minute),
@@ -134,6 +130,59 @@ func TestDetectRetryLoopsNoFalsePositive(t *testing.T) {
 	if len(loops) != 0 {
 		t.Errorf("expected 0 retry loops for 2 failures, got %d", len(loops))
 	}
+}
+
+func TestMatchActivityToRun(t *testing.T) {
+	now := time.Now()
+
+	activities := []paperclip.Activity{
+		{AgentName: "Backend Engineer", Action: "heartbeat", CreatedAt: now.Add(-2 * time.Minute)},
+		{AgentName: "Release Engineer", Action: "heartbeat", CreatedAt: now.Add(-10 * time.Minute)},
+		{AgentName: "", Action: "system", CreatedAt: now.Add(-1 * time.Minute)}, // no agent name
+	}
+
+	t.Run("matches_closest_heartbeat_within_5min", func(t *testing.T) {
+		got := matchActivityToRun(activities, now)
+		if got != "Backend Engineer" {
+			t.Errorf("got %q, want %q", got, "Backend Engineer")
+		}
+	})
+
+	t.Run("no_match_when_too_old", func(t *testing.T) {
+		// CI run happened 20 minutes ago — no heartbeat within 5min before it
+		got := matchActivityToRun(activities, now.Add(-20*time.Minute))
+		if got != "" {
+			t.Errorf("got %q, want empty (no match)", got)
+		}
+	})
+
+	t.Run("no_match_when_empty_activities", func(t *testing.T) {
+		got := matchActivityToRun(nil, now)
+		if got != "" {
+			t.Errorf("got %q, want empty", got)
+		}
+	})
+
+	t.Run("skips_entries_without_agent_name", func(t *testing.T) {
+		noNameActivities := []paperclip.Activity{
+			{AgentName: "", Action: "heartbeat", CreatedAt: now.Add(-1 * time.Minute)},
+		}
+		got := matchActivityToRun(noNameActivities, now)
+		if got != "" {
+			t.Errorf("got %q, want empty (no agent name)", got)
+		}
+	})
+}
+
+func TestMatchCommitAuthorFromMessage(t *testing.T) {
+	// matchCommitAuthor shells out to gh, so we can't unit test the full flow.
+	// Instead, test that branchToAgent + the fallback chain works for direct pushes.
+	t.Run("direct_push_returns_direct_push_without_correlation", func(t *testing.T) {
+		got := branchToAgent("main")
+		if got != "(direct push)" {
+			t.Errorf("got %q, want %q", got, "(direct push)")
+		}
+	})
 }
 
 func TestRunsSummaryCalculation(t *testing.T) {

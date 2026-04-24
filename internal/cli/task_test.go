@@ -92,6 +92,10 @@ func TestTaskListOptions(t *testing.T) {
 		t.Error("limit must be positive")
 	}
 
+	if opts.Priority == "" {
+		t.Error("priority filter should not be empty")
+	}
+
 	if opts.Status == "" {
 		t.Error("status filter should not be empty")
 	}

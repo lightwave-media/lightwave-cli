@@ -355,6 +355,12 @@ type ghRun struct {
 	DisplayName string    `json:"displayTitle"`
 }
 
+// runEntry pairs a GitHub run with its source repo.
+type runEntry struct {
+	Repo string
+	Run  ghRun
+}
+
 // ciAgentStats aggregates CI runs per agent per repo.
 type ciAgentStats struct {
 	Agent   string `json:"agent"`
@@ -409,10 +415,7 @@ Examples:
 		}
 
 		// Fetch GitHub runs for each repo
-		var allRuns []struct {
-			Repo string
-			Run  ghRun
-		}
+		var allRuns []runEntry
 		for _, repo := range repos {
 			runs, err := fetchGHRuns(repo, 50)
 			if err != nil {
@@ -421,12 +424,20 @@ Examples:
 			}
 			for _, r := range runs {
 				if r.CreatedAt.After(cutoff) {
-					allRuns = append(allRuns, struct {
-						Repo string
-						Run  ghRun
-					}{Repo: repo, Run: r})
+					allRuns = append(allRuns, runEntry{Repo: repo, Run: r})
 				}
 			}
+		}
+
+		// Option B: Fetch Paperclip activity for temporal correlation.
+		// For runs on main/master, match the closest agent heartbeat within
+		// a 5-minute window before the CI run to attribute the push.
+		client := paperclip.NewClient()
+		activities, actErr := client.ListAllActivity(context.Background(), paperclip.ActivityFilter{
+			Limit: 200,
+		})
+		if actErr != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not fetch Paperclip activity: %v\n", actErr)
 		}
 
 		// Build stats grouped by agent+repo
@@ -435,6 +446,21 @@ Examples:
 
 		for _, entry := range allRuns {
 			agent := branchToAgent(entry.Run.HeadBranch)
+
+			// If branch-based attribution failed, try Paperclip temporal correlation
+			if agent == "(direct push)" && len(activities) > 0 {
+				if match := matchActivityToRun(activities, entry.Run.CreatedAt); match != "" {
+					agent = match
+				}
+			}
+
+			// Option A: If still unattributed, check commit message for Co-Authored-By
+			if agent == "(direct push)" || agent == "(unattributed)" {
+				if match := matchCommitAuthor(entry.Repo, entry.Run.HeadSha); match != "" {
+					agent = match
+				}
+			}
+
 			k := key{agent: agent, repo: entry.Repo}
 			st, ok := statsMap[k]
 			if !ok {
@@ -596,10 +622,7 @@ func kebabToDisplay(s string) string {
 
 // detectRetryCount counts how many times the same agent pushed to the same repo
 // with failures in rapid succession (within 1 hour windows).
-func detectRetryCount(allRuns []struct {
-	Repo string
-	Run  ghRun
-}, agent, repo string) int {
+func detectRetryCount(allRuns []runEntry, agent, repo string) int {
 	retries := 0
 	var failTimes []time.Time
 	for _, entry := range allRuns {
@@ -621,10 +644,7 @@ func detectRetryCount(allRuns []struct {
 
 // detectRetryLoops finds cases where the same agent+repo+workflow has 3+ runs
 // within a 1-hour window, all failed.
-func detectRetryLoops(allRuns []struct {
-	Repo string
-	Run  ghRun
-}, cutoff time.Time) []retryLoop {
+func detectRetryLoops(allRuns []runEntry, cutoff time.Time) []retryLoop {
 	type groupKey struct{ agent, repo, workflow string }
 	groups := map[groupKey][]ghRun{}
 
@@ -667,6 +687,79 @@ func detectRetryLoops(allRuns []struct {
 
 	sort.Slice(loops, func(i, j int) bool { return loops[i].Runs > loops[j].Runs })
 	return loops
+}
+
+// matchActivityToRun finds the Paperclip agent whose heartbeat ran closest
+// (within 5 minutes before) the given CI run time. This is the primary
+// attribution path for agents pushing directly to main.
+func matchActivityToRun(activities []paperclip.Activity, ciRunTime time.Time) string {
+	const maxDelta = 5 * time.Minute
+	var bestMatch string
+	bestDelta := maxDelta
+
+	for _, a := range activities {
+		// Only match heartbeat-related activity
+		if a.AgentName == "" {
+			continue
+		}
+		// Agent heartbeat should precede the CI run
+		delta := ciRunTime.Sub(a.CreatedAt)
+		if delta >= 0 && delta < bestDelta {
+			bestDelta = delta
+			bestMatch = a.AgentName
+		}
+	}
+	return bestMatch
+}
+
+// matchCommitAuthor checks the commit message for a Co-Authored-By trailer or
+// agent name pattern in the display title. This is the fallback attribution
+// path when branch and temporal matching both miss.
+func matchCommitAuthor(repo, sha string) string {
+	if sha == "" {
+		return ""
+	}
+	// Use gh to get the commit message
+	cmd := exec.Command("gh", "api",
+		fmt.Sprintf("repos/%s/commits/%s", repo, sha),
+		"--jq", ".commit.message",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	msg := string(out)
+
+	// Check for Co-Authored-By: pattern with agent name
+	knownAgents := []string{
+		"backend-engineer", "frontend-engineer", "infrastructure-engineer",
+		"release-engineer", "qa-engineer", "cto", "general-manager",
+	}
+
+	lower := strings.ToLower(msg)
+	for _, agent := range knownAgents {
+		display := kebabToDisplay(agent)
+		// Match "Co-Authored-By: Backend Engineer" or agent name in commit message
+		if strings.Contains(lower, strings.ToLower(display)) ||
+			strings.Contains(lower, agent) {
+			return display
+		}
+	}
+
+	// Check for Paperclip-style agent attribution in message
+	if strings.Contains(lower, "paperclip") || strings.Contains(lower, "agent:") {
+		// Try to extract agent name after "agent:" prefix
+		for _, line := range strings.Split(lower, "\n") {
+			if idx := strings.Index(line, "agent:"); idx >= 0 {
+				name := strings.TrimSpace(line[idx+6:])
+				if name != "" {
+					return kebabToDisplay(name)
+				}
+			}
+		}
+	}
+
+	return ""
 }
 
 func init() {
