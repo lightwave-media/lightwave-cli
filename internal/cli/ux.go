@@ -10,6 +10,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/db"
+	"github.com/lightwave-media/lightwave-cli/internal/paperclip"
 	"github.com/lightwave-media/lightwave-cli/internal/ux"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -479,6 +480,81 @@ func formatItemDescription(item ux.ImprovementItem, sessionID string) string {
 	return desc
 }
 
+// ── route ────────────────────────────────────────────────────────────────
+
+const researchAnalystAgentID = "1446de3c-4bf5-41bf-a774-6a96f3f6ac91"
+
+var uxRouteCmd = &cobra.Command{
+	Use:   "route [session-id]",
+	Short: "Create a Paperclip issue from session analysis (assigned to Research Analyst)",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var session *ux.Session
+		var err error
+
+		if len(args) > 0 {
+			session, err = ux.LoadSession(args[0])
+		} else {
+			session, err = ux.LatestSession()
+		}
+		if err != nil {
+			return err
+		}
+
+		if session.Status != ux.StatusAnalyzed {
+			return fmt.Errorf("session %s has not been analyzed yet — run 'lw ux analyze %s'", session.ID, session.ID)
+		}
+
+		analysisData, err := os.ReadFile(ux.AnalysisPath(session.ID))
+		if err != nil {
+			return fmt.Errorf("read analysis: %w", err)
+		}
+
+		pctx, err := paperclip.LoadContext()
+		if err != nil {
+			return fmt.Errorf("load paperclip context: %w", err)
+		}
+		companyID := pctx.ResolveCompanyID("")
+		if companyID == "" {
+			return fmt.Errorf("no paperclip company bound — run 'paperclipai auth' first")
+		}
+
+		items, _ := ux.LoadItems(session.ID)
+
+		title := fmt.Sprintf("UX session review: %s", session.ID)
+		if session.Name != "" {
+			title = fmt.Sprintf("UX session review: %s", session.Name)
+		}
+
+		description := fmt.Sprintf("## UX Session: %s\n\n", session.ID)
+		if session.Name != "" {
+			description += fmt.Sprintf("**Name:** %s\n\n", session.Name)
+		}
+		description += fmt.Sprintf("**Duration:** %s\n**Items found:** %d\n\n", ux.FormatDuration(session.DurationSecs), len(items))
+		description += "## Analysis\n\n" + string(analysisData)
+		if _, statErr := os.Stat(ux.DockerSyncedPath(session.ID)); statErr == nil {
+			description += fmt.Sprintf("\n\n**Docker logs:** `%s`", ux.DockerSyncedPath(session.ID))
+		}
+
+		ctx := context.Background()
+		client := paperclip.NewClient()
+		issue, err := client.CreateIssue(ctx, companyID, paperclip.Issue{
+			Title:           title,
+			Description:     description,
+			Status:          "todo",
+			AssigneeAgentID: researchAnalystAgentID,
+		})
+		if err != nil {
+			return fmt.Errorf("create issue: %w", err)
+		}
+
+		fmt.Printf("%s Issue created: %s\n", color.GreenString("✓"), color.CyanString(issue.ID))
+		fmt.Printf("   Title:    %s\n", issue.Title)
+		fmt.Printf("   Assignee: Research Analyst\n")
+
+		return nil
+	},
+}
+
 // ── helpers ─────────────────────────────────────────────────────────────
 
 func printItems(items []ux.ImprovementItem) {
@@ -560,6 +636,7 @@ func init() {
 	uxCmd.AddCommand(uxPlayCmd)
 	uxCmd.AddCommand(uxDevicesCmd)
 	uxCmd.AddCommand(uxBacklogCmd)
+	uxCmd.AddCommand(uxRouteCmd)
 	uxDeleteCmd.Flags().BoolVar(&uxDeleteForce, "force", false, "Delete even if session has analysis data")
 	uxCmd.AddCommand(uxDeleteCmd)
 }
