@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -15,6 +16,9 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
+
+// shaKey identifies a (repo, sha) pair for cached commit-author lookups.
+type shaKey struct{ repo, sha string }
 
 // --- shared helpers ---
 
@@ -440,23 +444,34 @@ Examples:
 			fmt.Fprintf(os.Stderr, "warning: could not fetch Paperclip activity: %v\n", actErr)
 		}
 
-		// Build stats grouped by agent+repo
-		type key struct{ agent, repo string }
-		statsMap := map[key]*ciAgentStats{}
-
-		for _, entry := range allRuns {
+		// First pass: branch + activity attribution. Collect (repo, sha) pairs
+		// that still need a commit-author lookup so we can batch them in parallel.
+		preAgents := make([]string, len(allRuns))
+		needLookup := map[shaKey]struct{}{}
+		for i, entry := range allRuns {
 			agent := branchToAgent(entry.Run.HeadBranch)
-
-			// If branch-based attribution failed, try Paperclip temporal correlation
 			if agent == "(direct push)" && len(activities) > 0 {
 				if match := matchActivityToRun(activities, entry.Run.CreatedAt); match != "" {
 					agent = match
 				}
 			}
+			preAgents[i] = agent
+			if (agent == "(direct push)" || agent == "(unattributed)") && entry.Run.HeadSha != "" {
+				needLookup[shaKey{entry.Repo, entry.Run.HeadSha}] = struct{}{}
+			}
+		}
 
-			// Option A: If still unattributed, check commit message for Co-Authored-By
+		// Parallel commit-author lookup with concurrency cap + per-call timeout.
+		// Sequential `gh api` calls were the source of the multi-minute hang.
+		authorCache := batchMatchCommitAuthors(needLookup, 8, 3*time.Second)
+
+		// Second pass: apply lookup results and build stats.
+		type key struct{ agent, repo string }
+		statsMap := map[key]*ciAgentStats{}
+		for i, entry := range allRuns {
+			agent := preAgents[i]
 			if agent == "(direct push)" || agent == "(unattributed)" {
-				if match := matchCommitAuthor(entry.Repo, entry.Run.HeadSha); match != "" {
+				if match := authorCache[shaKey{entry.Repo, entry.Run.HeadSha}]; match != "" {
 					agent = match
 				}
 			}
@@ -839,15 +854,67 @@ func matchActivityToRun(activities []paperclip.Activity, ciRunTime time.Time) st
 	return bestMatch
 }
 
+// batchMatchCommitAuthors runs matchCommitAuthor across many (repo, sha) pairs
+// in parallel with a concurrency cap and per-call timeout. Returns a cache map.
+// Sequential gh api calls were causing multi-minute hangs in `lw agent ci-report`.
+func batchMatchCommitAuthors(pairs map[shaKey]struct{}, concurrency int, perCallTimeout time.Duration) map[shaKey]string {
+	out := make(map[shaKey]string, len(pairs))
+	if len(pairs) == 0 {
+		return out
+	}
+	if concurrency < 1 {
+		concurrency = 1
+	}
+	type result struct {
+		key    shaKey
+		author string
+	}
+	jobs := make(chan shaKey, len(pairs))
+	results := make(chan result, len(pairs))
+	var wg sync.WaitGroup
+	for i := 0; i < concurrency; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for k := range jobs {
+				ctx, cancel := context.WithTimeout(context.Background(), perCallTimeout)
+				author := matchCommitAuthorCtx(ctx, k.repo, k.sha)
+				cancel()
+				results <- result{key: k, author: author}
+			}
+		}()
+	}
+	for k := range pairs {
+		jobs <- k
+	}
+	close(jobs)
+	go func() {
+		wg.Wait()
+		close(results)
+	}()
+	for r := range results {
+		if r.author != "" {
+			out[r.key] = r.author
+		}
+	}
+	return out
+}
+
 // matchCommitAuthor checks the commit message for a Co-Authored-By trailer or
 // agent name pattern in the display title. This is the fallback attribution
 // path when branch and temporal matching both miss.
 func matchCommitAuthor(repo, sha string) string {
+	return matchCommitAuthorCtx(context.Background(), repo, sha)
+}
+
+// matchCommitAuthorCtx is matchCommitAuthor with a cancellation context so
+// callers can bound the gh api call.
+func matchCommitAuthorCtx(ctx context.Context, repo, sha string) string {
 	if sha == "" {
 		return ""
 	}
 	// Use gh to get the commit message
-	cmd := exec.Command("gh", "api",
+	cmd := exec.CommandContext(ctx, "gh", "api",
 		fmt.Sprintf("repos/%s/commits/%s", repo, sha),
 		"--jq", ".commit.message",
 	)
