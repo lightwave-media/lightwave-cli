@@ -1,10 +1,12 @@
 package ux
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -185,7 +187,13 @@ func StopRecording(session *Session) error {
 	os.Remove(pidsPath(session.ID))
 	os.Remove(PIDPath(session.ID))
 
-	return session.Save()
+	if err := session.Save(); err != nil {
+		return err
+	}
+
+	// Best-effort: generate time-anchored docker log JSONL
+	_ = generateSyncedLog(session)
+	return nil
 }
 
 // stopLegacy handles sessions that only have the old single-pid file.
@@ -227,7 +235,13 @@ func stopLegacy(session *Session) error {
 	}
 
 	os.Remove(PIDPath(session.ID))
-	return session.Save()
+	if err := session.Save(); err != nil {
+		return err
+	}
+
+	// Best-effort: generate time-anchored docker log JSONL
+	_ = generateSyncedLog(session)
+	return nil
 }
 
 // IsFFmpegRunning checks if the ffmpeg process for a session is still alive.
@@ -255,6 +269,114 @@ func IsFFmpegRunning(session *Session) bool {
 		return false
 	}
 	return process.Signal(syscall.Signal(0)) == nil
+}
+
+// syncedLogEntry is one line in docker.synced.jsonl.
+type syncedLogEntry struct {
+	OffsetSeconds float64 `json:"offset_seconds"`
+	Service       string  `json:"service"`
+	Level         string  `json:"level"`
+	Message       string  `json:"message"`
+}
+
+// generateSyncedLog parses backend.log and frontend.log captured during a session
+// and writes docker.synced.jsonl with offset_seconds relative to session_start_time.
+func generateSyncedLog(session *Session) error {
+	if session.SessionStartTime == "" {
+		return nil
+	}
+
+	startTime, err := time.Parse(time.RFC3339, session.SessionStartTime)
+	if err != nil {
+		return fmt.Errorf("parse session_start_time: %w", err)
+	}
+
+	var entries []syncedLogEntry
+
+	for _, service := range []string{"backend", "frontend"} {
+		logPath := filepath.Join(SessionDir(session.ID), service+".log")
+		data, err := os.ReadFile(logPath)
+		if err != nil {
+			continue
+		}
+
+		scanner := bufio.NewScanner(strings.NewReader(string(data)))
+		for scanner.Scan() {
+			line := scanner.Text()
+			if strings.TrimSpace(line) == "" {
+				continue
+			}
+			entry := parseDockerLogLine(line, service, startTime)
+			if entry != nil {
+				entries = append(entries, *entry)
+			}
+		}
+	}
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	f, err := os.Create(DockerSyncedPath(session.ID))
+	if err != nil {
+		return fmt.Errorf("create synced log: %w", err)
+	}
+	defer f.Close()
+
+	enc := json.NewEncoder(f)
+	for _, entry := range entries {
+		if err := enc.Encode(entry); err != nil {
+			return fmt.Errorf("write entry: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// parseDockerLogLine extracts a syncedLogEntry from a docker compose log line.
+// Docker compose logs --timestamps format: "{service}  | {RFC3339Nano_timestamp} {message}"
+func parseDockerLogLine(line, service string, startTime time.Time) *syncedLogEntry {
+	// Strip the "{service} | " prefix added by docker compose
+	if idx := strings.Index(line, " | "); idx != -1 {
+		line = strings.TrimSpace(line[idx+3:])
+	}
+
+	// Timestamp is the first space-delimited token
+	space := strings.IndexByte(line, ' ')
+	if space < 1 {
+		return nil
+	}
+
+	rawTS, message := line[:space], strings.TrimSpace(line[space+1:])
+	if message == "" {
+		return nil
+	}
+
+	ts, err := time.Parse(time.RFC3339Nano, rawTS)
+	if err != nil {
+		ts, err = time.Parse(time.RFC3339, rawTS)
+		if err != nil {
+			return nil
+		}
+	}
+
+	return &syncedLogEntry{
+		OffsetSeconds: ts.Sub(startTime).Seconds(),
+		Service:       service,
+		Level:         detectLogLevel(message),
+		Message:       message,
+	}
+}
+
+// detectLogLevel scans a log message for common level keywords.
+func detectLogLevel(line string) string {
+	upper := strings.ToUpper(line)
+	for _, level := range []string{"CRITICAL", "ERROR", "WARNING", "WARN", "DEBUG", "INFO"} {
+		if strings.Contains(upper, level) {
+			return strings.ToLower(level)
+		}
+	}
+	return "info"
 }
 
 // FormatDuration converts seconds to a human-readable duration string.
