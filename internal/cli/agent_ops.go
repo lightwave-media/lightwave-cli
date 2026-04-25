@@ -558,6 +558,133 @@ Examples:
 	},
 }
 
+// --- lw agent ci-preflight ---
+//
+// Pre-push gate. Refuses to push if the target branch is hot — i.e. the
+// recent run history shows a cluster of failures. Designed to short-circuit
+// retry-loop burn from agents pushing fixes on top of red CI.
+//
+// Fast path only: no Paperclip calls, no per-commit gh api lookups. Just
+// `gh run list --branch <branch>` per repo and arithmetic.
+
+var (
+	ciPreflightBranch    string
+	ciPreflightWindow    string
+	ciPreflightThreshold int
+	ciPreflightRepo      string
+)
+
+var agentCIPreflightCmd = &cobra.Command{
+	Use:   "ci-preflight",
+	Short: "Block push if target branch CI is hot",
+	Long: `Refuse to push when the target branch has clustered CI failures
+in the recent window. Designed as a pre-push gate.
+
+Exits 0 if branch is healthy, 1 if push should be blocked.
+
+Examples:
+  lw agent ci-preflight
+  lw agent ci-preflight --branch main --window 30m --threshold 3
+  lw agent ci-preflight --repo lightwave-media/lightwave-platform`,
+	SilenceUsage:  true,
+	SilenceErrors: true,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if os.Getenv("LW_CI_PREFLIGHT_BYPASS") == "1" {
+			fmt.Fprintln(os.Stderr, "ci-preflight: bypass via LW_CI_PREFLIGHT_BYPASS=1")
+			return nil
+		}
+		window, err := time.ParseDuration(ciPreflightWindow)
+		if err != nil {
+			return fmt.Errorf("invalid --window: %w", err)
+		}
+		cutoff := time.Now().Add(-window)
+
+		repos := monitoredRepos
+		if ciPreflightRepo != "" {
+			repos = []string{ciPreflightRepo}
+		} else if cwdRepo := detectCwdRepo(); cwdRepo != "" {
+			repos = []string{cwdRepo}
+		}
+
+		hot := false
+		for _, repo := range repos {
+			runs, err := fetchGHRunsForBranch(repo, ciPreflightBranch, 30)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "ci-preflight: skip %s (%v)\n", repo, err)
+				continue
+			}
+			fails := 0
+			for _, r := range runs {
+				if !r.CreatedAt.After(cutoff) {
+					continue
+				}
+				if r.Conclusion == "failure" {
+					fails++
+				}
+			}
+			if fails >= ciPreflightThreshold {
+				hot = true
+				fmt.Fprintf(os.Stderr,
+					"ci-preflight: BLOCK %s/%s — %d failures in last %s (threshold %d)\n",
+					repo, ciPreflightBranch, fails, ciPreflightWindow, ciPreflightThreshold,
+				)
+			}
+		}
+
+		if hot {
+			fmt.Fprintln(os.Stderr,
+				"\nPush blocked. The branch is in a failure cluster. Investigate before pushing more.\n"+
+					"Override (last resort): LW_CI_PREFLIGHT_BYPASS=1 git push")
+			return fmt.Errorf("ci-preflight: branch is hot")
+		}
+		return nil
+	},
+}
+
+// fetchGHRunsForBranch fetches recent runs filtered by branch.
+func fetchGHRunsForBranch(repo, branch string, limit int) ([]ghRun, error) {
+	cmd := exec.Command("gh", "run", "list",
+		"--repo", repo,
+		"--branch", branch,
+		"--limit", fmt.Sprintf("%d", limit),
+		"--json", "databaseId,name,status,conclusion,headBranch,headSha,createdAt,displayTitle",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("gh run list for %s@%s: %w", repo, branch, err)
+	}
+	var runs []ghRun
+	if err := json.Unmarshal(out, &runs); err != nil {
+		return nil, fmt.Errorf("parse gh output for %s: %w", repo, err)
+	}
+	return runs, nil
+}
+
+// detectCwdRepo returns the lightwave-media/<repo> slug for the current
+// working directory's git remote, or "" if it can't be determined.
+func detectCwdRepo() string {
+	cmd := exec.Command("git", "config", "--get", "remote.origin.url")
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	url := strings.TrimSpace(string(out))
+	// Match lightwave-media/<repo> in either SSH or HTTPS form.
+	for _, prefix := range []string{
+		"git@github.com:lightwave-media/",
+		"https://github.com/lightwave-media/",
+	} {
+		if strings.HasPrefix(url, prefix) {
+			rest := strings.TrimPrefix(url, prefix)
+			rest = strings.TrimSuffix(rest, ".git")
+			if rest != "" {
+				return "lightwave-media/" + rest
+			}
+		}
+	}
+	return ""
+}
+
 // fetchGHRuns shells out to `gh run list` for a repo.
 func fetchGHRuns(repo string, limit int) ([]ghRun, error) {
 	cmd := exec.Command("gh", "run", "list",
@@ -775,6 +902,12 @@ func init() {
 	agentCIReportCmd.Flags().StringVar(&ciReportWindow, "window", "24h", "Time window to analyze")
 	agentCIReportCmd.Flags().StringVar(&ciReportRepo, "repo", "", "Filter to a single repo")
 
+	// ci-preflight flags
+	agentCIPreflightCmd.Flags().StringVar(&ciPreflightBranch, "branch", "main", "Branch to check")
+	agentCIPreflightCmd.Flags().StringVar(&ciPreflightWindow, "window", "30m", "Recency window")
+	agentCIPreflightCmd.Flags().IntVar(&ciPreflightThreshold, "threshold", 3, "Failure count that blocks push")
+	agentCIPreflightCmd.Flags().StringVar(&ciPreflightRepo, "repo", "", "Limit check to a single repo (default: derive from cwd)")
+
 	// Register with parent agent command
 	agentCmd.AddCommand(agentPauseCmd)
 	agentCmd.AddCommand(agentResumeCmd)
@@ -782,4 +915,5 @@ func init() {
 	agentCmd.AddCommand(agentLogsCmd)
 	agentCmd.AddCommand(agentRunsCmd)
 	agentCmd.AddCommand(agentCIReportCmd)
+	agentCmd.AddCommand(agentCIPreflightCmd)
 }
