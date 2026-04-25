@@ -1,0 +1,96 @@
+name: Claude Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+      id-token: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code Review
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Please review this pull request and provide feedback on:
+            - Code quality and best practices
+            - Potential bugs or issues
+            - Performance considerations
+            - Security concerns
+            - Test coverage
+
+            Use the repository's CLAUDE.md for guidance on style and conventions.
+            Be constructive and helpful in your feedback.
+
+            Use `gh pr comment` with your Bash tool to leave your review as a comment on the PR.
+          claude_args: '--allowed-tools "Bash(gh issue view:*),Bash(gh search:*),Bash(gh issue list:*),Bash(gh pr comment:*),Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr list:*)"'
+
+      - name: Feed review to Paperclip
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PAPERCLIP_API_URL: ${{ secrets.PAPERCLIP_API_URL }}
+          PAPERCLIP_API_KEY: ${{ secrets.PAPERCLIP_API_KEY }}
+          PAPERCLIP_COMPANY_ID: ${{ secrets.PAPERCLIP_COMPANY_ID }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          REPO_NAME: ${{ github.repository }}
+          BRANCH_NAME: ${{ github.head_ref }}
+        run: |
+          if [ -z "$PAPERCLIP_API_KEY" ]; then
+            echo "PAPERCLIP_API_KEY not set, skipping Paperclip sync"
+            exit 0
+          fi
+
+          # Extract issue identifier from branch name or PR title (e.g. LIGA-554)
+          ISSUE_REF=$(echo "${BRANCH_NAME} ${PR_TITLE}" | grep -oiE '[A-Z]+-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]')
+          if [ -z "$ISSUE_REF" ]; then
+            echo "No issue identifier found in branch/title, skipping"
+            exit 0
+          fi
+
+          REVIEW=$(gh api "repos/${REPO_NAME}/issues/${PR_NUMBER}/comments" \
+            --jq '[.[] | select(.user.login == "claude[bot]")] | last | .body // empty')
+          if [ -z "$REVIEW" ]; then
+            echo "No review comment found, skipping"
+            exit 0
+          fi
+
+          # Find Paperclip issue UUID by identifier
+          PAPERCLIP_ISSUE_ID=$(curl -sf \
+            "${PAPERCLIP_API_URL}/api/companies/${PAPERCLIP_COMPANY_ID}/issues?q=${ISSUE_REF}" \
+            -H "Authorization: Bearer ${PAPERCLIP_API_KEY}" \
+            | jq -r --arg ref "$ISSUE_REF" '.items[]? | select(.identifier == $ref) | .id' | head -1)
+
+          if [ -z "$PAPERCLIP_ISSUE_ID" ]; then
+            echo "Issue ${ISSUE_REF} not found in Paperclip, skipping"
+            exit 0
+          fi
+
+          BODY=$(printf "## Claude Code Review: %s PR #%s\n\n**Author:** %s\n**PR:** [%s](%s)\n\n---\n\n%s" \
+            "${REPO_NAME}" "${PR_NUMBER}" "${PR_AUTHOR}" "${PR_TITLE}" "${PR_URL}" "${REVIEW}")
+
+          curl -sf -X POST "${PAPERCLIP_API_URL}/api/issues/${PAPERCLIP_ISSUE_ID}/comments" \
+            -H "Authorization: Bearer ${PAPERCLIP_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -n --arg body "$BODY" '{body: $body}')" \
+            && echo "Review posted to Paperclip issue ${ISSUE_REF}" \
+            || echo "Paperclip post failed (non-blocking)"
