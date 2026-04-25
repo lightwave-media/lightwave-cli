@@ -17,14 +17,15 @@ const (
 
 // Session represents a UX recording session.
 type Session struct {
-	ID           string `json:"id"`
-	Name         string `json:"name,omitempty"`
-	StartedAt    string `json:"started_at"`
-	StoppedAt    string `json:"stopped_at,omitempty"`
-	DurationSecs int    `json:"duration_secs,omitempty"`
-	Status       string `json:"status"`
-	Screen       int    `json:"screen"`
-	AudioDevice  int    `json:"audio_device"`
+	ID               string `json:"id"`
+	Name             string `json:"name,omitempty"`
+	StartedAt        string `json:"started_at"`
+	SessionStartTime string `json:"session_start_time,omitempty"`
+	StoppedAt        string `json:"stopped_at,omitempty"`
+	DurationSecs     int    `json:"duration_secs,omitempty"`
+	Status           string `json:"status"`
+	Screen           int    `json:"screen"`
+	AudioDevice      int    `json:"audio_device"`
 }
 
 // ImprovementItem is a single UX improvement extracted by Claude.
@@ -85,6 +86,11 @@ func ItemsPath(id string) string {
 	return filepath.Join(SessionDir(id), "items.jsonl")
 }
 
+// DockerSyncedPath returns the path to the time-anchored docker log JSONL.
+func DockerSyncedPath(id string) string {
+	return filepath.Join(SessionDir(id), "docker.synced.jsonl")
+}
+
 // AnalysisPath returns the path to the full analysis output.
 func AnalysisPath(id string) string {
 	return filepath.Join(SessionDir(id), "analysis.md")
@@ -119,13 +125,15 @@ func CreateSession(name string, screen, audioDevice int) (*Session, error) {
 		return nil, fmt.Errorf("create session dir: %w", err)
 	}
 
+	now := time.Now().UTC()
 	s := &Session{
-		ID:          id,
-		Name:        name,
-		StartedAt:   time.Now().Format(time.RFC3339),
-		Status:      StatusRecording,
-		Screen:      screen,
-		AudioDevice: audioDevice,
+		ID:               id,
+		Name:             name,
+		StartedAt:        now.Format(time.RFC3339),
+		SessionStartTime: now.Format(time.RFC3339),
+		Status:           StatusRecording,
+		Screen:           screen,
+		AudioDevice:      audioDevice,
 	}
 
 	if err := s.Save(); err != nil {
