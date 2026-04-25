@@ -24,6 +24,7 @@ var (
 	logsLimit       int32
 	forceDeployment bool
 	waitStable      bool
+	taskDefFile     string
 )
 
 var awsCmd = &cobra.Command{
@@ -94,6 +95,55 @@ Examples:
 			return err
 		}
 
+		fmt.Println(color.GreenString("✓ Deployment initiated"))
+
+		if waitStable {
+			fmt.Println("Waiting for service to stabilize...")
+			if err := client.WaitForStableService(ctx, serviceName); err != nil {
+				return fmt.Errorf("service did not stabilize: %w", err)
+			}
+			fmt.Println(color.GreenString("✓ Service is stable"))
+		}
+
+		return nil
+	},
+}
+
+var ecsApplyTaskDefCmd = &cobra.Command{
+	Use:   "apply-task-def <service>",
+	Short: "Register a task definition from file and deploy it",
+	Long: `Register a new task definition from a JSON file and update the service to use it.
+
+This is the emergency deploy path when GitHub Actions is unavailable.
+
+Examples:
+  lw aws ecs apply-task-def platform-prod-frontend --file .aws/task-definition-frontend.json
+  lw aws ecs apply-task-def platform-prod-frontend --file .aws/task-definition-frontend.json --wait`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		ctx := context.Background()
+		serviceName := args[0]
+
+		if taskDefFile == "" {
+			return fmt.Errorf("--file is required")
+		}
+
+		client, err := aws.NewECSClient(ctx, ecsCluster)
+		if err != nil {
+			return err
+		}
+
+		fmt.Printf("Registering task definition from %s...\n", color.CyanString(taskDefFile))
+		taskDefArn, err := client.RegisterTaskDefinitionFromFile(ctx, taskDefFile)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("%s Registered: %s\n", color.GreenString("✓"), taskDefArn)
+
+		fmt.Printf("Updating service %s...\n", color.CyanString(serviceName))
+		if err := client.UpdateServiceWithTaskDef(ctx, serviceName, taskDefArn); err != nil {
+			return err
+		}
 		fmt.Println(color.GreenString("✓ Deployment initiated"))
 
 		if waitStable {
@@ -286,6 +336,8 @@ func init() {
 	ecsCmd.PersistentFlags().StringVar(&ecsCluster, "cluster", defaultCluster, "ECS cluster name")
 	ecsDeployCmd.Flags().BoolVar(&forceDeployment, "force", true, "Force new deployment")
 	ecsDeployCmd.Flags().BoolVar(&waitStable, "wait", false, "Wait for service to stabilize")
+	ecsApplyTaskDefCmd.Flags().StringVar(&taskDefFile, "file", "", "Path to task definition JSON file")
+	ecsApplyTaskDefCmd.Flags().BoolVar(&waitStable, "wait", false, "Wait for service to stabilize")
 
 	// Logs flags
 	logsCmd.PersistentFlags().StringVar(&logGroup, "group", defaultLogGroup, "Log group name")
@@ -295,6 +347,7 @@ func init() {
 	// Add ECS subcommands
 	ecsCmd.AddCommand(ecsStatusCmd)
 	ecsCmd.AddCommand(ecsDeployCmd)
+	ecsCmd.AddCommand(ecsApplyTaskDefCmd)
 	ecsCmd.AddCommand(ecsTasksCmd)
 
 	// Add Logs subcommands

@@ -24,8 +24,8 @@ var serviceConfigs = map[string]struct {
 	},
 	"frontend": {
 		repository: "platform-frontend",
-		dockerfile: "lightwave-platform/src/Dockerfile.frontend",
-		context:    "lightwave-platform/src/",
+		dockerfile: "lightwave-platform/src/frontend/Dockerfile.frontend",
+		context:    "lightwave-platform/src/frontend/",
 	},
 }
 
