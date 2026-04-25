@@ -1,13 +1,17 @@
 package cli
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/version"
 	"github.com/spf13/cobra"
 )
+
+var versionJSON bool
 
 var (
 	cfgFile string
@@ -83,11 +87,41 @@ func init() {
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
-	Run: func(cmd *cobra.Command, args []string) {
+	Long: `Print version information.
+
+The --json flag emits machine-readable output including a per-subsystem API
+version map. Plugins and scripts that depend on lw subcommands should pin a
+minimum API version for the subsystem they call (e.g. "paperclip") rather
+than the binary's release version — release tags can move without breaking
+any subsystem, and subsystem APIs can break between patch releases.`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if versionJSON {
+			payload := map[string]any{
+				"version": version.Version,
+				"commit":  version.Commit,
+				"date":    version.Date,
+				"apis":    version.APIs(),
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			return enc.Encode(payload)
+		}
 		fmt.Printf("lw version %s\n", version.Version)
 		fmt.Printf("  commit: %s\n", version.Commit)
 		fmt.Printf("  built:  %s\n", version.Date)
+		apis := version.APIs()
+		if len(apis) > 0 {
+			fmt.Println("  apis:")
+			for name, v := range apis {
+				fmt.Printf("    %s: %d\n", name, v)
+			}
+		}
+		return nil
 	},
+}
+
+func init() {
+	versionCmd.Flags().BoolVar(&versionJSON, "json", false, "output JSON")
 }
 
 // configCmd manages configuration

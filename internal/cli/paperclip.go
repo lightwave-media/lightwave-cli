@@ -10,9 +10,16 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/paperclip"
+	"github.com/lightwave-media/lightwave-cli/internal/version"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
+
+// PaperclipAPIVersion is the contract version of the `lw paperclip` subtree.
+// Bump on any breaking change: subcommand rename/removal, positional-arg
+// reshuffle, --flag rename, or output-schema change. Consumers (plugins,
+// scripts) pin a minimum value and refuse to run when below.
+const PaperclipAPIVersion = 1
 
 var (
 	paperclipJSON      bool
@@ -36,6 +43,7 @@ of type "review" with participants — manage those via 'paperclipai issue updat
 }
 
 func init() {
+	version.RegisterAPI("paperclip", PaperclipAPIVersion)
 	rootCmd.AddCommand(paperclipCmd)
 
 	paperclipCmd.PersistentFlags().BoolVar(&paperclipJSON, "json", false, "output JSON")
