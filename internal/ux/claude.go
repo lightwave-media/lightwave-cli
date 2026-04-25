@@ -25,11 +25,17 @@ You will receive:
 1. Timestamped transcript segments (what the user said)
 2. Screen captures at key moments (what was on screen)
 3. Server logs from the backend and frontend (errors, warnings, HTTP failures) captured during the session
+4. Time-anchored docker logs (docker.synced.jsonl) — each entry has an offset_seconds field relative to recording start
+
+When describing a UX issue, correlate transcript timestamps with nearby log entries.
+Reference the log evidence using offset notation. For example:
+"At 2:14, user clicked submit; logs show at offset +0.2s backend returned HTTP 500 from payment endpoint."
+If no correlated log signal exists for an issue, note explicitly: "No correlated log signal found."
 
 Extract improvement items. For each item, provide:
 - severity: "critical" | "major" | "minor"
 - category: "bug" | "usability" | "design" | "performance" | "content" | "feature_request"
-- description: What the issue or request is
+- description: What the issue or request is (include log evidence with offset timestamps where correlated)
 - user_quote: The relevant quote from the narration (if applicable)
 - affected_component: Which page, section, or component is affected
 - timestamp: Approximate time in the recording (MM:SS)
@@ -90,17 +96,20 @@ type chatError struct {
 	Type    string `json:"type"`
 }
 
-// AnalyzeWithClaude sends transcript + keyframes + server logs to Claude via the local proxy.
-func AnalyzeWithClaude(ctx context.Context, sessionID string, transcript string, framePaths []string, serverLogs string) (*AnalysisResult, error) {
+// AnalyzeWithClaude sends transcript + keyframes + server logs + synced docker logs to Claude via the local proxy.
+func AnalyzeWithClaude(ctx context.Context, sessionID string, transcript string, framePaths []string, serverLogs string, syncedLogs string) (*AnalysisResult, error) {
 	// Build multimodal content parts
 	var parts []contentPart
 
-	// Transcript + server logs as text
+	// Transcript + server logs + synced logs as text
 	textContent := fmt.Sprintf("## Transcript\n\n%s", transcript)
 	if serverLogs != "" {
 		textContent += "\n" + serverLogs
 	}
-	textContent += "\n\n## Screen Captures\n\nThe following images are keyframes extracted from the recording at regular intervals. Analyze them alongside the transcript and server logs above."
+	if syncedLogs != "" {
+		textContent += "\n\n## Time-Anchored Docker Logs (docker.synced.jsonl)\n\nEach entry is relative to recording start. Use offset_seconds to correlate with transcript timestamps.\n\n" + syncedLogs
+	}
+	textContent += "\n\n## Screen Captures\n\nThe following images are keyframes extracted from the recording at regular intervals. Analyze them alongside the transcript and logs above."
 
 	parts = append(parts, contentPart{
 		Type: "text",
