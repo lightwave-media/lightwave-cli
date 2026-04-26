@@ -21,6 +21,19 @@ Every new destructive `lw` subcommand ships with a `--dry-run` flag (preview onl
 ### SST is the Source of Truth, the CLI Mediates
 Vendor-facing destructive operations (S3, ECS, RDS, etc.) belong behind an `lw` subcommand that reads structure from SST YAML — agents do not get raw vendor CLI access. The Claude Code global deny on `aws s3 rm` is intentional. To clean up a bucket: extend `lw cdn` against `assets.yaml` (or the relevant SST file), don't ask for the deny to be loosened.
 
+### Push Circuit Breaker
+
+After 3 consecutive CI/pre-commit failures on the same branch, the stop hook blocks further progress and requires escalation.
+
+**State file:** `~/.local/state/lightwave/push-circuit-breaker.json`
+- Keyed by branch name
+- Fields: `consecutiveFailures` (int), `lastError` (string), `lastAttempt` (ISO8601)
+
+**Rules:**
+- If `consecutiveFailures >= 3` on the current branch: do NOT push or attempt further commits — escalate to your manager with the repeating error
+- The counter increments on each pre-commit failure; resets to 0 on success
+- To manually unblock after manager guidance: delete the branch entry from the state file
+
 ### `lw cdn reconcile` Cheat Sheet
 - `lw cdn reconcile --dry-run` — show legacy prefixes vs SST allowlist, exit
 - `lw cdn reconcile` — interactive: drift table, then `[y/N]` prompt
