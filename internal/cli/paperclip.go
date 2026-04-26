@@ -63,6 +63,10 @@ func init() {
 	paperclipGoalCmd.AddCommand(paperclipGoalCreateCmd)
 	paperclipGoalCmd.AddCommand(paperclipGoalListCmd)
 	paperclipCmd.AddCommand(paperclipGoalCmd)
+
+	paperclipCmd.AddCommand(paperclipCommentCmd)
+	paperclipCmd.AddCommand(paperclipReassignCmd)
+	paperclipCmd.AddCommand(paperclipCancelCmd)
 }
 
 // resolveCompanyID picks --company-id, otherwise reads the active profile binding.
@@ -334,4 +338,147 @@ func init() {
 	paperclipGoalCreateCmd.Flags().String("title", "", "goal title (required)")
 	paperclipGoalCreateCmd.Flags().String("description", "", "goal description")
 	_ = paperclipGoalCreateCmd.MarkFlagRequired("title")
+
+	paperclipCommentCmd.Flags().StringVar(&paperclipCommentAs, "as", "", "agent role posting the comment, e.g. frontend-engineer (required)")
+	_ = paperclipCommentCmd.MarkFlagRequired("as")
+
+	paperclipReassignCmd.Flags().StringVar(&paperclipReassignComment, "comment", "", "post a comment alongside the reassignment")
+	paperclipCancelCmd.Flags().StringVar(&paperclipCancelComment, "comment", "", "post a comment explaining the cancellation")
+	paperclipCancelCmd.Flags().BoolVar(&paperclipCancelYes, "yes", false, "skip confirmation prompt (CI/agent use)")
+	paperclipCancelCmd.Flags().BoolVar(&paperclipCancelDryRun, "dry-run", false, "print intended change without calling the API")
+}
+
+// --- comment / reassign / cancel ---
+
+var paperclipCommentAs string
+
+var paperclipCommentCmd = &cobra.Command{
+	Use:   "comment <issueId|identifier> <body>",
+	Short: "Post a comment on an issue with agent attribution",
+	Long: `Post a comment to a paperclip issue.
+
+The --as flag is required and identifies the agent role posting the comment.
+The body is prefixed with [from: <role>] so cross-team comments are visibly
+attributed in the issue thread without grepping the activity log.
+
+Examples:
+  lw paperclip comment LIGA-43 "Misassigned — this is marketing, not frontend" --as frontend-engineer
+  lw paperclip comment <uuid> "Updated status, see PR #123" --as backend-engineer`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		issueID, body := args[0], args[1]
+		if strings.TrimSpace(paperclipCommentAs) == "" {
+			return fmt.Errorf("--as <agent-role> is required for attribution")
+		}
+		attributedBody := fmt.Sprintf("[from: %s]\n\n%s", paperclipCommentAs, body)
+
+		ctx := context.Background()
+		client := newPaperclipClient()
+		if err := client.AddIssueComment(ctx, issueID, attributedBody); err != nil {
+			return err
+		}
+		if paperclipJSON {
+			return emitJSON(map[string]any{"issueId": issueID, "posted": true, "as": paperclipCommentAs})
+		}
+		fmt.Printf("%s Comment posted to %s as %s\n", color.GreenString("✓"), color.CyanString(issueID), color.YellowString(paperclipCommentAs))
+		return nil
+	},
+}
+
+var paperclipReassignComment string
+
+var paperclipReassignCmd = &cobra.Command{
+	Use:   "reassign <issueId|identifier> <agent-name>",
+	Short: "Reassign an issue to another agent",
+	Long: `Reassign a paperclip issue by changing its assigneeAgentId.
+Resolves agent name (kebab-case or display name) to an ID across all companies.
+
+Examples:
+  lw paperclip reassign LIGA-43 marketing-content-lead
+  lw paperclip reassign LIGA-43 backend-engineer --comment "FE work blocked on this BE migration"`,
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		issueID, agentName := args[0], args[1]
+		ctx := context.Background()
+		client := newPaperclipClient()
+		agent, err := resolveAgent(ctx, client, agentName)
+		if err != nil {
+			return err
+		}
+		fields := map[string]any{"assigneeAgentId": agent.ID}
+		if paperclipReassignComment != "" {
+			fields["comment"] = paperclipReassignComment
+		}
+		if err := client.UpdateIssue(ctx, issueID, fields); err != nil {
+			return err
+		}
+		if paperclipJSON {
+			return emitJSON(map[string]any{
+				"issueId":         issueID,
+				"assigneeAgentId": agent.ID,
+				"agentName":       agent.Name,
+			})
+		}
+		fmt.Printf("%s Reassigned %s to %s\n", color.GreenString("✓"), color.CyanString(issueID), color.CyanString(agent.Name))
+		return nil
+	},
+}
+
+var (
+	paperclipCancelComment string
+	paperclipCancelYes     bool
+	paperclipCancelDryRun  bool
+)
+
+var paperclipCancelCmd = &cobra.Command{
+	Use:   "cancel <issueId|identifier>",
+	Short: "Cancel an issue (status=cancelled)",
+	Long: `Cancel a paperclip issue. Sets status=cancelled.
+
+Standard destructive-command pattern: --dry-run previews, --yes skips the prompt.
+
+Examples:
+  lw paperclip cancel LIGA-43 --dry-run
+  lw paperclip cancel LIGA-43 --comment "Superseded by LIGA-91"
+  lw paperclip cancel LIGA-43 --yes  # CI/agent — no prompt`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		issueID := args[0]
+		fields := map[string]any{"status": "cancelled"}
+		if paperclipCancelComment != "" {
+			fields["comment"] = paperclipCancelComment
+		}
+
+		if paperclipCancelDryRun {
+			if paperclipJSON {
+				return emitJSON(map[string]any{"issueId": issueID, "dryRun": true, "fields": fields})
+			}
+			fmt.Printf("%s Would cancel %s (status=cancelled)", color.YellowString("dry-run:"), color.CyanString(issueID))
+			if paperclipCancelComment != "" {
+				fmt.Printf(" with comment: %q", paperclipCancelComment)
+			}
+			fmt.Println()
+			return nil
+		}
+
+		if !paperclipCancelYes {
+			fmt.Fprintf(os.Stderr, "Cancel issue %s? [y/N]: ", issueID)
+			var resp string
+			_, _ = fmt.Scanln(&resp)
+			if !strings.EqualFold(strings.TrimSpace(resp), "y") {
+				return fmt.Errorf("aborted")
+			}
+		}
+
+		ctx := context.Background()
+		client := newPaperclipClient()
+		if err := client.UpdateIssue(ctx, issueID, fields); err != nil {
+			return err
+		}
+		if paperclipJSON {
+			return emitJSON(map[string]any{"issueId": issueID, "status": "cancelled"})
+		}
+		fmt.Printf("%s Cancelled %s\n", color.YellowString("✓"), color.CyanString(issueID))
+		return nil
+	},
 }

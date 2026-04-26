@@ -482,11 +482,11 @@ func formatItemDescription(item ux.ImprovementItem, sessionID string) string {
 
 // ── route ────────────────────────────────────────────────────────────────
 
-const researchAnalystAgentID = "1446de3c-4bf5-41bf-a774-6a96f3f6ac91"
+const uxResearcherAgentID = "a9441f4f-6857-4f91-bb57-b17f6107f649"
 
 var uxRouteCmd = &cobra.Command{
 	Use:   "route [session-id]",
-	Short: "Create a Paperclip issue from session analysis (assigned to Research Analyst)",
+	Short: "Create a Paperclip issue from session analysis (assigned to UX Researcher)",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var session *ux.Session
 		var err error
@@ -541,7 +541,7 @@ var uxRouteCmd = &cobra.Command{
 			Title:           title,
 			Description:     description,
 			Status:          "todo",
-			AssigneeAgentID: researchAnalystAgentID,
+			AssigneeAgentID: uxResearcherAgentID,
 		})
 		if err != nil {
 			return fmt.Errorf("create issue: %w", err)

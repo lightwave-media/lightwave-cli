@@ -152,6 +152,20 @@ func (c *Client) CreateIssue(ctx context.Context, companyID string, issue Issue)
 	return &created, nil
 }
 
+// AddIssueComment posts a comment to an issue.
+// issueIDOrIdentifier accepts either a UUID or an identifier like "LIGA-43".
+func (c *Client) AddIssueComment(ctx context.Context, issueIDOrIdentifier, body string) error {
+	path := fmt.Sprintf("/api/issues/%s/comments", url.PathEscape(issueIDOrIdentifier))
+	return c.post(ctx, path, map[string]any{"body": body}, nil)
+}
+
+// UpdateIssue patches an issue with the given fields (PATCH /api/issues/:id).
+// Used for reassignment (assigneeAgentId), status changes, etc.
+func (c *Client) UpdateIssue(ctx context.Context, issueIDOrIdentifier string, fields map[string]any) error {
+	path := fmt.Sprintf("/api/issues/%s", url.PathEscape(issueIDOrIdentifier))
+	return c.patch(ctx, path, fields, nil)
+}
+
 // GetIssue returns a single issue by ID.
 func (c *Client) GetIssue(ctx context.Context, companyID, issueID string) (*Issue, error) {
 	path := fmt.Sprintf("/api/companies/%s/issues/%s", url.PathEscape(companyID), url.PathEscape(issueID))
