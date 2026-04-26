@@ -549,7 +549,7 @@ var uxRouteCmd = &cobra.Command{
 
 		fmt.Printf("%s Issue created: %s\n", color.GreenString("✓"), color.CyanString(issue.ID))
 		fmt.Printf("   Title:    %s\n", issue.Title)
-		fmt.Printf("   Assignee: Research Analyst\n")
+		fmt.Printf("   Assignee: UX Researcher\n")
 
 		return nil
 	},
