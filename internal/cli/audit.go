@@ -197,7 +197,7 @@ func initSecurityPatterns() []securityPattern {
 			},
 		},
 		{
-			re:             regexp.MustCompile(`eval\s*\(`),
+			re:             regexp.MustCompile(`\beval\s*\(`),
 			severity:       "high",
 			category:       "injection",
 			finding:        "eval() call — code injection risk",
