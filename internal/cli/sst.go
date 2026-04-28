@@ -880,7 +880,7 @@ func printSSTByDomain(files []sstFileCoverage) {
 		)
 
 		for _, f := range domainFiles {
-			var statusIcon string
+			statusIcon := "○"
 			switch f.Status {
 			case "enforced":
 				statusIcon = color.GreenString("●")
