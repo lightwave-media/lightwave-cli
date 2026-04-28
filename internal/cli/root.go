@@ -51,14 +51,11 @@ func Execute() error {
 // dispatcher and removes its entry from this set.
 func legacyHardcodedDomains() map[string]bool {
 	return map[string]bool{
-		"task":   true,
-		"sprint": true,
-		"story":  true,
-		"epic":   true,
-		"spec":   true,
-		"infra":  true,
-		"db":     true,
-		"check":  true,
+		"task":  true,
+		"spec":  true,
+		"infra": true,
+		"db":    true,
+		"check": true,
 	}
 }
 
@@ -69,9 +66,10 @@ func init() {
 
 	// Add subcommands
 	rootCmd.AddCommand(taskCmd)
-	rootCmd.AddCommand(sprintCmd)
-	rootCmd.AddCommand(storyCmd)
-	rootCmd.AddCommand(epicCmd)
+	// sprint, story, epic — migrated to schema dispatcher (sprint_handlers.go,
+	// story_handlers.go, epic_handlers.go). Legacy *Cmd vars in sprint.go /
+	// story.go / epic.go remain only because their helpers are still used by
+	// orchestrator.go. Phase 5 sweeps the legacy files.
 	rootCmd.AddCommand(specCmd)
 	rootCmd.AddCommand(githubCmd)
 	rootCmd.AddCommand(orchestratorCmd)

@@ -315,6 +315,7 @@ type TaskUpdateOptions struct {
 	Description *string
 	EpicID      *string
 	SprintID    *string
+	StoryID     *string
 }
 
 // UpdateTask updates specified fields of a task
@@ -389,6 +390,20 @@ func UpdateTask(ctx context.Context, pool *pgxpool.Pool, taskID string, opts Tas
 			}
 			setClauses = append(setClauses, fmt.Sprintf("sprint_id = $%d", argNum))
 			args = append(args, sprint.ID)
+		}
+		argNum++
+	}
+	if opts.StoryID != nil {
+		if *opts.StoryID == "" {
+			setClauses = append(setClauses, fmt.Sprintf("user_story_id = $%d", argNum))
+			args = append(args, nil)
+		} else {
+			story, err := GetStory(ctx, pool, *opts.StoryID)
+			if err != nil {
+				return nil, fmt.Errorf("resolving story: %w", err)
+			}
+			setClauses = append(setClauses, fmt.Sprintf("user_story_id = $%d", argNum))
+			args = append(args, story.ID)
 		}
 		argNum++
 	}
