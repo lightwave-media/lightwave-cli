@@ -51,11 +51,7 @@ func Execute() error {
 // dispatcher and removes its entry from this set.
 func legacyHardcodedDomains() map[string]bool {
 	return map[string]bool{
-		"task":  true,
-		"spec":  true,
-		"infra": true,
-		"db":    true,
-		"check": true,
+		"spec": true,
 	}
 }
 
@@ -65,7 +61,10 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 
 	// Add subcommands
-	rootCmd.AddCommand(taskCmd)
+	// task — migrated to schema dispatcher (task_handlers.go). Legacy taskCmd
+	// + sub *Cmd vars in task.go / task_create.go remain only because
+	// runTaskCreate is reused by the dispatcher handler. Phase 5 sweeps the
+	// orphaned cobra trees + leftover globals.
 	// sprint, story, epic — migrated to schema dispatcher (sprint_handlers.go,
 	// story_handlers.go, epic_handlers.go). Legacy *Cmd vars in sprint.go /
 	// story.go / epic.go remain only because their helpers are still used by
@@ -75,15 +74,23 @@ func init() {
 	rootCmd.AddCommand(orchestratorCmd)
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(awsCmd)
-	rootCmd.AddCommand(infraCmd)
+	// infraCmd legacy tree replaced by infra_handlers.go via dispatcher.
+	// Phase 5 deletes infra.go.
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(versionCmd)
 
 	// Monorepo workflow commands
 	rootCmd.AddCommand(makeCmd)
 	rootCmd.AddCommand(devCmd)
-	rootCmd.AddCommand(dbCmd)
-	rootCmd.AddCommand(checkCmd)
+	// dbCmd legacy tree (fresh, tenant, nuclear, cleanup, local) is not in
+	// commands.yaml v3.0.0 and was deliberately dropped per the prune.
+	// Schema-driven handlers in db_handlers.go expose the keep set
+	// (migrate, makemigrations, shell, dump, restore, reset, check,
+	// schema-init/list/drop, migrate-schemas). Phase 5 deletes db.go +
+	// db_local.go.
+	// checkCmd legacy tree is replaced by check_handlers.go via the schema
+	// dispatcher. Phase 5 deletes check.go + check_schema.go (the dispatcher
+	// handler in check_handlers.go subsumes runCheckSchema).
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(cdnCmd)
 	rootCmd.AddCommand(setupCmd)

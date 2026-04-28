@@ -80,23 +80,22 @@ func buildSubcommand(cmd sst.CLICommand, key string, handler Handler) *cobra.Com
 
 	flagValues := map[string]*string{}
 	flagBools := map[string]*bool{}
+	flagSlices := map[string]*[]string{}
 	for _, raw := range cmd.Flags {
 		name := strings.TrimPrefix(raw, "--")
 		if name == "" {
 			continue
 		}
-		// Boolean-style flags by convention: --dry-run, --json, --pretty,
-		// --verbose, --quiet, --watch, --force, --confirm, --bg, --build,
-		// --follow, --fix, --all, --plan, --fake, --strict, --no-input,
-		// --clear, --skip-preflight, --skip-certs, --skip-hosts, --volumes,
-		// --images, --html, --xml, --staging, --create-incident, --pull,
-		// --push, --from-prelim, --with-goal-tests, --skip-tests, --deploy,
-		// --skip-migrate, --adversarial. Anything else takes a string value.
-		if isBooleanFlag(name) {
+		switch {
+		case isBooleanFlag(name):
 			b := false
 			flagBools[name] = &b
 			c.Flags().BoolVar(&b, name, false, "")
-		} else {
+		case isStringArrayFlag(name):
+			s := []string{}
+			flagSlices[name] = &s
+			c.Flags().StringSliceVar(&s, name, nil, "")
+		default:
 			s := ""
 			flagValues[name] = &s
 			c.Flags().StringVar(&s, name, "", "")
@@ -104,13 +103,18 @@ func buildSubcommand(cmd sst.CLICommand, key string, handler Handler) *cobra.Com
 	}
 
 	c.RunE = func(cobraCmd *cobra.Command, args []string) error {
-		flags := make(map[string]any, len(flagValues)+len(flagBools))
+		flags := make(map[string]any, len(flagValues)+len(flagBools)+len(flagSlices))
 		for name, p := range flagValues {
 			if cobraCmd.Flags().Changed(name) {
 				flags[name] = *p
 			}
 		}
 		for name, p := range flagBools {
+			if cobraCmd.Flags().Changed(name) {
+				flags[name] = *p
+			}
+		}
+		for name, p := range flagSlices {
 			if cobraCmd.Flags().Changed(name) {
 				flags[name] = *p
 			}
@@ -143,20 +147,22 @@ func buildUseString(cmd sst.CLICommand) string {
 // strings. The schema doesn't currently encode flag types, so this table is
 // the single source of truth for shape disambiguation.
 var booleanFlags = map[string]bool{
-	"dry-run":         true,
-	"json":            true,
-	"pretty":          true,
-	"verbose":         true,
-	"quiet":           true,
-	"watch":           true,
-	"force":           true,
-	"confirm":         true,
-	"bg":              true,
-	"build":           true,
-	"follow":          true,
-	"fix":             true,
-	"all":             true,
-	"plan":            true,
+	"dry-run": true,
+	"json":    true,
+	"pretty":  true,
+	"verbose": true,
+	"quiet":   true,
+	"watch":   true,
+	"force":   true,
+	"confirm": true,
+	"bg":      true,
+	"build":   true,
+	"follow":  true,
+	"fix":     true,
+	"all":     true,
+	// "plan" intentionally NOT here — task.create uses --plan as a path
+	// (shorthand for --doc plan=<path>). db.migrate's --plan-bool semantic
+	// will need a per-command override when that handler lands.
 	"fake":            true,
 	"strict":          true,
 	"no-input":        true,
@@ -180,8 +186,24 @@ var booleanFlags = map[string]bool{
 	"adversarial":     true,
 	"yes":             true,
 	"empty":           true,
+	"auto-approve":    true,
 }
 
 func isBooleanFlag(name string) bool {
 	return booleanFlags[name]
+}
+
+// stringArrayFlags lists flag names that should be parsed as repeatable
+// (StringSliceVar) rather than scalar strings. Same shape as booleanFlags —
+// table-driven because the YAML schema does not encode flag types yet.
+var stringArrayFlags = map[string]bool{
+	"doc":        true,
+	"attach":     true,
+	"label":      true,
+	"blocks":     true,
+	"blocked-by": true,
+}
+
+func isStringArrayFlag(name string) bool {
+	return stringArrayFlags[name]
 }
