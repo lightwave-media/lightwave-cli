@@ -82,6 +82,7 @@ func init() {
 	rootCmd.AddCommand(systemCmd)
 	rootCmd.AddCommand(uxCmd)
 	rootCmd.AddCommand(workflowsCmd)
+	rootCmd.AddCommand(worktreeCmd)
 }
 
 // versionCmd shows version info
