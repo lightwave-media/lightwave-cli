@@ -33,9 +33,33 @@ Built with Go for speed. Direct PostgreSQL access for instant reads.`,
 	},
 }
 
-// Execute runs the root command
+// Execute runs the root command. Loads config, lets the schema-driven
+// dispatcher attach migrated domains, then hands off to cobra.
 func Execute() error {
+	if _, err := config.Load(); err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	if err := BuildDispatched(rootCmd, legacyHardcodedDomains()); err != nil {
+		return err
+	}
 	return rootCmd.Execute()
+}
+
+// legacyHardcodedDomains returns the set of schema domain names still
+// registered via hardcoded *Cmd in init() below. The dispatcher skips these
+// to avoid Use-string collisions. Phase 4 migrates each domain to the
+// dispatcher and removes its entry from this set.
+func legacyHardcodedDomains() map[string]bool {
+	return map[string]bool{
+		"task":   true,
+		"sprint": true,
+		"story":  true,
+		"epic":   true,
+		"spec":   true,
+		"infra":  true,
+		"db":     true,
+		"check":  true,
+	}
 }
 
 func init() {
