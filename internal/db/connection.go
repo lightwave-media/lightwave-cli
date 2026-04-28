@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
 )
@@ -40,7 +41,7 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 
 // SetTenantSchema sets the PostgreSQL search_path to the tenant schema
 func SetTenantSchema(ctx context.Context, pool *pgxpool.Pool, tenant string) error {
-	query := fmt.Sprintf("SET search_path TO %s, public", tenant)
+	query := fmt.Sprintf("SET search_path TO %s, public", pgx.Identifier{tenant}.Sanitize())
 	_, err := pool.Exec(ctx, query)
 	if err != nil {
 		return fmt.Errorf("failed to set tenant schema: %w", err)
