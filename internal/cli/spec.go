@@ -18,7 +18,6 @@ import (
 
 var (
 	specOutputDir string
-	specFull      bool
 )
 
 var specCmd = &cobra.Command{

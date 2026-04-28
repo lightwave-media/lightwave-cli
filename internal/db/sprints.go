@@ -56,7 +56,6 @@ func ListSprints(ctx context.Context, pool *pgxpool.Pool, opts SprintListOptions
 	if opts.EpicID != "" {
 		query += fmt.Sprintf(" AND epic_id::text LIKE $%d || '%%'", argNum)
 		args = append(args, opts.EpicID)
-		argNum++
 	}
 
 	query += " ORDER BY created_at DESC"

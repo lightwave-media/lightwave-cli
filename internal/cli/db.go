@@ -89,7 +89,7 @@ var dbResetCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Print("This will drop the database and recreate tenants. Continue? [y/N] ")
 		var confirm string
-		fmt.Scanln(&confirm)
+		_, _ = fmt.Scanln(&confirm)
 		if confirm != "y" && confirm != "Y" {
 			fmt.Println("Cancelled")
 			return nil
@@ -108,7 +108,7 @@ var dbNuclearCmd = &cobra.Command{
 	RunE: func(cmd *cobra.Command, args []string) error {
 		fmt.Print("NUCLEAR RESET: This will destroy ALL data and migrations. Type 'yes' to confirm: ")
 		var confirm string
-		fmt.Scanln(&confirm)
+		_, _ = fmt.Scanln(&confirm)
 		if confirm != "yes" {
 			fmt.Println("Cancelled")
 			return nil
@@ -171,7 +171,7 @@ var dbCleanupCmd = &cobra.Command{
 
 		fmt.Printf("\nDrop all %d schemas? [y/N] ", len(schemas))
 		var confirm string
-		fmt.Scanln(&confirm)
+		_, _ = fmt.Scanln(&confirm)
 		if confirm != "y" && confirm != "Y" {
 			fmt.Println("Cancelled")
 			return nil

@@ -79,7 +79,7 @@ func StartRecording(session *Session) error {
 	ffmpegLog.Close()
 
 	pids := &sessionPIDs{FFmpeg: ffmpegCmd.Process.Pid}
-	ffmpegCmd.Process.Release()
+	_ = ffmpegCmd.Process.Release()
 
 	// ── backend log tailer ──────────────────────────────────────────────
 	backendPid := startLogTailer(sessionDir, "backend")
@@ -97,13 +97,13 @@ func StartRecording(session *Session) error {
 	if err := savePIDs(session.ID, pids); err != nil {
 		// Kill ffmpeg if we can't save PIDs
 		if p, err := os.FindProcess(pids.FFmpeg); err == nil {
-			p.Kill()
+			_ = p.Kill()
 		}
 		return fmt.Errorf("save pids: %w", err)
 	}
 
 	// Also write legacy pid file for backwards compat
-	os.WriteFile(PIDPath(session.ID), []byte(strconv.Itoa(pids.FFmpeg)), 0644)
+	_ = os.WriteFile(PIDPath(session.ID), []byte(strconv.Itoa(pids.FFmpeg)), 0644)
 
 	return nil
 }
@@ -132,7 +132,7 @@ func startLogTailer(sessionDir, service string) int {
 	logFile.Close()
 
 	pid := cmd.Process.Pid
-	cmd.Process.Release()
+	_ = cmd.Process.Release()
 	return pid
 }
 
@@ -148,7 +148,7 @@ func StopRecording(session *Session) error {
 	for _, pid := range []int{pids.BackendLogs, pids.FrontendLogs} {
 		if pid > 0 {
 			if p, err := os.FindProcess(pid); err == nil {
-				p.Signal(syscall.SIGTERM)
+				_ = p.Signal(syscall.SIGTERM)
 			}
 		}
 	}

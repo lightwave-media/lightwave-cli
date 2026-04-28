@@ -84,14 +84,14 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 
 	// Map specific env vars
-	viper.BindEnv("environment", "LW_ENV")
-	viper.BindEnv("tenant", "LW_TENANT")
-	viper.BindEnv("database.host", "LW_DB_HOST")
-	viper.BindEnv("database.port", "LW_DB_PORT")
-	viper.BindEnv("database.name", "LW_DB_NAME")
-	viper.BindEnv("database.user", "LW_DB_USER")
-	viper.BindEnv("database.password", "LW_DB_PASSWORD")
-	viper.BindEnv("api.agent_key", "LW_AGENT_KEY")
+	_ = viper.BindEnv("environment", "LW_ENV")
+	_ = viper.BindEnv("tenant", "LW_TENANT")
+	_ = viper.BindEnv("database.host", "LW_DB_HOST")
+	_ = viper.BindEnv("database.port", "LW_DB_PORT")
+	_ = viper.BindEnv("database.name", "LW_DB_NAME")
+	_ = viper.BindEnv("database.user", "LW_DB_USER")
+	_ = viper.BindEnv("database.password", "LW_DB_PASSWORD")
+	_ = viper.BindEnv("api.agent_key", "LW_AGENT_KEY")
 
 	cfg = &Config{}
 	if err := viper.Unmarshal(cfg); err != nil {
@@ -122,11 +122,11 @@ func setDefaults() {
 
 	// Orchestrator defaults (Elixir Phoenix)
 	viper.SetDefault("orchestrator.url", "http://localhost:4000")
-	viper.BindEnv("orchestrator.url", "LW_ORCHESTRATOR_URL")
+	_ = viper.BindEnv("orchestrator.url", "LW_ORCHESTRATOR_URL")
 
 	// Paperclip defaults
 	viper.SetDefault("paperclip.url", "http://localhost:3100")
-	viper.BindEnv("paperclip.url", "PAPERCLIP_URL")
+	_ = viper.BindEnv("paperclip.url", "PAPERCLIP_URL")
 
 	// Paths
 	viper.SetDefault("paths.lightwave_root", filepath.Join(home, "dev", "lightwave-media"))

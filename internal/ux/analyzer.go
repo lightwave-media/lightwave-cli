@@ -97,17 +97,17 @@ func Analyze(sessionID string) error {
 
 	// Step 7: Save results
 	if result.RawText != "" {
-		os.WriteFile(AnalysisPath(sessionID), []byte(result.RawText), 0644)
+		_ = os.WriteFile(AnalysisPath(sessionID), []byte(result.RawText), 0644)
 	}
 
 	if len(result.Items) > 0 {
 		itemsJSON, _ := json.MarshalIndent(result.Items, "", "  ")
-		os.WriteFile(ItemsPath(sessionID), itemsJSON, 0644)
+		_ = os.WriteFile(ItemsPath(sessionID), itemsJSON, 0644)
 	}
 
 	// Update session status
 	session.Status = StatusAnalyzed
-	session.Save()
+	_ = session.Save()
 
 	if err != nil {
 		// Partial success — raw text was saved but items didn't parse
@@ -260,7 +260,7 @@ func loadServerLogs(sessionID string) string {
 			continue
 		}
 
-		sb.WriteString(fmt.Sprintf("\n## %s Server Logs (errors/warnings only)\n\n", strings.Title(service)))
+		sb.WriteString(fmt.Sprintf("\n## %s Server Logs (errors/warnings only)\n\n", capitalizeFirst(service)))
 		// Cap at 100 lines to avoid blowing up the prompt
 		if len(filtered) > 100 {
 			filtered = filtered[len(filtered)-100:]
@@ -318,4 +318,11 @@ func collectFramePaths(sessionID string) ([]string, error) {
 
 	sort.Strings(paths)
 	return paths, nil
+}
+
+func capitalizeFirst(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }

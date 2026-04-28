@@ -140,7 +140,7 @@ Examples:
 			fmt.Print("Type 'yes' to confirm: ")
 
 			var confirm string
-			fmt.Scanln(&confirm)
+			_, _ = fmt.Scanln(&confirm)
 			if confirm != "yes" {
 				fmt.Println("Cancelled")
 				return nil

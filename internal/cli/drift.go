@@ -12,7 +12,6 @@ var (
 	driftJSON            bool
 	driftOutput          string
 	driftOrphans         bool
-	driftReconcile       bool
 	driftReconcileAll    bool
 	driftReconcileDryRun bool
 )

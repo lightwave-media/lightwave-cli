@@ -105,7 +105,6 @@ func ListTasks(ctx context.Context, pool *pgxpool.Pool, opts TaskListOptions) ([
 	if opts.SprintID != "" {
 		query += fmt.Sprintf(" AND sprint_id::text LIKE $%d || '%%'", argNum)
 		args = append(args, opts.SprintID)
-		argNum++
 	}
 
 	// Order by updated_at descending (most recent first)

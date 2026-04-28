@@ -111,11 +111,6 @@ type cdnConfig struct {
 	} `yaml:"cdn"`
 }
 
-// domainsConfig is the subset of domains.yaml we care about.
-type domainsConfig struct {
-	InfrastructureDomain string `yaml:"infrastructure_domain"`
-}
-
 // loadCdnSST reads assets.yaml + domains.yaml and returns the resolved
 // bucket name, region, and the set of legitimate prefix names.
 func loadCdnSST() (bucket, region string, allowed map[string]struct{}, err error) {
@@ -374,7 +369,7 @@ func runCdnReconcile(ctx context.Context) error {
 		fmt.Printf("\nDelete %d legacy prefixes from %s? [y/N] ",
 			len(drift), bucket)
 		var confirm string
-		fmt.Scanln(&confirm)
+		_, _ = fmt.Scanln(&confirm)
 		if confirm != "y" && confirm != "Y" && confirm != "yes" {
 			fmt.Println("Cancelled")
 			return nil

@@ -255,7 +255,6 @@ func ListDocuments(ctx context.Context, pool *pgxpool.Pool, category, epicID str
 	if epicID != "" {
 		query += fmt.Sprintf(" AND d.epic_id::text LIKE $%d || '%%'", argNum)
 		args = append(args, epicID)
-		argNum++
 	}
 
 	query += " ORDER BY d.created_at DESC LIMIT 50"

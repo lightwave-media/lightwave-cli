@@ -900,15 +900,10 @@ func batchMatchCommitAuthors(pairs map[shaKey]struct{}, concurrency int, perCall
 	return out
 }
 
-// matchCommitAuthor checks the commit message for a Co-Authored-By trailer or
-// agent name pattern in the display title. This is the fallback attribution
-// path when branch and temporal matching both miss.
-func matchCommitAuthor(repo, sha string) string {
-	return matchCommitAuthorCtx(context.Background(), repo, sha)
-}
-
-// matchCommitAuthorCtx is matchCommitAuthor with a cancellation context so
-// callers can bound the gh api call.
+// matchCommitAuthorCtx checks the commit message for a Co-Authored-By trailer
+// or agent name pattern in the display title, with a cancellation context so
+// callers can bound the gh api call. This is the fallback attribution path
+// when branch and temporal matching both miss.
 func matchCommitAuthorCtx(ctx context.Context, repo, sha string) string {
 	if sha == "" {
 		return ""

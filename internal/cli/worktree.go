@@ -54,7 +54,6 @@ var (
 	worktreeCurrent     bool
 	worktreeCheckAct    bool
 	worktreeForce       bool
-	worktreeAllMerged   bool
 	worktreeDryRun      bool
 	worktreeIdleDays    int
 )

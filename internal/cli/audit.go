@@ -1126,12 +1126,11 @@ func renderDiff(current, previous *AuditReport) {
 // =============================================================================
 
 var (
-	auditScope   string
-	auditJSON    bool
-	auditDate    string
-	auditOutput  string
-	auditLast    int
-	auditVerbose bool
+	auditScope  string
+	auditJSON   bool
+	auditDate   string
+	auditOutput string
+	auditLast   int
 )
 
 var auditCmd = &cobra.Command{
@@ -1284,7 +1283,7 @@ func runAudit(scope string) error {
 	}
 
 	// Prune old reports
-	pruneReports(90)
+	_ = pruneReports(90)
 
 	// Output
 	fmt.Println()
