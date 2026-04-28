@@ -14,7 +14,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var agentJSON bool
+var (
+	agentJSON       bool
+	agentListActive bool
+)
 
 var agentCmd = &cobra.Command{
 	Use:   "agent",
@@ -33,6 +36,7 @@ var agentListCmd = &cobra.Command{
 
 Examples:
   lw agent list
+  lw agent list --active        # only agents with non-terminal status
   lw agent list --json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
@@ -41,6 +45,16 @@ Examples:
 		agents, err := client.ListAllAgents(ctx)
 		if err != nil {
 			return err
+		}
+
+		if agentListActive {
+			filtered := agents[:0]
+			for _, a := range agents {
+				if isAgentActive(a.Status) {
+					filtered = append(filtered, a)
+				}
+			}
+			agents = filtered
 		}
 
 		if agentJSON {
@@ -381,9 +395,22 @@ func normalizeAgentName(name string) string {
 	return strings.ToLower(strings.ReplaceAll(name, "-", " "))
 }
 
+// isAgentActive returns true for any non-terminal agent status. Used by --active
+// filters and verify scripts (e.g. ~/.brain/tools/verify_phase_0a.sh).
+func isAgentActive(status string) bool {
+	switch strings.ToLower(status) {
+	case "terminated", "paused", "archived", "disabled":
+		return false
+	default:
+		return true
+	}
+}
+
 func init() {
 	// Global --json flag for agent subcommands
 	agentCmd.PersistentFlags().BoolVar(&agentJSON, "json", false, "Output in JSON format")
+
+	agentListCmd.Flags().BoolVar(&agentListActive, "active", false, "only list agents with non-terminal status")
 
 	agentCmd.AddCommand(agentListCmd)
 	agentCmd.AddCommand(agentStatusCmd)

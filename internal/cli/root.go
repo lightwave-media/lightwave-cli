@@ -69,6 +69,7 @@ func init() {
 	rootCmd.AddCommand(metaCmd)
 	rootCmd.AddCommand(codegenCmd)
 	rootCmd.AddCommand(driftCmd)
+	rootCmd.AddCommand(sstCmd)
 	rootCmd.AddCommand(lineageCmd)
 	rootCmd.AddCommand(docCmd)
 	rootCmd.AddCommand(heartbeatCmd)
@@ -81,6 +82,7 @@ func init() {
 	rootCmd.AddCommand(systemCmd)
 	rootCmd.AddCommand(uxCmd)
 	rootCmd.AddCommand(workflowsCmd)
+	rootCmd.AddCommand(worktreeCmd)
 }
 
 // versionCmd shows version info

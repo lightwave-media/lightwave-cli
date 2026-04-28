@@ -35,14 +35,31 @@ var (
 
 // Flags for task create
 var (
-	taskCreateTitle       string
-	taskCreateDescription string
-	taskCreatePriority    string
-	taskCreateType        string
-	taskCreateCategory    string
-	taskCreateEpic        string
-	taskCreateSprint      string
-	taskCreateStory       string
+	taskCreateTitle           string
+	taskCreateDescription     string
+	taskCreateDescriptionFile string
+	taskCreatePriority        string
+	taskCreateType            string
+	taskCreateCategory        string
+	taskCreateEpic            string
+	taskCreateSprint          string
+	taskCreateStory           string
+
+	// Paperclip atomic fan-out — see ~/.brain/research/lw-cli-gap-plan.md (LIGA-787).
+	taskCreatePRD         string
+	taskCreatePlan        string
+	taskCreateDocs        []string // key=path, repeatable
+	taskCreateAttach      []string // path, repeatable
+	taskCreateLabels      []string // name, repeatable
+	taskCreateParent      string
+	taskCreateAssign      string
+	taskCreateBlocks      []string
+	taskCreateBlockedBy   []string
+	taskCreateBillingCode string
+	taskCreateProject     string
+	taskCreateProjectWS   string
+	taskCreateJSON        bool
+	taskCreateDryRun      bool
 )
 
 // Flags for task update
@@ -179,61 +196,23 @@ var taskContextCmd = &cobra.Command{
 
 var taskCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Create a new task",
-	Long: `Create a new task in createOS.
+	Short: "Create a new task (atomic createOS + Paperclip + GitHub fan-out)",
+	Long: `Create a new task. Atomically creates a createOS task, a linked Paperclip
+issue (with documents, attachments, labels, parent, assignee, priority,
+blocks/blockedBy), and a GitHub issue with Projects sync.
+
+Per ~/.brain/memory/feedback/2026-04-27-one-command-issue-creation.yaml:
+this is the SINGLE command surface for any agent anywhere. Do not chain
+raw Paperclip API calls + lw doc + gh issue create. Extend this command,
+do not add parallel commands like 'lw paperclip issue create'.
 
 Examples:
   lw task create --title="Fix login bug"
   lw task create --title="Add dark mode" --priority=p2_high --type=feature
-  lw task create --title="Update docs" --epic=<epic-id> --sprint=<sprint-id>`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		if taskCreateTitle == "" {
-			return fmt.Errorf("--title is required")
-		}
-
-		ctx := context.Background()
-
-		pool, err := db.Connect(ctx)
-		if err != nil {
-			return fmt.Errorf("database connection failed: %w", err)
-		}
-		defer db.Close()
-
-		// Interpret escape sequences in description (CLI doesn't expand \n)
-		desc := strings.ReplaceAll(taskCreateDescription, `\n`, "\n")
-
-		opts := db.TaskCreateOptions{
-			Title:       taskCreateTitle,
-			Description: desc,
-			Priority:    taskCreatePriority,
-			TaskType:    taskCreateType,
-			Category:    taskCreateCategory,
-			EpicID:      taskCreateEpic,
-			SprintID:    taskCreateSprint,
-			StoryID:     taskCreateStory,
-		}
-
-		task, err := db.CreateTask(ctx, pool, opts)
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("Created task %s: %s\n", color.YellowString(task.ShortID), task.Title)
-
-		// Auto-create GitHub Issue
-		issueNum, issueErr := createGitHubIssueForTask(task)
-		if issueErr != nil {
-			fmt.Printf("  %s GitHub issue: %v\n", color.YellowString("Warning:"), issueErr)
-		} else if issueNum > 0 {
-			// Store cross-reference
-			notionID := fmt.Sprintf("gh-%d", issueNum)
-			if _, err := db.UpdateTaskNotionID(ctx, pool, task.ID, notionID); err != nil {
-				fmt.Printf("  %s store issue ref: %v\n", color.YellowString("Warning:"), err)
-			}
-		}
-
-		return nil
-	},
+  lw task create --title="PRD: Tracer" --prd ./PRD.md --label tooling-gap
+  lw task create --title="Wire X" --description-file ./body.md \
+                 --attach ./diagram.png --assign cli-engineer --priority high`,
+	RunE: runTaskCreate,
 }
 
 var taskUpdateCmd = &cobra.Command{
@@ -500,13 +479,30 @@ func init() {
 
 	// task create flags
 	taskCreateCmd.Flags().StringVar(&taskCreateTitle, "title", "", "Task title (required)")
-	taskCreateCmd.Flags().StringVar(&taskCreateDescription, "description", "", "Task description")
-	taskCreateCmd.Flags().StringVar(&taskCreatePriority, "priority", "p3_medium", "Priority (p1_urgent, p2_high, p3_medium, p4_low)")
+	taskCreateCmd.Flags().StringVar(&taskCreateDescription, "description", "", "Inline task description")
+	taskCreateCmd.Flags().StringVar(&taskCreateDescriptionFile, "description-file", "", "Read task description from a markdown file")
+	taskCreateCmd.Flags().StringVar(&taskCreatePriority, "priority", "p3_medium", "Priority (p1_urgent|p2_high|p3_medium|p4_low or low|medium|high|critical)")
 	taskCreateCmd.Flags().StringVar(&taskCreateType, "type", "feature", "Type (feature, fix, hotfix, chore, docs)")
 	taskCreateCmd.Flags().StringVar(&taskCreateCategory, "category", "", "Task category")
-	taskCreateCmd.Flags().StringVar(&taskCreateEpic, "epic", "", "Epic ID")
-	taskCreateCmd.Flags().StringVar(&taskCreateSprint, "sprint", "", "Sprint ID")
-	taskCreateCmd.Flags().StringVar(&taskCreateStory, "story", "", "User story ID")
+	taskCreateCmd.Flags().StringVar(&taskCreateEpic, "epic", "", "createOS epic ID")
+	taskCreateCmd.Flags().StringVar(&taskCreateSprint, "sprint", "", "createOS sprint ID")
+	taskCreateCmd.Flags().StringVar(&taskCreateStory, "story", "", "createOS user story ID")
+
+	// Paperclip atomic fan-out
+	taskCreateCmd.Flags().StringVar(&taskCreatePRD, "prd", "", "Attach a PRD document (shorthand for --doc prd=<path>)")
+	taskCreateCmd.Flags().StringVar(&taskCreatePlan, "plan", "", "Attach a plan document (shorthand for --doc plan=<path>)")
+	taskCreateCmd.Flags().StringSliceVar(&taskCreateDocs, "doc", nil, "Attach a keyed text document; key=path (repeatable)")
+	taskCreateCmd.Flags().StringSliceVar(&taskCreateAttach, "attach", nil, "Upload a binary attachment (repeatable)")
+	taskCreateCmd.Flags().StringSliceVar(&taskCreateLabels, "label", nil, "Apply a Paperclip label; auto-create if missing (repeatable)")
+	taskCreateCmd.Flags().StringVar(&taskCreateParent, "parent", "", "Paperclip parent issue ID (epic ref)")
+	taskCreateCmd.Flags().StringVar(&taskCreateAssign, "assign", "", "Assign to a Paperclip agent by name (routes heartbeat)")
+	taskCreateCmd.Flags().StringSliceVar(&taskCreateBlocks, "blocks", nil, "Issue ID(s) this task blocks (repeatable)")
+	taskCreateCmd.Flags().StringSliceVar(&taskCreateBlockedBy, "blocked-by", nil, "Issue ID(s) that block this task (repeatable)")
+	taskCreateCmd.Flags().StringVar(&taskCreateBillingCode, "billing-code", "", "Paperclip billing code")
+	taskCreateCmd.Flags().StringVar(&taskCreateProject, "project", "", "Paperclip project ID")
+	taskCreateCmd.Flags().StringVar(&taskCreateProjectWS, "project-workspace", "", "Paperclip project workspace ID")
+	taskCreateCmd.Flags().BoolVar(&taskCreateJSON, "json", false, "JSON output with createos/paperclip/github IDs")
+	taskCreateCmd.Flags().BoolVar(&taskCreateDryRun, "dry-run", false, "Resolve refs and print intent; no mutation")
 
 	// task update flags
 	taskUpdateCmd.Flags().StringVar(&taskUpdateStatus, "status", "", "New status")
