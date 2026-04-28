@@ -50,6 +50,43 @@ type Issue struct {
 	CompanyID       string    `json:"companyId"`
 	CreatedAt       time.Time `json:"createdAt"`
 	UpdatedAt       time.Time `json:"updatedAt"`
+
+	// Identity
+	Identifier  string `json:"identifier,omitempty"`
+	IssueNumber int    `json:"issueNumber,omitempty"`
+
+	// Classification
+	Priority    string `json:"priority,omitempty"`
+	BillingCode string `json:"billingCode,omitempty"`
+
+	// Hierarchy
+	ParentID           string `json:"parentId,omitempty"`
+	ProjectID          string `json:"projectId,omitempty"`
+	ProjectWorkspaceID string `json:"projectWorkspaceId,omitempty"`
+	GoalID             string `json:"goalId,omitempty"`
+
+	// Relations
+	LabelIDs     []string `json:"labelIds,omitempty"`
+	BlockedByIDs []string `json:"blockedByIds,omitempty"`
+	BlocksIDs    []string `json:"blocksIds,omitempty"`
+}
+
+// Document represents a text document attached to a Paperclip issue.
+// Documents are revisioned and keyed (e.g. "prd", "plan", "spec").
+type Document struct {
+	Key       string    `json:"key"`
+	Revision  int       `json:"revision"`
+	Body      string    `json:"body,omitempty"`
+	IssueID   string    `json:"issueId,omitempty"`
+	UpdatedAt time.Time `json:"updatedAt,omitempty"`
+}
+
+// Attachment represents a binary file attached to a Paperclip issue.
+type Attachment struct {
+	ID        string `json:"id"`
+	Filename  string `json:"filename"`
+	URL       string `json:"url,omitempty"`
+	SizeBytes int64  `json:"sizeBytes,omitempty"`
 }
 
 // Activity represents a Paperclip audit trail entry.
