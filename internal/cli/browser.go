@@ -134,7 +134,7 @@ var browserScreenshotCmd = &cobra.Command{
 		if err != nil || cgID == "" {
 			// Fallback: focus Chrome and capture frontmost window
 			focusScript := `var chrome = Application("Google Chrome"); chrome.activate();`
-			exec.Command("osascript", "-l", "JavaScript", "-e", focusScript).Run()
+			_ = exec.Command("osascript", "-l", "JavaScript", "-e", focusScript).Run()
 			time.Sleep(200 * time.Millisecond)
 
 			if err := exec.Command("screencapture", "-x", "-o", "-w", tmpFile).Run(); err != nil {

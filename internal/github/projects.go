@@ -164,7 +164,7 @@ func issueNumberFromURL(url string) int {
 		return 0
 	}
 	var num int
-	fmt.Sscanf(parts[len(parts)-1], "%d", &num)
+	_, _ = fmt.Sscanf(parts[len(parts)-1], "%d", &num)
 	return num
 }
 

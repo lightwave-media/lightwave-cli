@@ -66,7 +66,6 @@ func ListStories(ctx context.Context, pool *pgxpool.Pool, opts StoryListOptions)
 	if opts.SprintID != "" {
 		query += fmt.Sprintf(" AND sprint_id::text LIKE $%d || '%%'", argNum)
 		args = append(args, opts.SprintID)
-		argNum++
 	}
 
 	query += " ORDER BY updated_at DESC"

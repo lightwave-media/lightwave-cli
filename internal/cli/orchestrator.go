@@ -425,7 +425,7 @@ func sprintLifecycleCheck(ctx context.Context, dryRun bool, result *iterationRes
 
 			specPath, _, specErr := FindSprintSpec(s.ShortID)
 			if specErr == nil {
-				MoveSpec(specPath, "done")
+				_, _ = MoveSpec(specPath, "done")
 			}
 			fmt.Printf("  %s Sprint %s completed\n", color.GreenString("✓"), s.ShortID)
 			result.SprintAction = "sprint_completed"
@@ -585,10 +585,10 @@ E2E test issue — auto-generated, will be cleaned up.
 		fmt.Println(color.CyanString("Cleanup"))
 		cleanCmd := exec.Command("gh", "issue", "close", issueNum,
 			"--repo", defaultGHRepo, "--reason", "not planned")
-		cleanCmd.Run()
+		_ = cleanCmd.Run()
 		delCmd := exec.Command("gh", "issue", "delete", issueNum,
 			"--repo", defaultGHRepo, "--yes")
-		delCmd.Run()
+		_ = delCmd.Run()
 		fmt.Printf("  Cleaned up test issue #%s\n", issueNum)
 	}()
 
@@ -647,7 +647,7 @@ E2E test issue — auto-generated, will be cleaned up.
 	// Step 5: Verify branch name generation
 	fmt.Println(color.CyanString("Step 5: Branch name generation"))
 	var testIssueNum int
-	fmt.Sscanf(issueNum, "%d", &testIssueNum)
+	_, _ = fmt.Sscanf(issueNum, "%d", &testIssueNum)
 	branchName := IssueBranchName(testIssueNum, "[E2E Test] Pipeline verification", "chore")
 	if strings.HasPrefix(branchName, "chore/issue-") {
 		fmt.Printf("  %s branch: %s\n", color.GreenString("PASS"), branchName)
