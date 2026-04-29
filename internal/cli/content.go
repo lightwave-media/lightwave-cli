@@ -8,9 +8,15 @@ import (
 )
 
 var (
-	contentApplyDryRun bool
-	contentApplyForce  bool
-	contentDiffJSON    bool
+	contentApplyDryRun     bool
+	contentApplyForce      bool
+	contentDiffJSON        bool
+	contentPromoteTo       string
+	contentPromoteFrom     string
+	contentPromoteCommit   bool
+	contentPromoteActor    string
+	contentPromoteEmergncy bool
+	contentPromoteNotes    string
 )
 
 var contentCmd = &cobra.Command{
@@ -89,6 +95,56 @@ func init() {
 
 	contentDiffCmd.Flags().BoolVar(&contentDiffJSON, "json", false, "emit JSON instead of YAML")
 
+	contentPromoteCmd.Flags().StringVar(&contentPromoteTo, "to", "", "destination env: local|staging|production (required)")
+	_ = contentPromoteCmd.MarkFlagRequired("to")
+	contentPromoteCmd.Flags().StringVar(&contentPromoteFrom, "from", "", "source env (defaults to current ENVIRONMENT)")
+	contentPromoteCmd.Flags().BoolVar(&contentPromoteCommit, "commit", false, "stage OutboxItems + audit row (default: dry-run)")
+	contentPromoteCmd.Flags().StringVar(&contentPromoteActor, "initiated-by", "", "username/email of the actor")
+	contentPromoteCmd.Flags().BoolVar(&contentPromoteEmergncy, "emergency-bypass", false, "mark as emergency (requires --review-notes)")
+	contentPromoteCmd.Flags().StringVar(&contentPromoteNotes, "review-notes", "", "rationale (required when --emergency-bypass)")
+
 	contentCmd.AddCommand(contentApplyCmd)
 	contentCmd.AddCommand(contentDiffCmd)
+	contentCmd.AddCommand(contentPromoteCmd)
+}
+
+var contentPromoteCmd = &cobra.Command{
+	Use:   "promote <path>",
+	Short: "Stage a content migration to a destination env via OutboxItems",
+	Long: `Promote a git-tracked content migration YAML to a destination environment.
+
+Plan-by-default — emits the diff between artifact and destination tenant
+state without writing anything. Pass --commit to create the
+ContentPromotion audit row + one OutboxItem per affected page (pending
+approval; existing OutboxItem._apply_change() applies on approval).
+
+--emergency-bypass marks the promotion for the two-person bypass path and
+requires --review-notes. The bypass is recorded on the audit row but does
+not auto-apply.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		dir, err := resolveMakeDir("platform")
+		if err != nil {
+			return err
+		}
+
+		parts := []string{"promote_content_migration", args[0], "--to", contentPromoteTo}
+		if contentPromoteFrom != "" {
+			parts = append(parts, "--from", contentPromoteFrom)
+		}
+		if contentPromoteCommit {
+			parts = append(parts, "--commit")
+		}
+		if contentPromoteActor != "" {
+			parts = append(parts, "--initiated-by", contentPromoteActor)
+		}
+		if contentPromoteEmergncy {
+			parts = append(parts, "--emergency-bypass")
+		}
+		if contentPromoteNotes != "" {
+			parts = append(parts, "--review-notes", fmt.Sprintf("%q", contentPromoteNotes))
+		}
+
+		return runMake(dir, "dj-manage", fmt.Sprintf("CMD=%s", strings.Join(parts, " ")))
+	},
 }
