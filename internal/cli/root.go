@@ -98,6 +98,7 @@ func init() {
 	rootCmd.AddCommand(metaCmd)
 	rootCmd.AddCommand(codegenCmd)
 	rootCmd.AddCommand(driftCmd)
+	rootCmd.AddCommand(contentCmd)
 	rootCmd.AddCommand(sstCmd)
 	rootCmd.AddCommand(lineageCmd)
 	rootCmd.AddCommand(docCmd)
