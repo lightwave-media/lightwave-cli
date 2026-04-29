@@ -60,58 +60,38 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/lw/config.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 
-	// Add subcommands
-	// task — migrated to schema dispatcher (task_handlers.go). Legacy taskCmd
-	// + sub *Cmd vars in task.go / task_create.go remain only because
-	// runTaskCreate is reused by the dispatcher handler. Phase 5 sweeps the
-	// orphaned cobra trees + leftover globals.
-	// sprint, story, epic — migrated to schema dispatcher (sprint_handlers.go,
-	// story_handlers.go, epic_handlers.go). Legacy *Cmd vars in sprint.go /
-	// story.go / epic.go remain only because their helpers are still used by
-	// orchestrator.go. Phase 5 sweeps the legacy files.
+	// Domains migrated to the schema dispatcher (handlers register in
+	// init() of the corresponding *_handlers.go file): task, sprint, story,
+	// epic, db, check, infra, plan, schema, spec, deploy, context, scaffold,
+	// local. Legacy cobra trees for those domains were removed in the Phase 5
+	// sweep; helper funcs that the handlers still call (printTaskTable,
+	// printSprintTable, runTaskCreate, etc.) remain in the original *.go
+	// files as plain package functions.
+	//
+	// specCmd is kept because `lw spec generate <task-id>` (the execution-spec
+	// generator) is a distinct command from schema's `spec.generate-tasks`.
+	// Until the legacy semantics are renamed or merged, the dispatcher's spec
+	// tree is parked behind the spec entry in legacyHardcodedDomains().
 	rootCmd.AddCommand(specCmd)
 	rootCmd.AddCommand(githubCmd)
-	rootCmd.AddCommand(orchestratorCmd)
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(awsCmd)
-	// infraCmd legacy tree replaced by infra_handlers.go via dispatcher.
-	// Phase 5 deletes infra.go.
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(versionCmd)
 
-	// Monorepo workflow commands
+	// Standalone utilities not modelled as schema domains.
 	rootCmd.AddCommand(makeCmd)
-	rootCmd.AddCommand(devCmd)
-	// dbCmd legacy tree (fresh, tenant, nuclear, cleanup, local) is not in
-	// commands.yaml v3.0.0 and was deliberately dropped per the prune.
-	// Schema-driven handlers in db_handlers.go expose the keep set
-	// (migrate, makemigrations, shell, dump, restore, reset, check,
-	// schema-init/list/drop, migrate-schemas). Phase 5 deletes db.go +
-	// db_local.go.
-	// checkCmd legacy tree is replaced by check_handlers.go via the schema
-	// dispatcher. Phase 5 deletes check.go + check_schema.go (the dispatcher
-	// handler in check_handlers.go subsumes runCheckSchema).
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(cdnCmd)
 	rootCmd.AddCommand(setupCmd)
 	rootCmd.AddCommand(emailCmd)
-	rootCmd.AddCommand(metaCmd)
 	rootCmd.AddCommand(codegenCmd)
 	rootCmd.AddCommand(driftCmd)
 	rootCmd.AddCommand(contentCmd)
 	rootCmd.AddCommand(sstCmd)
-	rootCmd.AddCommand(lineageCmd)
-	rootCmd.AddCommand(docCmd)
-	rootCmd.AddCommand(heartbeatCmd)
 	rootCmd.AddCommand(auditCmd)
 	rootCmd.AddCommand(healthCmd)
-
-	// Commands registered here instead of in their own files
 	rootCmd.AddCommand(browserCmd)
-	rootCmd.AddCommand(processCmd)
-	rootCmd.AddCommand(systemCmd)
-	rootCmd.AddCommand(uxCmd)
-	rootCmd.AddCommand(workflowsCmd)
 	rootCmd.AddCommand(worktreeCmd)
 }
 

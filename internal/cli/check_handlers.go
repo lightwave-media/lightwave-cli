@@ -245,3 +245,46 @@ func runGitDiff(root, path string) (string, error) {
 	}
 	return string(out), nil
 }
+
+// schemaDriftReport is the JSON shape emitted by `lw check schema --json`.
+// Originally lived in check_schema.go (Phase 3 standalone); moved here when
+// the dispatcher subsumed the legacy cobra tree (Phase 5 sweep).
+type schemaDriftReport struct {
+	SchemaVersion     string   `json:"schema_version"`
+	DomainCount       int      `json:"domain_count"`
+	CommandCount      int      `json:"command_count"`
+	HandlerCount      int      `json:"handler_count"`
+	MissingHandlers   []string `json:"missing_handlers"`
+	OrphanedHandlers  []string `json:"orphaned_handlers"`
+	HandlerMatchRatio float64  `json:"handler_match_ratio"`
+}
+
+func printSchemaDriftHuman(r schemaDriftReport) {
+	fmt.Printf("%s %s\n", color.CyanString("CLI schema:"), r.SchemaVersion)
+	fmt.Printf("  domains:  %d\n", r.DomainCount)
+	fmt.Printf("  commands: %d\n", r.CommandCount)
+	fmt.Printf("  handlers: %d (%.0f%% coverage)\n",
+		r.HandlerCount, r.HandlerMatchRatio*100)
+
+	if len(r.MissingHandlers) == 0 && len(r.OrphanedHandlers) == 0 {
+		fmt.Println(color.GreenString("\n✓ no drift"))
+		return
+	}
+
+	if len(r.MissingHandlers) > 0 {
+		fmt.Printf("\n%s (%d)\n",
+			color.YellowString("missing handlers (declared in schema, no Go handler)"),
+			len(r.MissingHandlers))
+		for _, k := range r.MissingHandlers {
+			fmt.Printf("  - %s\n", k)
+		}
+	}
+	if len(r.OrphanedHandlers) > 0 {
+		fmt.Printf("\n%s (%d)\n",
+			color.RedString("orphaned handlers (registered but not in schema)"),
+			len(r.OrphanedHandlers))
+		for _, k := range r.OrphanedHandlers {
+			fmt.Printf("  - %s\n", k)
+		}
+	}
+}

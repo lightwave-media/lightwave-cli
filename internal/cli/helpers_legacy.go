@@ -6,6 +6,23 @@ import (
 	"strings"
 )
 
+// notifyJoel logs a notification message to stdout. Originally a hook for the
+// Elixir orchestrator's PubSub channel; the orchestrator was retired but
+// surviving call sites in github.go / spec.go still emit user-facing
+// notifications through this entrypoint.
+func notifyJoel(message string) {
+	fmt.Printf("  Notification: %s\n", message)
+}
+
+// escapeAppleScript escapes a string for safe use inside AppleScript
+// double-quoted strings. Replaces backslashes and double quotes with their
+// escaped forms.
+func escapeAppleScript(s string) string {
+	s = strings.ReplaceAll(s, `\`, `\\`)
+	s = strings.ReplaceAll(s, `"`, `\"`)
+	return s
+}
+
 // SessionType determines the Claude Code session profile for a task.
 // Inferred from GitHub Issue labels with priority: backend > frontend > infra.
 type SessionType string
@@ -16,8 +33,6 @@ const (
 	SessionInfra    SessionType = "infra"
 )
 
-// sessionTypePriority defines resolution order when multiple labels exist.
-// Lower index = higher priority.
 var sessionTypePriority = []struct {
 	label       string
 	sessionType SessionType
@@ -37,17 +52,16 @@ func InferSessionType(labels []string) SessionType {
 	for _, l := range labels {
 		labelSet[l] = true
 	}
-
 	for _, sp := range sessionTypePriority {
 		if labelSet[sp.label] {
 			return sp.sessionType
 		}
 	}
-
 	return SessionBackend
 }
 
-// inferSessionTypeFromIssue extracts labels from a ghIssue and infers session type.
+// inferSessionTypeFromIssue extracts labels from a ghIssue and infers session
+// type. ghIssue is defined in github.go.
 func inferSessionTypeFromIssue(issue ghIssue) SessionType {
 	var labelNames []string
 	for _, l := range issue.Labels {
@@ -68,12 +82,10 @@ func (s SessionType) WorkingDir() string {
 	}
 }
 
-// String returns the session type as a string.
 func (s SessionType) String() string {
 	return string(s)
 }
 
-// slugRe matches non-alphanumeric characters for slug generation.
 var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
 
 // IssueBranchName generates a branch name from issue metadata.
@@ -92,7 +104,6 @@ func IssueBranchName(issueNumber int, title string, taskType string) string {
 	slug = strings.Trim(slug, "-")
 	if len(slug) > 40 {
 		slug = slug[:40]
-		// Don't end on a partial word
 		if last := strings.LastIndex(slug, "-"); last > 20 {
 			slug = slug[:last]
 		}
