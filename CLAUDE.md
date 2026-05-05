@@ -1,5 +1,18 @@
 # LightWave CLI Rules
 
+### Git Discipline (READ FIRST)
+
+Before any commit, branch op, stash, cherry-pick, rebase, merge, or worktree, **load the `lightwave-git` skill** and follow it. The defaults are non-negotiable; deviating produces messes that cost full days to clean up. Critical rules at a glance:
+
+- Branch off `origin/main` after `git pull --ff-only`. One concern per branch.
+- Stash is for <30 minutes. Drop `claude-session-start:*` auto-saves on sight.
+- Worktrees do NOT work for cross-repo Makefile invocations.
+- Pre-commit hooks may modify staged files; always re-stage and retry, never `--no-verify`.
+- Generated files and lock files belong in `.prettierignore`. Don't commit prettier-reformatted output.
+- Cherry-picking 7+ day-old work usually conflicts with current main. Don't grind — re-implement against current main instead.
+
+Full reference: `.claude/skills/lightwave-git/SKILL.md`.
+
 ### Updating `lw` — Ship Via Tap, Not `go install`
 
 `lw` is distributed via Homebrew tap (`lightwave-media/homebrew-tap`). Every machine running `lw` got it from `brew install lightwave-media/tap/lw`, which pins to a tagged release built by GoReleaser. **Source changes here don't reach any shell until a new tag ships.**
