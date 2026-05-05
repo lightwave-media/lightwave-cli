@@ -21,6 +21,27 @@ Every new destructive `lw` subcommand ships with a `--dry-run` flag (preview onl
 ### SST is the Source of Truth, the CLI Mediates
 Vendor-facing destructive operations (S3, ECS, RDS, etc.) belong behind an `lw` subcommand that reads structure from SST YAML — agents do not get raw vendor CLI access. The Claude Code global deny on `aws s3 rm` is intentional. To clean up a bucket: extend `lw cdn` against `assets.yaml` (or the relevant SST file), don't ask for the deny to be loosened.
 
+### `lw check` Subcommand Requirements
+
+Every new `lw check <name>` subcommand exists to catch ONE concrete anti-pattern that has bitten us in production. Speculative or aesthetic checks do not ship.
+
+**Required for every new check subcommand:**
+
+1. **Linked incident** — point to a brain memory entry (`~/.brain/memory/failures/*.yaml` or `feedback/*.yaml`) that describes the bug it prevents. If you can't link one, the check isn't justified yet.
+2. **Bad-input example in `--help`** — the long description must include a code snippet of the anti-pattern. Example: `lw check theme --help` shows `useLayoutEffect(() => { document.documentElement.classList.remove('dark-mode') })` and explains why it's wrong.
+3. **Scoped, fast** — operates on staged + changed files by default, full repo only with `--all`. Target <2s on a typical changeset; pre-commit budget is tight.
+4. **Exit codes** — `0` clean, `1` violations found, `2` tool error (config missing, deps broken). Never exit `0` on warnings; if it's a warning, it's not a check.
+5. **`--fix` flag if mechanical** — if the violation has a deterministic fix (delete a line, rename a symbol), provide `--fix`. If it requires judgment (rewrite a CSS token), document it in the violation message and exit non-zero.
+6. **One file per check** — implementation lives in `internal/cli/check_<name>.go`. No catch-all check files.
+7. **Wired into `lw check`** — must run as part of the default `lw check` (the umbrella). Subcommands that only run on demand are dead.
+8. **Test fixture** — `internal/cli/check_<name>_test.go` with one fixture proving the check fires on a known-bad input and one proving it stays silent on a known-good input.
+
+**Don't ship:**
+- Style preferences with no incident behind them
+- Checks that duplicate ruff/eslint/tsc — extend the existing tool's config instead
+- Checks that scan files outside the monorepo
+- Checks that hit the network or read AWS — those go under `lw drift` or `lw aws`, not `lw check`
+
 ### Push Circuit Breaker
 
 After 3 consecutive CI/pre-commit failures on the same branch, the stop hook blocks further progress and requires escalation.

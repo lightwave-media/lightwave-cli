@@ -33,9 +33,26 @@ Built with Go for speed. Direct PostgreSQL access for instant reads.`,
 	},
 }
 
-// Execute runs the root command
+// Execute runs the root command. Loads config, lets the schema-driven
+// dispatcher attach migrated domains, then hands off to cobra.
 func Execute() error {
+	if _, err := config.Load(); err != nil {
+		return fmt.Errorf("load config: %w", err)
+	}
+	if err := BuildDispatched(rootCmd, legacyHardcodedDomains()); err != nil {
+		return err
+	}
 	return rootCmd.Execute()
+}
+
+// legacyHardcodedDomains returns the set of schema domain names still
+// registered via hardcoded *Cmd in init() below. The dispatcher skips these
+// to avoid Use-string collisions. Phase 4 migrates each domain to the
+// dispatcher and removes its entry from this set.
+func legacyHardcodedDomains() map[string]bool {
+	return map[string]bool{
+		"spec": true,
+	}
 }
 
 func init() {
@@ -43,45 +60,38 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/lw/config.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
 
-	// Add subcommands
-	rootCmd.AddCommand(taskCmd)
-	rootCmd.AddCommand(sprintCmd)
-	rootCmd.AddCommand(storyCmd)
-	rootCmd.AddCommand(epicCmd)
+	// Domains migrated to the schema dispatcher (handlers register in
+	// init() of the corresponding *_handlers.go file): task, sprint, story,
+	// epic, db, check, infra, plan, schema, spec, deploy, context, scaffold,
+	// local. Legacy cobra trees for those domains were removed in the Phase 5
+	// sweep; helper funcs that the handlers still call (printTaskTable,
+	// printSprintTable, runTaskCreate, etc.) remain in the original *.go
+	// files as plain package functions.
+	//
+	// specCmd is kept because `lw spec generate <task-id>` (the execution-spec
+	// generator) is a distinct command from schema's `spec.generate-tasks`.
+	// Until the legacy semantics are renamed or merged, the dispatcher's spec
+	// tree is parked behind the spec entry in legacyHardcodedDomains().
 	rootCmd.AddCommand(specCmd)
 	rootCmd.AddCommand(githubCmd)
-	rootCmd.AddCommand(orchestratorCmd)
 	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(awsCmd)
-	rootCmd.AddCommand(infraCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(versionCmd)
 
-	// Monorepo workflow commands
+	// Standalone utilities not modelled as schema domains.
 	rootCmd.AddCommand(makeCmd)
-	rootCmd.AddCommand(devCmd)
-	rootCmd.AddCommand(dbCmd)
-	rootCmd.AddCommand(checkCmd)
 	rootCmd.AddCommand(testCmd)
 	rootCmd.AddCommand(cdnCmd)
 	rootCmd.AddCommand(setupCmd)
 	rootCmd.AddCommand(emailCmd)
-	rootCmd.AddCommand(metaCmd)
 	rootCmd.AddCommand(codegenCmd)
 	rootCmd.AddCommand(driftCmd)
+	rootCmd.AddCommand(contentCmd)
 	rootCmd.AddCommand(sstCmd)
-	rootCmd.AddCommand(lineageCmd)
-	rootCmd.AddCommand(docCmd)
-	rootCmd.AddCommand(heartbeatCmd)
 	rootCmd.AddCommand(auditCmd)
 	rootCmd.AddCommand(healthCmd)
-
-	// Commands registered here instead of in their own files
 	rootCmd.AddCommand(browserCmd)
-	rootCmd.AddCommand(processCmd)
-	rootCmd.AddCommand(systemCmd)
-	rootCmd.AddCommand(uxCmd)
-	rootCmd.AddCommand(workflowsCmd)
 	rootCmd.AddCommand(worktreeCmd)
 }
 
