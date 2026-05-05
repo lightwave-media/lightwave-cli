@@ -14,11 +14,13 @@ import (
 	"github.com/lightwave-media/lightwave-cli/internal/sst"
 )
 
-// Schema-driven check handlers. commands.yaml v3.0.0 declares 12 checks:
-// ci, ruff, types, domains, schema, locks, deps, git, aws, docker, ecs, smoke.
+// Schema-driven check handlers. commands.yaml v3.0.0 declares 13 checks:
+// ci, ruff, types, domains, schema, locks, deps, git, aws, docker, ecs,
+// smoke, compose.
 //
 // Most thin-wrap an existing Make target; locks/git/docker/aws are direct
-// probes; schema reuses the Phase 3 drift validator core.
+// probes; schema reuses the Phase 3 drift validator core; compose delegates
+// to compose.verify.
 
 func init() {
 	RegisterHandler("check.ci", checkCIHandler)
@@ -33,6 +35,7 @@ func init() {
 	RegisterHandler("check.docker", checkDockerHandler)
 	RegisterHandler("check.ecs", checkECSHandler)
 	RegisterHandler("check.smoke", checkSmokeHandler)
+	RegisterHandler("check.compose", checkComposeHandler)
 }
 
 func checkCIHandler(_ context.Context, _ []string, flags map[string]any) error {
@@ -217,6 +220,21 @@ func checkECSHandler(_ context.Context, args []string, flags map[string]any) err
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
 	return c.Run()
+}
+
+// checkComposeHandler delegates to compose.verify so docker-compose.yml stays
+// in sync with SST. Defaults to --env=local — staging/production verification
+// is meaningful too but is a CI concern, not a pre-commit concern.
+func checkComposeHandler(ctx context.Context, args []string, flags map[string]any) error {
+	if _, set := flags["env"]; !set {
+		// Force the default explicitly so composeVerifyHandler's validation
+		// path is consistent regardless of how `lw check compose` is invoked.
+		if flags == nil {
+			flags = map[string]any{}
+		}
+		flags["env"] = "local"
+	}
+	return composeVerifyHandler(ctx, args, flags)
 }
 
 func checkSmokeHandler(_ context.Context, args []string, flags map[string]any) error {
