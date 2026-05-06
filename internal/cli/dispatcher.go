@@ -187,6 +187,7 @@ var booleanFlags = map[string]bool{
 	"yes":             true,
 	"empty":           true,
 	"auto-approve":    true,
+	"staged":          true,
 }
 
 func isBooleanFlag(name string) bool {

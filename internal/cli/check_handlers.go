@@ -14,13 +14,24 @@ import (
 	"github.com/lightwave-media/lightwave-cli/internal/sst"
 )
 
-// Schema-driven check handlers. commands.yaml v3.0.0 declares 13 checks:
-// ci, ruff, types, domains, schema, locks, deps, git, aws, docker, ecs,
-// smoke, compose.
+// Schema-driven check handlers. 13 handlers registered below. The matching
+// `check:` domain in lightwave-core's commands.yaml is what wires them to
+// the dispatcher; without it, all 13 are orphans (registered, not in schema)
+// and `lw check` is unreachable from the binary. The schema-side declaration
+// is drafted at packages/lightwave-cli/docs/pending-schema-additions.yaml
+// and ships in a separate PR against the lightwave-core repo. `lw check
+// schema` lists the orphans during the transitional state — this is
+// expected, not a regression.
 //
-// Most thin-wrap an existing Make target; locks/git/docker/aws are direct
-// probes; schema reuses the Phase 3 drift validator core; compose delegates
-// to compose.verify.
+// Shape notes:
+//   - ci/ruff/types/domains/deps/smoke thin-wrap an existing Make target.
+//   - locks/git/docker/aws are direct probes (git/exec, no Make hop).
+//   - schema reuses the Phase 3 drift validator core (in this file below).
+//   - compose delegates to compose.verify so docker-compose drift is
+//     reported by one validator, not two.
+//   - ruff honours --staged: scope to `git diff --cached --name-only` *.py
+//     instead of the full Make target. Other handlers may grow --staged
+//     support in follow-up PRs.
 
 func init() {
 	RegisterHandler("check.ci", checkCIHandler)
@@ -51,6 +62,9 @@ func checkCIHandler(_ context.Context, _ []string, flags map[string]any) error {
 }
 
 func checkRuffHandler(_ context.Context, _ []string, flags map[string]any) error {
+	if flagBool(flags, "staged") {
+		return runRuffStaged(flagBool(flags, "fix"))
+	}
 	dir, err := resolveMakeDir("platform")
 	if err != nil {
 		return err
@@ -59,6 +73,57 @@ func checkRuffHandler(_ context.Context, _ []string, flags map[string]any) error
 		return runMake(dir, "ruff-fix")
 	}
 	return runMake(dir, "ruff")
+}
+
+// runRuffStaged scopes ruff to the staged .py files only, bypassing the
+// platform-scoped Make target so a stage anywhere in the monorepo (core,
+// packages, tooling) is covered. ruff resolves its own config from each
+// file's parent dir, so no --config flag is needed.
+func runRuffStaged(fix bool) error {
+	cfg := config.Get()
+	if cfg == nil {
+		return fmt.Errorf("config not loaded")
+	}
+	root := cfg.Paths.LightwaveRoot
+	files, err := stagedPythonFiles(root)
+	if err != nil {
+		return err
+	}
+	if len(files) == 0 {
+		fmt.Println(color.GreenString("✓ no staged .py files — ruff skipped"))
+		return nil
+	}
+	args := []string{"check"}
+	if fix {
+		args = append(args, "--fix")
+	}
+	args = append(args, files...)
+	c := exec.Command("ruff", args...)
+	c.Dir = root
+	c.Stdin = os.Stdin
+	c.Stdout = os.Stdout
+	c.Stderr = os.Stderr
+	return c.Run()
+}
+
+// stagedPythonFiles returns staged .py paths relative to the repo root.
+// --diff-filter=ACMR drops deleted entries so ruff doesn't try to open
+// paths that no longer exist on disk.
+func stagedPythonFiles(root string) ([]string, error) {
+	c := exec.Command("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR")
+	c.Dir = root
+	out, err := c.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("git diff --cached: %s", strings.TrimSpace(string(out)))
+	}
+	var files []string
+	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasSuffix(line, ".py") {
+			files = append(files, line)
+		}
+	}
+	return files, nil
 }
 
 func checkTypesHandler(_ context.Context, _ []string, _ map[string]any) error {
