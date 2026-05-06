@@ -52,6 +52,37 @@ interface ValidationResult {
 }
 
 /**
+ * Production-tier detection.
+ *
+ * A command is treated as targeting production if any of the following
+ * contains `/prod/` or `/_global/`:
+ *   - the command text itself (e.g. `cd live/prod/... && terragrunt apply`)
+ *   - the `--terragrunt-working-dir` target path
+ *   - the current working directory
+ *
+ * `_global` is treated as production-tier per the Infrastructure layout
+ * (cross-region prod resources). Catalog/module repos and `live/non-prod/*`
+ * are non-prod.
+ *
+ * Pure function — exported for unit testing without env mocking.
+ */
+export function isProductionContext(args: {
+  command: string;
+  targetPath: string;
+  cwd: string;
+}): boolean {
+  const { command, targetPath, cwd } = args;
+  return (
+    command.includes("/prod/") ||
+    command.includes("/_global/") ||
+    targetPath.includes("/prod/") ||
+    targetPath.includes("/_global/") ||
+    cwd.includes("/prod/") ||
+    cwd.includes("/_global/")
+  );
+}
+
+/**
  * Verify AWS_PROFILE is set correctly
  */
 function validateAwsProfile(): ValidationResult {
@@ -214,41 +245,53 @@ function validateBashCommand(command: string): ValidationResult {
     return profileCheck;
   }
 
-  // Check for dangerous commands
+  const cwd = process.cwd();
+
+  // Check for dangerous commands. Production tier denies; non-prod warns.
   for (const dangerous of DANGEROUS_COMMANDS) {
     if (command.includes(dangerous)) {
-      // Extract the target path if possible
       const pathMatch = command.match(
         /--terragrunt-working-dir[=\s]+"?([^"\s]+)"?/,
       );
       const targetPath = pathMatch ? pathMatch[1] : "current directory";
 
-      // Detect environment from command context
-      const isProd =
-        command.includes("/prod/") || targetPath.includes("/prod/");
-
-      if (isProd) {
+      if (isProductionContext({ command, targetPath, cwd })) {
         return {
-          valid: true,
-          warning: `🚨 DESTRUCTIVE PRODUCTION COMMAND: ${dangerous}`,
-          context: `Target: ${targetPath}\n\n⚠️ This will modify PRODUCTION infrastructure. Ensure you have:\n1. Reviewed the plan output\n2. Confirmed changes are intended\n3. Have rollback strategy ready`,
+          valid: false,
+          block: true,
+          warning: `🚨 BLOCKED: destructive production command: ${dangerous}`,
+          context: `Target: ${targetPath}\n\nThis hook denies destructive Terragrunt/Tofu/Terraform ops (apply, destroy, run-all variants) against production paths (live/prod/*, live/_global/*). If intentional, run from a non-prod context.`,
         };
       }
 
       return {
         valid: true,
-        warning: `⚠️ Destructive command detected: ${dangerous}`,
-        context: `Target: ${targetPath}\nReview the plan output before proceeding.`,
+        warning: `⚠️ Destructive command (non-prod): ${dangerous}`,
+        context: `Target: ${targetPath}\nNon-prod tier — proceeding with warning. Review the plan output before proceeding.`,
       };
     }
   }
 
-  // Check for state commands
+  // Check for state commands. Production tier denies; non-prod warns.
   for (const stateCmd of STATE_COMMANDS) {
     if (command.includes(stateCmd)) {
+      const pathMatch = command.match(
+        /--terragrunt-working-dir[=\s]+"?([^"\s]+)"?/,
+      );
+      const targetPath = pathMatch ? pathMatch[1] : "current directory";
+
+      if (isProductionContext({ command, targetPath, cwd })) {
+        return {
+          valid: false,
+          block: true,
+          warning: `🔒 BLOCKED: state operation against production: ${stateCmd}`,
+          context: `State operations against production can cause drift and are denied by policy. Use a non-prod context if you need to inspect state without modification.`,
+        };
+      }
+
       return {
         valid: true,
-        warning: `🔒 State-modifying command: ${stateCmd}`,
+        warning: `🔒 State-modifying command (non-prod): ${stateCmd}`,
         context: `State operations can cause drift. Ensure you understand the implications.`,
       };
     }
@@ -334,7 +377,9 @@ async function main() {
   console.log(JSON.stringify({}));
 }
 
-main().catch((err) => {
-  console.error("Infrastructure PreToolUse hook error:", err);
-  console.log(JSON.stringify({}));
-});
+if (import.meta.main) {
+  main().catch((err) => {
+    console.error("Infrastructure PreToolUse hook error:", err);
+    console.log(JSON.stringify({}));
+  });
+}
