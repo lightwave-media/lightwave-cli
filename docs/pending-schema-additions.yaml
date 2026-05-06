@@ -1,0 +1,107 @@
+# Pending schema additions for packages/lightwave-core/lightwave/schema/definitions/config/cli/commands.yaml
+#
+# These declarations were drafted as part of the
+# feature/check-schema-drift-repair branch in lightwave-cli but cannot ship
+# in that PR — commands.yaml lives in the sibling lightwave-core repo, and
+# at the time this branch was opened that repo had ~150 unrelated dirty
+# files on a separate feature branch (`feat/codegen-check-mode`).
+#
+# This file exists so the schema additions are not lost. To land them:
+#   1. In packages/lightwave-core, on a clean main: open a new branch.
+#   2. Insert the `check:` domain after `compose:` and before the `infra:`
+#      block in commands.yaml. Insert the `hooks:` domain after `check:`.
+#   3. Open a separate PR in lightwave-core; that PR is what wires the 13
+#      check.* handlers and 3 hooks.* handlers added in lightwave-cli to
+#      the dispatcher.
+#   4. Until both PRs land, the lightwave-cli handlers are still orphaned —
+#      `lw check schema` will list them as such, which is the expected
+#      transitional state.
+
+  # ---------------------------------------------------------------------------
+  # Check — code quality / drift gates. Each entry maps to a check.* handler
+  # in packages/lightwave-cli/internal/cli/check_handlers.go. The dispatcher
+  # silently skips schema entries with no registered handler and logs
+  # registered handlers with no schema entry as orphans (`lw check schema`),
+  # so additions in either file alone surface as drift. Some entries overlap
+  # the older `validate:` domain below — `validate` is left in place for the
+  # CI pipeline scripts that already call it; new code should call `check`.
+  # ---------------------------------------------------------------------------
+  check:
+    description: "Code quality and drift checks"
+    runtime: go  # Fast pre-commit / pre-push gates
+    commands:
+      - name: ci
+        args: []
+        flags: [--skip-tests, --staged]
+        description: "Run CI checks locally (Make ci-local; --skip-tests → ci-local-fast)"
+      - name: ruff
+        args: []
+        flags: [--fix, --staged]
+        description: "Run ruff on backend Python (--staged scopes to git diff --cached)"
+      - name: types
+        args: []
+        flags: [--staged]
+        description: "Run TypeScript type-check on the platform workspace"
+      - name: domains
+        args: []
+        flags: [--staged]
+        description: "Lint API domain usage (Make lint-api-domains)"
+      - name: schema
+        args: []
+        flags: [--json]
+        description: "Report schema↔handler drift (missing handlers, orphaned handlers)"
+      - name: locks
+        args: []
+        flags: [--staged]
+        description: "Verify uv.lock and pnpm-lock.yaml have no uncommitted changes"
+      - name: deps
+        args: []
+        flags: [--staged]
+        description: "Verify workspace dependency consistency (Make deps-check)"
+      - name: git
+        args: []
+        description: "Ensure no uncommitted changes to tracked files"
+      - name: aws
+        args: []
+        description: "Verify AWS credentials resolve via STS"
+      - name: docker
+        args: []
+        description: "Verify the Docker daemon is reachable"
+      - name: ecs
+        args: [service]
+        flags: [--environment]
+        description: "Check ECS service health (status, desired vs running counts)"
+      - name: smoke
+        args: [target]
+        flags: [--env, --staged]
+        description: "Run a smoke test target (Make smoke TARGET=<target>)"
+      - name: compose
+        args: []
+        flags: [--env]
+        description: "Verify docker-compose.yml in sync with SST (delegates to compose.verify)"
+
+  # ---------------------------------------------------------------------------
+  # Hooks — pre-commit / pre-push gate management across LightWave repos.
+  # Implementations live in internal/cli/hooks_handlers.go. `doctor` discovers
+  # the repo set dynamically (no hardcoded list): it walks $HOME/dev/
+  # lightwave-media, $HOME/dev/lightwave-sys, and $HOME/.brain for any .git
+  # dir whose tree contains .pre-commit-config.yaml, then reports per-repo
+  # status. Add new repos by giving them a .pre-commit-config.yaml; nothing
+  # else needs to change.
+  # ---------------------------------------------------------------------------
+  hooks:
+    description: "Manage pre-commit / pre-push gates across LightWave repos"
+    runtime: go  # Fast file probes, git config inspection
+    commands:
+      - name: install
+        args: []
+        flags: [--dry-run]
+        description: "Install pre-commit + pre-push hooks in the current repo"
+      - name: doctor
+        args: []
+        flags: [--json]
+        description: "Walk discoverable LightWave repos and report hook install state"
+      - name: sync
+        args: []
+        flags: [--dry-run]
+        description: "Re-install hooks in every discovered repo (idempotent)"
