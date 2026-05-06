@@ -74,7 +74,6 @@ func init() {
 	// tree is parked behind the spec entry in legacyHardcodedDomains().
 	rootCmd.AddCommand(specCmd)
 	rootCmd.AddCommand(githubCmd)
-	rootCmd.AddCommand(agentCmd)
 	rootCmd.AddCommand(awsCmd)
 	rootCmd.AddCommand(configCmd)
 	rootCmd.AddCommand(versionCmd)

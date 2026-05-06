@@ -305,9 +305,12 @@ func collectAttachments() ([]string, error) {
 
 // findAgentByName resolves a kebab/lowercase/spaced name to an agent.
 func findAgentByName(agents []paperclip.Agent, name string) *paperclip.Agent {
-	target := normalizeAgentName(name)
+	normalize := func(s string) string {
+		return strings.ToLower(strings.ReplaceAll(s, "-", " "))
+	}
+	target := normalize(name)
 	for i := range agents {
-		if normalizeAgentName(agents[i].Name) == target {
+		if normalize(agents[i].Name) == target {
 			return &agents[i]
 		}
 	}
