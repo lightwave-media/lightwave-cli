@@ -5,9 +5,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/joelschaeffer/.bun/bin/bun /Users/joelschaeffer/dev/lightwave-media/.claude/hooks/session-start.ts",
+            "command": "/Users/joelschaeffer/.bun/bin/bun \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lightwave/session-start.ts",
             "timeout": 5,
-            "statusMessage": "Loading Platform context..."
+            "statusMessage": "Loading Lightwave CLI context..."
           }
         ]
       }
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/joelschaeffer/.bun/bin/bun /Users/joelschaeffer/dev/lightwave-media/.claude/hooks/pre-tool-use.ts",
+            "command": "/Users/joelschaeffer/.bun/bin/bun \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lightwave/pre-tool-use.ts",
             "timeout": 10,
             "statusMessage": "Validating file operation..."
           }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/joelschaeffer/.bun/bin/bun /Users/joelschaeffer/dev/lightwave-media/.claude/hooks/bash-guard.ts",
+            "command": "/Users/joelschaeffer/.bun/bin/bun \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lightwave/bash-guard.ts",
             "timeout": 5,
             "statusMessage": "Checking CLI enforcement..."
           }
@@ -41,9 +41,9 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/Users/joelschaeffer/.bun/bin/bun /Users/joelschaeffer/dev/lightwave-media/.claude/hooks/stop.ts",
-            "timeout": 300,
-            "statusMessage": "Running pre-commit checks..."
+            "command": "/Users/joelschaeffer/.bun/bin/bun \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/lightwave/stop.ts",
+            "timeout": 120,
+            "statusMessage": "Running canonical stop hook (observation-only)..."
           }
         ]
       }
