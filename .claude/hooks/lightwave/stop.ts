@@ -54,6 +54,27 @@ export function categorize(file: string): Category {
 }
 
 /**
+ * Parse the pinned ruff version from a `.pre-commit-config.yaml` body.
+ * Returns null if the ruff-pre-commit block is absent or unparseable.
+ *
+ * Why: invoking `ruff format --check` against the system-installed `ruff`
+ * version produces false positives in repos that pin to an older ruff via
+ * pre-commit (Stage 0.7 found 38 file delta between `uvx ruff` and the
+ * pre-commit-pinned `ruff v0.8.6` on lightwave-platform). Reading the rev
+ * lets us invoke `uvx --from ruff==<rev>` and match the project's source
+ * of truth.
+ *
+ * Pure modulo regex on the input string. Tested against both `rev: v0.8.6`
+ * and `rev: 0.8.6` shapes.
+ */
+export function parsePinnedRuffVersion(yamlContent: string): string | null {
+  const m = yamlContent.match(
+    /astral-sh\/ruff-pre-commit[^\n]*\n\s*rev:\s*v?([0-9][0-9.]*[0-9])/,
+  );
+  return m ? m[1] : null;
+}
+
+/**
  * Walk a Claude Code JSONL transcript and return absolute paths of files
  * edited this turn. Walks backwards from the end and stops at the most
  * recent user message — that's the boundary of the current turn. Earlier
@@ -220,20 +241,32 @@ interface QualityCheck {
   cmd: string[];
 }
 
-function buildChecksFor(file: string, repoRoot: string): QualityCheck[] {
+function buildChecksFor(
+  file: string,
+  repoRoot: string,
+  ruffVersion: string | null,
+): QualityCheck[] {
   const cat = categorize(file);
   if (!cat) return [];
   const rel = isAbsolute(file) ? relative(repoRoot, file) : file;
 
   switch (cat) {
-    case "py":
+    case "py": {
+      // If a ruff version is pinned in .pre-commit-config.yaml, invoke that
+      // exact version via uvx so we match the project's source of truth.
+      // Falls back to system `ruff` if no pin is found.
+      const prefix = ruffVersion
+        ? ["uvx", "--from", `ruff==${ruffVersion}`, "ruff"]
+        : ["ruff"];
+      const suffix = ruffVersion ? ` (pinned ${ruffVersion})` : "";
       return [
-        { name: "ruff check", cmd: ["ruff", "check", rel] },
+        { name: `ruff check${suffix}`, cmd: [...prefix, "check", rel] },
         {
-          name: "ruff format --check",
-          cmd: ["ruff", "format", "--check", rel],
+          name: `ruff format --check${suffix}`,
+          cmd: [...prefix, "format", "--check", rel],
         },
       ];
+    }
     case "ts":
       return [
         { name: "prettier --check", cmd: ["bunx", "prettier", "--check", rel] },
@@ -247,6 +280,20 @@ function buildChecksFor(file: string, repoRoot: string): QualityCheck[] {
           cmd: ["terraform", "fmt", "-check", rel],
         },
       ];
+  }
+}
+
+/**
+ * Read the pinned ruff version from <repoRoot>/.pre-commit-config.yaml.
+ * Side-effecting (filesystem read); thin wrapper over parsePinnedRuffVersion.
+ */
+function readPinnedRuffVersion(repoRoot: string): string | null {
+  try {
+    const path = `${repoRoot}/.pre-commit-config.yaml`;
+    if (!existsSync(path)) return null;
+    return parsePinnedRuffVersion(readFileSync(path, "utf-8"));
+  } catch {
+    return null;
   }
 }
 
@@ -310,10 +357,16 @@ async function main() {
     ? []
     : extractEditedFiles(input.transcript_path);
 
+  // Read the pinned ruff version once per turn (cheap, but no need to repeat
+  // per file). Used by buildChecksFor to invoke `uvx --from ruff==<version>`
+  // when a project pins via .pre-commit-config.yaml. Falls through to the
+  // system `ruff` when no pin is found.
+  const ruffVersion = isSubagent ? null : readPinnedRuffVersion(repoRoot);
+
   const results: CheckResult[] = [];
   if (!isSubagent) {
     for (const file of editedFiles) {
-      for (const check of buildChecksFor(file, repoRoot)) {
+      for (const check of buildChecksFor(file, repoRoot, ruffVersion)) {
         results.push(runCheck(check, file, repoRoot));
       }
     }
