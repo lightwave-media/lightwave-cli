@@ -5,8 +5,22 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/spf13/viper"
 )
+
+// Validate checks Database.URL parses as a Postgres DSN if set.
+// Empty URL is fine — components are used. Component fields are not
+// validated here (they have defaults).
+func (d *DatabaseConfig) Validate() error {
+	if d.URL == "" {
+		return nil
+	}
+	if _, err := pgconn.ParseConfig(d.URL); err != nil {
+		return fmt.Errorf("invalid database URL: %w", err)
+	}
+	return nil
+}
 
 // Config holds all CLI configuration
 type Config struct {
@@ -29,8 +43,15 @@ type PaperclipConfig struct {
 	URL string `mapstructure:"url"`
 }
 
-// DatabaseConfig for direct PostgreSQL access (Tier 2)
+// DatabaseConfig for direct PostgreSQL access (Tier 2).
+//
+// URL takes precedence over the individual host/port/name/user/password
+// fields. When set, it must be a valid postgres:// or postgresql:// DSN
+// (validated on Load). Use it for one-off overrides via --db-url or
+// LW_DB_URL; use the component fields when persisting per-machine
+// defaults in ~/.config/lw/config.yaml.
 type DatabaseConfig struct {
+	URL      string `mapstructure:"url"`
 	Host     string `mapstructure:"host"`
 	Port     int    `mapstructure:"port"`
 	Name     string `mapstructure:"name"`
@@ -86,6 +107,7 @@ func Load() (*Config, error) {
 	// Map specific env vars
 	_ = viper.BindEnv("environment", "LW_ENV")
 	_ = viper.BindEnv("tenant", "LW_TENANT")
+	_ = viper.BindEnv("database.url", "LW_DB_URL")
 	_ = viper.BindEnv("database.host", "LW_DB_HOST")
 	_ = viper.BindEnv("database.port", "LW_DB_PORT")
 	_ = viper.BindEnv("database.name", "LW_DB_NAME")
@@ -98,7 +120,30 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("error parsing config: %w", err)
 	}
 
+	if err := cfg.Database.Validate(); err != nil {
+		return nil, err
+	}
+
 	return cfg, nil
+}
+
+// Reset clears the cached config. Test-only helper.
+func Reset() {
+	cfg = nil
+}
+
+// ApplyDBURL overrides the cached config's Database.URL with the provided
+// value (typically from --db-url). Validates the URL parses; returns an
+// error otherwise.
+func ApplyDBURL(c *Config, url string) error {
+	if url == "" {
+		return nil
+	}
+	if _, err := pgconn.ParseConfig(url); err != nil {
+		return fmt.Errorf("invalid --db-url: %w", err)
+	}
+	c.Database.URL = url
+	return nil
 }
 
 func setDefaults() {
@@ -168,8 +213,13 @@ func GetAgentKey() string {
 	return os.Getenv("LW_AGENT_KEY")
 }
 
-// GetDSN returns the PostgreSQL connection string
+// GetDSN returns the PostgreSQL connection string. When Database.URL is
+// set (via --db-url, LW_DB_URL, or config.yaml), it wins outright. Otherwise
+// the keyword form is built from the individual fields.
 func (c *Config) GetDSN() string {
+	if c.Database.URL != "" {
+		return c.Database.URL
+	}
 	return fmt.Sprintf(
 		"host=%s port=%d dbname=%s user=%s password=%s sslmode=disable",
 		c.Database.Host,
@@ -178,4 +228,26 @@ func (c *Config) GetDSN() string {
 		c.Database.User,
 		c.Database.Password,
 	)
+}
+
+// DisplayHost returns the host to show in `lw config show` and error
+// messages: the URL's parsed host if URL is set, else the keyword Host.
+func (c *Config) DisplayHost() string {
+	if c.Database.URL != "" {
+		if pc, err := pgconn.ParseConfig(c.Database.URL); err == nil {
+			return pc.Host
+		}
+	}
+	return c.Database.Host
+}
+
+// DisplayPort returns the port to show in `lw config show` and error
+// messages: the URL's parsed port if URL is set, else the keyword Port.
+func (c *Config) DisplayPort() int {
+	if c.Database.URL != "" {
+		if pc, err := pgconn.ParseConfig(c.Database.URL); err == nil {
+			return int(pc.Port)
+		}
+	}
+	return c.Database.Port
 }

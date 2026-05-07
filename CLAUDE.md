@@ -11,7 +11,7 @@ Before any commit, branch op, stash, cherry-pick, rebase, merge, or worktree, **
 - Generated files and lock files belong in `.prettierignore`. Don't commit prettier-reformatted output.
 - Cherry-picking 7+ day-old work usually conflicts with current main. Don't grind — re-implement against current main instead.
 
-Full reference: `.claude/skills/lightwave-git/SKILL.md`.
+Full reference: `~/.claude/skills/lightwave-git/SKILL.md` (loaded globally in every Claude Code session).
 
 ### Updating `lw` — Ship Via Tap, Not `go install`
 

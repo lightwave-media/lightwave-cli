@@ -105,3 +105,7 @@
         args: []
         flags: [--dry-run]
         description: "Re-install hooks in every discovered repo (idempotent)"
+      - name: circuit-breaker.check
+        args: []
+        flags: [--branch]
+        description: "Exit non-zero when the push circuit breaker has tripped for --branch (consecutive-failure threshold). Designed to be called from each repo's pre-push hook."
