@@ -109,3 +109,28 @@
         args: []
         flags: [--branch]
         description: "Exit non-zero when the push circuit breaker has tripped for --branch (consecutive-failure threshold). Designed to be called from each repo's pre-push hook."
+
+  # ---------------------------------------------------------------------------
+  # ADD-TO-EXISTING-DOMAIN: local
+  # The `local:` domain already exists in lightwave-core's commands.yaml.
+  # The two commands below are ADDITIONS to that block, not a new domain —
+  # the lightwave-core PR should insert these inside the existing
+  # `local: commands:` list (after `clean`).
+  #
+  # Implementations live in packages/lightwave-cli/internal/cli/local_exec.go
+  # and address lightwave-media/lightwave-cli#11 (`exec`) and
+  # lightwave-media/lightwave-cli#12 (`install-frontend`). The agent briefs
+  # use the legacy `lw dev` namespace; the actual surface is `lw local *`
+  # since the Phase 4–5 migration replaced `dev` with `local`.
+  # ---------------------------------------------------------------------------
+  local-additions:
+    description: "(merge into existing local: block — not a separate domain)"
+    runtime: go
+    commands:
+      - name: exec
+        args: [service]
+        description: "Run a command in any compose service (default cmd: bash). exec when running, run --rm when not."
+      - name: install-frontend
+        args: []
+        flags: [--force, --yes]
+        description: "Refresh the frontend container's node_modules from pnpm-lock. --force removes the named volume first (gated on --yes per destructive-command standard)."
