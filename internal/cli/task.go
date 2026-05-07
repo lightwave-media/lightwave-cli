@@ -60,6 +60,11 @@ var (
 	taskCreateProjectWS   string
 	taskCreateJSON        bool
 	taskCreateDryRun      bool
+
+	// Per-target skip flags (#21 option A) — let task creation succeed
+	// when one downstream is offline without losing the captured intent.
+	taskCreateSkipPaperclip bool
+	taskCreateSkipGitHub    bool
 )
 
 // Flags for task update
@@ -196,10 +201,17 @@ var taskContextCmd = &cobra.Command{
 
 var taskCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Create a new task (atomic createOS + Paperclip + GitHub fan-out)",
-	Long: `Create a new task. Atomically creates a createOS task, a linked Paperclip
+	Short: "Create a new task (createOS + Paperclip + GitHub fan-out)",
+	Long: `Create a new task: a createOS canonical record, a linked Paperclip
 issue (with documents, attachments, labels, parent, assignee, priority,
 blocks/blockedBy), and a GitHub issue with Projects sync.
+
+The createOS step is fail-fast (it's the canonical record). Paperclip
+and GitHub legs degrade to warnings on per-step failures, and can be
+explicitly skipped with --skip-paperclip / --skip-github when one of
+those downstreams is unreachable (airplane mode, GitHub incident,
+Paperclip restart). The createOS task always lands, so the captured
+description is never lost.
 
 Per ~/.brain/memory/feedback/2026-04-27-one-command-issue-creation.yaml:
 this is the SINGLE command surface for any agent anywhere. Do not chain
@@ -503,6 +515,8 @@ func init() {
 	taskCreateCmd.Flags().StringVar(&taskCreateProjectWS, "project-workspace", "", "Paperclip project workspace ID")
 	taskCreateCmd.Flags().BoolVar(&taskCreateJSON, "json", false, "JSON output with createos/paperclip/github IDs")
 	taskCreateCmd.Flags().BoolVar(&taskCreateDryRun, "dry-run", false, "Resolve refs and print intent; no mutation")
+	taskCreateCmd.Flags().BoolVar(&taskCreateSkipPaperclip, "skip-paperclip", false, "Skip the Paperclip leg (createOS + GitHub only)")
+	taskCreateCmd.Flags().BoolVar(&taskCreateSkipGitHub, "skip-github", false, "Skip the GitHub leg (createOS + Paperclip only)")
 
 	// task update flags
 	taskUpdateCmd.Flags().StringVar(&taskUpdateStatus, "status", "", "New status")

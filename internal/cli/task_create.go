@@ -143,9 +143,14 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		CreateosShortID: task.ShortID,
 	}
 
-	// 2. Paperclip issue (if assignee given). Without an assignee we can't
-	//    pick a company — Paperclip leg is skipped, surfaced as a warning.
-	if companyID != "" {
+	// 2. Paperclip issue (if assignee given AND not explicitly skipped).
+	//    Without an assignee we can't pick a company — Paperclip leg is
+	//    skipped, surfaced as a warning. --skip-paperclip is the explicit
+	//    "downstream is offline / I'll sync later" path.
+	if taskCreateSkipPaperclip {
+		result.Warnings = append(result.Warnings,
+			"Paperclip leg skipped (--skip-paperclip)")
+	} else if companyID != "" {
 		issue := paperclip.Issue{
 			Title:              taskCreateTitle,
 			Description:        body,
@@ -220,6 +225,12 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	// 6. GitHub issue (existing path — preserves current behavior).
+	//    --skip-github bypasses the entire leg for offline / GitHub-incident scenarios.
+	if taskCreateSkipGitHub {
+		result.Warnings = append(result.Warnings,
+			"GitHub leg skipped (--skip-github)")
+		return printTaskCreateResult(task, result)
+	}
 	issueNum, ghErr := createGitHubIssueForTask(task)
 	if ghErr != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("github: %v", ghErr))
