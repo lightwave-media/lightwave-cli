@@ -23,12 +23,12 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	var err error
 	pool, err = pgxpool.New(ctx, connStr)
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to database: %w", err)
+		return nil, WrapConnectError(err, cfg.Database.Host, cfg.Database.Port)
 	}
 
 	// Test connection
 	if err := pool.Ping(ctx); err != nil {
-		return nil, fmt.Errorf("failed to ping database: %w", err)
+		return nil, WrapConnectError(err, cfg.Database.Host, cfg.Database.Port)
 	}
 
 	// Set tenant schema
