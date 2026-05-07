@@ -134,3 +134,19 @@
         args: []
         flags: [--force, --yes]
         description: "Refresh the frontend container's node_modules from pnpm-lock. --force removes the named volume first (gated on --yes per destructive-command standard)."
+
+  # ---------------------------------------------------------------------------
+  # ADD-TO-EXISTING-COMMAND: task.create
+  # The lightwave-cli #21 (option A) PR adds two boolean flags to the existing
+  # `task.create` command in lightwave-core's commands.yaml. Insertion target
+  # is the existing flags list under `task: commands: [{ name: create, ... }]`.
+  # Append: --skip-paperclip, --skip-github
+  # ---------------------------------------------------------------------------
+  task-create-additions:
+    description: "(merge into existing task.create flags list — not a separate command)"
+    runtime: go
+    commands:
+      - name: create-flag-additions
+        args: []
+        flags: [--skip-paperclip, --skip-github]
+        description: "Per-leg skip flags so task creation succeeds when one downstream is offline (airplane mode, GitHub incident, Paperclip restart)."
