@@ -16,6 +16,7 @@ var versionJSON bool
 var (
 	cfgFile string
 	verbose bool
+	dbURL   string
 )
 
 // rootCmd represents the base command
@@ -28,8 +29,17 @@ scaffolding Django apps, and working with the LightWave platform.
 Built with Go for speed. Direct PostgreSQL access for instant reads.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Load config before any command runs
-		_, err := config.Load()
-		return err
+		cfg, err := config.Load()
+		if err != nil {
+			return err
+		}
+		// Highest-precedence override: explicit --db-url flag.
+		if dbURL != "" {
+			if err := config.ApplyDBURL(cfg, dbURL); err != nil {
+				return err
+			}
+		}
+		return nil
 	},
 }
 
@@ -59,6 +69,7 @@ func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file (default: ~/.config/lw/config.yaml)")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "verbose output")
+	rootCmd.PersistentFlags().StringVar(&dbURL, "db-url", "", "platform DB DSN (overrides LW_DB_URL and config.yaml)")
 
 	// Domains migrated to the schema dispatcher (handlers register in
 	// init() of the corresponding *_handlers.go file): task, sprint, story,
@@ -153,8 +164,11 @@ var configShowCmd = &cobra.Command{
 		fmt.Printf("Tenant:      %s\n", color.YellowString(cfg.Tenant))
 		fmt.Println()
 		fmt.Println(color.CyanString("Database (Tier 2):"))
-		fmt.Printf("  Host:     %s\n", cfg.Database.Host)
-		fmt.Printf("  Port:     %d\n", cfg.Database.Port)
+		if cfg.Database.URL != "" {
+			fmt.Printf("  URL:      %s\n", cfg.Database.URL)
+		}
+		fmt.Printf("  Host:     %s\n", cfg.DisplayHost())
+		fmt.Printf("  Port:     %d\n", cfg.DisplayPort())
 		fmt.Printf("  Database: %s\n", cfg.Database.Name)
 		fmt.Printf("  User:     %s\n", cfg.Database.User)
 		fmt.Println()
@@ -166,8 +180,44 @@ var configShowCmd = &cobra.Command{
 	},
 }
 
+var configSetCmd = &cobra.Command{
+	Use:   "set <key> <value>",
+	Short: "Set a config key in ~/.config/lw/config.yaml",
+	Long: fmt.Sprintf(`Persist a config key to ~/.config/lw/config.yaml. Creates the file
+(and parent directory) if missing. Subsequent commands use the new value.
+
+Settable keys: %v
+
+Examples:
+  lw config set database.url postgres://lw@localhost:5433/lightwave_platform
+  lw config set database.host 127.0.0.1
+  lw config set tenant lwm_core`, config.SettableKeys()),
+	Args: cobra.ExactArgs(2),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return config.Set(args[0], args[1])
+	},
+}
+
+var configGetCmd = &cobra.Command{
+	Use:   "get <key>",
+	Short: "Get the resolved value of a config key",
+	Long: `Print the value of a config key after resolution (flag > env > file > default).
+Exits 0 with the value on stdout when set, exits 1 silently when unset.`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		v, ok := config.Lookup(args[0])
+		if !ok {
+			os.Exit(1)
+		}
+		fmt.Println(v)
+		return nil
+	},
+}
+
 func init() {
 	configCmd.AddCommand(configShowCmd)
+	configCmd.AddCommand(configSetCmd)
+	configCmd.AddCommand(configGetCmd)
 }
 
 func maskKey(key string) string {
