@@ -103,6 +103,7 @@ func init() {
 	rootCmd.AddCommand(healthCmd)
 	rootCmd.AddCommand(browserCmd)
 	rootCmd.AddCommand(worktreeCmd)
+	rootCmd.AddCommand(councilCmd)
 }
 
 // versionCmd shows version info
