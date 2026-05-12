@@ -43,6 +43,12 @@ func AttachOrphanTaskCommands(root *cobra.Command) {
 	if findSubcommand(taskCmd, "fetch-context") == nil {
 		taskCmd.AddCommand(newTaskFetchContextCobraCmd())
 	}
+	// Extras registered by task_md.go's init (new/edit/close/index).
+	for _, c := range orphanTaskCommandsExtra {
+		if findSubcommand(taskCmd, c.Name()) == nil {
+			taskCmd.AddCommand(c)
+		}
+	}
 }
 
 func findSubcommand(parent *cobra.Command, name string) *cobra.Command {
