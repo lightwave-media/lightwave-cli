@@ -109,6 +109,7 @@ func init() {
 	rootCmd.AddCommand(worktreeCmd)
 	rootCmd.AddCommand(councilCmd)
 	rootCmd.AddCommand(agentCmd)
+	rootCmd.AddCommand(memoryCmd)
 }
 
 // versionCmd shows version info
