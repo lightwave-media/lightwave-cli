@@ -52,6 +52,10 @@ func Execute() error {
 	if err := BuildDispatched(rootCmd, legacyHardcodedDomains()); err != nil {
 		return err
 	}
+	// Attach handler-only commands that have not yet landed in the
+	// lightwave-core schema. Becomes a no-op once each command has a
+	// schema entry (see AttachOrphanTaskCommands for the cleanup path).
+	AttachOrphanTaskCommands(rootCmd)
 	return rootCmd.Execute()
 }
 
