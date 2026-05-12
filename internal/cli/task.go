@@ -752,6 +752,3 @@ func printTaskContext(tc *db.TaskContext) {
 	fmt.Printf("%s %s\n", color.CyanString("Full ID:"), tc.ID)
 	fmt.Printf("%s %s\n", color.CyanString("Updated:"), tc.UpdatedAt.Format("2006-01-02 15:04:05"))
 }
-
-// Suppress unused warning
-var _ = strings.TrimSpace

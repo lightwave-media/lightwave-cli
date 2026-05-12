@@ -1,95 +1,47 @@
 # Dead Code Audit: lightwave-cli
 
-**Date**: 2026-03-11
-**Auditor**: Claude Code (automated sweep)
+**Updated**: 2026-05-12 — US-006 sweep (EB-001 v_core resident orchestrator)
+**Original**: 2026-03-11
 
 ## Summary
 
-Go CLI tool. Relatively clean codebase. Main issues: 11 unused native FFI bindings (CLI uses exec.Command fallbacks instead), 2 scaffolding packages (agent/tmux) with no CLI commands wired to them, and 1 unused import.
+The 2026-03-11 audit identified ~550 lines of dead code across native FFI bindings, scaffolding packages, and an unused import. The May 2026 sweep verified each finding against current `main`:
 
----
+- §1 (native FFI) — **REMOVED** between 03-11 and 05-12; `internal/native/` no longer exists.
+- §2.1 (`internal/agent/`) — **WIRED IN** by US-004 (lightwave-cli#33). The package is now live; this section is closed.
+- §2.2 (`internal/tmux/`) — **REMOVED**; directory no longer exists.
+- §3 (redundant implementations) — **N/A** after the native FFI removal.
+- §4 (unused `strings` import marker) — **STILL PRESENT**; fixed in this PR.
+- §5 (clean findings) — superseded by ongoing tidy work.
 
-## 1. Unused Native FFI Bindings (~150 lines)
+## §6 — US-006 finding: no `lw notion *` subcommands to strip
 
-**File**: `internal/native/native.go`
+The Phase 3 plan (`~/.claude/plans/2026-05-12-vcore-resident-orchestrator-mvp.md` §3) calls for stripping `lw notion *` Notion subcommands and recording the strip here.
 
-These exported functions wrap the Rust lightwave-sys C FFI but are never called — the CLI uses exec.Command equivalents instead:
+**Finding:** no such subcommands exist in this repo. Never have. `lw --help` has no `notion` entry; `cmd/lw/main.go` registers none.
 
-| Function | Line | CLI Uses Instead |
-|---|---|---|
-| `BrowserNavigate` | L302 | AppleScript |
-| `BrowserScreenshot` | L314 | screencapture command |
-| `BrowserClick` | L329 | AppleScript System Events |
-| `BrowserType` | L338 | AppleScript keystroke |
-| `ListProcesses` | L365 | `ps` command |
-| `GetProcessInfo` | L380 | `ps` command |
-| `KillProcess` | L395 | `os.FindProcess` |
-| `RunShell` | L411 | `exec.Command` |
-| `ReadFile` | L433 | `os.ReadFile` |
-| `WriteFile` | L453 | `os.WriteFile` |
-| `ListDir` | L476 | `os.ReadDir` |
+Notion's presence is purely a **legacy database column name**: `createos_task.notion_id` (and matching columns on `createos_story`, `createos_sprint`, `createos_epic`). The CLI overloads this column for arbitrary external refs — e.g. `"gh-52"` for GitHub Issue #52 (see `internal/cli/task_create.go:241-245`, `internal/cli/github.go:282-294`). The Go wrappers (`db.GetTaskByNotionID`, `db.UpdateTaskNotionID`, `db.TaskCreateOptions.NotionID`) follow the column name.
 
-**Confidence**: HIGH — zero calls found across entire codebase.
+Renaming `notion_id` → `external_ref` requires:
 
-**Action**: Remove all 11 functions. The CLI already works without them. If native perf is needed later, re-add selectively.
+1. A Django migration in `lightwave-platform` (column rename, index rename).
+2. Sync update to lightwave-cli's Go column references after the migration lands.
+3. Sync update to any direct-SQL consumers (lightwave-core, lightwave-platform).
 
----
+That work is **not in scope for US-006** — it belongs in EB-005 (Phase B storage) when the Postgres canonical-store work happens. Tracking handoff: file as a follow-up issue when EB-005 starts.
 
-## 2. Scaffolding Packages — Not Wired to CLI (~400 lines)
+**Closed:** US-006's "strip Notion CLI surface" deliverable is vacuously satisfied; the renaming work is tracked under EB-005.
 
-Two complete packages exist but no CLI command invokes them:
+## §4 (still present) — unused `strings.TrimSpace` suppression in task.go
 
-### 2.1 `internal/agent/` + `internal/agent/manager/`
-- `Load`, `ListAll`, `Save`, `SetState`, `BaseDir`, `ReposDir`
-- `NewManager`, `Spawn`, `List`, `Kill`
-- `GenerateName`, `TmuxSessionName`, `BranchName` (names subpackage)
-- Complete agent lifecycle system (worktrees, tmux sessions, Claude CLI invocation)
-- Zero CLI commands call any of this
+The line `var _ = strings.TrimSpace` at `internal/cli/task.go:757` was added when other `strings` uses were removed, to keep the import alive. The file now legitimately uses `strings.ReplaceAll`, `strings.Builder`, `strings.Contains`, `strings.TrimSpace`, `strings.Split` (lines 270, 388, 399-403, 428-429). The suppression is no longer needed.
 
-### 2.2 `internal/tmux/`
-- `New`, `NewSession`, `KillSession`, `SendKeys`, plus 10+ session management methods
-- Only used by agent/manager — which itself is unused
+**Fixed** in this PR.
 
-**Confidence**: MEDIUM — these may be planned features (`lw agent spawn`, etc.)
+## Estimated impact
 
-**Action**: Either wire up CLI commands or remove. If keeping, add a TODO with timeline.
+- 1 trivial dead line removed (`task.go:757`)
+- 4 stale audit sections retired (§§1-3, audit history preserved above)
+- 1 forward-looking section added (§6)
 
----
-
-## 3. Redundant Implementations (5 Feature Areas)
-
-The CLI implements features twice — once via exec.Command (used), once via native FFI (unused):
-
-| Feature | Used (CLI) | Unused (Native) |
-|---|---|---|
-| Window management | AppleScript + osascript | FFI: ListWindows, FocusWindow, CaptureWindow |
-| Clipboard | pbpaste/pbcopy | FFI: GetClipboardText, SetClipboardText |
-| Notifications | osascript -e | FFI: SendNotification |
-| AppleScript | exec.Command("osascript") | FFI: RunAppleScript |
-| Process mgmt | ps + os.FindProcess | FFI: ListProcesses, KillProcess |
-
-**Action**: Pick one implementation per feature, delete the other.
-
----
-
-## 4. Unused Import
-
-**File**: `internal/cli/task.go:7`
-- `"strings"` imported but only used in suppression line: `var _ = strings.TrimSpace`
-- **Action**: Remove import and suppression line.
-
----
-
-## 5. Clean Findings
-
-- All go.mod dependencies are actively used (`go mod tidy` clean)
-- All unexported helper functions are properly scoped and called
-- All CLI commands are wired and functional
-- No commented-out code blocks
-
----
-
-## Estimated Impact
-- ~150 lines of unused FFI bindings
-- ~400 lines of scaffolding code (agent/tmux)
-- 1 trivial unused import
+The repo is materially cleaner than the 2026-03-11 baseline — most of the ~550-line dead-code estimate has already shipped.
