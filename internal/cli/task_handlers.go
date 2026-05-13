@@ -8,6 +8,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/db"
+	"github.com/lightwave-media/lightwave-cli/internal/task"
 )
 
 // Schema-driven task handlers. commands.yaml v3.0.0 declares 7 commands:
@@ -241,23 +242,55 @@ func taskPRHandler(ctx context.Context, args []string, _ map[string]any) error {
 	return nil
 }
 
-func taskDoneHandler(ctx context.Context, args []string, _ map[string]any) error {
+// taskDoneHandler is the manual fallback for the task_done.sop.yaml step
+// chain documented in docs/software/ddds/DDD-mvp-vertical-slice.md §5.5.
+// Fires the four cleanup steps that v_core normally runs on the
+// merged-PR webhook: tar the artefacts dir into ~/.lightwave/archive/,
+// remove the worktree, close the linked GitHub issue, and log a memory
+// entry under the `sessions` namespace.
+//
+// Use this when v_core is offline or a SOP step has hung
+// (DDD §8 row "Joel-merge webhook missed"). The markdown-canonical
+// `lw task close` is the right command for the *frontmatter* status
+// flip — this command is about disk + GitHub + memory side effects.
+func taskDoneHandler(_ context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("task id required")
+		return fmt.Errorf("task id required (T-NNNN)")
 	}
-	pool, err := db.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("database connection failed: %w", err)
-	}
-	defer db.Close()
+	taskID := args[0]
+	dryRun := flagBool(flags, "dry-run")
+	yes := flagBool(flags, "yes")
 
-	status := "done"
-	updated, err := db.UpdateTask(ctx, pool, args[0], db.TaskUpdateOptions{Status: &status})
+	issue := 0
+	if v := flagStr(flags, "issue"); v != "" {
+		if _, err := fmt.Sscanf(v, "%d", &issue); err != nil || issue <= 0 {
+			return fmt.Errorf("--issue must be a positive integer")
+		}
+	}
+	repo := flagStr(flags, "repo")
+
+	if !dryRun && !yes {
+		q := fmt.Sprintf("Archive + cleanup task %s? (artefacts → tar.gz, worktree removed, gh issue closed)", taskID)
+		if !promptYesNo(q) {
+			fmt.Println("aborted")
+			return nil
+		}
+	}
+
+	res, err := task.Done(task.DoneOptions{
+		TaskID:      taskID,
+		IssueNumber: issue,
+		Repo:        repo,
+		DryRun:      dryRun,
+	})
 	if err != nil {
 		return err
 	}
-	fmt.Printf("Task %s marked %s\n",
-		color.CyanString(updated.ShortID), color.GreenString("done"))
+
+	if res.DryRun {
+		return nil
+	}
+	fmt.Printf("Task %s %s\n", color.CyanString(taskID), color.GreenString("cleaned up"))
 	return nil
 }
 

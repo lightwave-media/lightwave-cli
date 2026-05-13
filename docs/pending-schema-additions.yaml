@@ -150,3 +150,21 @@
         args: []
         flags: [--skip-paperclip, --skip-github]
         description: "Per-leg skip flags so task creation succeeds when one downstream is offline (airplane mode, GitHub incident, Paperclip restart)."
+
+  # ---------------------------------------------------------------------------
+  # REWRITE-EXISTING-COMMAND: task.done
+  # `lw task done <T-NNNN>` is repurposed (PR `feature/lw-task-done-mvp-fallback`)
+  # to be the manual fallback for the v_core task_done SOP per DDD-mvp-vertical-
+  # slice.md §5.5. The Postgres-status-update behavior moves to `lw task close`
+  # (markdown frontmatter — already shipping in PR #38). lightwave-core PR
+  # `feature/task-done-mvp-fallback` swaps the description and adds four flags
+  # to the existing `task.done` entry (no new command).
+  # ---------------------------------------------------------------------------
+  task-done-rewrite:
+    description: "(merge into existing task.done entry — flag additions + description rewrite)"
+    runtime: go
+    commands:
+      - name: done
+        args: [id]
+        flags: [--dry-run, --yes, --issue, --repo]
+        description: "Manual fallback for the v_core task_done SOP: archive artefacts → ~/.lightwave/archive/YYYY-MM/, remove worktree, gh issue close, memory-log under sessions/. Use when v_core is offline (DDD §8 'webhook missed')."
