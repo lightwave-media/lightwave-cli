@@ -350,37 +350,6 @@ Examples:
 	},
 }
 
-var taskDoneCmd = &cobra.Command{
-	Use:   "done <task-id>",
-	Short: "Mark a task as done (shortcut for update --status=done)",
-	Long: `Mark a task as done. Shortcut for: lw task update <id> --status=done
-
-Examples:
-  lw task done abc123`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := context.Background()
-		taskID := args[0]
-
-		pool, err := db.Connect(ctx)
-		if err != nil {
-			return fmt.Errorf("database connection failed: %w", err)
-		}
-		defer db.Close()
-
-		status := "done"
-		opts := db.TaskUpdateOptions{Status: &status}
-
-		task, err := db.UpdateTask(ctx, pool, taskID, opts)
-		if err != nil {
-			return err
-		}
-
-		fmt.Printf("Task %s marked as %s\n", color.YellowString(task.ShortID), color.GreenString("done"))
-		return nil
-	},
-}
-
 // createGitHubIssueForTask creates a GitHub Issue for a newly created task.
 // Returns the issue number (0 if creation failed).
 func createGitHubIssueForTask(task *db.Task) (int, error) {
@@ -536,7 +505,6 @@ func init() {
 	taskCmd.AddCommand(taskCreateCmd)
 	taskCmd.AddCommand(taskUpdateCmd)
 	taskCmd.AddCommand(taskNextApprovedCmd)
-	taskCmd.AddCommand(taskDoneCmd)
 
 	// next-approved flags
 	taskNextApprovedCmd.Flags().StringVar(&taskSprintID, "sprint", "", "Sprint ID (defaults to active sprint)")
