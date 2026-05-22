@@ -20,7 +20,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup tooling via mise
         uses: jdx/mise-action@v4
@@ -31,7 +31,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Go (fallback for caching)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -45,7 +45,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Full history so `git merge-base origin/main HEAD` resolves
           # on the runner — without this, golangci-lint falls back to
@@ -61,7 +61,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Go (fallback for caching)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -86,7 +86,7 @@ jobs:
     needs: [lint]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup tooling via mise
         uses: jdx/mise-action@v4
@@ -97,7 +97,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Go (fallback for caching)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -108,8 +108,23 @@ jobs:
       - name: Vet
         run: go vet ./...
 
-      - name: Test
-        run: go test ./...
+      - name: Test with JUnit output
+        # Pipe through go-junit-report (installed via .mise.toml) so the
+        # JUnit XML report renders in the GitHub Actions summary.
+        # `set -o pipefail` ensures the step's exit code reflects `go test`
+        # failures, not just the report writer.
+        run: |
+          set -o pipefail
+          go test -v ./... 2>&1 | tee test-output.txt | mise exec -- go-junit-report -set-exit-code > test-results.xml
+
+      - name: Upload JUnit report
+        if: always()
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: test-results.xml
+          detailed_summary: 'true'
+          include_time_in_summary: 'true'
+          group_suite: 'true'
 
   gate:
     name: CI Required Gate

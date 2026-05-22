@@ -13,6 +13,7 @@
 
 import type { PreToolUseHookInput, PreToolUseHookOutput } from "./types";
 import { validateDesignPatterns } from "./validators/design-patterns";
+import { validateLwCheckDiscipline } from "./validators/lw-check-discipline";
 import { validateUntitledUiLock } from "./validators/untitled-ui-lock";
 
 // =============================================================================
@@ -250,6 +251,27 @@ async function main() {
         "Debug at the consumer level (route or component using the token). " +
         "Do not edit primitives. If absolutely required, ask Joel first.",
     });
+  }
+
+  // lw check discipline — fires on Write of internal/cli/check_*.go
+  // (excluding the umbrella check_handlers.go). Edits get a pass.
+  {
+    const content =
+      (input.tool_input.content as string) ||
+      (input.tool_input.new_string as string) ||
+      "";
+    const violation = validateLwCheckDiscipline(
+      input.tool_name,
+      filePath,
+      content,
+    );
+    if (violation) {
+      results.push({
+        valid: false,
+        warning: `lw check discipline violation: ${violation.message}`,
+        suggestion: violation.suggestion,
+      });
+    }
   }
 
   // Design pattern validation for .tsx files
