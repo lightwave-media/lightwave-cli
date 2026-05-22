@@ -1,0 +1,66 @@
+name: Schema Drift Check
+
+# Runs `lw check schema` with LW_CHECK_SCHEMA_STRICT=1 — fails CI when
+# the SST schema in `lightwave-core/.../config/cli/commands.yaml` and
+# the registered Go handlers in `internal/cli/handler_registry.go`
+# disagree.
+#
+# Catches both directions:
+#   - schema entry with no Go handler → "missing handler"
+#   - Go handler with no schema entry  → "orphaned handler"
+#
+# PR9 of the gruntwork-harden mission. Closes the gap where a schema
+# entry added without its handler (or vice versa) could silently land
+# on main because `lw check schema` defaulted to exit 0.
+
+on:
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: packages/lightwave-cli
+
+jobs:
+  drift:
+    name: Schema Drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout lightwave-cli
+        uses: actions/checkout@v6
+        with:
+          path: packages/lightwave-cli
+
+      - name: Checkout lightwave-core (sibling for SST schemas)
+        uses: actions/checkout@v6
+        with:
+          repository: lightwave-media/lightwave-core
+          path: packages/lightwave-core
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go
+        # No mise here on purpose: schema-drift only needs `go build`,
+        # and the mise-action's working-directory handling complicates
+        # the dual-checkout layout. Plain setup-go reads go.mod via
+        # explicit path.
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: packages/lightwave-cli/go.mod
+          cache: true
+          cache-dependency-path: packages/lightwave-cli/go.sum
+
+      - name: Build lw
+        run: go build -o bin/lw ./cmd/lw
+
+      - name: Run schema drift gate
+        env:
+          # Point lw at the workspace root so its config resolves
+          # <root>/packages/lightwave-core/... correctly. viper binds
+          # the field paths.lightwave_root from LW_PATHS_LIGHTWAVE_ROOT
+          # (LW_ prefix + dotted-path → underscored uppercase).
+          LW_PATHS_LIGHTWAVE_ROOT: ${{ github.workspace }}
+          LW_CHECK_SCHEMA_STRICT: "1"
+        run: ./bin/lw check schema

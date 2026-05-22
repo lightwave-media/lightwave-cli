@@ -142,10 +142,20 @@ func checkDomainsHandler(_ context.Context, _ []string, _ map[string]any) error 
 	return runMake(dir, "lint-api-domains")
 }
 
+// EnvCheckSchemaStrict makes `lw check schema` exit non-zero when ANY
+// drift is detected (missing handlers OR orphaned handlers). Default
+// behavior stays informational (exit 0, print the report) so local devs
+// can see drift without their workflow breaking, but CI sets the env so
+// drift cannot land silently. See docs in CLAUDE.md "Schema-Driven CLI"
+// section.
+const EnvCheckSchemaStrict = "LW_CHECK_SCHEMA_STRICT"
+
 // checkSchemaHandler is the Phase 3 drift validator, re-shaped for the
-// dispatcher. Default mode: report drift, exit 0. Caller pairs with `--strict`
-// shape via direct cobra invocation if needed (lw check schema --json), or
-// the legacy checkSchemaCmd wrapper still exists for the cobra path.
+// dispatcher. Default mode: report drift, exit 0. With LW_CHECK_SCHEMA_STRICT=1
+// set in env, exits 1 when drift is detected — that's the form CI uses
+// (configured in .github/workflows/base-test.yml). Closes the gap the
+// gruntwork-harden mission's PR9 identified: silent drift on PRs that
+// added handlers without schema entries or vice versa.
 func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) error {
 	cfg := config.Get()
 	if cfg == nil {
@@ -198,9 +208,18 @@ func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) err
 	if asJSON(flags) {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-		return enc.Encode(report)
+
+		if err := enc.Encode(report); err != nil {
+			return fmt.Errorf("encode drift report: %w", err)
+		}
+	} else {
+		printSchemaDriftHuman(report)
 	}
-	printSchemaDriftHuman(report)
+
+	if os.Getenv(EnvCheckSchemaStrict) == "1" && (len(missing) > 0 || len(orphaned) > 0) {
+		return fmt.Errorf("schema↔handler drift detected (%d missing, %d orphaned); see report above. Cure: add the missing handler OR add/remove the schema entry, then re-run `lw check schema`",
+			len(missing), len(orphaned))
+	}
 	return nil
 }
 
