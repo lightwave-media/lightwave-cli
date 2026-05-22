@@ -136,6 +136,68 @@
         description: "Refresh the frontend container's node_modules from pnpm-lock. --force removes the named volume first (gated on --yes per destructive-command standard)."
 
   # ---------------------------------------------------------------------------
+  # ADD-TO-EXISTING-DOMAIN: local — gate + per-stage commands
+  # Adds the `lw local *` gate surface owned by v_release-engineer. These
+  # land alongside the existing local: block in lightwave-core's
+  # commands.yaml. Implementations are in packages/lightwave-cli/internal/cli/
+  # local_{doctor,fmt,lint,testcmd,build,act,test_harness,tauri,gate,report,pr}.go
+  # plus internal/local/gate/ for the report shape + egress guard, and
+  # internal/repo/ for per-repo dispatch.
+  #
+  # Per-repo dispatch:
+  #   - lightwave-cli stages: go build / go test / gofmt / golangci-lint
+  #   - lightwave-sys stages: dev/ci.sh {lint,test,build} + dev/test-harness.sh
+  #     + dev/run-tauri-dev.sh
+  #   - other repos: stages skip cleanly with an informational line
+  #
+  # State: ~/.local/state/lightwave/dev-gate/<repo>/<sha>.json (matches the
+  # push-circuit-breaker XDG_STATE_HOME pattern in hooks_circuit_breaker.go).
+  # ---------------------------------------------------------------------------
+  local-gate-additions:
+    description: "(merge into existing local: block — gate + per-stage commands)"
+    runtime: go
+    commands:
+      - name: doctor
+        args: []
+        description: "Probe host for the toolchain each stage needs (go, golangci-lint, cargo, docker, gh)."
+      - name: fmt
+        args: []
+        flags: [--check]
+        description: "Format the repo. Default: write-back. --check: report only, exit non-zero on diff."
+      - name: lint
+        args: []
+        description: "Run the repo-native linter (golangci-lint for cli, dev/ci.sh lint for sys)."
+      - name: test
+        args: []
+        flags: [--pkg]
+        description: "Run the repo-native test suite. --pkg scopes to a Go package (cli only)."
+      - name: build
+        args: []
+        description: "Compile/build the repo (go build for cli, dev/ci.sh build for sys)."
+      - name: act
+        args: []
+        flags: [--job]
+        description: "Run the repo's .github/workflows/ci.yml locally via nektos/act. --job defaults to ci."
+      - name: test-harness
+        args: []
+        description: "Run lightwave-sys/dev/test-harness.sh (10-test gateway smoke). Skipped on other repos."
+      - name: tauri
+        args: []
+        description: "Boot the ZeroClaw desktop shell via lightwave-sys/dev/run-tauri-dev.sh."
+      - name: gate
+        args: []
+        flags: [--json, --skip]
+        description: "Composite: doctor → fmt --check → lint → test → test-harness (sys) → act. Writes report to dev-gate state dir; refuses egress (lw local pr) when red."
+      - name: report
+        args: []
+        flags: [--json]
+        description: "Print the gate report for HEAD. Exit 1 if red, 2 if no report on disk."
+      - name: pr
+        args: []
+        flags: [--dry-run, --yes, --title, --body]
+        description: "Egress: refuses if gate not green for HEAD; otherwise shells `gh pr create`. --dry-run shows the command without running it."
+
+  # ---------------------------------------------------------------------------
   # ADD-TO-EXISTING-COMMAND: task.create
   # The lightwave-cli #21 (option A) PR adds two boolean flags to the existing
   # `task.create` command in lightwave-core's commands.yaml. Insertion target
