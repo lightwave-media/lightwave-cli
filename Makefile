@@ -33,9 +33,13 @@ clean:
 	rm -rf dist/
 	go clean
 
-# Run tests
+# Run tests. -race + -shuffle=on are deliberate: PR #57 had a Linux-only
+# CI failure (os.Stdout swap race in internal/testutil) that the bare
+# `go test` invocation hid on macOS. The race detector catches it
+# deterministically on any OS; -shuffle=on protects against future
+# order-dependent assumptions of the same shape.
 test:
-	go test -v ./...
+	go test -race -shuffle=on -v ./...
 
 # Download dependencies
 deps:
@@ -73,7 +77,9 @@ tools:
 	mise install
 
 # Run tests with JUnit XML output (mirrors CI's Tests job locally).
-# Useful before pushing: same exit code semantics as CI.
+# Useful before pushing: same exit code semantics as CI. Flags match
+# the CI invocation in .github/workflows/base-test.yml; see the `test`
+# target for the -race / -shuffle rationale.
 test-ci:
 	set -o pipefail; \
-	go test -v ./... 2>&1 | tee test-output.txt | mise exec -- go-junit-report -set-exit-code > test-results.xml
+	go test -race -shuffle=on -v ./... 2>&1 | tee test-output.txt | mise exec -- go-junit-report -set-exit-code > test-results.xml
