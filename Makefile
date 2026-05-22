@@ -1,4 +1,4 @@
-.PHONY: build install clean test run deps fmt lint release-local
+.PHONY: build install clean test run deps fmt lint release-local tools
 
 # Binary name
 BINARY=lw
@@ -65,3 +65,9 @@ lint:
 # Test GoReleaser locally (snapshot, no publish)
 release-local:
 	goreleaser release --snapshot --clean
+
+# Install all tool versions pinned in .mise.toml.
+# Single source of truth for Go + golangci-lint + goreleaser +
+# go-junit-report. CI uses the same pins via jdx/mise-action@v4.
+tools:
+	mise install
