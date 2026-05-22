@@ -52,8 +52,11 @@ jobs:
           # Ratchet only — existing violations are tombstoned in
           # internal/audits/golangci-baseline.json. Regressions in
           # touched files re-surface via --new-from-merge-base.
+          # Note: only-new-issues=true would conflict with --new* args
+          # (the action enforces "pick one or the other"). The explicit
+          # --new-from-merge-base flag lets devs run the same command
+          # locally and stays version-stable.
           args: --new-from-merge-base=origin/main --timeout=10m
-          only-new-issues: true
 
   test:
     name: Tests
