@@ -34,3 +34,38 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+
+      - name: Upload darwin binaries for notarization
+        # Required input for the sign-macos workflow (when activated).
+        # Leaving the upload active even when notarization is disabled
+        # is harmless — the artifacts expire in 7 days.
+        uses: actions/upload-artifact@v4
+        with:
+          name: lw_darwin_amd64
+          path: dist/lw_darwin_amd64_v1/lw
+          retention-days: 7
+          if-no-files-found: warn
+
+      - name: Upload darwin/arm64 binary for notarization
+        uses: actions/upload-artifact@v4
+        with:
+          name: lw_darwin_arm64
+          path: dist/lw_darwin_arm64_v8.0/lw
+          retention-days: 7
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------
+  # macOS notarization (dormant — activate per docs/release-notarization.md)
+  #
+  # Uncomment the block below + provision the five MACOS_* repo secrets,
+  # and tagged releases will publish notarized darwin binaries that
+  # don't trigger the syspolicyd reputation-check hang documented in
+  # CLAUDE.md (the one that breaks `lw` invocations from project hooks
+  # on fresh macOS installs).
+  # ---------------------------------------------------------------------
+  # sign-macos:
+  #   needs: [release]
+  #   uses: ./.github/workflows/sign-macos.yml
+  #   secrets: inherit
+  #   with:
+  #     tag: ${{ inputs.tag || github.ref_name }}

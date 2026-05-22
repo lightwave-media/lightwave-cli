@@ -1,0 +1,113 @@
+name: Sign macOS
+
+# Reusable workflow that downloads the goreleaser-built darwin binaries,
+# signs + notarizes them via gon, and uploads the signed artifacts.
+#
+# Dormant until release.yml uncomments its `sign-macos` callout AND the
+# Apple Developer secrets are provisioned in the repo. See
+# docs/release-notarization.md for activation steps.
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "Tag being released (e.g. v2.10.0)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    name: Sign macOS binaries via gon
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.tag }}
+
+      - name: Setup tooling via mise
+        uses: jdx/mise-action@v4
+        with:
+          experimental: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install gon
+        # gon is the Apple-notary wrapper that handles codesign +
+        # notarytool + stapling. Pinned version for reproducibility.
+        run: |
+          brew tap mitchellh/gon
+          brew install mitchellh/gon/gon
+
+      - name: Download goreleaser darwin artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "lw_darwin_*"
+          path: dist/
+          merge-multiple: true
+
+      - name: Import Apple Developer certificate
+        # The certificate + password ride in repo secrets. The keychain
+        # is ephemeral to this job (created here, destroyed when the
+        # runner tears down), so no leakage between jobs.
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -base64 32)
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+
+          echo "$MACOS_CERTIFICATE" | base64 --decode > $RUNNER_TEMP/cert.p12
+          security import $RUNNER_TEMP/cert.p12 \
+            -k "$KEYCHAIN_PATH" \
+            -P "$MACOS_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security \
+            -T /opt/homebrew/bin/gon
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          rm $RUNNER_TEMP/cert.p12
+
+      - name: Notarize darwin/amd64
+        env:
+          AC_USERNAME: ${{ secrets.MACOS_AC_LOGIN }}
+          AC_PASSWORD: ${{ secrets.MACOS_AC_PASSWORD }}
+          AC_PROVIDER: ${{ secrets.MACOS_AC_PROVIDER }}
+        run: gon -log-level=info .gon_amd64.hcl
+
+      - name: Notarize darwin/arm64
+        env:
+          AC_USERNAME: ${{ secrets.MACOS_AC_LOGIN }}
+          AC_PASSWORD: ${{ secrets.MACOS_AC_PASSWORD }}
+          AC_PROVIDER: ${{ secrets.MACOS_AC_PROVIDER }}
+        run: gon -log-level=info .gon_arm64.hcl
+
+      - name: Verify signatures
+        # Sanity-check before we upload: codesign should report a valid
+        # Developer ID Application identity, not "adhoc". An adhoc-signed
+        # binary in /opt/homebrew/bin/ triggers the syspolicyd hang
+        # documented in CLAUDE.md, so we fail loudly here rather than
+        # ship a broken release.
+        run: |
+          for zip in dist/lw_darwin_*_signed.zip; do
+            unzip -o "$zip" -d /tmp/verify
+            codesign -dv --verbose=4 /tmp/verify/lw
+            codesign -dv /tmp/verify/lw 2>&1 | grep -v "Signature=adhoc"
+            rm -rf /tmp/verify
+          done
+
+      - name: Upload signed artifacts to the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for zip in dist/lw_darwin_*_signed.zip; do
+            gh release upload "${{ inputs.tag }}" "$zip" --clobber --repo "${{ github.repository }}"
+          done
