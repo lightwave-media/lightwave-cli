@@ -1,0 +1,50 @@
+name: Go Mod Tidy Check
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".github/workflows/go-mod-tidy-check.yml"
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+jobs:
+  tidy-check:
+    name: Tidy Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify go mod tidy is a no-op
+        # If `go mod tidy` would modify go.mod or go.sum, the diff fails
+        # this step. The cure is to run `go mod tidy` locally and commit
+        # the result. Catches dependency drift introduced by partial
+        # `go get` cycles or hand-edited go.sum entries.
+        run: |
+          cp go.mod /tmp/go.mod.before
+          cp go.sum /tmp/go.sum.before
+          go mod tidy
+          if ! diff -q go.mod /tmp/go.mod.before >/dev/null; then
+            echo "::error::go.mod is not tidy. Run 'go mod tidy' locally and commit the result."
+            diff -u /tmp/go.mod.before go.mod || true
+            exit 1
+          fi
+          if ! diff -q go.sum /tmp/go.sum.before >/dev/null; then
+            echo "::error::go.sum is not tidy. Run 'go mod tidy' locally and commit the result."
+            diff -u /tmp/go.sum.before go.sum || true
+            exit 1
+          fi
+          echo "go.mod / go.sum are tidy."
