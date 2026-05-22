@@ -46,9 +46,14 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.5.0
+          # Ratchet only — existing violations are tombstoned in
+          # internal/audits/golangci-baseline.json. Regressions in
+          # touched files re-surface via --new-from-merge-base.
+          args: --new-from-merge-base=origin/main --timeout=10m
+          only-new-issues: true
 
   test:
     name: Tests
