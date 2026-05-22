@@ -58,7 +58,11 @@ repos:
 
       - id: go-test
         name: Go Test (pre-push)
-        entry: bash -c 'go test ./...'
+        # -race catches data races on process-global state (os.Stdout swap,
+        # env mutation) that t.Parallel hides on macOS but exposes on Linux
+        # CI — see PR #57 testutil regression. -shuffle=on surfaces
+        # order-dependent assumptions even without -race.
+        entry: bash -c 'go test -race -shuffle=on ./...'
         language: system
         types: [go]
         pass_filenames: false

@@ -47,9 +47,14 @@ jobs:
         # Pipe through go-junit-report (installed via .mise.toml) so the
         # JUnit XML renders in the GitHub Actions summary. `set -o pipefail`
         # preserves the test-failure exit code through the pipe.
+        #
+        # -race catches data races on process-global state (os.Stdout swap,
+        # env mutation) that t.Parallel hides on macOS but exposes on Linux
+        # — see PR #57 testutil regression. -shuffle=on surfaces
+        # order-dependent assumptions even without -race.
         run: |
           set -o pipefail
-          go test -v ./... 2>&1 | tee test-output.txt | mise exec -- go-junit-report -set-exit-code > test-results.xml
+          go test -race -shuffle=on -v ./... 2>&1 | tee test-output.txt | mise exec -- go-junit-report -set-exit-code > test-results.xml
 
       - name: Upload JUnit report
         if: ${{ always() && inputs.upload-junit }}
