@@ -1,0 +1,48 @@
+# Dependabot config — see https://docs.github.com/en/code-security/dependabot
+#
+# Grouped weekly bumps to keep PR volume manageable. Security updates
+# are exempted from the schedule (they file immediately).
+
+version: 2
+updates:
+  # Go module updates — weekly, grouped patch+minor to one PR.
+  - package-ecosystem: "gomod"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    groups:
+      gomod-patch-minor:
+        update-types:
+          - "patch"
+          - "minor"
+    labels:
+      - "dependencies"
+      - "ecosystem:gomod"
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+
+  # GitHub Actions versions — weekly, grouped.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    groups:
+      actions-patch-minor:
+        update-types:
+          - "patch"
+          - "minor"
+    labels:
+      - "dependencies"
+      - "ecosystem:github-actions"
+    commit-message:
+      prefix: "chore(actions)"
+      include: "scope"
