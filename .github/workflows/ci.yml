@@ -1,5 +1,12 @@
 name: CI
 
+# Orchestrator. Every individual job lives in its own reusable
+# workflow under .github/workflows/ — this file just wires them up
+# with the right matrix and the required-gate aggregation.
+#
+# Releases (.github/workflows/release.yml) call the same reusable
+# workflows to keep `main` ↔ release semantics identical.
+
 on:
   push:
     branches: [main]
@@ -7,129 +14,71 @@ on:
     branches: [main]
 
 concurrency:
+  # Cancel in-progress runs for the same PR/SHA; never cancel on main.
   group: ci-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   contents: read
+  checks: write
 
 jobs:
   pre-commit:
-    name: Pre-commit Checks
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+    name: Pre-commit
+    uses: ./.github/workflows/pre-commit.yml
+    secrets: inherit
 
-      - name: Setup tooling via mise
-        uses: jdx/mise-action@v4
-        with:
-          # Tool versions live in .mise.toml.
-          experimental: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  codespell:
+    name: Codespell
+    uses: ./.github/workflows/codespell.yml
+    secrets: inherit
 
-      - name: Setup Go (fallback for caching)
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Run pre-commit
-        uses: pre-commit/action@v3.0.1
+  tidy-check:
+    name: Tidy Check
+    uses: ./.github/workflows/go-mod-tidy-check.yml
+    secrets: inherit
 
   lint:
     name: Lint
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          # Full history so `git merge-base origin/main HEAD` resolves
-          # on the runner — without this, golangci-lint falls back to
-          # "show all issues" mode and the baseline floods the run.
-          fetch-depth: 0
+    uses: ./.github/workflows/lint.yml
+    secrets: inherit
+    with:
+      os: ubuntu-latest
 
-      - name: Setup tooling via mise
-        uses: jdx/mise-action@v4
-        with:
-          # Tool versions live in .mise.toml.
-          experimental: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Go (fallback for caching)
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: v2.5.0
-          # Ratchet only — existing violations are tombstoned in
-          # internal/audits/golangci-baseline.json. Regressions in
-          # touched files re-surface via --new-from-merge-base.
-          # Note: only-new-issues=true would conflict with --new* args
-          # (the action enforces "pick one or the other"). The explicit
-          # --new-from-merge-base flag lets devs run the same command
-          # locally and stays version-stable.
-          args: --new-from-merge-base=origin/main --timeout=10m
-
-  test:
+  base-test:
     name: Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
     needs: [lint]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    uses: ./.github/workflows/base-test.yml
+    secrets: inherit
+    with:
+      os: ${{ matrix.os }}
 
-      - name: Setup tooling via mise
-        uses: jdx/mise-action@v4
-        with:
-          # Tool versions live in .mise.toml.
-          experimental: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Go (fallback for caching)
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Build
-        run: go build ./cmd/lw
-
-      - name: Vet
-        run: go vet ./...
-
-      - name: Test with JUnit output
-        # Pipe through go-junit-report (installed via .mise.toml) so the
-        # JUnit XML report renders in the GitHub Actions summary.
-        # `set -o pipefail` ensures the step's exit code reflects `go test`
-        # failures, not just the report writer.
-        run: |
-          set -o pipefail
-          go test -v ./... 2>&1 | tee test-output.txt | mise exec -- go-junit-report -set-exit-code > test-results.xml
-
-      - name: Upload JUnit report
-        if: always()
-        uses: mikepenz/action-junit-report@v6
-        with:
-          report_paths: test-results.xml
-          detailed_summary: 'true'
-          include_time_in_summary: 'true'
-          group_suite: 'true'
+  build:
+    name: Build
+    needs: [lint]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, goos: linux,   goarch: amd64 }
+          - { os: ubuntu-latest, goos: linux,   goarch: arm64 }
+          - { os: ubuntu-latest, goos: darwin,  goarch: amd64 }
+          - { os: ubuntu-latest, goos: darwin,  goarch: arm64 }
+    uses: ./.github/workflows/build.yml
+    secrets: inherit
+    with:
+      os: ${{ matrix.os }}
+      goos: ${{ matrix.goos }}
+      goarch: ${{ matrix.goarch }}
 
   gate:
     name: CI Required Gate
     if: always()
-    needs: [pre-commit, lint, test]
+    needs: [pre-commit, codespell, tidy-check, lint, base-test, build]
     runs-on: ubuntu-latest
     steps:
       - name: Check upstream job results
