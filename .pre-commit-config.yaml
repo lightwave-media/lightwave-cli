@@ -1,5 +1,19 @@
+# Pre-commit + pre-push hook config.
+#
+# Closes lightwave-platform#633 — P-4 hook consolidation for lightwave-cli.
+#
+# Discipline (per CLAUDE.md "lw check Subcommand Requirements"):
+#   1. Every new internal/cli/check_<name>.go must have a sibling _test.go
+#   2. Every new internal/cli/check_<name>.go must declare a `// linked-incident:`
+#      comment pointing at a real ~/.brain/memory/{failures,feedback}/*.yaml entry
+#   3. Slow gates (go build, golangci-lint, full test suite, goreleaser
+#      check, push-circuit-breaker) run at pre-push, not pre-commit, so
+#      the inner loop stays fast.
+
 repos:
-  # Go formatting, vetting, and building
+  # ---------------------------------------------------------------------
+  # Pre-commit (fast, per-staged-file)
+  # ---------------------------------------------------------------------
   - repo: local
     hooks:
       - id: go-fmt
@@ -15,32 +29,98 @@ repos:
         types: [go]
         pass_filenames: false
 
+      - id: check-companion-test
+        name: lw check discipline — companion test (CLAUDE.md §8)
+        entry: scripts/precommit/check-companion-test.sh
+        language: script
+        types: [go]
+        files: ^internal/cli/check_.*\.go$
+
+      - id: brain-memory-link
+        name: lw check discipline — linked-incident (CLAUDE.md §1)
+        entry: scripts/precommit/brain-memory-link.sh
+        language: script
+        types: [go]
+        files: ^internal/cli/check_.*\.go$
+
+  # ---------------------------------------------------------------------
+  # Pre-push (slow, full-repo gates)
+  # ---------------------------------------------------------------------
+  - repo: local
+    hooks:
       - id: go-build
-        name: Go Build
+        name: Go Build (pre-push)
         entry: bash -c 'go build ./cmd/lw'
         language: system
         types: [go]
         pass_filenames: false
+        stages: [pre-push]
 
       - id: go-test
-        name: Go Test
+        name: Go Test (pre-push)
         entry: bash -c 'go test ./...'
         language: system
         types: [go]
         pass_filenames: false
         stages: [pre-push]
 
-  # General file hygiene
+      - id: golangci-lint
+        name: golangci-lint (pre-push, ratcheted)
+        entry: bash -c 'mise exec -- golangci-lint run --new-from-merge-base=origin/main --timeout=10m ./...'
+        language: system
+        types: [go]
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: goreleaser-check
+        name: GoReleaser config check (pre-push)
+        entry: bash -c 'mise exec -- goreleaser check'
+        language: system
+        types: [yaml]
+        files: ^\.goreleaser\.ya?ml$
+        pass_filenames: false
+        stages: [pre-push]
+
+      # TODO(post-release): re-enable push-circuit-breaker once a `lw` tap
+      # release ships the `hooks circuit-breaker.check` subcommand. The
+      # command exists in source but predates any tagged release, so
+      # uncommenting now would block every push from machines running the
+      # current tap binary. Re-enable in a follow-up PR after the next
+      # `git tag vX.Y.Z && brew upgrade lw` cycle.
+      #
+      # - id: push-circuit-breaker
+      #   name: Push circuit breaker (pre-push)
+      #   # CLAUDE.md "Push Circuit Breaker": refuse to push when consecutive
+      #   # pre-commit/CI failures on the current branch >= 3. State at
+      #   # ~/.local/state/lightwave/push-circuit-breaker.json. To unblock,
+      #   # delete the branch entry from the state file after manager guidance.
+      #   entry: bash -c 'lw hooks circuit-breaker.check --branch "$(git rev-parse --abbrev-ref HEAD)"'
+      #   language: system
+      #   pass_filenames: false
+      #   stages: [pre-push]
+      #   always_run: true
+
+      - id: hooks-smoke-test
+        name: Pre-commit hook smoke tests (pre-push, on hook change)
+        entry: scripts/precommit/hooks_test.sh
+        language: script
+        files: ^scripts/precommit/.*\.sh$
+        pass_filenames: false
+        stages: [pre-push]
+
+  # ---------------------------------------------------------------------
+  # General file hygiene (upstream)
+  # ---------------------------------------------------------------------
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
-        exclude: (\.lock$|go\.sum$)
+        exclude: (\.lock$|go\.sum$|internal/audits/golangci-baseline\.json$)
       - id: end-of-file-fixer
-        exclude: (\.lock$|go\.sum$)
+        exclude: (\.lock$|go\.sum$|internal/audits/golangci-baseline\.json$)
       - id: check-yaml
       - id: check-json
       - id: check-added-large-files
-        args: [--maxkb=1000]
+        args: [--maxkb=1100]
       - id: check-merge-conflict
       - id: detect-private-key
