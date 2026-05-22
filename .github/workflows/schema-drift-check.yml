@@ -1,0 +1,79 @@
+name: Schema Drift Check
+
+# Runs `lw check schema` with LW_CHECK_SCHEMA_STRICT=1 — fails CI when
+# the SST schema in `lightwave-core/.../config/cli/commands.yaml` and
+# the registered Go handlers in `internal/cli/handler_registry.go`
+# disagree.
+#
+# Catches both directions:
+#   - schema entry with no Go handler → "missing handler"
+#   - Go handler with no schema entry  → "orphaned handler"
+#
+# PR9 of the gruntwork-harden mission. Closes the gap where a schema
+# entry added without its handler (or vice versa) could silently land
+# on main because `lw check schema` defaulted to exit 0.
+
+on:
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Schema ↔ handler drift
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout lightwave-cli
+        uses: actions/checkout@v6
+        with:
+          path: lightwave-cli
+
+      - name: Checkout lightwave-core (sibling for SST schemas)
+        uses: actions/checkout@v6
+        with:
+          repository: lightwave-media/lightwave-core
+          path: lightwave-core
+          # Public schema reads; default GITHUB_TOKEN suffices since
+          # lightwave-core is in the same org as the workflow caller.
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Stage workspace layout
+        # `lw check schema` resolves the schema via
+        # <lightwave-root>/packages/lightwave-core/lightwave/schema/...
+        # Mirror that layout in the runner workspace.
+        run: |
+          mkdir -p workspace/packages
+          mv lightwave-cli workspace/packages/lightwave-cli
+          mv lightwave-core workspace/packages/lightwave-core
+
+      - name: Setup tooling via mise
+        uses: jdx/mise-action@v4
+        with:
+          experimental: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: workspace/packages/lightwave-cli
+
+      - name: Setup Go (fallback for module cache)
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: workspace/packages/lightwave-cli/go.mod
+          cache: true
+          cache-dependency-path: workspace/packages/lightwave-cli/go.sum
+
+      - name: Build lw
+        working-directory: workspace/packages/lightwave-cli
+        run: go build -o bin/lw ./cmd/lw
+
+      - name: Run schema drift gate
+        working-directory: workspace/packages/lightwave-cli
+        env:
+          # Point lw at the workspace root so its config resolves
+          # <root>/packages/lightwave-core/... correctly. viper binds
+          # the field paths.lightwave_root from LW_PATHS_LIGHTWAVE_ROOT
+          # (LW_ prefix + dotted-path → underscored uppercase).
+          LW_PATHS_LIGHTWAVE_ROOT: ${{ github.workspace }}/workspace
+          LW_CHECK_SCHEMA_STRICT: "1"
+        run: ./bin/lw check schema

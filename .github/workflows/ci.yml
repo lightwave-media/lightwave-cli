@@ -38,6 +38,11 @@ jobs:
     uses: ./.github/workflows/go-mod-tidy-check.yml
     secrets: inherit
 
+  schema-drift:
+    name: Schema Drift
+    uses: ./.github/workflows/schema-drift-check.yml
+    secrets: inherit
+
   lint:
     name: Lint
     uses: ./.github/workflows/lint.yml
@@ -78,7 +83,7 @@ jobs:
   gate:
     name: CI Required Gate
     if: always()
-    needs: [pre-commit, codespell, tidy-check, lint, base-test, build]
+    needs: [pre-commit, codespell, tidy-check, schema-drift, lint, base-test, build]
     runs-on: ubuntu-latest
     steps:
       - name: Check upstream job results

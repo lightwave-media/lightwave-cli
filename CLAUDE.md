@@ -1,5 +1,17 @@
 # LightWave CLI Rules
 
+### Schema-Driven CLI
+
+`lw`'s command surface is declared in `lightwave-core`'s
+`config/cli/commands.yaml` and dispatched at startup via
+`internal/cli/dispatcher.go`. Two invariants are checked by
+`lw check schema`:
+
+- **No schema entry without a registered Go handler** — adding a `name: foo` line under a domain in `commands.yaml` without also calling `RegisterHandler("<domain>.foo", …)` from `init()` leaves the subcommand wired to `lw <domain> foo --help` but unimplemented.
+- **No registered handler without a schema entry** — registering a handler the schema doesn't know about means the command is unreachable from the dispatcher's cobra tree.
+
+CI runs `LW_CHECK_SCHEMA_STRICT=1 ./bin/lw check schema` as a blocking gate (`.github/workflows/schema-drift-check.yml`). Local devs see the report informationally (exit 0, drift listed in stdout); the strict flag is the CI-only failure switch.
+
 ### Test Conventions
 
 Every new test file uses these defaults (enforced informally — golangci-lint v2's `paralleltest`, `tparallel`, `thelper`, `testpackage`, and `usetesting` linters catch most drift):
