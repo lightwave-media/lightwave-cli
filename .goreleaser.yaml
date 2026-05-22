@@ -25,12 +25,23 @@ checksum:
   name_template: "checksums.txt"
 
 changelog:
+  # Auto-generate from conventional commits; CHANGELOG.md is the
+  # human-curated complement that the release body links to.
   sort: asc
   filters:
     exclude:
       - "^wip:"
       - "^docs:"
       - "^test:"
+      - "^chore\\(deps\\):"
+
+release:
+  # GitHub release body: prepend a pointer to the human-curated
+  # changelog so consumers can find the why-context.
+  header: |
+    See [`CHANGELOG.md`](https://github.com/{{ .Env.GITHUB_REPOSITORY }}/blob/{{ .Tag }}/CHANGELOG.md)
+    for the human-curated release notes. The commit log below is
+    auto-generated from conventional commits.
 
 brews:
   - name: lw
