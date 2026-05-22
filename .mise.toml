@@ -1,0 +1,19 @@
+# mise tool version pins — see https://mise.jdx.dev
+#
+# One source of truth for Go + Go-tool versions across local dev + CI.
+# `mise install` in this dir resolves everything. CI invokes the same
+# pins via `jdx/mise-action@v4` so CI and local cannot drift.
+#
+# Why pinned (vs `latest`):
+#   - Reproducibility — a new lint rule shouldn't break CI silently
+#   - golangci-lint v2 ↔ config schema coupling — the v2.5.0 config in
+#     `.golangci.yml` won't parse under v3 if/when it lands
+#   - goreleaser config schema versions matter for the release pipeline
+
+[tools]
+go = "1.24"
+# Pin via ubi: backend (direct from GitHub releases) — the default
+# aqua: backend has had intermittent 400s on the registry endpoint.
+"ubi:golangci/golangci-lint" = "v2.5.0"
+"ubi:goreleaser/goreleaser" = "v2.15.4"
+"ubi:jstemmer/go-junit-report" = "v2.1.0"

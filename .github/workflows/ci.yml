@@ -22,7 +22,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: Setup tooling via mise
+        uses: jdx/mise-action@v4
+        with:
+          # Tool versions live in .mise.toml.
+          experimental: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go (fallback for caching)
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -44,7 +52,15 @@ jobs:
           # "show all issues" mode and the baseline floods the run.
           fetch-depth: 0
 
-      - name: Setup Go
+      - name: Setup tooling via mise
+        uses: jdx/mise-action@v4
+        with:
+          # Tool versions live in .mise.toml.
+          experimental: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go (fallback for caching)
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
@@ -72,7 +88,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Go
+      - name: Setup tooling via mise
+        uses: jdx/mise-action@v4
+        with:
+          # Tool versions live in .mise.toml.
+          experimental: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go (fallback for caching)
         uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
