@@ -1,5 +1,21 @@
 # LightWave CLI Rules
 
+### Test Conventions
+
+Every new test file uses these defaults (enforced informally — golangci-lint v2's `paralleltest`, `tparallel`, `thelper`, `testpackage`, and `usetesting` linters catch most drift):
+
+- **Top-level `t.Parallel()`** on every test function (and `tt := testCase; tt.t.Parallel()` inside table-driven subtests).
+- **`stretchr/testify/require`** for setup-fatal assertions (`require.NoError(t, err, "context")`); **`stretchr/testify/assert`** for content checks that should report-all-failures rather than fast-fail.
+- **External test package** — `package foo_test` not `package foo`, when feasible. Forces tests against the exported API.
+- **`internal/testutil`** for shared helpers:
+  - `testutil.NewPool(t)` — opens a Postgres pool from `LW_TEST_DB_URL`; calls `t.Skip` when the env var is unset, so the suite stays portable across machines without a DB fixture.
+  - `testutil.MakeEpic(t, pool, opts...)` / `MakeSprint(t, pool, epic, opts...)` / `MakeStory(t, pool, epic, opts...)` — create rows with sensible defaults; each registers a `t.Cleanup` that deletes the row on test exit.
+  - `testutil.RunHandler(t, key, args, flags) (stdout string, err error)` — invokes a dispatcher-registered handler with stdout capture, for table-driven CLI tests that don't need the cobra wrapper.
+- **`t.TempDir()`** for any filesystem fixture — auto-cleaned, no `os.RemoveAll` ceremony.
+- **`t.Context()`** (Go 1.24+) in tests that need a context — preferred over `context.Background()` so tests cancel cleanly when the test times out.
+
+Existing tests predating this convention are not auto-migrated; touch-as-you-go.
+
 ### Git Discipline (READ FIRST)
 
 Before any commit, branch op, stash, cherry-pick, rebase, merge, or worktree, **load the `lightwave-git` skill** and follow it. The defaults are non-negotiable; deviating produces messes that cost full days to clean up. Critical rules at a glance:
