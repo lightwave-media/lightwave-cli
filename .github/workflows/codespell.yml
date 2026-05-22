@@ -1,0 +1,22 @@
+name: Codespell
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_call: {}
+
+permissions:
+  contents: read
+
+jobs:
+  codespell:
+    name: Codespell
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run codespell
+        uses: codespell-project/actions-codespell@v2
+        # Config + skip list + ignore-words-list live in .codespellrc.

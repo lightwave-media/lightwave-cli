@@ -1,0 +1,13 @@
+[codespell]
+# Per Gruntwork convention (terragrunt/.codespellrc): keep this lean.
+# Skip generated/snapshot files + project-specific abbreviations and
+# domain terms that look like misspellings to codespell's default lexicon.
+
+skip = ./go.sum,./internal/audits/golangci-baseline.json,./.git,./vendor
+
+# Project terms + intentional abbreviations.
+# - isTS, ans: existing in-code abbreviations (audit.go, sst.go) flagged
+#   by codespell defaults.
+# - createos, paperclip, zeroclaw, lightwave, gruntwork, goreleaser,
+#   terragrunt: domain / vendor proper nouns.
+ignore-words-list = isTS,ans,createos,paperclip,zeroclaw,lightwave,gruntwork,goreleaser,terragrunt
