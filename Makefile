@@ -1,4 +1,4 @@
-.PHONY: build install clean test run deps fmt lint release-local tools
+.PHONY: build install clean test run deps fmt lint release-local tools test-ci
 
 # Binary name
 BINARY=lw
@@ -71,3 +71,9 @@ release-local:
 # go-junit-report. CI uses the same pins via jdx/mise-action@v4.
 tools:
 	mise install
+
+# Run tests with JUnit XML output (mirrors CI's Tests job locally).
+# Useful before pushing: same exit code semantics as CI.
+test-ci:
+	set -o pipefail; \
+	go test -v ./... 2>&1 | tee test-output.txt | mise exec -- go-junit-report -set-exit-code > test-results.xml
