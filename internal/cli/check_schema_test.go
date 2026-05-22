@@ -2,6 +2,8 @@ package cli_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 
@@ -9,8 +11,29 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lightwave-media/lightwave-cli/internal/cli"
+	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/testutil"
 )
+
+// skipIfNoLightwaveCore skips when the sibling lightwave-core repo
+// isn't checked out at the expected workspace path. CI runs
+// lightwave-cli stand-alone (lightwave-core is private, default
+// GITHUB_TOKEN can't reach it without a cross-repo PAT). Local devs
+// have the workspace layout via `~/dev/lightwave-media/packages/*`.
+// Same pattern as internal/sst/cli_loader_test.go.
+func skipIfNoLightwaveCore(t *testing.T) {
+	t.Helper()
+	cfg := config.Get()
+	if cfg == nil {
+		t.Skip("config not loaded; schema-drift tests skip")
+	}
+	path := filepath.Join(cfg.Paths.LightwaveRoot,
+		"packages", "lightwave-core", "lightwave", "schema",
+		"definitions", "config", "cli", "commands.yaml")
+	if _, err := os.Stat(path); os.IsNotExist(err) {
+		t.Skipf("lightwave-core schema not present at %s; skipping schema-drift test", path)
+	}
+}
 
 // PR9 of the gruntwork-harden mission: prove `lw check schema`
 // detects BOTH drift directions and that LW_CHECK_SCHEMA_STRICT=1
@@ -39,6 +62,7 @@ func registerOrphanedHandler() {
 
 //nolint:paralleltest // intentionally serial — t.Setenv + RunHandler swap process globals
 func TestCheckSchema_StrictEnvFailsOnOrphanedHandler(t *testing.T) {
+	skipIfNoLightwaveCore(t)
 	registerOrphanedHandler()
 	t.Setenv("LW_CHECK_SCHEMA_STRICT", "1")
 
@@ -53,6 +77,7 @@ func TestCheckSchema_StrictEnvFailsOnOrphanedHandler(t *testing.T) {
 
 //nolint:paralleltest // intentionally serial — t.Setenv + RunHandler swap process globals
 func TestCheckSchema_NonStrictReportsButPasses(t *testing.T) {
+	skipIfNoLightwaveCore(t)
 	registerOrphanedHandler()
 	// Explicitly unset to defeat any ambient value.
 	t.Setenv("LW_CHECK_SCHEMA_STRICT", "")
@@ -65,6 +90,7 @@ func TestCheckSchema_NonStrictReportsButPasses(t *testing.T) {
 
 //nolint:paralleltest // intentionally serial — t.Setenv + RunHandler swap process globals
 func TestCheckSchema_JSONShapeReportsBothDriftDirections(t *testing.T) {
+	skipIfNoLightwaveCore(t)
 	registerOrphanedHandler()
 	t.Setenv("LW_CHECK_SCHEMA_STRICT", "")
 
