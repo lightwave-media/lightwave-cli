@@ -1,0 +1,69 @@
+name: Build
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: "Runner OS to compile on (ubuntu-latest is fine for cross-compile via GOOS/GOARCH)"
+        required: false
+        type: string
+        default: ubuntu-latest
+      goos:
+        description: "Target GOOS (linux, darwin, windows)"
+        required: true
+        type: string
+      goarch:
+        description: "Target GOARCH (amd64, arm64, …)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build (${{ inputs.goos }}/${{ inputs.goarch }})
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup tooling via mise
+        uses: jdx/mise-action@v4
+        with:
+          experimental: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go (fallback for module cache)
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build
+        # CGO_ENABLED=0 keeps the binary statically linked + cross-OS
+        # compileable. The version-injected ldflags match Makefile's
+        # `build` target so CI binaries identify themselves the same way
+        # as local builds.
+        env:
+          CGO_ENABLED: "0"
+          GOOS: ${{ inputs.goos }}
+          GOARCH: ${{ inputs.goarch }}
+        run: |
+          SUFFIX=""
+          if [[ "${GOOS}" == "windows" ]]; then SUFFIX=".exe"; fi
+          OUTPUT="bin/lw_${GOOS}_${GOARCH}${SUFFIX}"
+          mkdir -p bin
+          go build \
+            -ldflags "-s -w -extldflags '-static'" \
+            -o "${OUTPUT}" \
+            ./cmd/lw
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: lw_${{ inputs.goos }}_${{ inputs.goarch }}
+          path: bin/lw_${{ inputs.goos }}_${{ inputs.goarch }}*
+          retention-days: 7

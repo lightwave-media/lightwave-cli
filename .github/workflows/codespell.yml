@@ -1,8 +1,6 @@
 name: Codespell
 
 on:
-  pull_request:
-    branches: [main]
   workflow_call: {}
 
 permissions:

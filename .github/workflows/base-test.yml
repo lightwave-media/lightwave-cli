@@ -1,0 +1,62 @@
+name: Base Test
+
+on:
+  workflow_call:
+    inputs:
+      os:
+        description: "Runner OS (ubuntu-latest, macos-latest, …)"
+        required: false
+        type: string
+        default: ubuntu-latest
+      upload-junit:
+        description: "Upload JUnit XML report via mikepenz/action-junit-report"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  checks: write
+
+jobs:
+  test:
+    name: Tests (${{ inputs.os }})
+    runs-on: ${{ inputs.os }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup tooling via mise
+        uses: jdx/mise-action@v4
+        with:
+          experimental: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Go (fallback for module cache)
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test with JUnit output
+        # Pipe through go-junit-report (installed via .mise.toml) so the
+        # JUnit XML renders in the GitHub Actions summary. `set -o pipefail`
+        # preserves the test-failure exit code through the pipe.
+        run: |
+          set -o pipefail
+          go test -v ./... 2>&1 | tee test-output.txt | mise exec -- go-junit-report -set-exit-code > test-results.xml
+
+      - name: Upload JUnit report
+        if: ${{ always() && inputs.upload-junit }}
+        uses: mikepenz/action-junit-report@v6
+        with:
+          report_paths: test-results.xml
+          detailed_summary: 'true'
+          include_time_in_summary: 'true'
+          group_suite: 'true'
+          check_name: "Tests / ${{ inputs.os }}"

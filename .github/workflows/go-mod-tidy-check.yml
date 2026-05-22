@@ -1,13 +1,6 @@
 name: Go Mod Tidy Check
 
 on:
-  pull_request:
-    branches: [main]
-    paths:
-      - "**/*.go"
-      - "go.mod"
-      - "go.sum"
-      - ".github/workflows/go-mod-tidy-check.yml"
   workflow_call: {}
 
 permissions:
