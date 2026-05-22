@@ -1,0 +1,146 @@
+# golangci-lint v2 config, derived from gruntwork-io/terragrunt's reference
+# config (the de-facto Gruntwork Go lint standard; boilerplate uses the same).
+#
+# Adoption strategy (see ~/.claude/plans/2026-05-22-lw-gruntwork-harden-epic-sprint.md PR1):
+#   - CI runs `golangci-lint run --new-from-merge-base=origin/main \
+#     --baseline internal/audits/golangci-baseline.json`
+#   - Existing violations live in the baseline snapshot — not blocking, but
+#     regressions in touched files re-surface.
+#   - New code must be clean.
+
+version: "2"
+
+run:
+  go: "1.24"
+  issues-exit-code: 1
+  tests: true
+
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+
+linters:
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - contextcheck
+    - dupl
+    - durationcheck
+    - errchkjson
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - gocheckcompilerdirectives
+    - gochecksumtype
+    - goconst
+    - gocritic
+    - gosmopolitan
+    - loggercheck
+    - makezero
+    - misspell
+    - mnd
+    - musttag
+    - nilerr
+    - nilnesserr
+    - noctx
+    - paralleltest
+    - perfsprint
+    - prealloc
+    - protogetter
+    - reassign
+    - rowserrcheck
+    - spancheck
+    - sqlclosecheck
+    - staticcheck
+    - testableexamples
+    - testifylint
+    - testpackage
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
+    - usetesting
+    - wastedassign
+    - wsl_v5
+    - zerologlint
+  settings:
+    dupl:
+      threshold: 120
+    errcheck:
+      check-type-assertions: false
+      check-blank: false
+      exclude-functions:
+        - (*os.File).Close
+    errorlint:
+      errorf: true
+      asserts: true
+      comparison: true
+    goconst:
+      min-len: 3
+      min-occurrences: 5
+    gocritic:
+      enabled-tags:
+        - performance
+      disabled-tags:
+        - experimental
+    govet:
+      enable:
+        - fieldalignment
+        - printf
+        - unusedwrite
+    nakedret:
+      max-func-lines: 20
+    staticcheck:
+      checks:
+        - all
+        - -SA9005
+        - -QF1008
+        - -ST1001
+    unparam:
+      check-exported: false
+    wsl_v5:
+      allow-whole-block: false
+      branch-max-lines: 2
+  exclusions:
+    generated: lax
+    rules:
+      - linters:
+          - dupl
+          - errcheck
+          - gocyclo
+          - mnd
+          - unparam
+          - wsl_v5
+        path: _test\.go
+    paths:
+      - docs
+      - .github
+      - internal/audits
+      - third_party$
+      - builtin$
+      - examples$
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable:
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - docs
+      - .github
+      - internal/audits
+      - third_party$
+      - builtin$
+      - examples$

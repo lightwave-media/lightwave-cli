@@ -1,6 +1,7 @@
 package sst
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -8,7 +9,8 @@ import (
 
 // repoRoot resolves the workspace root from the test file's location.
 // This file lives at packages/lightwave-cli/internal/sst/cli_loader_test.go;
-// the workspace root is four directories up.
+// the workspace root is four directories up — assuming the canonical
+// sibling-repo layout (~/dev/lightwave-media/packages/{lightwave-cli,lightwave-core}).
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -18,8 +20,23 @@ func repoRoot(t *testing.T) string {
 	return filepath.Join(filepath.Dir(file), "..", "..", "..", "..")
 }
 
+// skipIfNoLightwaveCore skips the test when the sibling lightwave-core
+// repo isn't checked out at the expected path (CI runs lightwave-cli
+// stand-alone without the workspace layout). This is the historical
+// reason CI's Tests job has been red — predates the gruntwork-harden
+// mission, surfaced when PR1's golangci-lint config exposed an
+// otherwise-unreliable signal.
+func skipIfNoLightwaveCore(t *testing.T, root string) {
+	t.Helper()
+	if _, err := os.Stat(CLIConfigPath(root)); os.IsNotExist(err) {
+		t.Skipf("lightwave-core schema not present at %s; skipping integration test", CLIConfigPath(root))
+	}
+}
+
 func TestLoadCLIConfig_RoundTripsActualFile(t *testing.T) {
-	cfg, err := LoadCLIConfig(repoRoot(t))
+	root := repoRoot(t)
+	skipIfNoLightwaveCore(t, root)
+	cfg, err := LoadCLIConfig(root)
 	if err != nil {
 		t.Fatalf("LoadCLIConfig: %v", err)
 	}
@@ -49,7 +66,9 @@ func TestLoadCLIConfig_RoundTripsActualFile(t *testing.T) {
 }
 
 func TestCLIConfig_IndexAndKeysAlign(t *testing.T) {
-	cfg, err := LoadCLIConfig(repoRoot(t))
+	root := repoRoot(t)
+	skipIfNoLightwaveCore(t, root)
+	cfg, err := LoadCLIConfig(root)
 	if err != nil {
 		t.Fatalf("LoadCLIConfig: %v", err)
 	}

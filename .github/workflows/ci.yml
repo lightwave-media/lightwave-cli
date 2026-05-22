@@ -38,6 +38,11 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          # Full history so `git merge-base origin/main HEAD` resolves
+          # on the runner — without this, golangci-lint falls back to
+          # "show all issues" mode and the baseline floods the run.
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -46,9 +51,17 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v9
         with:
-          version: latest
+          version: v2.5.0
+          # Ratchet only — existing violations are tombstoned in
+          # internal/audits/golangci-baseline.json. Regressions in
+          # touched files re-surface via --new-from-merge-base.
+          # Note: only-new-issues=true would conflict with --new* args
+          # (the action enforces "pick one or the other"). The explicit
+          # --new-from-merge-base flag lets devs run the same command
+          # locally and stays version-stable.
+          args: --new-from-merge-base=origin/main --timeout=10m
 
   test:
     name: Tests
