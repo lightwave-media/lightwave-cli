@@ -41,9 +41,19 @@ func TestRunHandler_UnknownKey_ReturnsError(t *testing.T) {
 	assert.Empty(t, out)
 }
 
+// Cannot use t.Parallel on the two tests that exercise RunHandler's
+// stdout-capture path. RunHandler swaps the process-global os.Stdout
+// (the only way to capture fmt.Printf output from the handler under
+// test), so concurrent calls race on that global. macOS happened to
+// schedule the tests in an order that hid the race; Linux exposed it
+// (PR #57 CI run 26310855759). Drop the deeper fix (refactor handlers
+// to accept io.Writer) to PR20 of the gruntwork-harden mission —
+// that's where the --json + per-handler-output-schema work touches
+// every handler signature anyway.
+//
+//nolint:paralleltest // intentionally serial — process-wide os.Stdout swap
 func TestRunHandler_CapturesStdoutOfRegisteredHandler(t *testing.T) {
 	registerEchoHandler()
-	t.Parallel()
 	out, err := testutil.RunHandler(t, "testutil.echo",
 		[]string{"hello", "world"},
 		map[string]any{"json": true},
@@ -53,9 +63,9 @@ func TestRunHandler_CapturesStdoutOfRegisteredHandler(t *testing.T) {
 	assert.Contains(t, out, "flags=map[json:true]")
 }
 
+//nolint:paralleltest // intentionally serial — process-wide os.Stdout swap (see above)
 func TestRunHandler_PropagatesHandlerError(t *testing.T) {
 	registerEchoHandler()
-	t.Parallel()
 	out, err := testutil.RunHandler(t, "testutil.error", nil, nil)
 	require.Error(t, err)
 	assert.Equal(t, "synthetic handler error", err.Error())
