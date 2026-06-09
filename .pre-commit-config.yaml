@@ -48,33 +48,12 @@ repos:
   # ---------------------------------------------------------------------
   - repo: local
     hooks:
-      - id: go-build
-        name: Go Build (pre-push)
-        entry: bash -c 'go build ./cmd/lw'
-        language: system
-        types: [go]
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: go-test
-        name: Go Test (pre-push)
-        # -race catches data races on process-global state (os.Stdout swap,
-        # env mutation) that t.Parallel hides on macOS but exposes on Linux
-        # CI — see PR #57 testutil regression. -shuffle=on surfaces
-        # order-dependent assumptions even without -race.
-        entry: bash -c 'go test -race -shuffle=on ./...'
-        language: system
-        types: [go]
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: golangci-lint
-        name: golangci-lint (pre-push, ratcheted)
-        entry: bash -c 'mise exec -- golangci-lint run --new-from-merge-base=origin/main --timeout=10m ./...'
-        language: system
-        types: [go]
-        pass_filenames: false
-        stages: [pre-push]
+      # go-build / go-test / golangci-lint REMOVED — now covered by `mise run ci`
+      # (dev/hooks/pre-push Phase 1) for uniformity (repo-infra v1.1.0), dedup'ing
+      # the double-run. The mise `lint` task is RATCHETED
+      # (`--new-from-merge-base=origin/main`), matching the gate removed here, so
+      # pre-existing lint debt doesn't block pushes (verified 2026-06-05: full
+      # lint surfaces backlog in msg.go/audit.go/task_handlers.go).
 
       - id: goreleaser-check
         name: GoReleaser config check (pre-push)

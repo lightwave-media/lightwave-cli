@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# Canonical pre-commit (managed by conform.sh). Delegate to the pre-commit
+# framework if the repo uses it.
+ROOT=$(git rev-parse --show-toplevel) || exit 0; cd "$ROOT"
+if [ -f .pre-commit-config.yaml ] && command -v pre-commit >/dev/null 2>&1; then
+  pre-commit run --hook-stage pre-commit || exit 1
+fi
+exit 0
