@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/lightwave-media/lightwave-cli/internal/config"
@@ -32,7 +33,13 @@ func BuildDispatched(root *cobra.Command, overrideDomains map[string]bool) error
 
 	schema, err := sst.LoadCLIConfig(cfg.Paths.LightwaveRoot)
 	if err != nil {
-		return fmt.Errorf("dispatcher: load CLI schema: %w", err)
+		// Degrade gracefully: the schema stamp (commands.yaml) may be absent
+		// on a machine without the lightwave-core checkout. Warn, but do NOT
+		// brick the whole CLI — hardcoded commands (version, scaffold, aws,
+		// research, …) must still work. `lw check schema` is the gate that
+		// enforces the schema↔handler contract; startup is not.
+		fmt.Fprintf(os.Stderr, "lw: warning: schema-dispatched commands unavailable: %v\n", err)
+		return nil
 	}
 
 	for _, domain := range schema.Domains {
