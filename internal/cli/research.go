@@ -11,6 +11,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// reportFileMode is the permission for a report written via --output.
+const reportFileMode = 0o644
+
 // `lw research` — Perplexity-backed research primitive.
 //
 // MVP: one synchronous "ask → cited answer" call (internal/research). The
@@ -78,7 +81,7 @@ func runResearch(cmd *cobra.Command, args []string) error {
 		model = research.ModelDeepResearch
 	}
 
-	res, err := research.NewClient(key).Research(ctx, research.Request{
+	res, err := research.NewClient(key).Research(ctx, &research.Request{
 		Query:   strings.Join(args, " "),
 		Model:   model,
 		System:  researchSystem,
@@ -94,29 +97,39 @@ func runResearch(cmd *cobra.Command, args []string) error {
 	}
 
 	out := renderResearch(res)
+
 	if researchOutput != "" {
-		if err := os.WriteFile(researchOutput, []byte(out), 0644); err != nil {
+		if err := os.WriteFile(researchOutput, []byte(out), reportFileMode); err != nil {
 			return fmt.Errorf("write %s: %w", researchOutput, err)
 		}
+
 		fmt.Printf("%s wrote report to %s\n", color.GreenString("✓"), researchOutput)
+
 		return nil
 	}
+
 	fmt.Print(out)
+
 	return nil
 }
 
 // renderResearch formats the answer followed by a numbered Sources list.
 func renderResearch(r *research.Result) string {
 	var b strings.Builder
+
 	b.WriteString(r.Answer)
+
 	if !strings.HasSuffix(r.Answer, "\n") {
 		b.WriteByte('\n')
 	}
+
 	if len(r.Citations) > 0 {
 		b.WriteString("\nSources:\n")
+
 		for i, src := range r.Citations {
 			fmt.Fprintf(&b, "  [%d] %s\n", i+1, src)
 		}
 	}
+
 	return b.String()
 }

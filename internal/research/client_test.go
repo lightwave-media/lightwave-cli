@@ -35,7 +35,7 @@ func TestResearch_ParsesAnswerCitationsUsage(t *testing.T) {
 	defer srv.Close()
 
 	c := research.NewClient("sk-test", research.WithBaseURL(srv.URL))
-	res, err := c.Research(context.Background(), research.Request{
+	res, err := c.Research(context.Background(), &research.Request{
 		Query:   "what is search-as-code?",
 		System:  "be concise",
 		Recency: "week",
@@ -62,10 +62,10 @@ func TestResearch_Errors(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name    string
-		req     research.Request
 		handler http.HandlerFunc
+		name    string
 		wantErr string
+		req     research.Request
 	}{
 		{
 			name:    "empty query",
@@ -101,7 +101,7 @@ func TestResearch_Errors(t *testing.T) {
 				defer srv.Close()
 				opts = append(opts, research.WithBaseURL(srv.URL))
 			}
-			_, err := research.NewClient("sk-test", opts...).Research(context.Background(), tt.req)
+			_, err := research.NewClient("sk-test", opts...).Research(context.Background(), &tt.req)
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tt.wantErr)
 		})

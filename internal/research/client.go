@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -29,11 +30,20 @@ const (
 	ModelDeepResearch = "sonar-deep-research"
 )
 
+const (
+	// defaultTimeout is generous because sonar-deep-research can run for minutes.
+	defaultTimeout = 5 * time.Minute
+	// initialMessageCap pre-sizes the system+user message slice.
+	initialMessageCap = 2
+	// maxResponseBytes caps how much of the response body we read.
+	maxResponseBytes = 16 * 1024 * 1024
+)
+
 // Client talks to the Perplexity chat-completions endpoint.
 type Client struct {
+	http    *http.Client
 	apiKey  string
 	baseURL string
-	http    *http.Client
 }
 
 // Option configures a Client.
@@ -51,11 +61,12 @@ func NewClient(apiKey string, opts ...Option) *Client {
 	c := &Client{
 		apiKey:  apiKey,
 		baseURL: defaultBaseURL,
-		http:    &http.Client{Timeout: 5 * time.Minute},
+		http:    &http.Client{Timeout: defaultTimeout},
 	}
 	for _, o := range opts {
 		o(c)
 	}
+
 	return c
 }
 
@@ -71,8 +82,8 @@ type Request struct {
 // Result is the parsed answer plus its sources and token usage.
 type Result struct {
 	Answer    string   `json:"answer"`
-	Citations []string `json:"citations"`
 	Model     string   `json:"model"`
+	Citations []string `json:"citations"`
 	Usage     Usage    `json:"usage"`
 }
 
@@ -107,12 +118,13 @@ type chatResponse struct {
 }
 
 // Research runs one query and returns the cited answer.
-func (c *Client) Research(ctx context.Context, req Request) (*Result, error) {
+func (c *Client) Research(ctx context.Context, req *Request) (*Result, error) {
 	if strings.TrimSpace(req.Query) == "" {
-		return nil, fmt.Errorf("research: empty query")
+		return nil, errors.New("research: empty query")
 	}
+
 	if c.apiKey == "" {
-		return nil, fmt.Errorf("research: missing API key")
+		return nil, errors.New("research: missing API key")
 	}
 
 	model := req.Model
@@ -120,10 +132,11 @@ func (c *Client) Research(ctx context.Context, req Request) (*Result, error) {
 		model = ModelSonarPro
 	}
 
-	msgs := make([]chatMessage, 0, 2)
+	msgs := make([]chatMessage, 0, initialMessageCap)
 	if req.System != "" {
 		msgs = append(msgs, chatMessage{Role: "system", Content: req.System})
 	}
+
 	msgs = append(msgs, chatMessage{Role: "user", Content: req.Query})
 
 	payload, err := json.Marshal(chatRequest{
@@ -141,6 +154,7 @@ func (c *Client) Research(ctx context.Context, req Request) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
 	httpReq.Header.Set("Content-Type", "application/json")
 
@@ -148,9 +162,10 @@ func (c *Client) Research(ctx context.Context, req Request) (*Result, error) {
 	if err != nil {
 		return nil, fmt.Errorf("research: POST %s: %w", c.baseURL, err)
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 16*1024*1024))
+	defer func() { _ = resp.Body.Close() }()
+
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxResponseBytes))
 	if err != nil {
 		return nil, fmt.Errorf("research: read response: %w", err)
 	}
@@ -164,8 +179,9 @@ func (c *Client) Research(ctx context.Context, req Request) (*Result, error) {
 	if err := json.Unmarshal(body, &cr); err != nil {
 		return nil, fmt.Errorf("research: decode response: %w", err)
 	}
+
 	if len(cr.Choices) == 0 {
-		return nil, fmt.Errorf("research: Perplexity returned no choices")
+		return nil, errors.New("research: Perplexity returned no choices")
 	}
 
 	return &Result{

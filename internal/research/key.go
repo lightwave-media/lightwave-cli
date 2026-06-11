@@ -39,9 +39,11 @@ func ResolveAPIKey(ctx context.Context) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("research: read %s from SSM (or set %s): %w", SSMKeyPath, EnvKey, err)
 	}
+
 	if out.Parameter == nil || out.Parameter.Value == nil || *out.Parameter.Value == "" {
 		return "", fmt.Errorf("research: %s is empty in SSM", SSMKeyPath)
 	}
+
 	return *out.Parameter.Value, nil
 }
 
