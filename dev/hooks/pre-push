@@ -1,0 +1,20 @@
+#!/usr/bin/env sh
+# Canonical pre-push gate (managed by conform.sh — safe to regenerate).
+# Phase 0 framework pre-push (preserved) · 1 mise run ci (REQUIRED) ·
+# 2 act (LW_PREPUSH_ACT=1) · 3 review (LW_PREPUSH_REVIEW=1).
+# Bypass: LW_SKIP_PRE_PUSH=1 git push
+[ "${LW_SKIP_PRE_PUSH:-0}" = "1" ] && { echo "pre-push: skipped (LW_SKIP_PRE_PUSH=1)" >&2; exit 0; }
+ROOT=$(git rev-parse --show-toplevel) || exit 0; cd "$ROOT"
+if [ -f .pre-commit-config.yaml ] && command -v pre-commit >/dev/null 2>&1; then
+  echo "▶ pre-push 0: framework pre-push hooks"
+  pre-commit run --hook-stage pre-push --all-files || { echo "❌ framework pre-push failed"; exit 1; }
+fi
+command -v mise >/dev/null 2>&1 || { echo "❌ pre-push: mise not found"; exit 1; }
+echo "▶ pre-push 1: mise run ci"
+GATE="$HOME/.lightwave/lib/gate/run.sh"
+if [ -x "$GATE" ]; then sh "$GATE" "$ROOT"; else mise run ci; fi || { echo "❌ mise run ci failed (bypass: LW_SKIP_PRE_PUSH=1)"; exit 1; }
+if [ "${LW_PREPUSH_ACT:-0}" = "1" ] && command -v act >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
+  echo "▶ pre-push 2: act"; act --container-architecture linux/amd64 || echo "  ℹ️ act advisory"; fi
+if [ "${LW_PREPUSH_REVIEW:-0}" = "1" ] && [ -x dev/cli.sh ] && command -v claude >/dev/null 2>&1; then
+  echo "▶ pre-push 3: review"; ./dev/cli.sh review || echo "  ℹ️ review advisory"; fi
+echo "✅ pre-push gate passed"
