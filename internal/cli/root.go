@@ -56,6 +56,9 @@ func Execute() error {
 	// lightwave-core schema. Becomes a no-op once each command has a
 	// schema entry (see AttachOrphanTaskCommands for the cleanup path).
 	AttachOrphanTaskCommands(rootCmd)
+	// Trust policy: hide + disable any command not verified to work
+	// end-to-end (see command_status.go / docs/command-status.md).
+	applyDecommissions(rootCmd)
 	return rootCmd.Execute()
 }
 
