@@ -65,7 +65,8 @@ func Execute() error {
 // dispatcher and removes its entry from this set.
 func legacyHardcodedDomains() map[string]bool {
 	return map[string]bool{
-		"spec": true,
+		"spec":     true,
+		"scaffold": true,
 	}
 }
 
@@ -112,6 +113,8 @@ func init() {
 	rootCmd.AddCommand(vcoreCmd)
 	rootCmd.AddCommand(msgCmd)
 	rootCmd.AddCommand(memoryCmd)
+	rootCmd.AddCommand(scaffoldCmd)
+	rootCmd.AddCommand(uiCmd)
 }
 
 // versionCmd shows version info
