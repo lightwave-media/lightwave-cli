@@ -112,6 +112,7 @@ func init() {
 	rootCmd.AddCommand(vcoreCmd)
 	rootCmd.AddCommand(msgCmd)
 	rootCmd.AddCommand(memoryCmd)
+	rootCmd.AddCommand(researchCmd)
 }
 
 // versionCmd shows version info
