@@ -1,0 +1,42 @@
+# Condensed fixture mirroring lightwave-core src/schemas/data/ui/
+# app_shell.yaml — covers the site_config-when-website refinement and
+# optional auth with nullable.
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/ui/app_shell"
+  title: "App Shell"
+  generates:
+    - "typescript:AppShell"
+
+required_fields:
+  - name: name
+    type: str
+  - name: kind
+    type: enum
+    values_ref: "ui_app_shell_kinds"
+  - name: router
+    type: enum
+    options: ["react-router", "tanstack-router", "none"]
+  - name: providers
+    type: "list[str]"
+
+optional_fields:
+  - name: auth
+    type: Auth
+    nullable: true
+  - name: site_config
+    type: str
+    nullable: true
+
+sub_schemas:
+  Auth:
+    posture:
+      type: enum
+      options: ["public", "authenticated", "admin"]
+    provider:
+      type: str
+      nullable: true
+
+example:
+  name: "joelschaeffer-site"
+  kind: "website"

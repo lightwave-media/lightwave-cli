@@ -1,0 +1,65 @@
+# Condensed fixture mirroring lightwave-core src/schemas/data/ui/
+# page_definition.yaml — covers the legal-when-legal and og_image
+# refinements plus default handling.
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/ui/page_definition"
+  title: "Page Definition"
+  generates:
+    - "typescript:PageDefinition"
+
+required_fields:
+  - name: slug
+    type: str
+  - name: title
+    type: str
+  - name: page_type
+    type: enum
+    values_ref: "ui_page_types"
+  - name: sections
+    type: "list[SectionRef]"
+  - name: seo
+    type: Seo
+
+optional_fields:
+  - name: legal
+    type: LegalMeta
+    nullable: true
+  - name: collection
+    type: str
+    nullable: true
+
+sub_schemas:
+  SectionRef:
+    section:
+      type: str
+    props:
+      type: dict
+
+  Seo:
+    title:
+      type: str
+    description:
+      type: str
+    og_image:
+      type: str
+      nullable: true
+    no_index:
+      type: bool
+      default: false
+
+  LegalMeta:
+    jurisdiction:
+      type: str
+    effective_date:
+      type: date
+    last_reviewed:
+      type: date
+      nullable: true
+    required_blocks:
+      type: "list[str]"
+
+example:
+  slug: "privacy-policy"
+  title: "Privacy Policy"
+  page_type: "legal"

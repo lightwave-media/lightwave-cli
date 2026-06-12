@@ -107,6 +107,67 @@ func TestResolveValuesRefs(t *testing.T) {
 	assert.Contains(t, err.Error(), "nope")
 }
 
+func TestEmitContractsGolden(t *testing.T) {
+	t.Parallel()
+	component, section, enums := loadFixtures(t)
+
+	extra := make([]*zodgen.Schema, 0, 3)
+
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml"} {
+		s, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", name))
+		require.NoError(t, err, name)
+
+		extra = append(extra, s)
+	}
+
+	got, err := zodgen.EmitContracts(append([]*zodgen.Schema{component, section}, extra...), enums)
+	require.NoError(t, err, "emitting contracts")
+
+	golden := filepath.Join("testdata", "golden", "contracts.generated.ts")
+	if *update {
+		require.NoError(t, os.MkdirAll(filepath.Dir(golden), 0o755))
+		require.NoError(t, os.WriteFile(golden, []byte(got), 0o644))
+	}
+
+	want, err := os.ReadFile(golden)
+	require.NoError(t, err, "reading golden (run with -update to regenerate)")
+	assert.Equal(t, string(want), got)
+}
+
+// TestEmitContractsEnforcement pins every #77 rule the stamp hands off to
+// the emitter: the two cross-field superRefines, the og_image form, the CSS
+// token guard, components min(1), and the datetime override.
+func TestEmitContractsEnforcement(t *testing.T) {
+	t.Parallel()
+	component, section, enums := loadFixtures(t)
+
+	extra := make([]*zodgen.Schema, 0, 3)
+
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml"} {
+		s, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", name))
+		require.NoError(t, err, name)
+
+		extra = append(extra, s)
+	}
+
+	got, err := zodgen.EmitContracts(append([]*zodgen.Schema{component, section}, extra...), enums)
+	require.NoError(t, err)
+
+	for _, want := range []string{
+		`if (v.page_type === "legal" && v.legal == null)`,
+		`if (v.kind === "website" && v.site_config == null)`,
+		`og_image must be an absolute https URL`,
+		`token values must not contain CSS function calls`,
+		`z.array(SiteConfigComponentPin).min(1)`,
+		`synced_at: z.string().datetime()`,
+		`locale: z.string().default("en-GB").optional()`,
+		`no_index: z.boolean().default(false)`,
+		`export type PageDefinition = z.infer<typeof PageDefinition>;`,
+	} {
+		assert.Contains(t, got, want)
+	}
+}
+
 func TestEmitEnums(t *testing.T) {
 	t.Parallel()
 	_, _, enums := loadFixtures(t)

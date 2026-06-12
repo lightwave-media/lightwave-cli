@@ -1,0 +1,23 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/ui_component_categories"
+  title: "UI Component Category Enum"
+  generates:
+    - "typescript:ComponentCategory"
+
+name: ui_component_categories
+default: base
+closed: true
+options:
+  - value: base
+    label: "Base"
+  - value: application
+    label: "Application"
+  - value: marketing
+    label: "Marketing"
+  - value: foundations
+    label: "Foundations"
+  - value: shared-assets
+    label: "Shared Assets"
+  - value: emails
+    label: "Emails"

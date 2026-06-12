@@ -1,0 +1,19 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/ui_page_types"
+  title: "UI Page Type Enum"
+  generates:
+    - "typescript:PageType"
+
+name: ui_page_types
+default: marketing
+closed: true
+options:
+  - value: marketing
+    label: "Marketing"
+  - value: legal
+    label: "Legal"
+  - value: admin
+    label: "Admin"
+  - value: app
+    label: "App"

@@ -1,0 +1,78 @@
+# Condensed fixture mirroring lightwave-core src/schemas/data/ui/
+# site_config.yaml — covers the CSS token guard, components min(1),
+# datetime override, and locale default.
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/ui/site_config"
+  title: "Site Config"
+  generates:
+    - "typescript:SiteConfig"
+    - "go:SiteConfig"
+
+required_fields:
+  - name: domain
+    type: str
+  - name: site_name
+    type: str
+  - name: brand
+    type: Brand
+  - name: nav
+    type: "list[NavItem]"
+  - name: pages
+    type: "list[str]"
+  - name: data_sources
+    type: DataSources
+  - name: ui_release
+    type: UiRelease
+
+optional_fields:
+  - name: tenant
+    type: str
+    nullable: true
+  - name: locale
+    type: str
+    default: "en-GB"
+
+sub_schemas:
+  Brand:
+    logo_light:
+      type: str
+      nullable: true
+    logo_dark:
+      type: str
+      nullable: true
+    tokens:
+      type: "dict[str, str]"
+
+  NavItem:
+    label:
+      type: str
+    href:
+      type: str
+
+  DataSources:
+    copy_source:
+      type: str
+    media_base:
+      type: str
+
+  UiRelease:
+    lightwave_ui_version:
+      type: str
+    components:
+      type: "list[ComponentPin]"
+
+  ComponentPin:
+    kind:
+      type: enum
+      options: ["component", "section"]
+    name:
+      type: str
+    lightwave_ui_version:
+      type: str
+    synced_at:
+      type: str
+
+example:
+  domain: "joelschaeffer.site"
+  site_name: "Joel Schaeffer"

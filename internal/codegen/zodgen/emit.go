@@ -210,7 +210,14 @@ func ResolveValuesRefs(fields []FieldDecl, enums map[string]*EnumStamp) error {
 			continue
 		}
 
+		// Stamps reference enums either by short name (ui_page_types) or by
+		// full schema_id URI (lightwave://schemas/data/enums/ui_page_types);
+		// both resolve to the trailing segment.
 		stamp, ok := enums[f.ValuesRef]
+		if !ok {
+			stamp, ok = enums[shortSchemaID(f.ValuesRef)]
+		}
+
 		if !ok {
 			return fmt.Errorf("field %s: values_ref %q has no enum stamp in data/enums/", f.Name, f.ValuesRef)
 		}
