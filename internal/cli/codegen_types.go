@@ -74,7 +74,7 @@ func runCodegenTypes(cmd *cobra.Command, args []string) error {
 	}
 
 	if codegenDryRun {
-		for _, name := range []string{"enums.generated.ts", "sections.generated.ts"} {
+		for _, name := range []string{"enums.generated.ts", "contracts.generated.ts", "sections.generated.ts"} {
 			fmt.Printf("── %s ──\n%s\n", name, files[name])
 		}
 
@@ -139,8 +139,27 @@ func generateTypes(uiDir, enumsDir string) (map[string]string, error) {
 		return nil, err
 	}
 
+	// Contract shapes: every data/ui schema with a typescript target, in a
+	// stable order matching the family's dependency chain.
+	contracts := []*zodgen.Schema{component, section}
+
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml"} {
+		s, err := zodgen.LoadSchema(filepath.Join(uiDir, name))
+		if err != nil {
+			return nil, err
+		}
+
+		contracts = append(contracts, s)
+	}
+
+	contractsTS, err := zodgen.EmitContracts(contracts, enums)
+	if err != nil {
+		return nil, err
+	}
+
 	return map[string]string{
-		"enums.generated.ts":    zodgen.EmitEnums(enums),
-		"sections.generated.ts": sectionsTS,
+		"enums.generated.ts":     zodgen.EmitEnums(enums),
+		"contracts.generated.ts": contractsTS,
+		"sections.generated.ts":  sectionsTS,
 	}, nil
 }

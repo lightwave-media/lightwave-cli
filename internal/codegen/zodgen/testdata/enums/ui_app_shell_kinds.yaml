@@ -1,0 +1,17 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/ui_app_shell_kinds"
+  title: "UI App Shell Kind Enum"
+  generates:
+    - "typescript:AppShellKind"
+
+name: ui_app_shell_kinds
+default: website
+closed: true
+options:
+  - value: website
+    label: "Website"
+  - value: app
+    label: "App"
+  - value: admin
+    label: "Admin"

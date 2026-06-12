@@ -15,7 +15,9 @@ required_fields:
     type: str
   - name: family
     type: enum
-    values_ref: "ui_section_families"
+    # Full-URI form, as the merged stamps use; component fixture pins the
+    # short form. Both must resolve.
+    values_ref: "lightwave://schemas/data/enums/ui_section_families"
   - name: variant
     type: str
   - name: title
