@@ -34,7 +34,7 @@ the verified list, so the surface can't silently regrow.
 | `worktree` | `internal/git` unit tests (worktree add/remove/prune) |
 | `audit` | `TestAudit_DetectsPlantedSecret` (scanner finds a planted secret) |
 | `scaffold` | `internal/blueprint` resolution + **real-engine** smoke (generates a file) |
-| `ui` | `TestUIComponent_RejectsBadSpec` + shared scaffold path |
+| `ui` | `TestUIComponent_RejectsBadSpec` + shared scaffold path; `add`/`sync`: `internal/uisync` suite (copy+pin, force semantics, three-way table incl. no-base conflict, pin-advance-only-when-clean, git tag base extraction) |
 | `research` | `internal/research` unit tests + live Perplexity call |
 | `docs` | `internal/docsfactory/{spec_lint,docs_check}_test.go` — 6 spec-lint + 4 docs-check + 3 docs-sync subtests (known-good silent, known-bad fires, freshness vs HEAD, idempotent sync, dry-run no-write) |
 | `codegen` | `internal/codegen/zodgen` tests (round-trip golden vs joelschaeffer-site registry, PropField parity, values_ref resolution) + `TestGenerateTypesSmoke`; `journeys` subcommand stays offline (below) |
