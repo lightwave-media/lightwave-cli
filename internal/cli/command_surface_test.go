@@ -2,6 +2,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -44,7 +45,15 @@ func TestCommandSurface_DecommissionedAreOffline(t *testing.T) {
 	applyDecommissions(rootCmd)
 
 	for name := range DecommissionedCommands {
-		c := findChild(rootCmd, name)
+		// Space-separated keys address a nested subcommand.
+		c := rootCmd
+		for part := range strings.FieldsSeq(name) {
+			c = findChild(c, part)
+			if c == nil {
+				break
+			}
+		}
+
 		if c == nil {
 			continue // not registered in this build
 		}

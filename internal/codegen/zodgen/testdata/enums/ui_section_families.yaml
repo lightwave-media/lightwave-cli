@@ -1,0 +1,28 @@
+# Fixture mirroring lightwave-core src/schemas/data/enums/ui_section_families.yaml.
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/ui_section_families"
+  title: "UI Section Family Enum"
+  generates:
+    - "typescript:SectionFamily"
+    - "go:SectionFamily"
+
+name: ui_section_families
+description: "Marketing section family folders"
+default: content
+closed: true
+options:
+  - value: header-section
+    label: "Header Section"
+  - value: header-navigation
+    label: "Header Navigation"
+  - value: content
+    label: "Content"
+  - value: footers
+    label: "Footers"
+  - value: blog
+    label: "Blog"
+  - value: store
+    label: "Store"
+  - value: photography
+    label: "Photography"
