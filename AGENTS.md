@@ -103,8 +103,9 @@ After 3 consecutive CI/pre-commit failures on the same branch, the stop hook blo
 - `lw cdn reconcile` — interactive: drift table, then `[y/N]` prompt
 - `lw cdn reconcile --yes` — skip confirmation (CI/agent)
 
-Allowlist source: `packages/lightwave-core/lightwave/schema/definitions/data/assets/assets.yaml` (`cdn.paths`).
-Bucket name source: `cdn.{infrastructure_domain}` from `data/models/domains.yaml`.
+Allowlist source: legacy-core `assets.yaml` (`cdn.paths`) — not yet re-stamped
+into the rebuilt `lightwave-core/src/schemas/`; `cdn` stays decommissioned
+until that schema family returns.
 
 ## Definition of done
 
