@@ -8,16 +8,16 @@ import (
 )
 
 // repoRoot resolves the workspace root from the test file's location.
-// This file lives at packages/lightwave-cli/internal/sst/cli_loader_test.go;
-// the workspace root is four directories up — assuming the canonical
-// sibling-repo layout (~/dev/lightwave-media/packages/{lightwave-cli,lightwave-core}).
+// This file lives at lightwave-cli/internal/sst/cli_loader_test.go;
+// the workspace root is three directories up — assuming the flat
+// sibling-repo layout (~/dev/{lightwave-cli,lightwave-core}).
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
 		t.Fatal("runtime.Caller failed")
 	}
-	return filepath.Join(filepath.Dir(file), "..", "..", "..", "..")
+	return filepath.Join(filepath.Dir(file), "..", "..", "..")
 }
 
 // skipIfNoLightwaveCore skips the test when the sibling lightwave-core

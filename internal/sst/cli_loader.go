@@ -12,8 +12,8 @@ import (
 func CLIConfigPath(lightwaveRoot string) string {
 	return filepath.Join(
 		lightwaveRoot,
-		"packages", "lightwave-core", "lightwave", "schema", "definitions",
-		"config", "cli", "commands.yaml",
+		"lightwave-core", "src", "schemas", "interfaces",
+		"cli", "commands.yaml",
 	)
 }
 

@@ -7,7 +7,7 @@ import (
 )
 
 // CLIConfig mirrors lightwave.schema.pydantic.models.cli.CLIConfig.
-// Source of truth: packages/lightwave-core/lightwave/schema/definitions/config/cli/commands.yaml.
+// Source of truth: lightwave-core/src/schemas/interfaces/cli/commands.yaml.
 type CLIConfig struct {
 	Version       string
 	Domains       []CLIDomain

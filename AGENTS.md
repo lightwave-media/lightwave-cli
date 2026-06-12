@@ -3,9 +3,11 @@
 ### Schema-Driven CLI
 
 `lw`'s command surface is declared in `lightwave-core`'s
-`config/cli/commands.yaml` and dispatched at startup via
-`internal/cli/dispatcher.go`. Two invariants are checked by
-`lw check schema`:
+`src/schemas/interfaces/cli/commands.yaml` (resolved as
+`<lightwave_root>/lightwave-core/src/schemas/interfaces/cli/commands.yaml`,
+with `lightwave_root` defaulting to `~/dev` in the flat sibling-repo
+layout) and dispatched at startup via `internal/cli/dispatcher.go`.
+Two invariants are checked by `lw check schema`:
 
 - **No schema entry without a registered Go handler** — adding a `name: foo` line under a domain in `commands.yaml` without also calling `RegisterHandler("<domain>.foo", …)` from `init()` leaves the subcommand wired to `lw <domain> foo --help` but unimplemented.
 - **No registered handler without a schema entry** — registering a handler the schema doesn't know about means the command is unreachable from the dispatcher's cobra tree.
@@ -101,8 +103,9 @@ After 3 consecutive CI/pre-commit failures on the same branch, the stop hook blo
 - `lw cdn reconcile` — interactive: drift table, then `[y/N]` prompt
 - `lw cdn reconcile --yes` — skip confirmation (CI/agent)
 
-Allowlist source: `packages/lightwave-core/lightwave/schema/definitions/data/assets/assets.yaml` (`cdn.paths`).
-Bucket name source: `cdn.{infrastructure_domain}` from `data/models/domains.yaml`.
+Allowlist source: legacy-core `assets.yaml` (`cdn.paths`) — not yet re-stamped
+into the rebuilt `lightwave-core/src/schemas/`; `cdn` stays decommissioned
+until that schema family returns.
 
 ## Definition of done
 
