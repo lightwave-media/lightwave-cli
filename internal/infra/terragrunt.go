@@ -37,9 +37,11 @@ func NewTerragruntRunner(infraRoot, env, region string) *TerragruntRunner {
 	}
 }
 
-// GetWorkingDir returns the working directory for the environment
+// GetWorkingDir returns the working directory for the environment.
+// infraRoot is the lightwave-infrastructure-live checkout, whose layout
+// is <env>/<region>/<unit> directly under the repo root.
 func (t *TerragruntRunner) GetWorkingDir() string {
-	return filepath.Join(t.infraRoot, "live", t.env, t.region)
+	return filepath.Join(t.infraRoot, t.env, t.region)
 }
 
 // Plan runs terragrunt plan for a specific unit/stack.
