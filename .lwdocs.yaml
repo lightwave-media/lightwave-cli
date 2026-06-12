@@ -1,0 +1,29 @@
+# =============================================================================
+# .lwdocs.yaml — per-repo override of repo_doc_manifest.yaml defaults
+# =============================================================================
+# Schema: lightwave-core://src/schemas/policy/governance/repo_doc_manifest.yaml
+# Read by `lw docs check` and `lw docs sync` (internal/docsfactory).
+# =============================================================================
+tier: cli
+
+# Pre-existing freeform docs that predate the spec/+docs/ factory taxonomy.
+# Each is in-scope to migrate to a recognized kind eventually; until then they
+# are ignored so `lw docs check` reports only signal, not noise.
+ignore_globs:
+  - "cli-command-surface-audit.md"
+  - "kickoff-lightwave-core-cli-schema.md"
+  - "lw-scaffold.md"
+  - "lw-task-done.md"
+  - "pending-schema-additions.yaml"
+  - "release-notarization.md"
+  - "req-lightwave-core-cli-schema.md"
+  - "req-lightwave-core-spec-docs-factory.md"
+  - "spec-docs-factory.md"
+
+# Tier defaults from repo_doc_manifest.yaml#tiers.cli require:
+#   architecture, contract, dependency-graph, runbook, command-status
+#
+# command-status already exists and is the trust registry (docs/command-status.md).
+# The other four land as a follow-up PR via `lw scaffold docs-repo`.
+docs_required:
+  - command-status
