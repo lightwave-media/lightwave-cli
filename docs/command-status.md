@@ -1,3 +1,10 @@
+---
+generated_at: "2026-06-11T23:53:17Z"
+generator_version: dev
+kind: command-status
+source_commit: 11bada2
+---
+
 # `lw` command status — trust through subtraction
 
 A release tag must mean something: **only commands verified to work end-to-end
@@ -16,7 +23,7 @@ the verified list, so the surface can't silently regrow.
 3. Delete its row from `DecommissionedCommands`.
 4. `go test ./...` green (the guard enforces the rest).
 
-## Active (verified) — exposed in releases
+## Verified
 
 | Command | Verified by |
 |---|---|
@@ -29,13 +36,14 @@ the verified list, so the surface can't silently regrow.
 | `scaffold` | `internal/blueprint` resolution + **real-engine** smoke (generates a file) |
 | `ui` | `TestUIComponent_RejectsBadSpec` + shared scaffold path |
 | `research` | `internal/research` unit tests + live Perplexity call |
+| `docs` | `internal/docsfactory/{spec_lint,docs_check}_test.go` — 6 spec-lint + 4 docs-check + 3 docs-sync subtests (known-good silent, known-bad fires, freshness vs HEAD, idempotent sync, dry-run no-write) |
 | `help`, `completion` | cobra built-ins |
 
 > Bar note: `version`/`config`/`health`/`memory`/`worktree`/`audit`/`ui` are
 > backed by "runs + unit-tested core logic"; `scaffold`/`research` are backed by
 > full end-to-end runs. Raising the lower bar to full e2e is tracked work.
 
-## Decommissioned (offline) — hidden, refuse to run
+## Decommissioned
 
 | Command | Needs to come back online |
 |---|---|
@@ -54,7 +62,7 @@ the verified list, so the surface can't silently regrow.
 | `email` | make + Django stack |
 | `codegen` | lightwave-core journey YAMLs |
 | `browser` | macOS osascript automation; flaky (audit verdict: drop) |
-| `spec` | legacy parked tree pending schema merge |
+| `spec` | legacy parked tree pending schema merge — superseded by `lw docs spec-lint` for new in-repo spec/ work |
 | `sst` | depends on `~/.brain` corpus state |
 
 ## Schema-dispatched domains (separate track)

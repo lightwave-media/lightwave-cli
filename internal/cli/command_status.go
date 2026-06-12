@@ -33,6 +33,7 @@ var VerifiedCommands = map[string]bool{
 	"scaffold": true,
 	"ui":       true,
 	"research": true,
+	"docs":     true, // spec/+docs/ factory — test backing in internal/docsfactory/*_test.go
 }
 
 // DecommissionedCommands are taken OFFLINE pending end-to-end verification.
