@@ -11,6 +11,48 @@ affects users — for releases that move the needle.
 
 ## [Unreleased]
 
+## [v3.0.0] — 2026-06-11
+
+The "a tag must mean something" release: `lw` now exposes **only commands
+verified to work end-to-end**, and ships two new tools (`scaffold`, `research`).
+
+### ⚠️ BREAKING — trustworthy command surface
+
+- A release now exposes only end-to-end-verified commands. **17 commands are
+  decommissioned** — hidden from `--help`, and `lw <cmd>` returns
+  `… is decommissioned (offline): <reason>`: `aws`, `github`, `council`, `msg`,
+  `v_core`, `agent`, `make`, `test`, `setup`, `cdn`, `content`, `drift`,
+  `email`, `codegen`, `browser`, `spec`, `sst`. Reasons + restore paths in
+  `docs/command-status.md`; a guard test (`command_surface_test.go`) blocks
+  re-exposing an unverified command. Active core: `version`, `config`, `health`,
+  `memory`, `worktree`, `audit`, `scaffold`, `ui`, `research` (`PR #69`).
+  Scripts/agents that called a decommissioned command will now get the offline
+  error — that's the breaking change, and the point.
+- `lw` no longer hard-fails at startup when the lightwave-core `commands.yaml`
+  stamp is absent: it warns and runs the hardcoded commands (`PR #67`).
+
+### Added
+
+- **`lw scaffold <blueprint>` + `lw ui component <category>/<Name>`** — front
+  door to the Gruntwork `boilerplate` engine over the canonical lightwave-core
+  blueprint library. Resolve-by-name, non-interactive,
+  `--var`/`--var-file`/`--output-folder` passthrough; `ui component` is sugar
+  over `scaffold react-component`. Discovery via `--blueprints-dir` →
+  `$LW_BLUEPRINTS_DIR` → `<lightwave_root>/src/boilerplate/blueprints`
+  (`PR #67`).
+- **`lw research <query>`** — Perplexity-backed, cited, scriptable research
+  (`--deep` for `sonar-deep-research`, `--json`, `--recency`, `--domains`,
+  `--system`). Key resolves from SSM `/lightwave/prod/PERPLEXITY_API_KEY`
+  (`PERPLEXITY_API_KEY` env override) (`PR #64`).
+- **Agent skill** (`.claude/skills/lightwave-cli`) teaching `lw`, aligned to the
+  trust policy (active vs offline vs schema-gated) (`PR #68`, `#70`).
+
+### Fixed
+
+- Pin `toolchain go1.24.13` in `go.mod` so `go`/`go vet`/CI re-exec the matching
+  toolchain regardless of host PATH/mise state — fixes the
+  `version go1.24.13 does not match go tool version go1.24.4` failure (`PR #62`).
+
 ### Quality (Gruntwork-harden mission)
 
 - **golangci-lint v2.5.0 ruleset adopted** with `--new-from-merge-base`
@@ -53,5 +95,6 @@ Last release prior to the Gruntwork-harden mission. See the
 [GitHub release notes](https://github.com/lightwave-media/lightwave-cli/releases/tag/v2.11.0)
 for the conventional-commit log.
 
-[Unreleased]: https://github.com/lightwave-media/lightwave-cli/compare/v2.11.0...HEAD
+[Unreleased]: https://github.com/lightwave-media/lightwave-cli/compare/v3.0.0...HEAD
+[v3.0.0]: https://github.com/lightwave-media/lightwave-cli/compare/v2.11.0...v3.0.0
 [v2.11.0]: https://github.com/lightwave-media/lightwave-cli/releases/tag/v2.11.0
