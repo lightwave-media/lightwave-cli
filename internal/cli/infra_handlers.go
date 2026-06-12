@@ -32,7 +32,7 @@ func newInfraRunner(flags map[string]any) *infra.TerragruntRunner {
 	env := flagStrOr(flags, "env", "prod")
 	region := flagStrOr(flags, "region", "us-east-1")
 	return infra.NewTerragruntRunner(
-		filepath.Join(cfg.Paths.LightwaveRoot, "Infrastructure"),
+		filepath.Join(cfg.Paths.LightwaveRoot, "lightwave-infrastructure-live"),
 		env, region,
 	)
 }
