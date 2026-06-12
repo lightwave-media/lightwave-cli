@@ -35,9 +35,30 @@ lw --help           # lists every command
 
 If `lw <cmd>` prints `warning: schema-dispatched commands unavailable …`, that's
 expected on a machine without the `lightwave-core` checkout: hardcoded commands
-(scaffold, research, aws, version, …) still work; schema-driven domains (task,
+(scaffold, research, version, …) still work; schema-driven domains (task,
 check, db, sprint, …) need the `commands.yaml` stamp present. It is a warning,
 not an error.
+
+## Command availability (read first — trust policy)
+
+A release only exposes commands **verified to work end-to-end**; everything else
+is **decommissioned** (hidden from `--help`, and `lw <cmd>` returns
+`… is decommissioned (offline): <reason>`). Source of truth:
+`docs/command-status.md` + `internal/cli/command_status.go`.
+
+- **Active (verified):** `scaffold`, `ui`, `research`, `version`, `config`,
+  `health`, `memory`, `worktree`, `audit`. Use these freely.
+- **Offline (decommissioned):** `aws`, `github`, `council`, `msg`, `v_core`,
+  `agent`, `make`, `test`, `setup`, `cdn`, `content`, `drift`, `email`,
+  `codegen`, `browser`, `spec`, `sst` — pending verification of their external
+  deps. If you hit the offline error, the command isn't ready; don't work around
+  it.
+- **Schema-gated:** `task`, `check`, `db`, `sprint`, `story`, `epic`, `infra`,
+  `deploy`, `local`, … attach only when lightwave-core's `commands.yaml` stamp
+  is present.
+
+Items below tagged **(offline)** / **(schema-gated)** describe the *intended*
+command — always trust `lw --help` for what's live in your binary.
 
 ## Agent rules of engagement
 
@@ -121,53 +142,50 @@ lw research --json "latest Go 1.24 release notes" | jq .citations
 
 ## Top 10 best ways to use `lw`
 
-A ranked starting set. Run `lw <cmd> --help` for the full surface of each.
+Ranked, **active commands first**. Run `lw <cmd> --help` for the full surface.
 
 1. **Scaffold from canonical blueprints** — `lw scaffold <bp> -o <dir> --var …`
    / `lw ui component <cat>/<Name>`. One templating engine, one stamped library,
    every repo. Beats hand-writing component/section boilerplate.
 
-2. **Cited research without leaving the terminal** — `lw research --json "<q>"`.
-   Feed citations straight into a PR description or a decision doc.
+2. **Cited research without leaving the terminal** — `lw research --json "<q>"`
+   (`--deep` for `sonar-deep-research`). Feed citations straight into a PR or
+   decision doc.
 
-3. **Run the gates before you commit** — `lw check` (umbrella) and
-   `lw check schema` (handler↔schema drift). This is the Definition of Done;
-   run it instead of guessing whether CI will pass. `lw check ci --staged`
-   scopes to staged files for a fast pre-commit pass.
-
-4. **Manage agile artifacts against the platform DB** — `lw task list` /
-   `lw task create …` / `lw task start <id>` / `lw task done <id>`, plus
-   `lw sprint current`, `lw story show`, `lw epic tasks`. Direct Postgres reads,
-   so they're instant.
-
-5. **Isolated agent sessions via worktrees** — `lw worktree create <issue>
+3. **Isolated agent sessions via worktrees** — `lw worktree create <issue>
    --type feature --description <slug>` to start a sealed session off
    `origin/main`, `lw worktree status --current` for gate checks, `lw worktree
    gc <issue>` (or `prune --dry-run`) to clean up. Keeps every agent off `main`.
 
-6. **Spin the local dev stack** — `lw local up` / `down` / `health` /
-   `logs` / `restart`, and `lw local exec <service>` to run inside a compose
-   service. One command instead of remembering compose incantations.
+4. **Adversarial repo audit** — `lw audit run --json` scans for security/quality
+   issues + drift and emits a scored report. Run before "is this repo healthy?".
 
-7. **AWS/ECS ops triage** — `lw aws ecs status` (service health),
-   `lw aws logs tail` (live CloudWatch), `lw aws ecr push <service>` (emergency
-   image deploy). Agents get vetted ops surface instead of raw `aws`.
+5. **Dependency + state triage** — `lw health --json` (binaries, paths, DB,
+   services), `lw memory put/get/list` (v_core persisted state), `lw config
+   get/set` (resolve config: flag > env > file). Fast, deterministic, no deps.
 
-8. **Direct Postgres access** — `lw db shell`, `lw db dump`, `lw db migrate`.
-   Honor `--dry-run`/`--yes` on the destructive ones.
+6. **Run the gates before you commit** *(schema-gated)* — `lw check` /
+   `lw check schema` / `lw check ci --staged`. The Definition of Done; available
+   once the lightwave-core `commands.yaml` stamp is present.
 
-9. **Drift & dependency triage** — `lw cdn reconcile --dry-run` (bucket vs SST
-   allowlist), `lw schema drift` / `lw schema reconcile`, and `lw health
-   --json` (binaries, paths, DB, services). Run these before "why is X broken?".
+7. **Agile artifacts against the platform DB** *(schema-gated)* — `lw task
+   list/create/start/done`, `lw sprint current`, `lw story show`, `lw epic
+   tasks`. Instant Postgres reads.
 
-10. **v_core orchestration primitives** — `lw agent spawn …` (sealed
-    sub-session), `lw memory put/get` (persisted state), `lw msg send …`
-    (gateway-mediated notifications), `lw v_core status`. The building blocks the
-    resident orchestrator uses; reach for them when wiring autonomous flows.
+8. **Direct Postgres access** *(schema-gated)* — `lw db shell/dump/migrate`.
+   Honor `--dry-run`/`--yes` on destructive ones.
 
-Honorable mentions: `lw make <scope> <target>` (escape hatch to any Makefile
-target), `lw audit run` (security/quality/drift scan), `lw codegen journeys`
-(Playwright tests from journey YAML), `lw config get/set`.
+9. **AWS/ECS ops triage** *(offline — pending verification)* — `lw aws ecs
+   status`, `lw aws logs tail`, `lw aws ecr push <service>`. Vetted ops surface
+   instead of raw `aws` once restored.
+
+10. **v_core orchestration** *(partly offline)* — `lw memory` is **active**;
+    `lw agent spawn`, `lw msg send`, `lw v_core status` are offline pending
+    verification. The building blocks for autonomous flows.
+
+Honorable mentions — active: `lw config get/set`, `lw version --json`. Offline
+(pending verification): `lw make <scope> <target>` (Makefile escape hatch),
+`lw codegen journeys` (Playwright tests from journey YAML), `lw sst coverage`.
 
 ---
 
