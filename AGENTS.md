@@ -3,9 +3,11 @@
 ### Schema-Driven CLI
 
 `lw`'s command surface is declared in `lightwave-core`'s
-`config/cli/commands.yaml` and dispatched at startup via
-`internal/cli/dispatcher.go`. Two invariants are checked by
-`lw check schema`:
+`src/schemas/interfaces/cli/commands.yaml` (resolved as
+`<lightwave_root>/lightwave-core/src/schemas/interfaces/cli/commands.yaml`,
+with `lightwave_root` defaulting to `~/dev` in the flat sibling-repo
+layout) and dispatched at startup via `internal/cli/dispatcher.go`.
+Two invariants are checked by `lw check schema`:
 
 - **No schema entry without a registered Go handler** — adding a `name: foo` line under a domain in `commands.yaml` without also calling `RegisterHandler("<domain>.foo", …)` from `init()` leaves the subcommand wired to `lw <domain> foo --help` but unimplemented.
 - **No registered handler without a schema entry** — registering a handler the schema doesn't know about means the command is unreachable from the dispatcher's cobra tree.

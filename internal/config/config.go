@@ -174,7 +174,7 @@ func setDefaults() {
 	_ = viper.BindEnv("paperclip.url", "PAPERCLIP_URL")
 
 	// Paths
-	viper.SetDefault("paths.lightwave_root", filepath.Join(home, "dev", "lightwave-media"))
+	viper.SetDefault("paths.lightwave_root", filepath.Join(home, "dev"))
 	viper.SetDefault("paths.platform", filepath.Join(home, "dev", "lightwave-media", "lightwave-platform", "src"))
 }
 
