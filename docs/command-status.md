@@ -38,6 +38,7 @@ the verified list, so the surface can't silently regrow.
 | `research` | `internal/research` unit tests + live Perplexity call |
 | `docs` | `internal/docsfactory/{spec_lint,docs_check}_test.go` — 6 spec-lint + 4 docs-check + 3 docs-sync subtests (known-good silent, known-bad fires, freshness vs HEAD, idempotent sync, dry-run no-write) |
 | `codegen` | `internal/codegen/zodgen` tests (round-trip golden vs joelschaeffer-site registry, PropField parity, values_ref resolution) + `TestGenerateTypesSmoke`; `journeys` subcommand stays offline (below) |
+| `site` | `internal/sitegen` suite (stamp-conformant config, ui_release min(1) from birth, re-init refusal) |
 | `help`, `completion` | cobra built-ins |
 
 > Bar note: `version`/`config`/`health`/`memory`/`worktree`/`audit`/`ui` are
