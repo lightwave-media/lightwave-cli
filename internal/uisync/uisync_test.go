@@ -34,7 +34,7 @@ func TestAddCopiesAndPins(t *testing.T) {
 	t.Parallel()
 	uiRepo, siteDir := fixtureRepos(t)
 
-	copied, err := uisync.Add(uiRepo, siteDir, "base", "Button", "2.0.0", false, fixedNow)
+	copied, err := uisync.Add(uiRepo, siteDir, "Button", "2.0.0", false, fixedNow)
 	require.NoError(t, err)
 	assert.Len(t, copied, 2)
 
@@ -52,15 +52,33 @@ func TestAddRefusesExistingWithoutForce(t *testing.T) {
 	t.Parallel()
 	uiRepo, siteDir := fixtureRepos(t)
 
-	_, err := uisync.Add(uiRepo, siteDir, "base", "Button", "2.0.0", false, fixedNow)
+	_, err := uisync.Add(uiRepo, siteDir, "Button", "2.0.0", false, fixedNow)
 	require.NoError(t, err)
 
-	_, err = uisync.Add(uiRepo, siteDir, "base", "Button", "2.1.0", false, fixedNow)
+	_, err = uisync.Add(uiRepo, siteDir, "Button", "2.1.0", false, fixedNow)
 	require.Error(t, err, "re-add over existing copy must refuse — that is the clobbering failure mode")
 	assert.Contains(t, err.Error(), "lw ui sync")
 
-	_, err = uisync.Add(uiRepo, siteDir, "base", "Button", "2.1.0", true, fixedNow)
+	_, err = uisync.Add(uiRepo, siteDir, "Button", "2.1.0", true, fixedNow)
 	require.NoError(t, err, "--force overrides")
+}
+
+func TestResolveComponentDirForms(t *testing.T) {
+	t.Parallel()
+	uiRepo := t.TempDir()
+	// Real lightwave-ui v8 layout: file under a subcategory dir.
+	writeFile(t, filepath.Join(uiRepo, "src", "components", "base", "buttons", "button.tsx"), "x")
+
+	got, err := uisync.ResolveComponentDir(uiRepo, "Button")
+	require.NoError(t, err)
+	assert.Equal(t, filepath.Join("base", "buttons"), got, "PascalCase name resolves via the file's parent dir")
+
+	got, err = uisync.ResolveComponentDir(uiRepo, "base/buttons")
+	require.NoError(t, err)
+	assert.Equal(t, "base/buttons", got, "explicit path passes through")
+
+	_, err = uisync.ResolveComponentDir(uiRepo, "Nope")
+	require.Error(t, err)
 }
 
 func TestSyncThreeWay(t *testing.T) {

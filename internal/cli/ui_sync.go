@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -21,7 +20,7 @@ var (
 )
 
 var uiAddCmd = &cobra.Command{
-	Use:   "add <category>/<Name>",
+	Use:   "add <Name | category/dir>",
 	Short: "Copy a lightwave-ui component into this site and pin its provenance",
 	Long: `Copies a component from the lightwave-ui checkout into the current site
 (copy-in distribution) and records a pin in lightwave-ui.lock — the
@@ -32,8 +31,9 @@ Updates never go through re-add: use ` + "`lw ui sync`" + ` (three-way) so local
 customizations are preserved. Re-adding over an existing copy requires
 --force and overwrites local edits.
 
-Example:
-  lw ui add base/Button`,
+Examples:
+  lw ui add Button          # resolves to base/buttons via the file layout
+  lw ui add base/buttons    # explicit path under src/components`,
 	Args: cobra.ExactArgs(1),
 	RunE: runUIAdd,
 }
@@ -100,11 +100,6 @@ func uiRepoVersion(uiRepo string) (string, error) {
 }
 
 func runUIAdd(cmd *cobra.Command, args []string) error {
-	category, name, ok := strings.Cut(args[0], "/")
-	if !ok {
-		return fmt.Errorf("expected <category>/<Name>, got %q", args[0])
-	}
-
 	uiRepo := uiRepoPath()
 
 	version, err := uiRepoVersion(uiRepo)
@@ -117,7 +112,7 @@ func runUIAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	copied, err := uisync.Add(uiRepo, siteDir, category, name, version, uiAddForce, time.Now())
+	copied, err := uisync.Add(uiRepo, siteDir, args[0], version, uiAddForce, time.Now())
 	if err != nil {
 		return err
 	}
@@ -126,7 +121,7 @@ func runUIAdd(cmd *cobra.Command, args []string) error {
 		color.Green("✓ %s", f)
 	}
 
-	color.Green("✓ pinned %s @ lightwave-ui v%s in %s", name, version, uisync.LockFile)
+	color.Green("✓ pinned %s @ lightwave-ui v%s in %s", args[0], version, uisync.LockFile)
 
 	return nil
 }

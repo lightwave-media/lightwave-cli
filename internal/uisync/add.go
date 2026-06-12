@@ -15,18 +15,20 @@ const (
 )
 
 // Add copies a component's directory from the lightwave-ui checkout into the
-// consuming site and records its provenance pin. The destination existing
-// without force is an error: updates go through Sync (three-way), never
-// through blind re-copy — blind re-copy is exactly the clobbering failure
-// mode this tool exists to end.
-func Add(uiRepo, siteDir, category, name, version string, force bool, now time.Time) ([]string, error) {
-	rel := filepath.Join("src", "components", category, kebab(name))
+// consuming site and records its provenance pin. ref accepts a path under
+// src/components or a PascalCase name (see ResolveComponentDir). The
+// destination existing without force is an error: updates go through Sync
+// (three-way), never through blind re-copy — blind re-copy is exactly the
+// clobbering failure mode this tool exists to end.
+func Add(uiRepo, siteDir, ref, version string, force bool, now time.Time) ([]string, error) {
+	unit, err := ResolveComponentDir(uiRepo, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	rel := filepath.Join("src", "components", unit)
 	src := filepath.Join(uiRepo, rel)
 	dst := filepath.Join(siteDir, rel)
-
-	if _, err := os.Stat(src); err != nil {
-		return nil, fmt.Errorf("component %s/%s not found in lightwave-ui (%s): %w", category, name, src, err)
-	}
 
 	if _, err := os.Stat(dst); err == nil && !force {
 		return nil, fmt.Errorf("%s already exists — use `lw ui sync` to update it (three-way), or --force to overwrite", dst)
@@ -44,7 +46,7 @@ func Add(uiRepo, siteDir, category, name, version string, force bool, now time.T
 
 	lock.Upsert(Pin{
 		Kind:               "component",
-		Name:               name,
+		Name:               ref,
 		LightwaveUIVersion: version,
 		SyncedAt:           now.UTC().Format(time.RFC3339),
 	})
