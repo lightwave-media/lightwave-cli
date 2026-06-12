@@ -11,7 +11,7 @@ affects users — for releases that move the needle.
 
 ## [Unreleased]
 
-## [v3.0.0] — 2026-06-11
+## [v3.0.0] — 2026-06-12
 
 The "a tag must mean something" release: `lw` now exposes **only commands
 verified to work end-to-end**, and ships two new tools (`scaffold`, `research`).
@@ -52,6 +52,14 @@ verified to work end-to-end**, and ships two new tools (`scaffold`, `research`).
 - Pin `toolchain go1.24.13` in `go.mod` so `go`/`go vet`/CI re-exec the matching
   toolchain regardless of host PATH/mise state — fixes the
   `version go1.24.13 does not match go tool version go1.24.4` failure (`PR #62`).
+- **Flat-workspace path resolution.** `lw` resolved the lightwave-core
+  commands.yaml stamp and the infrastructure-live tree from the dead
+  `~/dev/lightwave-media/` umbrella layout, so schema-driven dispatch and
+  every `lw infra` call failed on flattened workspaces. Now:
+  `paths.lightwave_root` defaults to `~/dev`, the stamp loads from
+  `lightwave-core/src/schemas/interfaces/cli/commands.yaml`, and infra
+  units resolve under `lightwave-infrastructure-live/<env>/<region>/`
+  (`PR #73`, `#74`).
 
 ### Quality (Gruntwork-harden mission)
 
