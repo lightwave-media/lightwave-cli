@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# Conventional Commits gate at the git boundary. Delegates to the shared
+# host validator (~/.lightwave/lib/commit/cli.ts) — the same rules the
+# Claude Code pre-tool-use-git hook enforces for agent-side `git commit -m`.
+# This hook catches what that one can't: editor-driven commits, other
+# harnesses, raw human commits.
+#
+# Fail-open by design: on a machine without bun or the lightwave host
+# runtime (fresh clone, CI runner), warn and pass — the GitHub side is
+# gated by PR review + squash-merge title conventions.
+
+BUN="$(command -v bun || true)"
+[ -z "$BUN" ] && [ -x "$HOME/.bun/bin/bun" ] && BUN="$HOME/.bun/bin/bun"
+CLI="$HOME/.lightwave/lib/commit/cli.ts"
+
+if [ -z "$BUN" ] || [ ! -f "$CLI" ]; then
+    echo "commit-msg: shared validator unavailable (bun or ~/.lightwave/lib missing) — skipping." >&2
+    exit 0
+fi
+
+exec "$BUN" "$CLI" validate-file "$1"
