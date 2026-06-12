@@ -1,0 +1,43 @@
+# Condensed fixture mirroring lightwave-core src/schemas/data/ui/
+# component_contract.yaml — only what parity checking needs. PropField MUST
+# stay field-for-field identical to section_contract.yaml's (the assertion
+# under test).
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/ui/component_contract"
+  title: "Component Contract"
+  generates:
+    - "typescript:ComponentContract"
+
+required_fields:
+  - name: name
+    type: str
+  - name: category
+    type: enum
+    values_ref: "ui_component_categories"
+
+sub_schemas:
+  PropField:
+    name:
+      type: str
+      description: "Prop name, camelCase"
+    type:
+      type: str
+      description: "SST type expression"
+    required:
+      type: bool
+      default: false
+      description: "Whether the prop must be provided; defaults to false when absent"
+    description:
+      type: str
+      description: "Optional prose documenting the prop"
+    options:
+      type: "list[str]"
+      description: "Enum values when type is enum"
+    default:
+      type: str
+      description: "Optional default, rendered verbatim into the binding"
+
+example:
+  name: "Button"
+  category: "base"

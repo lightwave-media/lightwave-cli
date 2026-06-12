@@ -37,6 +37,7 @@ the verified list, so the surface can't silently regrow.
 | `ui` | `TestUIComponent_RejectsBadSpec` + shared scaffold path |
 | `research` | `internal/research` unit tests + live Perplexity call |
 | `docs` | `internal/docsfactory/{spec_lint,docs_check}_test.go` — 6 spec-lint + 4 docs-check + 3 docs-sync subtests (known-good silent, known-bad fires, freshness vs HEAD, idempotent sync, dry-run no-write) |
+| `codegen` | `internal/codegen/zodgen` tests (round-trip golden vs joelschaeffer-site registry, PropField parity, values_ref resolution) + `TestGenerateTypesSmoke`; `journeys` subcommand stays offline (below) |
 | `help`, `completion` | cobra built-ins |
 
 > Bar note: `version`/`config`/`health`/`memory`/`worktree`/`audit`/`ui` are
@@ -60,7 +61,7 @@ the verified list, so the surface can't silently regrow.
 | `content` | make + Django stack |
 | `drift` | make + Django stack |
 | `email` | make + Django stack |
-| `codegen` | lightwave-core journey YAMLs |
+| `codegen journeys` | stale lightwave-core discovery path (legacy `packages/` layout); migrate to `src/schemas` + a verified journey fixture |
 | `browser` | macOS osascript automation; flaky (audit verdict: drop) |
 | `spec` | legacy parked tree pending schema merge — superseded by `lw docs spec-lint` for new in-repo spec/ work |
 | `sst` | depends on `~/.brain` corpus state |

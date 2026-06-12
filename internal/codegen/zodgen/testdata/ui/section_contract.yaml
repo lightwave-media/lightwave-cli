@@ -1,0 +1,105 @@
+# Condensed fixture mirroring lightwave-core src/schemas/data/ui/
+# section_contract.yaml. The example block is the Run 2 round-trip fixture:
+# it encodes joelschaeffer-site's content/content-section-split-image-02
+# contract field-for-field (src/data/sections.ts, zod v4).
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/ui/section_contract"
+  title: "Section Contract"
+  generates:
+    - "typescript:SectionContract"
+    - "json_schema:section_contract"
+
+required_fields:
+  - name: key
+    type: str
+  - name: family
+    type: enum
+    values_ref: "ui_section_families"
+  - name: variant
+    type: str
+  - name: title
+    type: str
+  - name: props
+    type: "list[PropField]"
+
+sub_schemas:
+  PropField:
+    name:
+      type: str
+      description: "Prop name, camelCase"
+    type:
+      type: str
+      description: "SST type expression"
+    required:
+      type: bool
+      default: false
+      description: "Whether the prop must be provided; defaults to false when absent"
+    description:
+      type: str
+      description: "Optional prose documenting the prop"
+    options:
+      type: "list[str]"
+      description: "Enum values when type is enum"
+    default:
+      type: str
+      description: "Optional default, rendered verbatim into the binding"
+
+example:
+  key: "content/content-section-split-image-02"
+  family: "content"
+  variant: "content-section-split-image-02"
+  title: "Content Section — Split Image 02"
+  props:
+    - name: "eyebrow"
+      type: "str"
+      required: false
+    - name: "title"
+      type: "str"
+      required: true
+    - name: "paragraphs"
+      type: "list[str]"
+      required: false
+    - name: "subheading"
+      type: "str"
+      required: false
+    - name: "subheadingParagraphs"
+      type: "list[str]"
+      required: false
+    - name: "actions"
+      type: "list[Action]"
+      required: false
+    - name: "image"
+      type: "str"
+      required: true
+    - name: "imageAlt"
+      type: "str"
+      required: false
+    - name: "imageCaption"
+      type: "ImageCaption"
+      required: false
+  prop_types:
+    Action:
+      - name: "label"
+        type: "str"
+        required: true
+      - name: "href"
+        type: "str"
+        required: true
+      - name: "color"
+        type: "enum"
+        options: ["primary", "secondary"]
+        required: false
+    ImageCaption:
+      - name: "title"
+        type: "str"
+        required: true
+      - name: "role"
+        type: "str"
+        required: false
+      - name: "subrole"
+        type: "str"
+        required: false
+      - name: "rating"
+        type: "float"
+        required: false

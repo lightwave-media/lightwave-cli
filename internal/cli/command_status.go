@@ -34,6 +34,7 @@ var VerifiedCommands = map[string]bool{
 	"ui":       true,
 	"research": true,
 	"docs":     true, // spec/+docs/ factory — test backing in internal/docsfactory/*_test.go
+	"codegen":  true, // types generator — test backing in internal/codegen/zodgen/*_test.go + codegen_types_test.go; journeys stays offline below
 }
 
 // DecommissionedCommands are taken OFFLINE pending end-to-end verification.
@@ -53,22 +54,31 @@ var DecommissionedCommands = map[string]string{
 	"content": "make + Django stack",
 	"drift":   "make + Django stack",
 	"email":   "make + Django stack",
-	"codegen": "lightwave-core journey YAMLs",
-	"browser": "macOS osascript automation; flaky (audit verdict: drop)",
-	"spec":    "legacy parked tree pending schema merge",
-	"sst":     "depends on ~/.brain corpus state",
+	// Subtree keys (space-separated) decommission a single subcommand while
+	// the parent stays verified.
+	"codegen journeys": "stale lightwave-core discovery path (legacy packages/ layout); restore = migrate to src/schemas + a verified journey fixture",
+	"browser":          "macOS osascript automation; flaky (audit verdict: drop)",
+	"spec":             "legacy parked tree pending schema merge",
+	"sst":              "depends on ~/.brain corpus state",
 }
 
 // applyDecommissions hides and disables every decommissioned command and its
-// whole subtree on the assembled root. Idempotent; called from Execute().
+// whole subtree on the assembled root. Space-separated keys ("codegen
+// journeys") target one subcommand while the parent stays live. Idempotent;
+// called from Execute().
 func applyDecommissions(root *cobra.Command) {
 	for _, c := range root.Commands() {
-		reason, offline := DecommissionedCommands[c.Name()]
-		if !offline {
+		if reason, offline := DecommissionedCommands[c.Name()]; offline {
+			disableSubtree(c, c.Name(), reason)
 			continue
 		}
 
-		disableSubtree(c, c.Name(), reason)
+		for _, sub := range c.Commands() {
+			path := c.Name() + " " + sub.Name()
+			if reason, offline := DecommissionedCommands[path]; offline {
+				disableSubtree(sub, path, reason)
+			}
+		}
 	}
 }
 
