@@ -45,8 +45,8 @@ var subSchemaRefinements = map[string]string{
     if (!/^--[a-z][a-z0-9-]*$/.test(key)) {
       ctx.addIssue({ code: "custom", path: ["tokens", key], message: "token keys must match ^--[a-z][a-z0-9-]*$" });
     }
-    if (/(url|expression|image-set|var)\s*\(/i.test(value)) {
-      ctx.addIssue({ code: "custom", path: ["tokens", key], message: "token values must not contain CSS function calls (injection guard)" });
+    if (/(url|expression|image-set|env|attr)\s*\(/i.test(value)) {
+      ctx.addIssue({ code: "custom", path: ["tokens", key], message: "token values must not contain external-data CSS functions (injection guard)" });
     }
   }
 })`,
