@@ -138,7 +138,16 @@ func contractObject(shortID, tsName string, s *Schema) (string, error) {
 			return "", fmt.Errorf("field %s: %w", f.Name, err)
 		}
 
-		entries = append(entries, fmt.Sprintf("%s: %s.optional()", f.Name, expr))
+		// A field with a default is already optional on input and yields a
+		// non-undefined output; appending .optional() would re-widen the
+		// output to T | undefined and defeat the default. contractFieldExpr
+		// has already emitted the .default(...); only add .optional() when
+		// there is no default to carry the absent case.
+		if f.Default == nil {
+			expr += ".optional()"
+		}
+
+		entries = append(entries, fmt.Sprintf("%s: %s", f.Name, expr))
 	}
 
 	obj := "z.object({ " + strings.Join(entries, ", ") + " })"

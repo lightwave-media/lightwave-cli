@@ -160,7 +160,9 @@ func TestEmitContractsEnforcement(t *testing.T) {
 		`token values must not contain CSS function calls`,
 		`z.array(SiteConfigComponentPin).min(1)`,
 		`synced_at: z.string().datetime()`,
-		`locale: z.string().default("en-GB").optional()`,
+		// last field of SiteConfig — the trailing " })" proves no .optional()
+		// was re-appended after the default.
+		`locale: z.string().default("en-GB") })`,
 		`no_index: z.boolean().default(false)`,
 		`export type PageDefinition = z.infer<typeof PageDefinition>;`,
 	} {
