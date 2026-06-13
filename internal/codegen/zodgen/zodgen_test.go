@@ -157,7 +157,7 @@ func TestEmitContractsEnforcement(t *testing.T) {
 		`if (v.page_type === "legal" && v.legal == null)`,
 		`if (v.kind === "website" && v.site_config == null)`,
 		`og_image must be an absolute https URL`,
-		`token values must not contain CSS function calls`,
+		`token values must not contain external-data CSS functions`,
 		`z.array(SiteConfigComponentPin).min(1)`,
 		`synced_at: z.string().datetime()`,
 		// last field of SiteConfig — the trailing " })" proves no .optional()
