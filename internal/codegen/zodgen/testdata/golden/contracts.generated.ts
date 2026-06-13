@@ -42,7 +42,7 @@ export const SiteConfigComponentPin = z.object({ kind: z.enum(["component", "sec
 export const SiteConfigDataSources = z.object({ copy_source: z.string(), media_base: z.string() });
 export const SiteConfigNavItem = z.object({ href: z.string(), label: z.string() });
 export const SiteConfigUiRelease = z.object({ components: z.array(SiteConfigComponentPin).min(1), lightwave_ui_version: z.string() });
-export const SiteConfig = z.object({ domain: z.string(), site_name: z.string(), brand: SiteConfigBrand, nav: z.array(SiteConfigNavItem), pages: z.array(z.string()), data_sources: SiteConfigDataSources, ui_release: SiteConfigUiRelease, tenant: z.string().nullable().optional(), locale: z.string().default("en-GB").optional() });
+export const SiteConfig = z.object({ domain: z.string(), site_name: z.string(), brand: SiteConfigBrand, nav: z.array(SiteConfigNavItem), pages: z.array(z.string()), data_sources: SiteConfigDataSources, ui_release: SiteConfigUiRelease, tenant: z.string().nullable().optional(), locale: z.string().default("en-GB") });
 export type SiteConfig = z.infer<typeof SiteConfig>;
 
 // ── App Shell ──
