@@ -27,13 +27,28 @@ jobs:
         with:
           go-version-file: go.mod
 
+      # Mint a short-lived installation token for the lightwave-tap-publisher
+      # GitHub App, scoped to just homebrew-tap. Replaces the expiring
+      # HOMEBREW_TAP_TOKEN PAT: GoReleaser pushes the formula bump as the
+      # app[bot], the token auto-rotates per run, and there is nothing to
+      # renew. Provision TAP_APP_ID + TAP_APP_PRIVATE_KEY as repo secrets
+      # (see docs/release-tap-app.md).
+      - name: Mint tap-push token
+        id: tap-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.TAP_APP_ID }}
+          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
+          owner: lightwave-media
+          repositories: homebrew-tap
+
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: "v2.14.3"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
 
       - name: Upload darwin binaries for notarization
         # Required input for the sign-macos workflow (when activated).
