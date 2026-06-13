@@ -34,6 +34,7 @@ var VerifiedCommands = map[string]bool{
 	"ui":       true,
 	"research": true,
 	"docs":     true, // spec/+docs/ factory — test backing in internal/docsfactory/*_test.go
+	"lint":     true, // template-kind linters (lw lint handoff) — test backing in internal/docsfactory/handoff_lint_test.go
 	"site":     true, // site init scaffolder — test backing in internal/sitegen/*_test.go
 	"codegen":  true, // types generator — test backing in internal/codegen/zodgen/*_test.go + codegen_types_test.go; journeys stays offline below
 }
