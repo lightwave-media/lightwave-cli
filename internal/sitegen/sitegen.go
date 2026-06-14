@@ -27,6 +27,7 @@ type Options struct {
 	SiteName       string
 	Locale         string
 	FirstComponent string // initial lw ui add ref; keeps ui_release min(1)-valid
+	Force          bool   // overwrite a pre-existing vendored copy of FirstComponent
 }
 
 // SiteConfig mirrors the data/ui site_config stamp's instance shape
@@ -86,14 +87,28 @@ func Init(uiRepo, siteDir, uiVersion string, opts Options, now time.Time) ([]str
 		opts.FirstComponent = "Button"
 	}
 
-	copied, err := uisync.Add(uiRepo, siteDir, opts.FirstComponent, uiVersion, false, now)
-	if err != nil {
-		return nil, fmt.Errorf("pinning first component %s: %w", opts.FirstComponent, err)
-	}
-
+	// Idempotent first-add. A real mid-migration site already has the
+	// component vendored, and may already pin it (e.g. a prior `lw ui add`).
+	// If the lock already records it, the min(1) invariant is satisfied —
+	// skip the copy so init doesn't collide on the existing directory.
+	// Otherwise add it, honouring --force so an explicit graduation of a
+	// vendored copy can proceed (default stays safe: a plain re-copy errors).
 	lock, err := uisync.ReadLock(siteDir)
 	if err != nil {
 		return nil, err
+	}
+
+	var copied []string
+	if _, pinned := lock.Find("component", opts.FirstComponent); !pinned {
+		copied, err = uisync.Add(uiRepo, siteDir, opts.FirstComponent, uiVersion, opts.Force, now)
+		if err != nil {
+			return nil, fmt.Errorf("pinning first component %s (retry with `lw site init --force` to graduate a vendored copy): %w", opts.FirstComponent, err)
+		}
+
+		lock, err = uisync.ReadLock(siteDir)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	cfg := SiteConfig{
