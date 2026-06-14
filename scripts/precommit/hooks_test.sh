@@ -9,6 +9,14 @@
 
 set -euo pipefail
 
+# When invoked from a git hook (the pre-push smoke test), git exports
+# GIT_DIR/GIT_INDEX_FILE/etc. pointing at the REAL repo. Inherited, those
+# override the per-test `git init` below, so `git add`/`git commit` stage into
+# the real index (leaving pollution) instead of each temp repo. Unset them so
+# every temp repo is genuinely hermetic, whether run standalone or under a hook.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+  GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS 2>/dev/null || true
+
 # Resolve paths relative to this script — works whether invoked from repo root
 # or from within scripts/precommit/.
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
