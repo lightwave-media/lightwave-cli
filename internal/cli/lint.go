@@ -84,23 +84,31 @@ func lintToolError(err error) error {
 
 func reportHandoffLint(res *docsfactory.HandoffLintResult) error {
 	fmt.Printf("%s %d step(s)\n", color.CyanString("lint handoff:"), res.TotalSteps)
+
 	if len(res.Violations) == 0 {
 		fmt.Println(color.GreenString("✓ clean"))
+
 		return nil
 	}
+
 	sort.Slice(res.Violations, func(i, j int) bool {
 		if res.Violations[i].StepID != res.Violations[j].StepID {
 			return res.Violations[i].StepID < res.Violations[j].StepID
 		}
+
 		return res.Violations[i].Rule < res.Violations[j].Rule
 	})
+
 	fmt.Printf("\n%s %d violation(s):\n", color.RedString("✗"), len(res.Violations))
+
 	for _, v := range res.Violations {
 		id := v.StepID
 		if id == "" {
 			id = "(handoff)"
 		}
+
 		fmt.Printf("  %s  [%s]  %s\n", id, v.Rule, v.Message)
 	}
+
 	return fmt.Errorf("%d handoff violation(s) in %s", len(res.Violations), filepath.Base(res.Path))
 }
