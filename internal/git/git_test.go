@@ -45,7 +45,7 @@ func initTestRepo(t *testing.T) string {
 func headCount(t *testing.T, repo string) int {
 	t.Helper()
 
-	cmd := exec.Command("git", "--git-dir", filepath.Join(repo, ".git"), "rev-list", "--count", "HEAD")
+	cmd := exec.CommandContext(t.Context(), "git", "--git-dir", filepath.Join(repo, ".git"), "rev-list", "--count", "HEAD")
 
 	out, err := cmd.Output()
 	if err != nil {
