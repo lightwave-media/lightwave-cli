@@ -62,6 +62,42 @@ func (g *Git) IsRepo() bool {
 	return err == nil
 }
 
+// locationEnvVars are the git environment variables that pin git to a
+// particular repository/worktree/index. When lw runs under a git hook
+// (pre-commit, pre-push), git exports these pointing at the REAL repo;
+// inherited by our subprocess git they override cmd.Dir/--git-dir, so every
+// operation silently targets the hook's repo instead of the one this wrapper
+// was told to use. That is exactly how the test suite — run from the pre-push
+// gate — corrupted the canonical checkout. Stripping them makes each Git
+// instance operate on precisely the directory it was given.
+var locationEnvVars = []string{
+	"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
+	"GIT_OBJECT_DIRECTORY", "GIT_COMMON_DIR", "GIT_PREFIX",
+	"GIT_CONFIG_PARAMETERS",
+}
+
+// gitEnv returns the current environment with the location-scoping git
+// variables removed, plus any extra KEY=VALUE entries appended.
+func gitEnv(extra ...string) []string {
+	env := make([]string, 0, len(os.Environ())+len(extra))
+	for _, kv := range os.Environ() {
+		drop := false
+		for _, name := range locationEnvVars {
+			if strings.HasPrefix(kv, name+"=") {
+				drop = true
+
+				break
+			}
+		}
+
+		if !drop {
+			env = append(env, kv)
+		}
+	}
+
+	return append(env, extra...)
+}
+
 // run executes a git command and returns stdout.
 func (g *Git) run(args ...string) (string, error) {
 	if g.gitDir != "" {
@@ -72,6 +108,7 @@ func (g *Git) run(args ...string) (string, error) {
 	if g.workDir != "" {
 		cmd.Dir = g.workDir
 	}
+	cmd.Env = gitEnv()
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -94,9 +131,7 @@ func (g *Git) runWithEnv(args []string, extraEnv []string) (string, error) {
 	if g.workDir != "" {
 		cmd.Dir = g.workDir
 	}
-	if len(extraEnv) > 0 {
-		cmd.Env = append(os.Environ(), extraEnv...)
-	}
+	cmd.Env = gitEnv(extraEnv...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -174,7 +209,7 @@ func (g *Git) cloneInternal(url, dest string, opts cloneOptions) error {
 
 	cmd := exec.Command("git", args...)
 	cmd.Dir = tmpDir
-	cmd.Env = append(os.Environ(), "GIT_CEILING_DIRECTORIES="+tmpDir)
+	cmd.Env = gitEnv("GIT_CEILING_DIRECTORIES=" + tmpDir)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

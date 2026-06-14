@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -37,6 +38,59 @@ func initTestRepo(t *testing.T) string {
 	_ = cmd.Run()
 
 	return dir
+}
+
+// headCount returns the number of commits reachable from HEAD in repo, using an
+// explicit --git-dir so an ambient GIT_DIR cannot skew the count.
+func headCount(t *testing.T, repo string) int {
+	t.Helper()
+
+	cmd := exec.Command("git", "--git-dir", filepath.Join(repo, ".git"), "rev-list", "--count", "HEAD")
+
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatalf("rev-list %s: %v", repo, err)
+	}
+
+	n, err := strconv.Atoi(strings.TrimSpace(string(out)))
+	if err != nil {
+		t.Fatalf("parse count %q: %v", out, err)
+	}
+
+	return n
+}
+
+// TestRun_IgnoresAmbientGitDir pins the fix for the pre-push corruption: when a
+// git hook has exported GIT_DIR/GIT_WORK_TREE (pointing at the real repo), a
+// wrapper operation must still act on its own workDir. Without gitEnv() the
+// commit below lands in `real` instead of `target` — exactly how the test suite,
+// run from the pre-push gate, corrupted the canonical checkout.
+func TestRun_IgnoresAmbientGitDir(t *testing.T) {
+	real := initTestRepo(t)   // stand-in for the canonical checkout
+	target := initTestRepo(t) // the repo the wrapper is told to use
+
+	before := headCount(t, real)
+
+	// Simulate running under a git hook that pins git at the real repo.
+	t.Setenv("GIT_DIR", filepath.Join(real, ".git"))
+	t.Setenv("GIT_WORK_TREE", real)
+
+	if err := os.WriteFile(filepath.Join(target, "new.txt"), []byte("x\n"), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	g := NewGit(target)
+	if err := g.Add("new.txt"); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	if err := g.Commit("target-only"); err != nil {
+		t.Fatalf("commit: %v", err)
+	}
+
+	if after := headCount(t, real); after != before {
+		t.Fatalf("ambient GIT_DIR repo gained %d commit(s): operation leaked into the real repo", after-before)
+	}
 }
 
 func TestNewGit(t *testing.T) {
