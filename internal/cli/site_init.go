@@ -14,6 +14,7 @@ var (
 	siteInitName      string
 	siteInitLocale    string
 	siteInitComponent string
+	siteInitForce     bool
 )
 
 var siteCmd = &cobra.Command{
@@ -42,6 +43,7 @@ func init() {
 	siteInitCmd.Flags().StringVar(&siteInitName, "name", "", "site name (default: domain)")
 	siteInitCmd.Flags().StringVar(&siteInitLocale, "locale", "", "BCP 47 default locale (default en-GB)")
 	siteInitCmd.Flags().StringVar(&siteInitComponent, "first-component", "", "initial component to pin (default Button)")
+	siteInitCmd.Flags().BoolVar(&siteInitForce, "force", false, "graduate a pre-existing vendored copy of the first component (overwrites it)")
 	_ = siteInitCmd.MarkFlagRequired("domain")
 
 	siteCmd.AddCommand(siteInitCmd)
@@ -66,6 +68,7 @@ func runSiteInit(cmd *cobra.Command, args []string) error {
 		SiteName:       siteInitName,
 		Locale:         siteInitLocale,
 		FirstComponent: siteInitComponent,
+		Force:          siteInitForce,
 	}, time.Now())
 	if err != nil {
 		return err

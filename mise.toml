@@ -32,7 +32,11 @@ run = "go vet ./..."
 
 [tasks.lint]
 description = "golangci-lint (ratcheted to new code vs origin/main — matches the baseline)"
-run = "golangci-lint run --new-from-merge-base=origin/main --timeout=10m ./..."
+# Strip inherited git location vars (see [tasks.test]). --new-from-merge-base
+# shells out to git to compute the diff; under the pre-push gate an inherited
+# GIT_DIR points that at the wrong repo, yielding a garbage diff and spurious
+# "new" findings. Unset so the ratchet compares against the real worktree.
+run = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS; golangci-lint run --new-from-merge-base=origin/main --timeout=10m ./..."
 
 [tasks.build]
 description = "Build lw"
@@ -40,7 +44,13 @@ run = "go build ./cmd/lw"
 
 [tasks.test]
 description = "go test (race + shuffle, matches CI)"
-run = "go test -race -shuffle=on ./..."
+# Strip inherited git location vars before testing. When this task runs from the
+# pre-push gate, git exports GIT_DIR/GIT_WORK_TREE/etc. pointing at the real
+# repo; tests that shell out to `git` in temp dirs (internal/git,
+# internal/docsfactory, …) would otherwise target — and corrupt — the canonical
+# checkout. This blanket guard covers raw-exec test helpers that don't go
+# through the internal/git wrapper. Same pattern as scripts/precommit/hooks_test.sh.
+run = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS; go test -race -shuffle=on ./..."
 
 [tasks.ci]
 description = "Local CI: fmt-check + vet + lint + build + test"
