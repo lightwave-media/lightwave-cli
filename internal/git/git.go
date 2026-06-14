@@ -82,6 +82,7 @@ func gitEnv(extra ...string) []string {
 	env := make([]string, 0, len(os.Environ())+len(extra))
 	for _, kv := range os.Environ() {
 		drop := false
+
 		for _, name := range locationEnvVars {
 			if strings.HasPrefix(kv, name+"=") {
 				drop = true
@@ -108,6 +109,7 @@ func (g *Git) run(args ...string) (string, error) {
 	if g.workDir != "" {
 		cmd.Dir = g.workDir
 	}
+
 	cmd.Env = gitEnv()
 
 	var stdout, stderr bytes.Buffer
@@ -131,14 +133,18 @@ func (g *Git) runWithEnv(args []string, extraEnv []string) (string, error) {
 	if g.workDir != "" {
 		cmd.Dir = g.workDir
 	}
+
 	cmd.Env = gitEnv(extraEnv...)
+
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
+
 	err := cmd.Run()
 	if err != nil {
 		return "", g.wrapError(err, stdout.String(), stderr.String(), args)
 	}
+
 	return strings.TrimSpace(stdout.String()), nil
 }
 

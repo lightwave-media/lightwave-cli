@@ -32,7 +32,11 @@ run = "go vet ./..."
 
 [tasks.lint]
 description = "golangci-lint (ratcheted to new code vs origin/main — matches the baseline)"
-run = "golangci-lint run --new-from-merge-base=origin/main --timeout=10m ./..."
+# Strip inherited git location vars (see [tasks.test]). --new-from-merge-base
+# shells out to git to compute the diff; under the pre-push gate an inherited
+# GIT_DIR points that at the wrong repo, yielding a garbage diff and spurious
+# "new" findings. Unset so the ratchet compares against the real worktree.
+run = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS; golangci-lint run --new-from-merge-base=origin/main --timeout=10m ./..."
 
 [tasks.build]
 description = "Build lw"
