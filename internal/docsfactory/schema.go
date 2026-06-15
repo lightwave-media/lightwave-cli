@@ -115,11 +115,15 @@ type LWDocsOverride struct {
 	Freshness       *FreshnessPolicy `yaml:"freshness,omitempty"`
 }
 
-// Schemas bundles the three governance schemas the factory consumes.
+// Schemas bundles the governance schemas the factory consumes, plus the two
+// closed enums `lw lint handoff` validates against (handoff block kinds + the
+// handoff status lifecycle).
 type Schemas struct {
-	SpecKinds []SpecArtifactKind
-	DocKinds  []DocArtifactKind
-	Manifest  RepoDocManifest
+	SpecKinds         []SpecArtifactKind
+	DocKinds          []DocArtifactKind
+	Manifest          RepoDocManifest
+	HandoffBlockKinds []string
+	HandoffStatuses   []string
 }
 
 // LoadSchemas reads the three governance YAMLs from lightwave-core. It honors
@@ -155,6 +159,14 @@ func LoadSchemas(lightwaveRoot string) (*Schemas, error) {
 		&s.Manifest,
 	); err != nil {
 		return nil, fmt.Errorf("load repo_doc_manifest: %w", err)
+	}
+
+	enumsDir := filepath.Join(root, "src", "schemas", "data", "enums")
+	if s.HandoffBlockKinds, err = loadEnumValues(filepath.Join(enumsDir, "handoff_block_kinds.yaml")); err != nil {
+		return nil, fmt.Errorf("load handoff_block_kinds: %w", err)
+	}
+	if s.HandoffStatuses, err = loadEnumValues(filepath.Join(enumsDir, "handoff_statuses.yaml")); err != nil {
+		return nil, fmt.Errorf("load handoff_statuses: %w", err)
 	}
 
 	return &s, nil
@@ -300,4 +312,21 @@ func loadYAMLWhole(path string, out any) error {
 		return err
 	}
 	return yaml.Unmarshal(data, out)
+}
+
+// loadEnumValues reads a lightwave-core enum schema (shape: `options:` list of
+// {value, label, ...}) and projects the `value` of each option. Used to load
+// the closed handoff_block_kinds + handoff_statuses sets for `lw lint handoff`.
+func loadEnumValues(path string) ([]string, error) {
+	var opts []struct {
+		Value string `yaml:"value"`
+	}
+	if err := loadYAMLField(path, "options", &opts); err != nil {
+		return nil, err
+	}
+	out := make([]string, 0, len(opts))
+	for _, o := range opts {
+		out = append(out, o.Value)
+	}
+	return out, nil
 }
