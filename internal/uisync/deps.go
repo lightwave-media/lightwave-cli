@@ -346,7 +346,7 @@ func findExportedSymbol(componentsRoot, symbol string) string {
 	}
 
 	q := regexp.QuoteMeta(symbol)
-	declRe := regexp.MustCompile(`(?m)^\s*export\s+(?:default\s+)?(?:async\s+)?(?:const|let|var|function|class|interface|type|enum)\s+` + q + `\b`)
+	declarationRe := regexp.MustCompile(`(?m)^\s*export\s+(?:default\s+)?(?:async\s+)?(?:const|let|var|function|class|interface|type|enum)\s+` + q + `\b`)
 	listRe := regexp.MustCompile(`export\s*(?:type\s*)?\{[^}]*\b` + q + `\b[^}]*\}`)
 
 	var found string
@@ -365,7 +365,7 @@ func findExportedSymbol(componentsRoot, symbol string) string {
 			return nil //nolint:nilerr // unreadable file → keep scanning
 		}
 
-		if !declRe.Match(raw) && !listRe.Match(raw) {
+		if !declarationRe.Match(raw) && !listRe.Match(raw) {
 			return nil
 		}
 
