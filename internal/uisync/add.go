@@ -20,7 +20,12 @@ const (
 // destination existing without force is an error: updates go through Sync
 // (three-way), never through blind re-copy — blind re-copy is exactly the
 // clobbering failure mode this tool exists to end.
-func Add(uiRepo, siteDir, ref, version string, force bool, now time.Time) ([]string, error) {
+//
+// Unless noDeps is set, Add then walks the copied files' imports and pulls in
+// every transitive dependency — sibling components (pinned too) and shared src
+// files like @/utils/cx — so the copy-in builds in the consumer without the
+// manual dependency-chasing that one-component-at-a-time copy used to require.
+func Add(uiRepo, siteDir, ref, version string, force, noDeps bool, now time.Time) ([]string, error) {
 	unit, err := ResolveComponentDir(uiRepo, ref)
 	if err != nil {
 		return nil, err
@@ -50,6 +55,17 @@ func Add(uiRepo, siteDir, ref, version string, force bool, now time.Time) ([]str
 		LightwaveUIVersion: version,
 		SyncedAt:           now.UTC().Format(time.RFC3339),
 	})
+
+	if !noDeps {
+		w := newDepWalker(uiRepo, siteDir, version, now, lock)
+		w.visitedUnit[unit] = true // the named component is already copied + pinned
+
+		if err := w.scanUnit(unit); err != nil {
+			return nil, fmt.Errorf("resolving dependencies of %s: %w", ref, err)
+		}
+
+		copied = append(copied, w.copied...)
+	}
 
 	if err := WriteLock(siteDir, lock); err != nil {
 		return nil, err

@@ -16,6 +16,7 @@ import (
 
 var (
 	uiAddForce   bool
+	uiAddNoDeps  bool
 	uiSyncDryRun bool
 )
 
@@ -31,9 +32,17 @@ Updates never go through re-add: use ` + "`lw ui sync`" + ` (three-way) so local
 customizations are preserved. Re-adding over an existing copy requires
 --force and overwrites local edits.
 
+Transitive dependencies are resolved automatically: the copied files' imports
+are followed so sibling components (` + "`@/components/...`" + `, pinned too) and shared
+src files (` + "`@/utils/cx`" + ` and friends) come along. Pass --no-deps to copy only
+the named component's own files.
+
 Examples:
+  lw ui add Avatar          # also copies base/tooltip + @/utils/cx
   lw ui add Button          # resolves to base/buttons via the file layout
-  lw ui add base/buttons    # explicit path under src/components`,
+  lw ui add base/buttons    # explicit path under src/components
+  lw ui add Badge           # resolves to base/badges via pluralization
+  lw ui add Avatar --no-deps  # named component only, deps left to you`,
 	Args: cobra.ExactArgs(1),
 	RunE: runUIAdd,
 }
@@ -58,6 +67,7 @@ The pin (and lightwave-ui.lock) advances only on conflict-free syncs.`,
 
 func init() {
 	uiAddCmd.Flags().BoolVarP(&uiAddForce, "force", "f", false, "overwrite an existing local copy (loses local edits)")
+	uiAddCmd.Flags().BoolVar(&uiAddNoDeps, "no-deps", false, "copy only the named component, skip transitive dependency resolution")
 	uiSyncCmd.Flags().BoolVar(&uiSyncDryRun, "dry-run", false, "report outcomes without writing files")
 
 	uiCmd.AddCommand(uiAddCmd)
@@ -112,7 +122,7 @@ func runUIAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	copied, err := uisync.Add(uiRepo, siteDir, args[0], version, uiAddForce, time.Now())
+	copied, err := uisync.Add(uiRepo, siteDir, args[0], version, uiAddForce, uiAddNoDeps, time.Now())
 	if err != nil {
 		return err
 	}

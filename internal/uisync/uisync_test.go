@@ -34,7 +34,7 @@ func TestAddCopiesAndPins(t *testing.T) {
 	t.Parallel()
 	uiRepo, siteDir := fixtureRepos(t)
 
-	copied, err := uisync.Add(uiRepo, siteDir, "Button", "2.0.0", false, fixedNow)
+	copied, err := uisync.Add(uiRepo, siteDir, "Button", "2.0.0", false, false, fixedNow)
 	require.NoError(t, err)
 	assert.Len(t, copied, 2)
 
@@ -52,14 +52,14 @@ func TestAddRefusesExistingWithoutForce(t *testing.T) {
 	t.Parallel()
 	uiRepo, siteDir := fixtureRepos(t)
 
-	_, err := uisync.Add(uiRepo, siteDir, "Button", "2.0.0", false, fixedNow)
+	_, err := uisync.Add(uiRepo, siteDir, "Button", "2.0.0", false, false, fixedNow)
 	require.NoError(t, err)
 
-	_, err = uisync.Add(uiRepo, siteDir, "Button", "2.1.0", false, fixedNow)
+	_, err = uisync.Add(uiRepo, siteDir, "Button", "2.1.0", false, false, fixedNow)
 	require.Error(t, err, "re-add over existing copy must refuse — that is the clobbering failure mode")
 	assert.Contains(t, err.Error(), "lw ui sync")
 
-	_, err = uisync.Add(uiRepo, siteDir, "Button", "2.1.0", true, fixedNow)
+	_, err = uisync.Add(uiRepo, siteDir, "Button", "2.1.0", true, false, fixedNow)
 	require.NoError(t, err, "--force overrides")
 }
 
