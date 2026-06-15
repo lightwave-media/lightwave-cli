@@ -109,8 +109,8 @@ run_test "check-companion-test: non-check files ignored" 0
 
 TEST_BODY='
 fake_home=$(mktemp -d)
-mkdir -p "$fake_home/.brain/memory/failures"
-echo "stub" > "$fake_home/.brain/memory/failures/2026-05-22-test.yaml"
+mkdir -p "$fake_home/.lightwave/brain/memory/failures"
+echo "stub" > "$fake_home/.lightwave/brain/memory/failures/2026-05-22-test.yaml"
 HOME="$fake_home" \
   bash -c "
     echo \"package cli\" > internal/cli/check_bar.go
@@ -123,7 +123,7 @@ run_test "brain-memory-link: linked-incident referencing existing yaml passes" 0
 
 TEST_BODY='
 fake_home=$(mktemp -d)
-mkdir -p "$fake_home/.brain/memory/failures"
+mkdir -p "$fake_home/.lightwave/brain/memory/failures"
 HOME="$fake_home" \
   bash -c "
     echo \"package cli\" > internal/cli/check_baz.go
@@ -135,7 +135,7 @@ run_test "brain-memory-link: missing comment fails" 1
 
 TEST_BODY='
 fake_home=$(mktemp -d)
-mkdir -p "$fake_home/.brain/memory/failures"
+mkdir -p "$fake_home/.lightwave/brain/memory/failures"
 HOME="$fake_home" \
   bash -c "
     echo \"package cli\" > internal/cli/check_qux.go
