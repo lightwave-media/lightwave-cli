@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Enforces CLAUDE.md "lw check Subcommand Requirements" §1:
 #   "Linked incident — point to a brain memory entry
-#    (~/.brain/memory/failures/*.yaml or feedback/*.yaml) that describes
+#    (~/.lightwave/brain/memory/failures/*.yaml or feedback/*.yaml) that describes
 #    the bug it prevents. If you can't link one, the check isn't justified yet."
 #
 # For every staged NEW internal/cli/check_<name>.go (excluding the umbrella),
@@ -16,7 +16,7 @@
 
 set -euo pipefail
 
-brain_root="${HOME}/.brain/memory"
+brain_root="${HOME}/.lightwave/brain/memory"
 
 violations=()
 
@@ -71,9 +71,9 @@ if [[ ${#violations[@]} -gt 0 ]]; then
   printf '%s\n' "${violations[@]}" >&2
   echo "" >&2
   echo "Add a comment near the top of the file:" >&2
-  echo "  // linked-incident: failures/2026-MM-DD-<slug>.yaml" >&2
+  echo "  // linked-incident: failures/YYYY-MM-DD-<slug>.yaml" >&2
   echo "or" >&2
-  echo "  // linked-incident: feedback/2026-MM-DD-<slug>.yaml" >&2
+  echo "  // linked-incident: feedback/YYYY-MM-DD-<slug>.yaml" >&2
   echo "" >&2
   echo "If you cannot link an incident, the check isn't justified yet —" >&2
   echo "speculative or aesthetic checks do not ship (CLAUDE.md \"Don't ship\")." >&2

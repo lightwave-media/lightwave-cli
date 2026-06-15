@@ -1,0 +1,36 @@
+_meta:
+  kind: failure
+  slug: 2026-06-15-repo-infra-drift
+  date: "2026-06-15"
+  severity: medium
+  status: resolved
+
+summary: >
+  System-design audit revealed 7/11 lightwave repos missing required files
+  (CLAUDE.md, dev/) per repo-infra.yaml v1.2.0. Agent sessions in affected
+  repos operated without loading AGENTS.md rules and without the pre-push
+  gate (dev/hooks/pre-push) installed.
+
+repos_affected:
+  - lightwave-core        # missing CLAUDE.md
+  - createOS              # missing CLAUDE.md + dev/
+  - joelschaeffer-site    # missing dev/
+  - lightwave-infrastructure-catalog  # missing CLAUDE.md
+  - lightwave-infrastructure-live     # missing CLAUDE.md
+  - nullclaw              # missing dev/
+
+root_cause: >
+  No automated gate existed to catch structural drift from repo-infra.yaml.
+  Repos were scaffolded manually and over time fell out of sync as the schema
+  evolved (v1.0 → v1.2.0 added CLAUDE.md + dev/ as universal requirements).
+
+resolution: >
+  Added lw check repo-infra (check_repo_infra.go) which validates every repo
+  against the universal required_files and required_dirs in repo-infra.yaml
+  v1.2.0. --all flag checks all discovered repos; --fix creates missing
+  CLAUDE.md files mechanically. Wired into lw check umbrella so it runs as
+  part of the standard gate.
+
+prevention: >
+  lw check repo-infra --all should be run after any repo is bootstrapped or
+  after repo-infra.yaml is updated to a new version.
