@@ -179,15 +179,47 @@ func writeUnlessDry(path string, content []byte, dryRun bool) error {
 //  3. a PascalCase name whose kebab matches a file — the unit is then the
 //     file's directory ("Button" → base/buttons, via buttons/button.tsx,
 //     the real lightwave-ui v8 layout)
+//  4. a simple pluralization of the kebab name ("Badge" → base/badges,
+//     whose directory and file are both plural)
+//  5. a file exporting the PascalCase symbol, mapped to its unit dir — the
+//     last resort when the name matches neither a directory nor a file
+//     basename
 func ResolveComponentDir(uiRepo, ref string) (string, error) {
 	componentsRoot := filepath.Join(uiRepo, "src", "components")
 
-	if info, err := os.Stat(filepath.Join(componentsRoot, ref)); err == nil && info.IsDir() {
+	if info, err := os.Stat(filepath.Join(componentsRoot, filepath.FromSlash(ref))); err == nil && info.IsDir() {
 		return ref, nil
 	}
 
 	want := kebab(ref)
 
+	candidates := []string{want}
+	if plural := pluralize(want); plural != want {
+		candidates = append(candidates, plural)
+	}
+
+	for _, c := range candidates {
+		found, err := findUnitByName(componentsRoot, c)
+		if err != nil {
+			return "", fmt.Errorf("scanning lightwave-ui components: %w", err)
+		}
+
+		if found != "" {
+			return found, nil
+		}
+	}
+
+	if found := findExportedSymbol(componentsRoot, ref); found != "" {
+		return found, nil
+	}
+
+	return "", fmt.Errorf("component %q not found in %s (tried path, directories/files %v, and exported symbol %q)", ref, componentsRoot, candidates, ref)
+}
+
+// findUnitByName returns the unit directory whose basename matches want — a
+// directory match returns the directory itself, a file match returns the file's
+// parent directory. "" means no match.
+func findUnitByName(componentsRoot, want string) (string, error) {
 	var found string
 
 	err := filepath.WalkDir(componentsRoot, func(path string, d fs.DirEntry, err error) error {
@@ -201,13 +233,13 @@ func ResolveComponentDir(uiRepo, ref string) (string, error) {
 		}
 
 		if d.IsDir() && filepath.Base(rel) == want {
-			found = rel
+			found = filepath.ToSlash(rel)
 
 			return fs.SkipAll
 		}
 
 		if !d.IsDir() && strings.TrimSuffix(filepath.Base(rel), filepath.Ext(rel)) == want {
-			found = filepath.Dir(rel)
+			found = filepath.ToSlash(filepath.Dir(rel))
 
 			return fs.SkipAll
 		}
@@ -215,11 +247,7 @@ func ResolveComponentDir(uiRepo, ref string) (string, error) {
 		return nil
 	})
 	if err != nil {
-		return "", fmt.Errorf("scanning lightwave-ui components: %w", err)
-	}
-
-	if found == "" {
-		return "", fmt.Errorf("component %q not found in %s (tried path, directory %q, and file %q.*)", ref, componentsRoot, want, want)
+		return "", err
 	}
 
 	return found, nil

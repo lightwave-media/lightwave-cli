@@ -100,7 +100,7 @@ func Init(uiRepo, siteDir, uiVersion string, opts Options, now time.Time) ([]str
 
 	var copied []string
 	if _, pinned := lock.Find("component", opts.FirstComponent); !pinned {
-		copied, err = uisync.Add(uiRepo, siteDir, opts.FirstComponent, uiVersion, opts.Force, now)
+		copied, err = uisync.Add(uiRepo, siteDir, opts.FirstComponent, uiVersion, opts.Force, false, now)
 		if err != nil {
 			return nil, fmt.Errorf("pinning first component %s (retry with `lw site init --force` to graduate a vendored copy): %w", opts.FirstComponent, err)
 		}
