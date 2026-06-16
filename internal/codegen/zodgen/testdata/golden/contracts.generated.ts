@@ -13,9 +13,9 @@ export const SectionContract = z.object({ key: z.string(), family: z.enum(["head
 export type SectionContract = z.infer<typeof SectionContract>;
 
 // ── Page Definition ──
-export const PageDefinitionLegalMeta = z.object({ effective_date: z.string(), jurisdiction: z.string(), last_reviewed: z.string().nullable(), required_blocks: z.array(z.string()) });
+export const PageDefinitionLegalMeta = z.object({ effective_date: z.string(), jurisdiction: z.string(), last_reviewed: z.string().nullable().optional(), required_blocks: z.array(z.string()) });
 export const PageDefinitionSectionRef = z.object({ props: z.record(z.string(), z.unknown()), section: z.string() });
-export const PageDefinitionSeo = z.object({ description: z.string(), no_index: z.boolean().default(false), og_image: z.string().nullable(), title: z.string() }).superRefine((v, ctx) => {
+export const PageDefinitionSeo = z.object({ description: z.string(), no_index: z.boolean().default(false), og_image: z.string().nullable().optional(), title: z.string() }).superRefine((v, ctx) => {
   if (v.og_image != null && !(v.og_image.startsWith("https://") || v.og_image.startsWith("/"))) {
     ctx.addIssue({ code: "custom", path: ["og_image"], message: "og_image must be an absolute https URL or a media-base-relative path beginning with /" });
   }
@@ -28,7 +28,7 @@ export const PageDefinition = z.object({ slug: z.string(), title: z.string(), pa
 export type PageDefinition = z.infer<typeof PageDefinition>;
 
 // ── Site Config ──
-export const SiteConfigBrand = z.object({ logo_dark: z.string().nullable(), logo_light: z.string().nullable(), tokens: z.record(z.string(), z.string()) }).superRefine((v, ctx) => {
+export const SiteConfigBrand = z.object({ logo_dark: z.string().nullable().optional(), logo_light: z.string().nullable().optional(), tokens: z.record(z.string(), z.string()) }).superRefine((v, ctx) => {
   for (const [key, value] of Object.entries(v.tokens)) {
     if (!/^--[a-z][a-z0-9-]*$/.test(key)) {
       ctx.addIssue({ code: "custom", path: ["tokens", key], message: "token keys must match ^--[a-z][a-z0-9-]*$" });
@@ -46,10 +46,31 @@ export const SiteConfig = z.object({ domain: z.string(), site_name: z.string(), 
 export type SiteConfig = z.infer<typeof SiteConfig>;
 
 // ── App Shell ──
-export const AppShellAuth = z.object({ posture: z.enum(["public", "authenticated", "admin"]), provider: z.string().nullable() });
+export const AppShellAuth = z.object({ posture: z.enum(["public", "authenticated", "admin"]), provider: z.string().nullable().optional() });
 export const AppShell = z.object({ name: z.string(), kind: z.enum(["website", "app", "admin"]), router: z.enum(["react-router", "tanstack-router", "none"]), providers: z.array(z.string()), auth: AppShellAuth.nullable().optional(), site_config: z.string().nullable().optional() }).superRefine((v, ctx) => {
   if (v.kind === "website" && v.site_config == null) {
     ctx.addIssue({ code: "custom", path: ["site_config"], message: "website shells require a site_config reference" });
   }
 });
 export type AppShell = z.infer<typeof AppShell>;
+
+// ── Collection — content collection primitive ──
+export const CollectionContributor = z.object({ avatar: z.string().nullable().optional(), name: z.string(), role: z.string() });
+export const CollectionField = z.object({ name: z.string(), of_schema: z.string().nullable().optional(), of_type: z.enum(["text", "number", "bool", "select", "media", "array"]).nullable().optional(), options: z.array(z.string()).nullable().optional(), required: z.boolean().default(false), type: z.enum(["text", "number", "bool", "select", "media", "array"]) }).superRefine((v, ctx) => {
+  if (v.type === "select" && (v.options == null || v.options.length === 0)) {
+    ctx.addIssue({ code: "custom", path: ["options"], message: "select fields require a non-empty options list" });
+  }
+  if (v.type === "array") {
+    const hasOfType = v.of_type != null;
+    const hasOfSchema = v.of_schema != null;
+    if (hasOfType === hasOfSchema) {
+      ctx.addIssue({ code: "custom", path: ["of_type"], message: "array fields require exactly one of of_type / of_schema" });
+    }
+  } else if (v.of_type != null || v.of_schema != null) {
+    ctx.addIssue({ code: "custom", path: ["of_type"], message: "of_type / of_schema are only valid on an array field" });
+  }
+});
+export const CollectionLabels = z.object({ plural: z.string(), singular: z.string() });
+export const CollectionRouting = z.object({ detail_base: z.string(), gallery_path: z.string() });
+export const Collection = z.object({ slug: z.string(), kind: z.enum(["projects"]), labels: CollectionLabels, routing: CollectionRouting, gallery_section: z.string(), detail_sections: z.array(z.string()), fields: z.array(CollectionField) });
+export type Collection = z.infer<typeof Collection>;
