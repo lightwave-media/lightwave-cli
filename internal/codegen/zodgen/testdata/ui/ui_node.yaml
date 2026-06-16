@@ -1,0 +1,57 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/ui/ui_node"
+  title: "UI Node — recursive component-tree node for DB-driven rendering"
+  description: |
+    Test fixture mirroring lightwave-core data/ui/ui_node.yaml. Exercises the
+    recursive emitter path: children (list[UiNode]) and slots
+    (dict[str, list[UiNode]]) self-reference the schema's own generated type,
+    which the emitter renders as Zod 4 getters.
+  generates:
+    - "typescript:UiNode"
+    - "json_schema:ui_node"
+  depends_on: []
+
+required_fields:
+  - name: component
+    type: str
+    description: "Component registry key resolved against the surface's registry"
+
+optional_fields:
+  - name: props
+    type: dict
+    nullable: true
+    description: "Literal config props (variants + iconKey strings)"
+  - name: bind
+    type: "dict[str, str]"
+    nullable: true
+    description: "Content bindings: prop name -> data-scope path"
+  - name: slots
+    type: "dict[str, list[UiNode]]"
+    nullable: true
+    description: "Named child slots beyond children; recursive (z.lazy/getter)"
+  - name: children
+    type: "list[UiNode]"
+    nullable: true
+    description: "Default-slot children; recursive self-reference to UiNode"
+  - name: on
+    type: "dict[str, str]"
+    nullable: true
+    description: "Event -> action id"
+  - name: visible
+    type: str
+    nullable: true
+    description: "Optional bounded visibility condition"
+  - name: key
+    type: str
+    nullable: true
+    description: "Stable node id"
+
+example:
+  component: "base/dropdown/dropdown-avatar"
+  bind:
+    account: "session.user"
+  children:
+    - component: "content/content-section-split-image-02"
+      bind:
+        title: "record.title"
