@@ -111,9 +111,9 @@ func TestEmitContractsGolden(t *testing.T) {
 	t.Parallel()
 	component, section, enums := loadFixtures(t)
 
-	extra := make([]*zodgen.Schema, 0, 3)
+	extra := make([]*zodgen.Schema, 0, 4)
 
-	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml"} {
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml"} {
 		s, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", name))
 		require.NoError(t, err, name)
 
@@ -141,9 +141,9 @@ func TestEmitContractsEnforcement(t *testing.T) {
 	t.Parallel()
 	component, section, enums := loadFixtures(t)
 
-	extra := make([]*zodgen.Schema, 0, 3)
+	extra := make([]*zodgen.Schema, 0, 4)
 
-	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml"} {
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml"} {
 		s, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", name))
 		require.NoError(t, err, name)
 
@@ -168,6 +168,69 @@ func TestEmitContractsEnforcement(t *testing.T) {
 	} {
 		assert.Contains(t, got, want)
 	}
+}
+
+// TestEmitContractsCollection pins the Collection contract emission and the
+// Field cross-field rules the stamp hands off to the emitter
+// (lightwave-core#167): select→options, array→exactly-one-of, and the
+// non-array guard. String-level twin of the runtime conformance test.
+func TestEmitContractsCollection(t *testing.T) {
+	t.Parallel()
+	component, section, enums := loadFixtures(t)
+
+	extra := make([]*zodgen.Schema, 0, 4)
+
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml"} {
+		s, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", name))
+		require.NoError(t, err, name)
+
+		extra = append(extra, s)
+	}
+
+	got, err := zodgen.EmitContracts(append([]*zodgen.Schema{component, section}, extra...), enums)
+	require.NoError(t, err)
+
+	for _, want := range []string{
+		// kind resolves from ui_collection_types; Field.type/of_type from ui_field_types.
+		`kind: z.enum(["projects"])`,
+		`type: z.enum(["text", "number", "bool", "select", "media", "array"])`,
+		// nullable sub-fields are also optional so a record may omit the key.
+		`of_type: z.enum(["text", "number", "bool", "select", "media", "array"]).nullable().optional()`,
+		`of_schema: z.string().nullable().optional()`,
+		`options: z.array(z.string()).nullable().optional()`,
+		// the lean field set is an array of the refined Field const.
+		`fields: z.array(CollectionField)`,
+		// the three cross-field rules.
+		`if (v.type === "select" && (v.options == null || v.options.length === 0))`,
+		`select fields require a non-empty options list`,
+		`if (hasOfType === hasOfSchema)`,
+		`array fields require exactly one of of_type / of_schema`,
+		`of_type / of_schema are only valid on an array field`,
+		`export type Collection = z.infer<typeof Collection>;`,
+	} {
+		assert.Contains(t, got, want)
+	}
+}
+
+func TestResolveSubSchemaValuesRefs(t *testing.T) {
+	t.Parallel()
+	_, _, enums := loadFixtures(t)
+
+	collection, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", "collection.yaml"))
+	require.NoError(t, err)
+
+	require.NoError(t, zodgen.ResolveSubSchemaValuesRefs(collection.SubSchemas, enums))
+	assert.Equal(t,
+		[]string{"text", "number", "bool", "select", "media", "array"},
+		collection.SubSchemas["Field"]["type"].Options,
+		"sub-schema enum values_ref must resolve to the stamp's values in order")
+
+	missing := map[string]map[string]zodgen.SubField{
+		"Field": {"type": {Type: "enum", ValuesRef: "nope"}},
+	}
+	err = zodgen.ResolveSubSchemaValuesRefs(missing, enums)
+	require.Error(t, err, "missing enum stamp must error, not emit z.enum([])")
+	assert.Contains(t, err.Error(), "nope")
 }
 
 func TestEmitEnums(t *testing.T) {

@@ -1,0 +1,152 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/ui/collection"
+  title: "Collection — content collection primitive"
+  description: |
+    The typed envelope a data-driven site declares for a family of records
+    (projects in v1). It owns the collection SHAPE — slug, kind, labels,
+    routing, the sections that render its gallery + detail views, and a lean
+    field set. It does NOT own the records: those stay hand-authored prints in
+    the site's data layer, validated against the generated type. Records are
+    never stamped — only their shape is.
+  # No go: target — TypeScript-facing contract; lw emits the TS binding only.
+  generates:
+    - "typescript:Collection"
+    - "json_schema:collection"
+  depends_on:
+    - "lightwave://schemas/data/ui/section_contract"
+    - "lightwave://schemas/data/enums/ui_collection_types"
+    - "lightwave://schemas/data/enums/ui_field_types"
+
+required_fields:
+  - name: slug
+    type: str
+    description: "URL-safe collection identifier (e.g. 'projects')"
+  - name: kind
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/ui_collection_types"
+    description: "Which collection type's field set + routing this adopts (distinct from Field.type and a record's own 'type' field)"
+  - name: labels
+    type: Labels
+  - name: routing
+    type: Routing
+  - name: gallery_section
+    type: str
+    description: "Section contract key '<family>/<variant>' that renders the gallery/listing view"
+  - name: detail_sections
+    type: "list[str]"
+    description: "Ordered section keys that render a single record's detail page"
+  - name: fields
+    type: "list[Field]"
+    description: "The lean field set defining a record's shape"
+
+sub_schemas:
+  Labels:
+    singular:
+      type: str
+    plural:
+      type: str
+
+  Routing:
+    gallery_path:
+      type: str
+      description: "Path for the collection listing view (e.g. '/work')"
+    detail_base:
+      type: str
+      description: "Base path for a record detail page; the record slug is appended"
+
+  Field:
+    # Cross-field rules the SST can't express — the Run 2 emitter must enforce via .superRefine():
+    #   - type: select → options is required (non-empty)
+    #   - type: array  → exactly one of of_type / of_schema is set
+    name:
+      type: str
+      description: "camelCase field name on a record"
+    type:
+      type: enum
+      values_ref: "lightwave://schemas/data/enums/ui_field_types"
+      description: "Lean field kind"
+    required:
+      type: bool
+      default: false
+    options:
+      type: "list[str]"
+      nullable: true
+      description: "Allowed values when type is select (required then; null otherwise — enforced by the emitter)"
+    of_type:
+      type: enum
+      values_ref: "lightwave://schemas/data/enums/ui_field_types"
+      nullable: true
+      description: "Element field kind for an array of primitives (e.g. 'media'). Mutually exclusive with of_schema."
+    of_schema:
+      type: str
+      nullable: true
+      description: "Element sub-schema name for an array of structured items (e.g. 'Contributor'); the emitter resolves it to a sub_schemas entry. Mutually exclusive with of_type."
+
+  # Contributor is reached only via Field.of_schema (a string ref), never a typed field — the
+  # emitter must emit any sub_schemas entry named by an of_schema value, not just directly-referenced ones.
+  Contributor:
+    name:
+      type: str
+    role:
+      type: str
+    avatar:
+      type: str
+      nullable: true
+      description: "Media key for the contributor avatar (resolved via mediaUrl())"
+
+# The projects type — the one collection defined for v1. Records (the actual
+# project entries) stay hand-authored in the site's src/data/projects.ts and
+# conform to this generated shape; contributors are embedded.
+example:
+  slug: "projects"
+  kind: "projects"
+  labels:
+    singular: "Project"
+    plural: "Work"
+  routing:
+    gallery_path: "/work"
+    detail_base: "/work"
+  # The shared listing/feed section renders the gallery (a CollectionItem maps to the blog Article
+  # card shape, so one listing serves projects/blog/products alike) — intentional reuse, not a blog coupling.
+  gallery_section: "blog/blog-header-featured-post-01"
+  detail_sections:
+    - "header-section/hero-media"
+    - "content/content-large-image-03"
+  fields:
+    - name: "title"
+      type: "text"
+      required: true
+    - name: "year"
+      type: "number"
+      required: true
+    - name: "role"
+      type: "text"
+      required: true
+    - name: "type"
+      type: "select"
+      required: true
+      options:
+        - "narrative"
+        - "commercial"
+        - "fine-art"
+        - "installation"
+    - name: "format"
+      type: "text"
+    - name: "productionCompany"
+      type: "text"
+    - name: "featured"
+      type: "bool"
+    - name: "imdb"
+      type: "text"
+    - name: "poster"
+      type: "media"
+      required: true
+    - name: "frames"
+      type: "array"
+      of_type: "media"
+    - name: "reel"
+      type: "media"
+    - name: "contributors"
+      type: "array"
+      of_schema: "Contributor"

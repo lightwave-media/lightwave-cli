@@ -1,0 +1,21 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/ui_collection_types"
+  title: "UI Collection Types"
+  description: |
+    The kinds of content collection a site can declare. A collection is the
+    typed envelope (slug, labels, fields, routing); the kind selects which
+    built-in field set + routing it adopts. projects is the one type defined
+    for v1; new kinds are added additively (a PATCH bump) when content for them
+    actually ships.
+  generates:
+    - "typescript:UiCollectionType"
+
+name: ui_collection_types
+description: "Content collection types a data-driven site can declare"
+default: projects
+closed: true
+options:
+  - value: projects
+    label: "Projects"
+    description: "Portfolio works — the cinematography/photography collection (v1)"

@@ -33,6 +33,7 @@ type SubField struct {
 	Default     any      `yaml:"default,omitempty"`
 	Type        string   `yaml:"type"`
 	Description string   `yaml:"description,omitempty"`
+	ValuesRef   string   `yaml:"values_ref,omitempty"`
 	Options     []string `yaml:"options,omitempty"`
 	Nullable    bool     `yaml:"nullable,omitempty"`
 }

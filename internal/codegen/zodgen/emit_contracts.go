@@ -50,6 +50,25 @@ var subSchemaRefinements = map[string]string{
     }
   }
 })`,
+	// Collection Field cross-field rules the SST cannot express
+	// (collection.yaml Field; lightwave-core#167):
+	//   - type: select → options must be a non-empty list
+	//   - type: array  → exactly one of of_type / of_schema is set
+	//   - non-array    → neither of_type nor of_schema may be set
+	"collection:Field": `.superRefine((v, ctx) => {
+  if (v.type === "select" && (v.options == null || v.options.length === 0)) {
+    ctx.addIssue({ code: "custom", path: ["options"], message: "select fields require a non-empty options list" });
+  }
+  if (v.type === "array") {
+    const hasOfType = v.of_type != null;
+    const hasOfSchema = v.of_schema != null;
+    if (hasOfType === hasOfSchema) {
+      ctx.addIssue({ code: "custom", path: ["of_type"], message: "array fields require exactly one of of_type / of_schema" });
+    }
+  } else if (v.of_type != null || v.of_schema != null) {
+    ctx.addIssue({ code: "custom", path: ["of_type"], message: "of_type / of_schema are only valid on an array field" });
+  }
+})`,
 }
 
 // contractRefinements appends .superRefine() to the top-level contract.
@@ -91,6 +110,10 @@ func EmitContracts(schemas []*Schema, enums map[string]*EnumStamp) (string, erro
 		}
 
 		if err := ResolveValuesRefs(s.OptionalFields, enums); err != nil {
+			return "", fmt.Errorf("%s: %w", shortID, err)
+		}
+
+		if err := ResolveSubSchemaValuesRefs(s.SubSchemas, enums); err != nil {
 			return "", fmt.Errorf("%s: %w", shortID, err)
 		}
 
@@ -202,7 +225,12 @@ func subSchemaObject(shortID, tsName, subName string, fields map[string]SubField
 		}
 
 		if sf.Nullable {
-			expr += ".nullable()"
+			// A nullable sub-field may be absent OR explicitly null, so emit
+			// .nullable().optional() — the same shape top-level nullable+optional
+			// fields already get (e.g. PageDefinition.legal). A sub-field's
+			// required-ness is carried by NON-nullability; this lets records omit
+			// the key entirely (collection Field.options/of_type/of_schema).
+			expr += ".nullable().optional()"
 		}
 
 		if sf.Default != nil {

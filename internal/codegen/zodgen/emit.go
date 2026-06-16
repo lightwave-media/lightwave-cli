@@ -230,3 +230,38 @@ func ResolveValuesRefs(fields []FieldDecl, enums map[string]*EnumStamp) error {
 
 	return nil
 }
+
+// ResolveSubSchemaValuesRefs is the sub_schemas twin of ResolveValuesRefs:
+// it resolves values_ref on enum-typed sub-schema fields (e.g. collection
+// Field.type / Field.of_type) into concrete options. Sub-schema field values
+// are not addressable through the map, so each resolved field is written back.
+func ResolveSubSchemaValuesRefs(subs map[string]map[string]SubField, enums map[string]*EnumStamp) error {
+	for _, subName := range sortedKeys(subs) {
+		fields := subs[subName]
+
+		for _, fieldName := range sortedKeys(fields) {
+			sf := fields[fieldName]
+			if sf.ValuesRef == "" {
+				continue
+			}
+
+			stamp, ok := enums[sf.ValuesRef]
+			if !ok {
+				stamp, ok = enums[shortSchemaID(sf.ValuesRef)]
+			}
+
+			if !ok {
+				return fmt.Errorf("sub-schema %s field %s: values_ref %q has no enum stamp in data/enums/", subName, fieldName, sf.ValuesRef)
+			}
+
+			sf.Options = make([]string, len(stamp.Options))
+			for j, o := range stamp.Options {
+				sf.Options[j] = o.Value
+			}
+
+			fields[fieldName] = sf
+		}
+	}
+
+	return nil
+}

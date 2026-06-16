@@ -143,7 +143,7 @@ func generateTypes(uiDir, enumsDir string) (map[string]string, error) {
 	// stable order matching the family's dependency chain.
 	contracts := []*zodgen.Schema{component, section}
 
-	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml"} {
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml"} {
 		s, err := zodgen.LoadSchema(filepath.Join(uiDir, name))
 		if err != nil {
 			return nil, err
