@@ -113,7 +113,7 @@ func TestEmitContractsGolden(t *testing.T) {
 
 	extra := make([]*zodgen.Schema, 0, 4)
 
-	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml"} {
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml", "ui_node.yaml"} {
 		s, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", name))
 		require.NoError(t, err, name)
 
@@ -143,7 +143,7 @@ func TestEmitContractsEnforcement(t *testing.T) {
 
 	extra := make([]*zodgen.Schema, 0, 4)
 
-	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml"} {
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml", "ui_node.yaml"} {
 		s, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", name))
 		require.NoError(t, err, name)
 
@@ -180,7 +180,7 @@ func TestEmitContractsCollection(t *testing.T) {
 
 	extra := make([]*zodgen.Schema, 0, 4)
 
-	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml"} {
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml", "ui_node.yaml"} {
 		s, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", name))
 		require.NoError(t, err, name)
 

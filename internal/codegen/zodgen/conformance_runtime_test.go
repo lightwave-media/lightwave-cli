@@ -61,8 +61,8 @@ func TestCollectionFieldRuntimeConformance(t *testing.T) {
 
 	component, section, enums := loadFixtures(t)
 
-	extra := make([]*zodgen.Schema, 0, 4)
-	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml"} {
+	extra := make([]*zodgen.Schema, 0, 5)
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml", "ui_node.yaml"} {
 		s, e := zodgen.LoadSchema(filepath.Join("testdata", "ui", name))
 		require.NoError(t, e, name)
 		extra = append(extra, s)
@@ -103,6 +103,23 @@ func TestCollectionFieldRuntimeConformance(t *testing.T) {
 			Data: map[string]any{"name": "x", "type": "select", "options": []string{"a", "b"}}},
 		{Name: "plain text field", Schema: "field", Valid: true,
 			Data: map[string]any{"name": "x", "type": "text"}},
+		// ui_node recursion: a 3-level tree through children + a named slot
+		// proves the emitted Zod 4 getters resolve the self-reference at runtime.
+		{Name: "ui_node nested children + slot (recursion)", Schema: "ui_node", Valid: true,
+			Data: map[string]any{
+				"component": "header-section/hero",
+				"bind":      map[string]any{"images": "collection.projects.frames"},
+				"children": []any{
+					map[string]any{"component": "content/split", "children": []any{
+						map[string]any{"component": "base/buttons/button", "on": map[string]any{"press": "session.signOut"}},
+					}},
+				},
+				"slots": map[string]any{
+					"footer": []any{map[string]any{"component": "footers/footer-small"}},
+				},
+			}},
+		{Name: "ui_node missing required component", Schema: "ui_node", Valid: false,
+			Data: map[string]any{"children": []any{}}},
 	}
 
 	casesJSON, err := json.Marshal(cases)
@@ -150,7 +167,7 @@ func runtimeHarness(casesJSON string) string {
 const cases = ` + casesJSON + `;
 const failures = [];
 for (const c of cases) {
-  const schema = c.schema === "collection" ? Collection : CollectionField;
+  const schema = c.schema === "collection" ? Collection : c.schema === "ui_node" ? UiNode : CollectionField;
   const res = schema.safeParse(c.data);
   if (res.success !== c.valid) {
     failures.push(c.name + ": expected valid=" + c.valid + " got valid=" + res.success);

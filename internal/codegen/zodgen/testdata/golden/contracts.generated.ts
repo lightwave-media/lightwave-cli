@@ -74,3 +74,7 @@ export const CollectionLabels = z.object({ plural: z.string(), singular: z.strin
 export const CollectionRouting = z.object({ detail_base: z.string(), gallery_path: z.string() });
 export const Collection = z.object({ slug: z.string(), kind: z.enum(["projects"]), labels: CollectionLabels, routing: CollectionRouting, gallery_section: z.string(), detail_sections: z.array(z.string()), fields: z.array(CollectionField) });
 export type Collection = z.infer<typeof Collection>;
+
+// ── UI Node — recursive component-tree node for DB-driven rendering ──
+export const UiNode = z.object({ component: z.string(), props: z.record(z.string(), z.unknown()).nullable().optional(), bind: z.record(z.string(), z.string()).nullable().optional(), get slots() { return z.record(z.string(), z.array(UiNode)).nullable().optional(); }, get children() { return z.array(UiNode).nullable().optional(); }, on: z.record(z.string(), z.string()).nullable().optional(), visible: z.string().nullable().optional(), key: z.string().nullable().optional() });
+export type UiNode = z.infer<typeof UiNode>;

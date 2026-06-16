@@ -147,16 +147,16 @@ func contractObject(shortID, tsName string, s *Schema) (string, error) {
 	entries := make([]string, 0, len(s.RequiredFields)+len(s.OptionalFields))
 
 	for _, f := range s.RequiredFields {
-		expr, err := contractFieldExpr(tsName, &f, s.SubSchemas)
+		expr, recursive, err := contractFieldExpr(tsName, &f, s.SubSchemas)
 		if err != nil {
 			return "", fmt.Errorf("field %s: %w", f.Name, err)
 		}
 
-		entries = append(entries, fmt.Sprintf("%s: %s", f.Name, expr))
+		entries = append(entries, fieldEntry(f.Name, expr, recursive))
 	}
 
 	for _, f := range s.OptionalFields {
-		expr, err := contractFieldExpr(tsName, &f, s.SubSchemas)
+		expr, recursive, err := contractFieldExpr(tsName, &f, s.SubSchemas)
 		if err != nil {
 			return "", fmt.Errorf("field %s: %w", f.Name, err)
 		}
@@ -170,7 +170,7 @@ func contractObject(shortID, tsName string, s *Schema) (string, error) {
 			expr += ".optional()"
 		}
 
-		entries = append(entries, fmt.Sprintf("%s: %s", f.Name, expr))
+		entries = append(entries, fieldEntry(f.Name, expr, recursive))
 	}
 
 	obj := "z.object({ " + strings.Join(entries, ", ") + " })"
@@ -183,10 +183,10 @@ func contractObject(shortID, tsName string, s *Schema) (string, error) {
 
 // contractFieldExpr maps one contract field declaration, applying nullable
 // and default chain segments. PascalCase refs resolve to prefixed consts.
-func contractFieldExpr(tsName string, f *FieldDecl, subs map[string]map[string]SubField) (string, error) {
-	expr, err := contractTypeExpr(tsName, f.Type, f.Options, subs)
+func contractFieldExpr(tsName string, f *FieldDecl, subs map[string]map[string]SubField) (string, bool, error) {
+	expr, recursive, err := contractTypeExpr(tsName, f.Type, f.Options, subs)
 	if err != nil {
-		return "", err
+		return "", false, err
 	}
 
 	if f.Nullable {
@@ -197,7 +197,7 @@ func contractFieldExpr(tsName string, f *FieldDecl, subs map[string]map[string]S
 		expr += fmt.Sprintf(".default(%s)", tsLiteral(f.Default))
 	}
 
-	return expr, nil
+	return expr, recursive, nil
 }
 
 // subSchemaObject renders one sub_schemas entry as a z.object. Sub-schema
@@ -211,10 +211,11 @@ func subSchemaObject(shortID, tsName, subName string, fields map[string]SubField
 		key := shortID + ":" + subName + "." + fieldName
 
 		expr, ok := exprOverrides[key]
+		recursive := false
 		if !ok {
 			var err error
 
-			expr, err = contractTypeExpr(tsName, sf.Type, sf.Options, subs)
+			expr, recursive, err = contractTypeExpr(tsName, sf.Type, sf.Options, subs)
 			if err != nil {
 				return "", fmt.Errorf("field %s: %w", fieldName, err)
 			}
@@ -237,7 +238,7 @@ func subSchemaObject(shortID, tsName, subName string, fields map[string]SubField
 			expr += fmt.Sprintf(".default(%s)", tsLiteral(sf.Default))
 		}
 
-		entries = append(entries, fmt.Sprintf("%s: %s", fieldName, expr))
+		entries = append(entries, fieldEntry(fieldName, expr, recursive))
 	}
 
 	obj := "z.object({ " + strings.Join(entries, ", ") + " })"
@@ -249,20 +250,24 @@ func subSchemaObject(shortID, tsName, subName string, fields map[string]SubField
 }
 
 // contractTypeExpr is the contract-shape twin of zodExpr: PascalCase refs
-// resolve to the prefixed sub-schema const instead of inline expansion.
-func contractTypeExpr(tsName, t string, options []string, subs map[string]map[string]SubField) (string, error) {
+// resolve to the prefixed sub-schema const instead of inline expansion. The
+// second return value reports whether the expression is self-referential (the
+// type names this schema's own generated type), so the caller can wrap the
+// field in a getter — Zod 4's recursion form. It propagates up through
+// list[...] / dict[str, ...] wrappers.
+func contractTypeExpr(tsName, t string, options []string, subs map[string]map[string]SubField) (string, bool, error) {
 	switch {
 	case t == "str" || t == "date":
-		return "z.string()", nil
+		return "z.string()", false, nil
 	case t == "int":
-		return "z.number().int()", nil
+		return "z.number().int()", false, nil
 	case t == "float":
-		return "z.number()", nil
+		return "z.number()", false, nil
 	case t == "bool":
-		return "z.boolean()", nil
+		return "z.boolean()", false, nil
 	case t == "enum":
 		if len(options) == 0 {
-			return "", errors.New("enum without options after values_ref resolution")
+			return "", false, errors.New("enum without options after values_ref resolution")
 		}
 
 		vals := make([]string, len(options))
@@ -270,30 +275,48 @@ func contractTypeExpr(tsName, t string, options []string, subs map[string]map[st
 			vals[i] = fmt.Sprintf("%q", v)
 		}
 
-		return fmt.Sprintf("z.enum([%s])", strings.Join(vals, ", ")), nil
+		return fmt.Sprintf("z.enum([%s])", strings.Join(vals, ", ")), false, nil
 	case t == "dict":
-		return "z.record(z.string(), z.unknown())", nil
+		return "z.record(z.string(), z.unknown())", false, nil
 	case strings.HasPrefix(t, "list[") && strings.HasSuffix(t, "]"):
-		inner, err := contractTypeExpr(tsName, strings.TrimSuffix(strings.TrimPrefix(t, "list["), "]"), nil, subs)
+		inner, rec, err := contractTypeExpr(tsName, strings.TrimSuffix(strings.TrimPrefix(t, "list["), "]"), nil, subs)
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 
-		return fmt.Sprintf("z.array(%s)", inner), nil
+		return fmt.Sprintf("z.array(%s)", inner), rec, nil
 	case strings.HasPrefix(t, "dict[str, ") && strings.HasSuffix(t, "]"):
-		inner, err := contractTypeExpr(tsName, strings.TrimSuffix(strings.TrimPrefix(t, "dict[str, "), "]"), nil, subs)
+		inner, rec, err := contractTypeExpr(tsName, strings.TrimSuffix(strings.TrimPrefix(t, "dict[str, "), "]"), nil, subs)
 		if err != nil {
-			return "", err
+			return "", false, err
 		}
 
-		return fmt.Sprintf("z.record(z.string(), %s)", inner), nil
+		return fmt.Sprintf("z.record(z.string(), %s)", inner), rec, nil
+	case t == tsName:
+		// Self-reference: the type names this schema's own generated type (e.g.
+		// ui_node children: list[UiNode]). Emit a bare reference to the const;
+		// the caller wraps the field in a getter so Zod 4 resolves the cycle and
+		// z.infer stays correct — unlike a self-referencing z.lazy(), which
+		// trips TS ts(7022) (implicit any in its own initializer) in consumers.
+		return tsName, true, nil
 	default:
 		if _, ok := subs[t]; !ok {
-			return "", fmt.Errorf("unknown type %q (no sub_schemas entry)", t)
+			return "", false, fmt.Errorf("unknown type %q (no sub_schemas entry)", t)
 		}
 
-		return tsName + t, nil
+		return tsName + t, false, nil
 	}
+}
+
+// fieldEntry renders one z.object entry. Self-referential fields are emitted as
+// getters (`get name() { return expr; }`) — Zod 4's recursion form — so the
+// reference to the still-initializing const resolves lazily at access time.
+func fieldEntry(name, expr string, recursive bool) string {
+	if recursive {
+		return fmt.Sprintf("get %s() { return %s; }", name, expr)
+	}
+
+	return fmt.Sprintf("%s: %s", name, expr)
 }
 
 // shortSchemaID extracts the trailing segment of a schema_id
