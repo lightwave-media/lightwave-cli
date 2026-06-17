@@ -46,6 +46,9 @@ func BuildDispatched(root *cobra.Command, overrideDomains map[string]bool) error
 		if overrideDomains[domain.Name] {
 			continue
 		}
+		if domain.Status == sst.StatusInDevelopment && os.Getenv("LW_CLI_DEV_DOMAINS") != "1" {
+			continue
+		}
 
 		domainCmd := &cobra.Command{
 			Use:   domain.Name,
