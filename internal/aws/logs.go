@@ -64,6 +64,9 @@ func (l *LogsClient) GetRecentLogs(ctx context.Context, logGroup string, since t
 		}
 
 		for _, event := range eventsOutput.Events {
+			if event.Timestamp == nil || event.Message == nil || stream.LogStreamName == nil {
+				continue
+			}
 			allEvents = append(allEvents, LogEvent{
 				Timestamp: time.UnixMilli(*event.Timestamp),
 				Message:   *event.Message,
@@ -125,6 +128,9 @@ func (l *LogsClient) TailLogs(ctx context.Context, logGroup string, streamPrefix
 					}
 
 					for _, event := range eventsOutput.Events {
+						if event.Timestamp == nil || event.Message == nil || stream.LogStreamName == nil {
+							continue
+						}
 						events <- LogEvent{
 							Timestamp: time.UnixMilli(*event.Timestamp),
 							Message:   *event.Message,
@@ -158,6 +164,9 @@ func (l *LogsClient) GetLogGroups(ctx context.Context, prefix string) ([]string,
 			return nil, fmt.Errorf("failed to describe log groups: %w", err)
 		}
 		for _, group := range output.LogGroups {
+			if group.LogGroupName == nil {
+				continue
+			}
 			groups = append(groups, *group.LogGroupName)
 		}
 	}
