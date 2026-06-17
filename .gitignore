@@ -9,3 +9,6 @@ dist/
 
 # Claude local settings
 .claude/settings.local.json
+
+# Per-session validity-contract pin (never shared)
+.lightwave/
