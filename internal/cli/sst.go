@@ -279,6 +279,9 @@ type consumerCorpus struct {
 // buildConsumerCorpus reads the heuristic source files into memory once.
 func buildConsumerCorpus(brainDir string) consumerCorpus {
 	cfg := config.Get()
+	if cfg == nil {
+		return consumerCorpus{}
+	}
 	root := cfg.Paths.LightwaveRoot
 
 	return consumerCorpus{

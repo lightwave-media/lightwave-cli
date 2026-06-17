@@ -31,7 +31,7 @@ func resolveMakeDir(scope string) (string, error) {
 	}
 	cfg := config.Get()
 	if cfg == nil {
-		return "", errors.New("config not loaded")
+		return "", errors.New("no configuration found; run `lw config init` to initialize")
 	}
 	return filepath.Join(cfg.Paths.LightwaveRoot, rel), nil
 }

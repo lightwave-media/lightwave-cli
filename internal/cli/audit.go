@@ -3,6 +3,7 @@ package cli
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -1180,6 +1181,9 @@ Examples:
 func runAudit(scope string) error {
 	start := time.Now()
 	cfg := config.Get()
+	if cfg == nil {
+		return errors.New("no configuration found; run `lw config init` to initialize")
+	}
 	rootDir := cfg.Paths.LightwaveRoot
 
 	fmt.Printf("%s Running audit (scope: %s) against %s\n\n",

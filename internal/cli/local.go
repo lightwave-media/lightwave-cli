@@ -304,6 +304,12 @@ func localCleanHandler(ctx context.Context, _ []string, flags map[string]any) er
 // resolve files no matter where the binary was invoked from.
 func composeCmd(ctx context.Context, args ...string) *exec.Cmd {
 	cfg := config.Get()
+	if cfg == nil {
+		// composeCmd is called from handlers that have already validated the
+		// config — if we reach here without config, return a no-op command so
+		// callers get a clear exec failure rather than a nil deref panic.
+		return exec.CommandContext(ctx, "false")
+	}
 	root := cfg.Paths.LightwaveRoot
 
 	full := append([]string{"compose"}, args...)
@@ -441,6 +447,11 @@ type preflightReport struct {
 
 func buildPreflightReport(ctx context.Context) preflightReport {
 	cfg := config.Get()
+	if cfg == nil {
+		return preflightReport{
+			Checks: []preflightCheck{{Name: "config", OK: false, Detail: "no configuration found; run `lw config init`"}},
+		}
+	}
 	root := cfg.Paths.LightwaveRoot
 	checks := []preflightCheck{}
 	hints := []string{}

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -27,18 +28,24 @@ func init() {
 	RegisterHandler("infra.status", infraStatusHandler)
 }
 
-func newInfraRunner(flags map[string]any) *infra.TerragruntRunner {
+func newInfraRunner(flags map[string]any) (*infra.TerragruntRunner, error) {
 	cfg := config.Get()
+	if cfg == nil {
+		return nil, errors.New("no configuration found; run `lw config init` to initialize")
+	}
 	env := flagStrOr(flags, "env", "prod")
 	region := flagStrOr(flags, "region", "us-east-1")
 	return infra.NewTerragruntRunner(
 		filepath.Join(cfg.Paths.LightwaveRoot, "lightwave-infrastructure-live"),
 		env, region,
-	)
+	), nil
 }
 
 func infraListHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	runner := newInfraRunner(flags)
+	runner, err := newInfraRunner(flags)
+	if err != nil {
+		return err
+	}
 	units, err := runner.ListUnits(ctx)
 	if err != nil {
 		return err
@@ -69,7 +76,11 @@ func infraPlanHandler(ctx context.Context, args []string, flags map[string]any) 
 	if len(args) < 1 {
 		return fmt.Errorf("usage: lw infra plan <path>")
 	}
-	runner := newInfraRunner(flags)
+
+	runner, err := newInfraRunner(flags)
+	if err != nil {
+		return err
+	}
 	result, err := runner.Plan(ctx, args[0])
 	if err != nil {
 		return err
@@ -86,7 +97,11 @@ func infraApplyHandler(ctx context.Context, args []string, flags map[string]any)
 	if len(args) < 1 {
 		return fmt.Errorf("usage: lw infra apply <path> [--auto-approve]")
 	}
-	runner := newInfraRunner(flags)
+
+	runner, err := newInfraRunner(flags)
+	if err != nil {
+		return err
+	}
 	auto := flagBool(flags, "auto-approve")
 	if !auto {
 		if !promptYesNo(fmt.Sprintf("Apply %s? May modify infrastructure.", args[0])) {
@@ -105,7 +120,11 @@ func infraValidateHandler(ctx context.Context, args []string, flags map[string]a
 	if len(args) < 1 {
 		return fmt.Errorf("usage: lw infra validate <path>")
 	}
-	runner := newInfraRunner(flags)
+
+	runner, err := newInfraRunner(flags)
+	if err != nil {
+		return err
+	}
 	if err := runner.Validate(ctx, args[0]); err != nil {
 		return err
 	}
@@ -117,7 +136,11 @@ func infraOutputHandler(ctx context.Context, args []string, flags map[string]any
 	if len(args) < 1 {
 		return fmt.Errorf("usage: lw infra output <path>")
 	}
-	runner := newInfraRunner(flags)
+
+	runner, err := newInfraRunner(flags)
+	if err != nil {
+		return err
+	}
 	outputs, err := runner.Output(ctx, args[0])
 	if err != nil {
 		return err
@@ -139,7 +162,11 @@ func infraRunAllHandler(ctx context.Context, args []string, flags map[string]any
 	if len(args) < 1 {
 		return fmt.Errorf("usage: lw infra run-all <command>")
 	}
-	runner := newInfraRunner(flags)
+
+	runner, err := newInfraRunner(flags)
+	if err != nil {
+		return err
+	}
 	return runner.RunAll(ctx, args[0])
 }
 
