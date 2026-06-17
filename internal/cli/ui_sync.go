@@ -74,8 +74,11 @@ func init() {
 	uiCmd.AddCommand(uiSyncCmd)
 }
 
-func uiRepoPath() string {
+func uiRepoPath() (string, error) {
 	cfg := config.Get()
+	if cfg == nil {
+		return "", errors.New("config not loaded")
+	}
 
 	root := cfg.Paths.LightwaveRoot
 	if root == "" {
@@ -83,7 +86,7 @@ func uiRepoPath() string {
 		root = filepath.Join(home, "dev")
 	}
 
-	return filepath.Join(root, "lightwave-ui")
+	return filepath.Join(root, "lightwave-ui"), nil
 }
 
 // uiRepoVersion reads the lightwave-ui package version — the release every
@@ -110,7 +113,10 @@ func uiRepoVersion(uiRepo string) (string, error) {
 }
 
 func runUIAdd(cmd *cobra.Command, args []string) error {
-	uiRepo := uiRepoPath()
+	uiRepo, err := uiRepoPath()
+	if err != nil {
+		return err
+	}
 
 	version, err := uiRepoVersion(uiRepo)
 	if err != nil {
@@ -137,7 +143,10 @@ func runUIAdd(cmd *cobra.Command, args []string) error {
 }
 
 func runUISync(cmd *cobra.Command, args []string) error {
-	uiRepo := uiRepoPath()
+	uiRepo, err := uiRepoPath()
+	if err != nil {
+		return err
+	}
 
 	version, err := uiRepoVersion(uiRepo)
 	if err != nil {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -70,12 +71,22 @@ var branchPattern = regexp.MustCompile(`^(feature|fix)/[a-z0-9]+-[a-z0-9][a-z0-9
 // Helpers
 // =============================================================================
 
-func worktreeRoot() string {
-	return filepath.Join(config.Get().Paths.LightwaveRoot, ".worktrees")
+func worktreeRoot() (string, error) {
+	cfg := config.Get()
+	if cfg == nil {
+		return "", errors.New("config not loaded")
+	}
+
+	return filepath.Join(cfg.Paths.LightwaveRoot, ".worktrees"), nil
 }
 
-func worktreePath(issue string) string {
-	return filepath.Join(worktreeRoot(), "issue-"+issue)
+func worktreePath(issue string) (string, error) {
+	root, err := worktreeRoot()
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Join(root, "issue-"+issue), nil
 }
 
 func metaPath(wpath string) string {
@@ -139,7 +150,11 @@ func buildBranch(issue, branchType, description string) (string, error) {
 }
 
 func loadAllWorktrees() ([]worktreeInfo, error) {
-	root := worktreeRoot()
+	root, err := worktreeRoot()
+	if err != nil {
+		return nil, err
+	}
+
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -229,7 +244,11 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		issue := args[0]
-		wpath := worktreePath(issue)
+
+		wpath, err := worktreePath(issue)
+		if err != nil {
+			return err
+		}
 
 		// Check idempotent: already active?
 		if meta, err := readMeta(wpath); err == nil {
@@ -271,7 +290,12 @@ Examples:
 		}
 
 		// Create the worktree
-		repoRoot := config.Get().Paths.LightwaveRoot
+		cfg := config.Get()
+		if cfg == nil {
+			return errors.New("config not loaded")
+		}
+
+		repoRoot := cfg.Paths.LightwaveRoot
 		g := git.NewGit(repoRoot)
 
 		if err := g.WorktreeAddFromRef(wpath, branch, "origin/main"); err != nil {
@@ -386,7 +410,11 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// --issue mode: emit full state
 		if worktreeIssue != "" {
-			wpath := worktreePath(worktreeIssue)
+			wpath, err := worktreePath(worktreeIssue)
+			if err != nil {
+				return err
+			}
+
 			meta, err := readMeta(wpath)
 			if err != nil {
 				return fmt.Errorf("no worktree for issue %s: %w", worktreeIssue, err)
@@ -445,7 +473,12 @@ Examples:
 		if err != nil {
 			return err
 		}
-		root := worktreeRoot()
+
+		root, err := worktreeRoot()
+		if err != nil {
+			return err
+		}
+
 		if !strings.HasPrefix(cwd, root) {
 			return fmt.Errorf("not inside a worktree directory (cwd: %s)", cwd)
 		}
@@ -473,14 +506,23 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		issue := args[0]
-		wpath := worktreePath(issue)
+
+		wpath, err := worktreePath(issue)
+		if err != nil {
+			return err
+		}
 
 		if _, err := os.Stat(wpath); os.IsNotExist(err) {
 			fmt.Printf("worktree for issue %s not found (already removed?)\n", issue)
 			return nil
 		}
 
-		repoRoot := config.Get().Paths.LightwaveRoot
+		cfg := config.Get()
+		if cfg == nil {
+			return errors.New("config not loaded")
+		}
+
+		repoRoot := cfg.Paths.LightwaveRoot
 		g := git.NewGit(repoRoot)
 
 		if err := g.WorktreeRemove(wpath, worktreeForce); err != nil {
@@ -524,7 +566,12 @@ Examples:
 		}
 		var results []pruneResult
 
-		repoRoot := config.Get().Paths.LightwaveRoot
+		cfg := config.Get()
+		if cfg == nil {
+			return errors.New("config not loaded")
+		}
+
+		repoRoot := cfg.Paths.LightwaveRoot
 		g := git.NewGit(repoRoot)
 
 		for _, w := range infos {
