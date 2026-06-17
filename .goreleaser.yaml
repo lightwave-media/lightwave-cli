@@ -36,8 +36,12 @@ changelog:
       - "^chore\\(deps\\):"
 
 release:
-  # GitHub release body: prepend a pointer to the human-curated
-  # changelog so consumers can find the why-context.
+  # release-please creates the GitHub Release (with conventional-commit notes);
+  # GoReleaser only uploads build artifacts to it. keep-existing => GoReleaser
+  # won't recreate or overwrite the release-please release body.
+  mode: keep-existing
+  # GitHub release body header — applies only when GoReleaser itself creates the
+  # release (e.g. a manual `goreleaser release` run), not the release-please path.
   header: |
     See [`CHANGELOG.md`](https://github.com/{{ .Env.GITHUB_REPOSITORY }}/blob/{{ .Tag }}/CHANGELOG.md)
     for the human-curated release notes. The commit log below is

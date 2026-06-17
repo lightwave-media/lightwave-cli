@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -166,7 +167,9 @@ func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) err
 		return fmt.Errorf("load CLI schema: %w", err)
 	}
 
-	schemaKeys := schema.Keys()
+	// KeysPublished excludes in_development domains so the strict gate does
+	// not fire on commands declared before their Go handler companion lands.
+	schemaKeys := schema.KeysPublished()
 	registryKeys := RegisteredKeys()
 
 	schemaSet := make(map[string]bool, len(schemaKeys))
@@ -227,6 +230,9 @@ func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) err
 // (no uncommitted changes that would drift CI). Fast — uses git status.
 func checkLocksHandler(_ context.Context, _ []string, _ map[string]any) error {
 	cfg := config.Get()
+	if cfg == nil {
+		return errors.New("config not loaded")
+	}
 	root := cfg.Paths.LightwaveRoot
 	files := []string{"uv.lock", "pnpm-lock.yaml"}
 	dirty := []string{}
@@ -260,6 +266,9 @@ func checkDepsHandler(_ context.Context, _ []string, _ map[string]any) error {
 // to tracked files; untracked files are allowed).
 func checkGitHandler(_ context.Context, _ []string, _ map[string]any) error {
 	cfg := config.Get()
+	if cfg == nil {
+		return errors.New("config not loaded")
+	}
 	root := cfg.Paths.LightwaveRoot
 	c := exec.Command("git", "diff", "--quiet")
 	c.Dir = root

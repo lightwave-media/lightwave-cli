@@ -101,7 +101,7 @@ func TestCheckDocs_KnownGood_NoDrift(t *testing.T) {
 generated_at: 2026-06-11T00:00:00Z
 generator_version: v0.1.0
 kind: architecture
-source_commit: `+sha+`
+source_commit: "`+sha+`"
 ---
 
 # Architecture
@@ -252,7 +252,9 @@ source_commit: bootstrap
 	// Verify the file was actually rewritten.
 	updated, err := os.ReadFile(filepath.Join(repo, "docs", "architecture.md"))
 	require.NoError(t, err)
-	assert.Contains(t, string(updated), "source_commit: "+sha)
+	// yaml.v3 quotes SHAs that resemble YAML floats (e.g. "86381e3" → 8.6381e+07).
+	// Check the sha is present; the idempotency re-run below confirms correct parsing.
+	assert.Contains(t, string(updated), sha)
 	assert.NotContains(t, string(updated), "source_commit: bootstrap")
 
 	// Re-running is idempotent — second pass skips the now-fresh file.

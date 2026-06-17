@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -66,6 +67,9 @@ type healthReport struct {
 
 func runHealth(asJSON bool) error {
 	cfg := config.Get()
+	if cfg == nil {
+		return errors.New("no configuration found; run `lw config init` to initialize")
+	}
 	start := time.Now()
 
 	checks := []healthCheck{}

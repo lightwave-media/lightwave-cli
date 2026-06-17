@@ -116,3 +116,61 @@ func TestCommandKey(t *testing.T) {
 		t.Errorf("CommandKey: got %q want %q", got, "task.list")
 	}
 }
+
+func TestCLIConfig_KeysPublished_ExcludesInDevelopment(t *testing.T) {
+	t.Parallel()
+
+	cfg := &CLIConfig{
+		Version: "1.1.0",
+		Domains: []CLIDomain{
+			{
+				Name:   "task",
+				Status: "published",
+				Commands: []CLICommand{
+					{Name: "list", Description: "list tasks"},
+				},
+			},
+			{
+				Name:   "create",
+				Status: StatusInDevelopment,
+				Commands: []CLICommand{
+					{Name: "website", Description: "scaffold website"},
+				},
+			},
+		},
+	}
+
+	all := cfg.Keys()
+	published := cfg.KeysPublished()
+
+	if len(all) != 2 {
+		t.Fatalf("Keys(): expected 2, got %d", len(all))
+	}
+	if len(published) != 1 {
+		t.Fatalf("KeysPublished(): expected 1, got %d: %v", len(published), published)
+	}
+	if published[0] != "task.list" {
+		t.Errorf("KeysPublished(): expected task.list, got %q", published[0])
+	}
+}
+
+func TestCLIConfig_KeysPublished_AllPublishedWhenNoStatus(t *testing.T) {
+	t.Parallel()
+
+	cfg := &CLIConfig{
+		Version: "1.0.0",
+		Domains: []CLIDomain{
+			{
+				Name:     "task",
+				Commands: []CLICommand{{Name: "list", Description: "x"}},
+			},
+		},
+	}
+
+	all := cfg.Keys()
+	published := cfg.KeysPublished()
+
+	if len(all) != len(published) {
+		t.Errorf("KeysPublished() dropped domains with no _status: got %d, want %d", len(published), len(all))
+	}
+}

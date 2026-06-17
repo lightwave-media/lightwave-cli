@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -115,6 +116,9 @@ type cdnConfig struct {
 // bucket name, region, and the set of legitimate prefix names.
 func loadCdnSST() (bucket, region string, allowed map[string]struct{}, err error) {
 	cfg := config.Get()
+	if cfg == nil {
+		return "", "", nil, errors.New("config not loaded")
+	}
 	defs := filepath.Join(cfg.Paths.LightwaveRoot,
 		"packages/lightwave-core/lightwave/schema/definitions")
 

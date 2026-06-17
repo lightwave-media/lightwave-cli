@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -23,8 +24,8 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "lw",
 	Short: "LightWave CLI - Task management and scaffolding",
-	Long: `LightWave CLI (lw) is a command-line tool for managing tasks,
-scaffolding Django apps, and working with the LightWave platform.
+	Long: `Schema-driven CLI for the LightWave platform — Go services, Terragrunt
+infrastructure, TypeScript UI. Codegen, scaffolds, validators, deploy gates.
 
 Built with Go for speed. Direct PostgreSQL access for instant reads.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -173,6 +174,9 @@ var configShowCmd = &cobra.Command{
 	Short: "Show current configuration",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Get()
+		if cfg == nil {
+			return errors.New("no configuration found; run `lw config init` to initialize")
+		}
 
 		fmt.Println(color.CyanString("LightWave CLI Configuration"))
 		fmt.Println()
