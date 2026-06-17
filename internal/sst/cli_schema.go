@@ -15,10 +15,16 @@ type CLIConfig struct {
 	GlobalFlags   []string
 }
 
+// StatusInDevelopment is the _status value that exempts a domain from the
+// handler-lockstep gate. The dispatcher skips these domains unless
+// LW_CLI_DEV_DOMAINS=1 is set. Declared in commands.yaml v1.1.0.
+const StatusInDevelopment = "in_development"
+
 // CLIDomain groups related commands under a single namespace.
 type CLIDomain struct {
 	Name        string
 	Description string
+	Status      string // optional; "in_development" | "published" | "deprecated"
 	Commands    []CLICommand
 }
 
@@ -45,6 +51,7 @@ type rawMeta struct {
 
 type rawDomain struct {
 	Description string       `yaml:"description"`
+	Status      string       `yaml:"_status"`
 	Commands    []CLICommand `yaml:"commands"`
 }
 
@@ -78,6 +85,7 @@ func (r *rawCLIConfig) decode() (*CLIConfig, error) {
 		cfg.Domains = append(cfg.Domains, CLIDomain{
 			Name:        keyNode.Value,
 			Description: raw.Description,
+			Status:      raw.Status,
 			Commands:    raw.Commands,
 		})
 	}
