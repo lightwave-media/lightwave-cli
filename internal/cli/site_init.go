@@ -51,7 +51,10 @@ func init() {
 }
 
 func runSiteInit(cmd *cobra.Command, args []string) error {
-	uiRepo := uiRepoPath()
+	uiRepo, err := uiRepoPath()
+	if err != nil {
+		return err
+	}
 
 	version, err := uiRepoVersion(uiRepo)
 	if err != nil {
