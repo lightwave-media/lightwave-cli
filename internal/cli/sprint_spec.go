@@ -109,6 +109,9 @@ func parseSprintSpec(path string) (*SprintSpec, error) {
 // MoveSpec moves a spec file between queue directories (e.g., draft → active)
 func MoveSpec(srcPath, destDir string) (string, error) {
 	cfg := config.Get()
+	if cfg == nil {
+		return "", errors.New("no configuration found; run `lw config init` to initialize")
+	}
 	destDirPath := filepath.Join(cfg.Paths.LightwaveRoot, ".claude", "queue", destDir)
 
 	if err := os.MkdirAll(destDirPath, 0o755); err != nil {
