@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/jackc/pgx/v5"
@@ -18,6 +19,9 @@ func Connect(ctx context.Context) (*pgxpool.Pool, error) {
 	}
 
 	cfg := config.Get()
+	if cfg == nil {
+		return nil, errors.New("no configuration found; run `lw config init` to initialize")
+	}
 	connStr := cfg.GetDSN()
 
 	var err error
