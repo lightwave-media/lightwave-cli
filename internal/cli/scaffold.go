@@ -58,16 +58,24 @@ func init() {
 }
 
 // blueprintsDir resolves the library, honoring an explicit override first.
-func blueprintsDir(override string) string {
+func blueprintsDir(override string) (string, error) {
 	if override != "" {
-		return override
+		return override, nil
 	}
 
-	return blueprint.BlueprintsDir(config.Get().Paths.LightwaveRoot)
+	cfg := config.Get()
+	if cfg == nil {
+		return "", errors.New("config not loaded")
+	}
+
+	return blueprint.BlueprintsDir(cfg.Paths.LightwaveRoot), nil
 }
 
 func runScaffold(cmd *cobra.Command, args []string) error {
-	dir := blueprintsDir(scaffoldBlueprints)
+	dir, err := blueprintsDir(scaffoldBlueprints)
+	if err != nil {
+		return err
+	}
 
 	path, err := blueprint.Resolve(dir, args[0])
 	if err != nil {
