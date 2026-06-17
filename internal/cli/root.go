@@ -24,8 +24,8 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "lw",
 	Short: "LightWave CLI - Task management and scaffolding",
-	Long: `LightWave CLI (lw) is a command-line tool for managing tasks,
-scaffolding Django apps, and working with the LightWave platform.
+	Long: `Schema-driven CLI for the LightWave platform — Go services, Terragrunt
+infrastructure, TypeScript UI. Codegen, scaffolds, validators, deploy gates.
 
 Built with Go for speed. Direct PostgreSQL access for instant reads.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
