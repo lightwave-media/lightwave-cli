@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -271,7 +272,11 @@ Examples:
 		}
 
 		// Create the worktree
-		repoRoot := config.Get().Paths.LightwaveRoot
+		cfg := config.Get()
+		if cfg == nil {
+			return errors.New("config not loaded")
+		}
+		repoRoot := cfg.Paths.LightwaveRoot
 		g := git.NewGit(repoRoot)
 
 		if err := g.WorktreeAddFromRef(wpath, branch, "origin/main"); err != nil {
@@ -480,7 +485,11 @@ Examples:
 			return nil
 		}
 
-		repoRoot := config.Get().Paths.LightwaveRoot
+		cfg := config.Get()
+		if cfg == nil {
+			return errors.New("config not loaded")
+		}
+		repoRoot := cfg.Paths.LightwaveRoot
 		g := git.NewGit(repoRoot)
 
 		if err := g.WorktreeRemove(wpath, worktreeForce); err != nil {
@@ -524,7 +533,11 @@ Examples:
 		}
 		var results []pruneResult
 
-		repoRoot := config.Get().Paths.LightwaveRoot
+		cfg := config.Get()
+		if cfg == nil {
+			return errors.New("config not loaded")
+		}
+		repoRoot := cfg.Paths.LightwaveRoot
 		g := git.NewGit(repoRoot)
 
 		for _, w := range infos {
