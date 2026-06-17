@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -107,6 +108,9 @@ type JourneySpec struct {
 
 func runCodegenJourneys(cmd *cobra.Command, args []string) error {
 	cfg := config.Get()
+	if cfg == nil {
+		return errors.New("config not loaded")
+	}
 	root := cfg.Paths.LightwaveRoot
 	if root == "" {
 		home, _ := os.UserHomeDir()

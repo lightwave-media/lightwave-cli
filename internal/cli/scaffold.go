@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -120,7 +121,13 @@ func runUIComponent(cmd *cobra.Command, args []string) error {
 	}
 
 	category, name := parts[0], parts[1]
-	root := config.Get().Paths.LightwaveRoot
+
+	cfg := config.Get()
+	if cfg == nil {
+		return errors.New("config not loaded")
+	}
+
+	root := cfg.Paths.LightwaveRoot
 
 	path, err := blueprint.Resolve(blueprint.BlueprintsDir(root), "react-component")
 	if err != nil {
