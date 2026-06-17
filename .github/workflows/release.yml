@@ -70,6 +70,16 @@ jobs:
           owner: lightwave-media
           repositories: homebrew-tap
 
+      # Strip any component prefix from the release-please tag (e.g. "lightwave-cli-v3.3.0" → "v3.3.0").
+      # include-component-in-tag: false in release-please-config.json prevents this going forward;
+      # this step is a safety net for any existing prefixed tags.
+      - name: Resolve semver tag
+        id: semver-tag
+        run: |
+          RAW="${{ needs.release-please.outputs.tag_name }}"
+          SEMVER="v${RAW##*-v}"
+          echo "tag=${SEMVER}" >> "$GITHUB_OUTPUT"
+
       - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7
         with:
           version: "v2.14.3"
@@ -77,6 +87,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
+          GORELEASER_CURRENT_TAG: ${{ steps.semver-tag.outputs.tag }}
 
       - name: Upload darwin binaries for notarization
         # Required input for the sign-macos workflow (when activated).
