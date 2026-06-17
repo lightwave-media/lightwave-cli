@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -29,6 +30,9 @@ func resolveMakeDir(scope string) (string, error) {
 		return "", fmt.Errorf("unknown scope %q (valid: %s)", scope, scopeList())
 	}
 	cfg := config.Get()
+	if cfg == nil {
+		return "", errors.New("config not loaded")
+	}
 	return filepath.Join(cfg.Paths.LightwaveRoot, rel), nil
 }
 
@@ -48,15 +52,17 @@ func runMake(dir, target string, extraArgs ...string) error {
 	// COMPOSE_FILE may contain relative paths (set by .envrc at workspace root).
 	// When cmd.Dir differs from the workspace root, docker compose resolves
 	// those relative paths from cmd.Dir and fails. Fix: make them absolute.
-	cfg := config.Get()
-	if composeFile := os.Getenv("COMPOSE_FILE"); composeFile != "" {
-		parts := strings.Split(composeFile, ":")
-		for i, p := range parts {
-			if !filepath.IsAbs(p) {
-				parts[i] = filepath.Join(cfg.Paths.LightwaveRoot, p)
+	if cfg := config.Get(); cfg != nil {
+		if composeFile := os.Getenv("COMPOSE_FILE"); composeFile != "" {
+			parts := strings.Split(composeFile, ":")
+			for i, p := range parts {
+				if !filepath.IsAbs(p) {
+					parts[i] = filepath.Join(cfg.Paths.LightwaveRoot, p)
+				}
 			}
+
+			cmd.Env = append(os.Environ(), "COMPOSE_FILE="+strings.Join(parts, ":"))
 		}
-		cmd.Env = append(os.Environ(), "COMPOSE_FILE="+strings.Join(parts, ":"))
 	}
 
 	return cmd.Run()
