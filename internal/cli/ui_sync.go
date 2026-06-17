@@ -79,6 +79,7 @@ func uiRepoPath() (string, error) {
 	if cfg == nil {
 		return "", errors.New("config not loaded")
 	}
+
 	root := cfg.Paths.LightwaveRoot
 	if root == "" {
 		home, _ := os.UserHomeDir()

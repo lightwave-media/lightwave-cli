@@ -154,6 +154,7 @@ func loadAllWorktrees() ([]worktreeInfo, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -243,6 +244,7 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		issue := args[0]
+
 		wpath, err := worktreePath(issue)
 		if err != nil {
 			return err
@@ -292,6 +294,7 @@ Examples:
 		if cfg == nil {
 			return errors.New("config not loaded")
 		}
+
 		repoRoot := cfg.Paths.LightwaveRoot
 		g := git.NewGit(repoRoot)
 
@@ -411,6 +414,7 @@ Examples:
 			if err != nil {
 				return err
 			}
+
 			meta, err := readMeta(wpath)
 			if err != nil {
 				return fmt.Errorf("no worktree for issue %s: %w", worktreeIssue, err)
@@ -469,10 +473,12 @@ Examples:
 		if err != nil {
 			return err
 		}
+
 		root, err := worktreeRoot()
 		if err != nil {
 			return err
 		}
+
 		if !strings.HasPrefix(cwd, root) {
 			return fmt.Errorf("not inside a worktree directory (cwd: %s)", cwd)
 		}
@@ -500,6 +506,7 @@ Examples:
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		issue := args[0]
+
 		wpath, err := worktreePath(issue)
 		if err != nil {
 			return err
@@ -514,6 +521,7 @@ Examples:
 		if cfg == nil {
 			return errors.New("config not loaded")
 		}
+
 		repoRoot := cfg.Paths.LightwaveRoot
 		g := git.NewGit(repoRoot)
 
@@ -562,6 +570,7 @@ Examples:
 		if cfg == nil {
 			return errors.New("config not loaded")
 		}
+
 		repoRoot := cfg.Paths.LightwaveRoot
 		g := git.NewGit(repoRoot)
 
