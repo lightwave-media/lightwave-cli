@@ -23,7 +23,7 @@ func TestBlueprintsDir_EnvOverride(t *testing.T) {
 func TestBlueprintsDir_Default(t *testing.T) {
 	t.Setenv(blueprint.EnvBlueprintsDir, "")
 	assert.Equal(t,
-		filepath.Join("/root", "src", "boilerplate", "blueprints"),
+		filepath.Join("/root", "lightwave-core", "src", "boilerplate", "blueprints"),
 		blueprint.BlueprintsDir("/root"))
 }
 

@@ -27,7 +27,7 @@ func BlueprintsDir(lightwaveRoot string) string {
 		return v
 	}
 
-	return filepath.Join(lightwaveRoot, "src", "boilerplate", "blueprints")
+	return filepath.Join(lightwaveRoot, "lightwave-core", "src", "boilerplate", "blueprints")
 }
 
 // Resolve returns the absolute path to the blueprint named `name` inside

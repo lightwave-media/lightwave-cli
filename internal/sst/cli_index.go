@@ -31,6 +31,26 @@ func (c *CLIConfig) Keys() []string {
 	return out
 }
 
+// KeysPublished returns the ordered keys for domains that are NOT
+// in_development. Used by the strict schema-drift gate so that commands
+// declared with _status: in_development do not trigger a "missing handler"
+// failure before their Go companion lands.
+func (c *CLIConfig) KeysPublished() []string {
+	out := make([]string, 0, len(c.Domains))
+
+	for _, d := range c.Domains {
+		if d.Status == StatusInDevelopment {
+			continue
+		}
+
+		for _, cmd := range d.Commands {
+			out = append(out, CommandKey(d.Name, cmd.Name))
+		}
+	}
+
+	return out
+}
+
 // FindDomain returns the domain by name, or nil if absent.
 func (c *CLIConfig) FindDomain(name string) *CLIDomain {
 	for i := range c.Domains {
