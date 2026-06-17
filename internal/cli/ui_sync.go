@@ -76,6 +76,10 @@ func init() {
 
 func uiRepoPath() string {
 	cfg := config.Get()
+	if cfg == nil {
+		home, _ := os.UserHomeDir()
+		return filepath.Join(home, "dev", "lightwave-ui")
+	}
 
 	root := cfg.Paths.LightwaveRoot
 	if root == "" {

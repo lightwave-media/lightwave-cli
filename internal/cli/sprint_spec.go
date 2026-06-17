@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -51,6 +52,9 @@ type SprintSpec struct {
 // FindSprintSpec looks for a sprint spec YAML by sprint short ID in the queue directories
 func FindSprintSpec(sprintShortID string) (string, *SprintSpec, error) {
 	cfg := config.Get()
+	if cfg == nil {
+		return "", nil, errors.New("no configuration found; run `lw config init` to initialize")
+	}
 	queueRoot := filepath.Join(cfg.Paths.LightwaveRoot, ".claude", "queue")
 
 	type match struct {

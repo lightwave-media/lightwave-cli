@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -694,6 +695,9 @@ Examples:
 
 		// Write to .claude/queue/draft/
 		cfg := config.Get()
+		if cfg == nil {
+			return errors.New("no configuration found; run `lw config init` to initialize")
+		}
 		draftDir := filepath.Join(cfg.Paths.LightwaveRoot, ".claude", "queue", "draft")
 		if err := os.MkdirAll(draftDir, 0o755); err != nil {
 			return fmt.Errorf("failed to create draft directory: %w", err)
