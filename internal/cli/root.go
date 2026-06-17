@@ -2,6 +2,7 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -173,6 +174,9 @@ var configShowCmd = &cobra.Command{
 	Short: "Show current configuration",
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg := config.Get()
+		if cfg == nil {
+			return errors.New("no configuration found; run `lw config init` to initialize")
+		}
 
 		fmt.Println(color.CyanString("LightWave CLI Configuration"))
 		fmt.Println()
