@@ -76,6 +76,7 @@ func worktreeRoot() (string, error) {
 	if cfg == nil {
 		return "", errors.New("config not loaded")
 	}
+
 	return filepath.Join(cfg.Paths.LightwaveRoot, ".worktrees"), nil
 }
 
@@ -84,6 +85,7 @@ func worktreePath(issue string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return filepath.Join(root, "issue-"+issue), nil
 }
 

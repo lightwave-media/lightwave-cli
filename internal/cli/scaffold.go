@@ -62,10 +62,12 @@ func blueprintsDir(override string) (string, error) {
 	if override != "" {
 		return override, nil
 	}
+
 	cfg := config.Get()
 	if cfg == nil {
 		return "", errors.New("config not loaded")
 	}
+
 	return blueprint.BlueprintsDir(cfg.Paths.LightwaveRoot), nil
 }
 

@@ -84,6 +84,7 @@ func uiRepoPath() (string, error) {
 		home, _ := os.UserHomeDir()
 		root = filepath.Join(home, "dev")
 	}
+
 	return filepath.Join(root, "lightwave-ui"), nil
 }
 
