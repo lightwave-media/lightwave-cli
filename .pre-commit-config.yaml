@@ -43,6 +43,13 @@ repos:
         types: [go]
         files: ^internal/cli/check_.*\.go$
 
+      - id: docs-gate
+        name: docs factory gate (sync → render when core schemas present)
+        entry: scripts/precommit/docs-gate.sh
+        language: script
+        pass_filenames: false
+        stages: [pre-commit]
+
   # ---------------------------------------------------------------------
   # Pre-push (slow, full-repo gates)
   # ---------------------------------------------------------------------
