@@ -75,7 +75,11 @@ func (f *Frontmatter) Render() ([]byte, error) {
 	out.Write(buf.Bytes())
 	out.Write(fmDelimiter)
 	out.WriteString(f.Body)
-	return out.Bytes(), nil
+	b := out.Bytes()
+	if len(b) == 0 || b[len(b)-1] != '\n' {
+		b = append(b, '\n')
+	}
+	return b, nil
 }
 
 // HeaderCommentMap parses `# key: value` lines from the head of a YAML/JSON/
