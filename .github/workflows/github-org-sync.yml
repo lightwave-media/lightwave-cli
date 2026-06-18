@@ -1,0 +1,55 @@
+# Org-wide GitHub org bootstrap + Lightwave Swarm board hygiene.
+# Runs every 6 hours and on dispatch. Requires GH_TOKEN with organization-projects: write.
+name: github-org-sync
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: "Repo name slice (e.g. lightwave-ai) or empty for full org"
+        required: false
+        default: ""
+  schedule:
+    - cron: "0 */6 * * *"
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout infrastructure catalog
+        uses: actions/checkout@v4
+        with:
+          repository: lightwave-media/lightwave-infrastructure-catalog
+          path: lightwave-infrastructure-catalog
+
+      - name: Checkout lightwave-cli
+        uses: actions/checkout@v4
+        with:
+          repository: lightwave-media/lightwave-cli
+          path: lightwave-cli
+          ref: main
+
+      - name: Bootstrap org GitHub assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ORG_LOGIN: lightwave-media
+          TARGET_REPO: ${{ github.event.inputs.target_repo }}
+        run: |
+          bash lightwave-infrastructure-catalog/scripts/bootstrap-github-org.sh
+
+      - name: Build lw and reconcile project board
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd lightwave-cli
+          go build -o /tmp/lw ./cmd/lw
+          ARGS=(scrum sync --json)
+          if [[ -n "${{ github.event.inputs.target_repo }}" ]]; then
+            ARGS+=(--repo "${{ github.event.inputs.target_repo }}")
+          fi
+          /tmp/lw "${ARGS[@]}"
