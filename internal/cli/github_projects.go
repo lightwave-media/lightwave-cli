@@ -37,10 +37,10 @@ Examples:
 	},
 }
 
-// Default GitHub Project V2 IDs — override via flags if the project changes
+// Default GitHub Project V2 IDs — Lightwave Swarm (org project #3).
 var (
-	projectID     = "PVT_kwDODlnoUM4BJWJU"
-	statusFieldID = "PVTSSF_lADODlnoUM4BJWJUzg5iZUk"
+	projectID     = "PVT_kwDODlnoUM4BbDql"
+	statusFieldID = "PVTSSF_lADODlnoUM4BbDqlzhV25Fs"
 	statusTodo    = "f75ad846"
 	statusInProg  = "47fc9ee4"
 	statusDone    = "98236657"
@@ -184,7 +184,7 @@ func runProjectsSync(ctx context.Context, dryRun bool) error {
 }
 
 func fetchProjectItems() ([]projectItem, error) {
-	cmd := exec.Command("gh", "project", "item-list", "2",
+	cmd := exec.Command("gh", "project", "item-list", "3",
 		"--owner", "lightwave-media",
 		"--format", "json",
 	)
