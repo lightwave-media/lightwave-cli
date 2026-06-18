@@ -9,6 +9,20 @@ from conventional commits (`feat:` / `fix:` / `chore:` / etc.). This
 file is the human-curated complement — what changed, why, and how it
 affects users — for releases that move the needle.
 
+## [3.6.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.5.0...v3.6.0) (2026-06-18)
+
+
+### Features
+
+* **ci:** add github-org-sync scheduled org bootstrap workflow ([#148](https://github.com/lightwave-media/lightwave-cli/issues/148)) ([a7ebbd3](https://github.com/lightwave-media/lightwave-cli/commit/a7ebbd354b7efb0a9a5dd4f4eddad11681fb36de))
+* **cli:** wire org bootstrap into create repo and scrum sync ([#146](https://github.com/lightwave-media/lightwave-cli/issues/146)) ([28ba972](https://github.com/lightwave-media/lightwave-cli/commit/28ba972813ed824e5eb0a2b8154028366240ae8a))
+* **issue:** add lw issue create wrapper for GitHub filing ([#151](https://github.com/lightwave-media/lightwave-cli/issues/151)) ([ecae46a](https://github.com/lightwave-media/lightwave-cli/commit/ecae46a6543befbce02f1a5dfc95a8567af1a77c))
+
+
+### Bug Fixes
+
+* **ci:** resolve Node 20 deprecation via mise and action bumps ([#149](https://github.com/lightwave-media/lightwave-cli/issues/149)) ([9389370](https://github.com/lightwave-media/lightwave-cli/commit/9389370df2981929fb0c7613272629b60f138e6a))
+
 ## [3.5.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.4.1...v3.5.0) (2026-06-18)
 
 
