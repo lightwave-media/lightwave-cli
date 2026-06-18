@@ -1,8 +1,8 @@
 # mise tool version pins — see https://mise.jdx.dev
 #
-# One source of truth for Go + Go-tool versions across local dev + CI.
-# `mise install` in this dir resolves everything. CI invokes the same
-# pins via `jdx/mise-action@v4` so CI and local cannot drift.
+# One source of truth for Go, Node, Python/pre-commit, and Go-tool versions
+# across local dev + CI. `mise install` in this dir resolves everything.
+# CI invokes the same pins via `jdx/mise-action@v4` so CI and local cannot drift.
 #
 # Why pinned (vs `latest`):
 #   - Reproducibility — a new lint rule shouldn't break CI silently
@@ -12,6 +12,9 @@
 
 [tools]
 go = "1.24"
+node = "24"
+python = "3.12"
+"pipx:pre-commit" = "4.2.0"
 # Pin via ubi: backend (direct from GitHub releases) — the default
 # aqua: backend has had intermittent 400s on the registry endpoint.
 "ubi:golangci/golangci-lint" = "v2.5.0"
@@ -22,6 +25,10 @@ go = "1.24"
 # `mise run ci` mirrors the pre-push gate (.pre-commit-config.yaml) + Makefile
 # so the same checks run locally. Tools resolve to the pins above. Personal
 # local layer; the pre-commit framework + GH workflows are unchanged.
+[tasks.pre-commit]
+description = "Run pre-commit on all files (matches CI pre-commit job)"
+run = "pre-commit run --all-files --show-diff-on-failure"
+
 [tasks.fmt-check]
 description = "gofmt check"
 run = 'test -z "$(gofmt -l .)"'

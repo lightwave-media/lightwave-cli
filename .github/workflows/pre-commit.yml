@@ -28,5 +28,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Cache pre-commit hook environments
+        uses: actions/cache@9255dc7a253b0ccc959486e2bca901246202afeb # v5.0.1
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+
       - name: Run pre-commit
-        uses: pre-commit/action@v3.0.1
+        run: mise exec -- pre-commit run --all-files --show-diff-on-failure
