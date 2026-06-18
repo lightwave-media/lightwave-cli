@@ -62,6 +62,7 @@ jobs:
         id: rp
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
+          manifest-file: .release-manifest.json
 
   release:
     needs: release-please
