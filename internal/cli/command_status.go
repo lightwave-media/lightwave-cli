@@ -37,6 +37,7 @@ var VerifiedCommands = map[string]bool{
 	"lint":     true, // template-kind linters (lw lint handoff) — test backing in internal/docsfactory/handoff_lint_test.go
 	"site":     true, // site init scaffolder — test backing in internal/sitegen/*_test.go
 	"codegen":  true, // types generator — test backing in internal/codegen/zodgen/*_test.go + codegen_types_test.go; journeys stays offline below
+	"issue":    true, // compliant GitHub issue filing — test backing in internal/github/issue_create_test.go
 }
 
 // DecommissionedCommands are taken OFFLINE pending end-to-end verification.

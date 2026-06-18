@@ -216,6 +216,8 @@ var stringArrayFlags = map[string]bool{
 	"label":      true,
 	"blocks":     true,
 	"blocked-by": true,
+	"refs":       true,
+	"closes":     true,
 }
 
 func isStringArrayFlag(name string) bool {
