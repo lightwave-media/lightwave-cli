@@ -9,6 +9,13 @@ from conventional commits (`feat:` / `fix:` / `chore:` / etc.). This
 file is the human-curated complement — what changed, why, and how it
 affects users — for releases that move the needle.
 
+## [3.5.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.4.1...v3.5.0) (2026-06-18)
+
+
+### Features
+
+* **cli:** Phase 0 Lightwave AI factory verbs and docs gate ([#144](https://github.com/lightwave-media/lightwave-cli/issues/144)) ([ab00a87](https://github.com/lightwave-media/lightwave-cli/commit/ab00a877dac5037ac7b5520e2b0b7aed44af75e5))
+
 ## [3.4.1](https://github.com/lightwave-media/lightwave-cli/compare/v3.4.0...v3.4.1) (2026-06-18)
 
 
