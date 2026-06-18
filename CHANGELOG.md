@@ -9,6 +9,13 @@ from conventional commits (`feat:` / `fix:` / `chore:` / etc.). This
 file is the human-curated complement — what changed, why, and how it
 affects users — for releases that move the needle.
 
+## [3.4.1](https://github.com/lightwave-media/lightwave-cli/compare/v3.4.0...v3.4.1) (2026-06-18)
+
+
+### Bug Fixes
+
+* **release:** remove double-v bug; add workflow_dispatch for recovery ([#127](https://github.com/lightwave-media/lightwave-cli/issues/127)) ([3dc38f5](https://github.com/lightwave-media/lightwave-cli/commit/3dc38f5209879c680e84e255a4f8458591250a49)), closes [#124](https://github.com/lightwave-media/lightwave-cli/issues/124)
+
 ## [3.4.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.3.0...v3.4.0) (2026-06-17)
 
 
