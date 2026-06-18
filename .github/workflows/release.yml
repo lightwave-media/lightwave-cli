@@ -16,6 +16,11 @@ name: release
 on:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to release (e.g. v3.4.0)"
+        required: true
 
 # Serialize back-to-back main merges; don't cancel a release mid-publish.
 concurrency:
@@ -42,16 +47,28 @@ jobs:
 
   release:
     needs: release-please
-    if: needs.release-please.outputs.release_created
+    if: |
+      always() && (
+        (github.event_name == 'push' && needs.release-please.outputs.release_created) ||
+        github.event_name == 'workflow_dispatch'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      # Build from the exact commit release-please tagged.
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ needs.release-please.outputs.tag_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           fetch-depth: 0
-          ref: ${{ needs.release-please.outputs.tag_name }}
+          ref: ${{ steps.tag.outputs.name }}
 
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
@@ -70,16 +87,6 @@ jobs:
           owner: lightwave-media
           repositories: homebrew-tap
 
-      # Strip any component prefix from the release-please tag (e.g. "lightwave-cli-v3.3.0" → "v3.3.0").
-      # include-component-in-tag: false in release-please-config.json prevents this going forward;
-      # this step is a safety net for any existing prefixed tags.
-      - name: Resolve semver tag
-        id: semver-tag
-        run: |
-          RAW="${{ needs.release-please.outputs.tag_name }}"
-          SEMVER="v${RAW##*-v}"
-          echo "tag=${SEMVER}" >> "$GITHUB_OUTPUT"
-
       - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7
         with:
           version: "v2.14.3"
@@ -87,7 +94,6 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
-          GORELEASER_CURRENT_TAG: ${{ steps.semver-tag.outputs.tag }}
 
       - name: Upload darwin binaries for notarization
         # Required input for the sign-macos workflow (when activated).
