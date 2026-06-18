@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>command-status</title>
+  <meta name="generator" content="lw docs render">
+</head>
+<body>
+
+<h1>`lw` command status — trust through subtraction</h1>
+
+<p>A release tag must mean something: **only commands verified to work end-to-end</p>
+<p>are exposed.** Everything unverified is **decommissioned** — hidden from</p>
+<p>`--help` and refusing to run (`lw &lt;cmd&gt;` returns an &#34;offline&#34; error) — until it</p>
+<p>earns its way back. The registry lives in `internal/cli/command_status.go`; the</p>
+<p>`command_surface_test.go` guard fails the build if a visible command isn&#39;t on</p>
+<p>the verified list, so the surface can&#39;t silently regrow.</p>
+
+<h2>How to bring a command back online</h2>
+
+<p>1. Make it work and **prove it** with an end-to-end / smoke test (real I/O, not</p>
+<p>just &#34;doesn&#39;t panic&#34;).</p>
+<p>2. Add its name to `VerifiedCommands` and a row to the **Active** table below</p>
+<p>(with the test that backs it).</p>
+<p>3. Delete its row from `DecommissionedCommands`.</p>
+<p>4. `go test ./...` green (the guard enforces the rest).</p>
+
+<h2>Verified</h2>
+
+<p>| Command | Verified by |</p>
+<p>|---|---|</p>
+<p>| `version` | `TestVersion_Runs` (executes RunE) |</p>
+<p>| `config` | `internal/config` unit tests (set/get/resolve roundtrip) |</p>
+<p>| `health` | `TestHealth_ChecksBinaries` (binary probe) |</p>
+<p>| `memory` | `internal/memory` unit tests (put/get/list/delete) |</p>
+<p>| `worktree` | `internal/git` unit tests (worktree add/remove/prune) |</p>
+<p>| `audit` | `TestAudit_DetectsPlantedSecret` (scanner finds a planted secret) |</p>
+<p>| `scaffold` | `internal/blueprint` resolution + **real-engine** smoke (generates a file) |</p>
+<p>| `ui` | `TestUIComponent_RejectsBadSpec` + shared scaffold path; `add`/`sync`: `internal/uisync` suite (copy+pin, force semantics, three-way table incl. no-base conflict, pin-advance-only-when-clean, git tag base extraction) |</p>
+<p>| `research` | `internal/research` unit tests + live Perplexity call |</p>
+<p>| `docs` | `internal/docsfactory/{spec_lint,docs_check}_test.go` — 6 spec-lint + 4 docs-check + 3 docs-sync subtests (known-good silent, known-bad fires, freshness vs HEAD, idempotent sync, dry-run no-write) |</p>
+<p>| `codegen` | `internal/codegen/zodgen` tests (round-trip golden vs joelschaeffer-site registry, PropField parity, values_ref resolution) + `TestGenerateTypesSmoke`; `journeys` subcommand stays offline (below) |</p>
+<p>| `site` | `internal/sitegen` suite (stamp-conformant config, ui_release min(1) from birth, re-init refusal) |</p>
+<p>| `help`, `completion` | cobra built-ins |</p>
+
+<p>&gt; Bar note: `version`/`config`/`health`/`memory`/`worktree`/`audit`/`ui` are</p>
+<p>&gt; backed by &#34;runs + unit-tested core logic&#34;; `scaffold`/`research` are backed by</p>
+<p>&gt; full end-to-end runs. Raising the lower bar to full e2e is tracked work.</p>
+
+<h2>Decommissioned</h2>
+
+<p>| Command | Needs to come back online |</p>
+<p>|---|---|</p>
+<p>| `aws` | live AWS credentials + ECS; an e2e harness |</p>
+<p>| `github` | `gh` CLI + platform repo + Postgres |</p>
+<p>| `council` | Augusta service (localhost:9700) |</p>
+<p>| `msg` | gateway service (localhost:9701) |</p>
+<p>| `v_core` | `vcore` daemon binary (lightwave-sys) |</p>
+<p>| `agent` | spawns real agent processes; `provision` is a stub |</p>
+<p>| `make` | monorepo Makefiles (absent here) |</p>
+<p>| `test` | monorepo make targets |</p>
+<p>| `setup` | monorepo make targets |</p>
+<p>| `cdn` | make + live S3 |</p>
+<p>| `content` | make + Django stack |</p>
+<p>| `drift` | make + Django stack |</p>
+<p>| `email` | make + Django stack |</p>
+<p>| `codegen journeys` | stale lightwave-core discovery path (legacy `packages/` layout); migrate to `src/schemas` + a verified journey fixture |</p>
+<p>| `browser` | macOS osascript automation; flaky (audit verdict: drop) |</p>
+<p>| `spec` | legacy parked tree pending schema merge — superseded by `lw docs spec-lint` for new in-repo spec/ work |</p>
+<p>| `sst` | depends on `~/.brain` corpus state |</p>
+
+<h2>Schema-dispatched domains (separate track)</h2>
+
+<p>`task`, `check`, `db`, `sprint`, `story`, `epic`, `infra`, `deploy`, `plan`,</p>
+<p>`schema`, `compose`, `hooks`, `local` are attached from lightwave-core&#39;s</p>
+<p>`commands.yaml` (the R1 stamp). They aren&#39;t reachable without that stamp, so</p>
+<p>they&#39;re outside this hardcoded registry. When the stamp lands, the same trust</p>
+<p>bar applies — each must be verified before it&#39;s allowed to stay exposed.</p>
+
+
+</body>
+</html>

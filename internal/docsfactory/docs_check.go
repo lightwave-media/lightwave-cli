@@ -80,6 +80,10 @@ func CheckDocs(repoRoot string, schemas *Schemas) (*DocsCheckResult, error) {
 			return walkErr
 		}
 		if d.IsDir() {
+			rel, _ := filepath.Rel(docsDir, path)
+			if rel == "site" || strings.HasPrefix(rel, "site"+string(filepath.Separator)) {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		base := d.Name()

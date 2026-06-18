@@ -12,6 +12,7 @@ import (
 type SyncOptions struct {
 	GeneratorVersion string // stamped into generator_version frontmatter
 	DryRun           bool   // compute changes without writing
+	RegenerateBodies bool   // rewrite body sections from refresh_source
 }
 
 // SyncResult names everything that did (or would) change.
@@ -100,6 +101,11 @@ func SyncDocs(repoRoot string, schemas *Schemas, opts SyncOptions) (*SyncResult,
 
 		if err := refreshHeaders(path, head, opts.GeneratorVersion, now); err != nil {
 			return fmt.Errorf("%s: %w", rel, err)
+		}
+		if opts.RegenerateBodies {
+			if err := regenerateBody(repoRoot, path, *dk); err != nil {
+				return fmt.Errorf("%s body regen: %w", rel, err)
+			}
 		}
 		result.Updated = append(result.Updated, rel)
 		return nil

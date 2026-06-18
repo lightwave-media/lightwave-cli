@@ -1,8 +1,8 @@
 ---
-generated_at: "2026-06-11T23:53:17Z"
-generator_version: dev
+generated_at: "2026-06-18T19:27:49Z"
+generator_version: 3.1.0
 kind: command-status
-source_commit: 11bada2
+source_commit: 976c0c0
 ---
 
 # `lw` command status — trust through subtraction

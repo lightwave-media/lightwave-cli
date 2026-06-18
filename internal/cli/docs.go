@@ -9,6 +9,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/docsfactory"
+	"github.com/lightwave-media/lightwave-cli/internal/docsgate"
 	"github.com/lightwave-media/lightwave-cli/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -114,6 +115,9 @@ Examples:
 		if err != nil {
 			return toolError(err)
 		}
+		if docsCheckStrictFlag || docsCheckHandEditFlag {
+			return runStrictDocsCheck(repo, schemas, res)
+		}
 		return reportDocsCheck(repo, res)
 	},
 }
@@ -142,6 +146,7 @@ Exit codes:
 		res, err := docsfactory.SyncDocs(repo, schemas, docsfactory.SyncOptions{
 			GeneratorVersion: version.Version,
 			DryRun:           docsDryRunFlag,
+			RegenerateBodies: true,
 		})
 		if err != nil {
 			return toolError(err)
@@ -150,14 +155,48 @@ Exit codes:
 	},
 }
 
+var docsCheckStrictFlag bool
+var docsCheckHandEditFlag bool
+
+var docsRenderCmd = &cobra.Command{
+	Use:   "render",
+	Short: "Render docs/site/ HTML from canonical docs/",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		repo := resolveDocsRepo()
+		schemas, err := loadDocsSchemas()
+		if err != nil {
+			return toolError(err)
+		}
+		res, err := docsfactory.RenderSite(repo, schemas, docsfactory.RenderOptions{DryRun: docsDryRunFlag})
+		if err != nil {
+			return toolError(err)
+		}
+		fmt.Printf("docs-render: wrote %d file(s)\n", len(res.Written))
+		return nil
+	},
+}
+
+var docsServeCmd = &cobra.Command{
+	Use:   "serve",
+	Short: "Serve docs/site/ over HTTP",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return docsServeHandler(cmd.Context(), nil, map[string]any{"repo": resolveDocsRepo()})
+	},
+}
+
 func init() {
 	docsCmd.PersistentFlags().StringVar(&docsRepoFlag, "repo", "", "repo root (default: cwd)")
 	docsCheckCmd.Flags().BoolVar(&docsAllFlag, "all", false, "reserved — currently always full repo")
 	docsCheckCmd.Flags().BoolVar(&docsJSONFlag, "json", false, "JSON output")
+	docsCheckCmd.Flags().BoolVar(&docsCheckStrictFlag, "strict", false, "enable strict mode (render staleness + hand-edit)")
+	docsCheckCmd.Flags().BoolVar(&docsCheckHandEditFlag, "hand-edit", false, "fail on hand-edit sentinels in generated kinds")
 	docsSyncCmd.Flags().BoolVar(&docsDryRunFlag, "dry-run", false, "preview without writing")
+	docsRenderCmd.Flags().BoolVar(&docsDryRunFlag, "dry-run", false, "preview without writing")
 	docsCmd.AddCommand(docsSpecLintCmd)
 	docsCmd.AddCommand(docsCheckCmd)
 	docsCmd.AddCommand(docsSyncCmd)
+	docsCmd.AddCommand(docsRenderCmd)
+	docsCmd.AddCommand(docsServeCmd)
 	rootCmd.AddCommand(docsCmd)
 }
 
@@ -288,4 +327,40 @@ func reportDocsSync(repo string, res *docsfactory.SyncResult, dryRun bool) error
 	}
 	_ = repo
 	return nil
+}
+
+func runStrictDocsCheck(repo string, schemas *docsfactory.Schemas, res *docsfactory.DocsCheckResult) error {
+	if !res.Clean() {
+		if err := reportDocsCheck(repo, res); err != nil {
+			return err
+		}
+	}
+	var hand []docsfactory.HandEditViolation
+	if docsCheckHandEditFlag || docsCheckStrictFlag {
+		var err error
+		hand, err = docsfactory.CheckHandEdits(repo, schemas)
+		if err != nil {
+			return toolError(err)
+		}
+	}
+	stale, err := docsfactory.CheckRenderStale(repo, schemas)
+	if err != nil {
+		return toolError(err)
+	}
+	if res.Clean() && len(hand) == 0 && len(stale) == 0 {
+		fmt.Println(color.GreenString("docs check --strict: ok"))
+		return nil
+	}
+	for _, v := range hand {
+		fmt.Printf("  hand-edit: %s (%s) %s\n", v.Path, v.Kind, v.Reason)
+	}
+	for _, s := range stale {
+		fmt.Printf("  render-stale: %s\n", s)
+	}
+	cure := "lw docs sync && lw docs render && git add docs/"
+	path, _ := docsgate.Emit("docs_drift", "docs check --strict failed", cure)
+	if path != "" {
+		fmt.Printf("cure JSON: %s\n", path)
+	}
+	return fmt.Errorf("docs check --strict failed")
 }
