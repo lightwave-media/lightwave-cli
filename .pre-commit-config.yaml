@@ -44,7 +44,7 @@ repos:
         files: ^internal/cli/check_.*\.go$
 
       - id: docs-gate
-        name: docs factory gate (sync → render → check --strict)
+        name: docs factory gate (sync → render when core schemas present)
         entry: scripts/precommit/docs-gate.sh
         language: script
         pass_filenames: false
