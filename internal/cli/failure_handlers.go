@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	gh "github.com/lightwave-media/lightwave-cli/internal/github"
 )
 
 func init() {
@@ -14,6 +16,8 @@ func init() {
 	RegisterHandler("failure.file", failureFileHandler)
 	RegisterHandler("failure.status", failureStatusHandler)
 }
+
+const maxFailureIssueTitleLen = 120
 
 func failureRecordHandler(_ context.Context, _ []string, flags map[string]any) error {
 	home, _ := os.UserHomeDir()
@@ -45,8 +49,47 @@ func failureRecordHandler(_ context.Context, _ []string, flags map[string]any) e
 }
 
 func failureFileHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	fmt.Println("failure file: would create GitHub issue with label status:triage (stub)")
-	return failureRecordHandler(ctx, nil, flags)
+	summary := flagStr(flags, "summary")
+	if summary == "" {
+		summary = "Tool gap / failure detected — triage required"
+	}
+
+	title := "[triage] " + summary
+	if len(title) > maxFailureIssueTitleLen {
+		title = title[:maxFailureIssueTitleLen-3] + "..."
+	}
+
+	opts := gh.IssueCreateOpts{
+		Repo:           flagStrOr(flags, "repo", gh.DefaultRepo),
+		Title:          title,
+		Kind:           gh.KindToolGap,
+		Motivation:     summary,
+		ProposedChange: flagStr(flags, "proposed-change"),
+		Scope:          flagStr(flags, "scope"),
+		Labels:         append(flagStrSlice(flags, "label"), "status:triage"),
+		Origin:         flagStrOr(flags, "origin", "failureloop"),
+		ProjectNumber:  gh.DefaultProjectNum,
+		Org:            flagStrOr(flags, "org", gh.DefaultIssueOrg),
+		DryRun:         flagBool(flags, "dry-run"),
+	}
+
+	if err := failureRecordHandler(ctx, nil, flags); err != nil {
+		return err
+	}
+
+	result, err := gh.CreateCompliantIssue(opts)
+	if err != nil {
+		return fmt.Errorf("failure file: %w", err)
+	}
+
+	if opts.DryRun {
+		fmt.Println("failure file: dry-run ok")
+		return nil
+	}
+
+	fmt.Printf("failure file: created issue #%d\n%s\n", result.Number, result.URL)
+
+	return nil
 }
 
 func failureStatusHandler(_ context.Context, _ []string, _ map[string]any) error {
