@@ -89,8 +89,8 @@ allowlist defined in SST (assets.yaml: cdn.paths). Anything in the bucket
 that isn't on the allowlist is "drift" and can be removed.
 
 Source of truth:
-  packages/lightwave-core/lightwave/schema/definitions/data/assets/assets.yaml
-  packages/lightwave-core/lightwave/schema/definitions/data/models/domains.yaml
+  lightwave-core/src/schemas/data/assets/assets.yaml
+  lightwave-core/src/schemas/data/models/domains.yaml
 
 Examples:
   lw cdn reconcile --dry-run    # Show drift only, exit
@@ -120,10 +120,10 @@ func loadCdnSST() (bucket, region string, allowed map[string]struct{}, err error
 		return "", "", nil, errors.New("config not loaded")
 	}
 	defs := filepath.Join(cfg.Paths.LightwaveRoot,
-		"packages/lightwave-core/lightwave/schema/definitions")
+		"lightwave-core", "src", "schemas")
 
-	assetsPath := filepath.Join(defs, "data/assets/assets.yaml")
-	domainsPath := filepath.Join(defs, "data/models/domains.yaml")
+	assetsPath := filepath.Join(defs, "data", "assets", "assets.yaml")
+	domainsPath := filepath.Join(defs, "data", "models", "domains.yaml")
 
 	assetsRaw, err := os.ReadFile(assetsPath)
 	if err != nil {

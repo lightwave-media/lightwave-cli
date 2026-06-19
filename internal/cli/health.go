@@ -101,7 +101,7 @@ func runHealth(asJSON bool) error {
 	// ── Config paths ─────────────────────────────────────────────────────────
 	checks = append(checks, checkPath("lightwave_root", cfg.Paths.LightwaveRoot))
 	checks = append(checks, checkPath("platform dir", cfg.Paths.Platform))
-	checks = append(checks, checkPath("cli dir", filepath.Join(cfg.Paths.LightwaveRoot, "packages/lightwave-cli")))
+	checks = append(checks, checkPath("cli dir", filepath.Join(cfg.Paths.LightwaveRoot, "lightwave-cli")))
 
 	// ── Environment ──────────────────────────────────────────────────────────
 	checks = append(checks, checkEnvVar("LW_ENV", false))

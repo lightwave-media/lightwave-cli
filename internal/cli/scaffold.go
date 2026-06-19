@@ -106,7 +106,7 @@ var uiComponentCmd = &cobra.Command{
 	Long: `Sugar over ` + "`lw scaffold react-component`" + `: maps <category>/<Name> to
 --var category=<category> --var component_name=<Name>.
 
-Default output is <lightwave_root>/packages/lightwave-ui/src/components.
+Default output is <lightwave_root>/lightwave-ui/src/components.
 
 Example:
   lw ui component application/DataTable`,

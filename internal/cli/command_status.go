@@ -59,7 +59,7 @@ var DecommissionedCommands = map[string]string{
 	"email":   "make + Django stack",
 	// Subtree keys (space-separated) decommission a single subcommand while
 	// the parent stays verified.
-	"codegen journeys": "stale lightwave-core discovery path (legacy packages/ layout); restore = migrate to src/schemas + a verified journey fixture",
+	"codegen journeys": "journey YAMLs not yet restamped under lightwave-core/src/schemas/flows/journeys; restore when fixtures land",
 	"browser":          "macOS osascript automation; flaky (audit verdict: drop)",
 	"spec":             "legacy parked tree pending schema merge",
 	"sst":              "depends on ~/.brain corpus state",

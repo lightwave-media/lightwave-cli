@@ -12,7 +12,7 @@ var makeCmd = &cobra.Command{
 	Short: "Run Makefile targets across the monorepo",
 	Long: `Run make targets from any scope in the LightWave monorepo.
 
-Scopes: root, platform, cli, augusta, infra, catalog
+Scopes: root, platform, cli, sys, infra, catalog
 
 Examples:
   lw make platform              # List targets in platform

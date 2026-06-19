@@ -15,12 +15,12 @@ import (
 
 // Known Makefile scopes and their paths relative to the repo root
 var makeScopes = map[string]string{
-	"root":     ".",
-	"platform": "lightwave-platform/src",
-	"cli":      "packages/lightwave-cli",
-	"augusta":  "packages/lightwave-sys",
-	"infra":    "Infrastructure/live",
-	"catalog":  "Infrastructure/catalog",
+	"root":     "lightwave-platform",
+	"platform": "lightwave-platform",
+	"cli":      "lightwave-cli",
+	"sys":      "lightwave-sys",
+	"infra":    "lightwave-infrastructure-live",
+	"catalog":  "lightwave-infrastructure-catalog",
 }
 
 // resolveMakeDir returns the absolute directory for a scope

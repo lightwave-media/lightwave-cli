@@ -3,23 +3,17 @@ package sst
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"testing"
 )
 
 func TestLoadStrategyFromFile(t *testing.T) {
-	// Find the lightwave root by walking up from this file's directory.
-	// Resolves from packages/lightwave-cli/internal/sst → root.
-	// Use runtime.Caller to get this file's absolute path, then walk up to repo root.
-	// File is at packages/lightwave-cli/internal/sst/strategy_test.go → 4 levels up.
-	_, filename, _, _ := runtime.Caller(0)
-	root := filepath.Join(filepath.Dir(filename), "..", "..", "..", "..")
-	root, err := filepath.Abs(root)
+	home, err := os.UserHomeDir()
 	if err != nil {
 		t.Fatal(err)
 	}
-	yamlPath := filepath.Join(root, "packages", "lightwave-core", "lightwave", "schema",
-		"definitions", "governance", "strategy", "strategy.yaml")
+	root := filepath.Join(home, "dev")
+	yamlPath := filepath.Join(root, "lightwave-core", "src", "schemas",
+		"governance", "strategy", "strategy.yaml")
 
 	if _, err := os.Stat(yamlPath); os.IsNotExist(err) {
 		t.Skipf("strategy YAML not found at %s — skipping integration test", yamlPath)
