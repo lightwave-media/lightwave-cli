@@ -114,11 +114,10 @@ func runCodegenJourneys(cmd *cobra.Command, args []string) error {
 	root := cfg.Paths.LightwaveRoot
 	if root == "" {
 		home, _ := os.UserHomeDir()
-		root = filepath.Join(home, "dev", "lightwave-media")
+		root = filepath.Join(home, "dev")
 	}
 
-	journeysDir := filepath.Join(root, "packages", "lightwave-core", "lightwave",
-		"schema", "definitions", "flows", "journeys")
+	journeysDir := filepath.Join(root, "lightwave-core", "src", "schemas", "flows", "journeys")
 	outputDir := filepath.Join(root, "tests", "e2e", "tests")
 
 	// Determine filter

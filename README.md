@@ -34,15 +34,12 @@ for the long version.
 
 ```sh
 # Bring up the local LightWave platform stack
-lw dev start
+lw local up
 
 # Run code-quality + drift checks (mirrors CI)
 lw check
 
-# Run the test suite (Django + Go)
-lw test
-
-# Create a new task end-to-end (createOS + Paperclip + GitHub fan-out)
+# Create a new task end-to-end
 lw task create --title="describe the change" --type=fix --prd-ref=<slug>
 
 # Inspect schema-driven CLI surface
@@ -53,7 +50,7 @@ lw <domain> --help
 `lw --help` enumerates every domain at the top level. Each domain
 exposes its own subcommand surface — `lw task --help`, `lw db --help`,
 `lw check --help`, and so on. The surface is driven by the SST schema
-at `packages/lightwave-core/lightwave/schema/definitions/config/cli/commands.yaml`;
+at `lightwave-core/src/schemas/interfaces/cli/commands.yaml`;
 drift between schema entries and registered Go handlers is caught at
 build time by `lw check schema`.
 

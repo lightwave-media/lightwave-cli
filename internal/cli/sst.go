@@ -272,7 +272,7 @@ type consumerCorpus struct {
 	codegen          []byte // lw codegen source + scaffold templates
 	testGenerator    []byte // tests/generators/
 	runtimeValidator []byte // loader.load("...") in platform + core
-	schemaValidator  []byte // packages/lightwave-core/lightwave/schema/validation/
+	schemaValidator  []byte // lightwave-core/src/schemas/
 	docsGenerator    []byte // mkdocs.yml + platform docs/
 }
 
@@ -288,19 +288,19 @@ func buildConsumerCorpus(brainDir string) consumerCorpus {
 		buildPrompt: readFileSilent(filepath.Join(brainDir, "tools", "build_prompt.py")),
 		gates:       readFileSilent(filepath.Join(brainDir, "governance", "audit", "gates.yaml")),
 		codegen: concatTreeRead(
-			filepath.Join(root, "packages", "lightwave-cli", "internal", "cli", "codegen.go"),
-			filepath.Join(root, "packages", "lightwave-cli", "internal", "scaffold"),
+			filepath.Join(root, "lightwave-cli", "internal", "cli", "codegen.go"),
+			filepath.Join(root, "lightwave-cli", "internal", "scaffold"),
 		),
 		testGenerator: concatTreeRead(
-			filepath.Join(root, "packages", "lightwave-platform", "tests", "generators"),
+			filepath.Join(root, "lightwave-platform", "tests", "generators"),
 			filepath.Join(root, "tests", "generators"),
 		),
 		runtimeValidator: concatTreeRead(
-			filepath.Join(root, "packages", "lightwave-platform"),
-			filepath.Join(root, "packages", "lightwave-core"),
+			filepath.Join(root, "lightwave-platform"),
+			filepath.Join(root, "lightwave-core"),
 		),
 		schemaValidator: concatTreeRead(
-			filepath.Join(root, "packages", "lightwave-core", "lightwave", "schema", "validation"),
+			filepath.Join(root, "lightwave-core", "src", "schemas"),
 		),
 		docsGenerator: concatTreeRead(
 			filepath.Join(root, "mkdocs.yml"),

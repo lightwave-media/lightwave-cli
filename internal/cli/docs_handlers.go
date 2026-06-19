@@ -16,6 +16,7 @@ import (
 func init() {
 	RegisterHandler("docs.render", docsRenderHandler)
 	RegisterHandler("docs.serve", docsServeHandler)
+	RegisterHandler("docs.check", docsCheckStrictHandler)
 	RegisterHandler("docs.check.strict", docsCheckStrictHandler)
 }
 

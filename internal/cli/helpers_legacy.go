@@ -74,11 +74,11 @@ func inferSessionTypeFromIssue(issue ghIssue) SessionType {
 func (s SessionType) WorkingDir() string {
 	switch s {
 	case SessionFrontend:
-		return "packages/lightwave-frontend"
+		return "lightwave-ui"
 	case SessionInfra:
-		return "packages/lightwave-infra"
+		return "lightwave-infrastructure-live"
 	default:
-		return "packages/lightwave-core"
+		return "lightwave-core"
 	}
 }
 

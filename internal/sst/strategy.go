@@ -51,7 +51,7 @@ type strategyFile struct {
 func LoadStrategy(lightwaveRoot string) (*Strategy, error) {
 	path := filepath.Join(
 		lightwaveRoot,
-		"packages", "lightwave-core", "lightwave", "schema", "definitions",
+		"lightwave-core", "src", "schemas",
 		"governance", "strategy", "strategy.yaml",
 	)
 

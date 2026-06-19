@@ -248,7 +248,7 @@ func localSetupHandler(ctx context.Context, _ []string, flags map[string]any) er
 		"Verify docker-compose.yml present",
 		"Verify required ports free (80, 443, 3000, 5432, 6379, 8000)",
 		"Verify .envrc loaded (LW_AGENT_KEY, COMPOSE_FILE)",
-		"Verify lightwave-platform/src and packages/lightwave-core checked out",
+		"Verify lightwave-platform and lightwave-core checked out",
 	}
 
 	if dryRun {
@@ -519,12 +519,12 @@ func buildPreflightReport(ctx context.Context) preflightReport {
 	}
 
 	// 5. lightwave-core symlinkable (compose mounts it)
-	corePath := filepath.Join(root, "packages", "lightwave-core")
+	corePath := filepath.Join(root, "lightwave-core")
 	if _, err := os.Stat(corePath); err != nil {
-		checks = append(checks, preflightCheck{Name: "packages/lightwave-core", OK: false, Detail: corePath + " missing"})
-		hints = append(hints, "git submodule update --init --recursive  # or pull packages")
+		checks = append(checks, preflightCheck{Name: "lightwave-core", OK: false, Detail: corePath + " missing"})
+		hints = append(hints, "clone lightwave-core alongside lightwave-platform under ~/dev/")
 	} else {
-		checks = append(checks, preflightCheck{Name: "packages/lightwave-core", OK: true})
+		checks = append(checks, preflightCheck{Name: "lightwave-core", OK: true})
 	}
 
 	report := preflightReport{Checks: checks, Hints: hints}

@@ -337,7 +337,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 	sb.WriteString("## SST Schema Context\n\n")
 	sb.WriteString("Before implementing, check relevant SST definitions:\n\n")
 	sb.WriteString("```\n")
-	sb.WriteString("packages/lightwave-core/lightwave/schema/definitions/__index.yaml\n")
+	sb.WriteString("lightwave-core/src/schemas/__index.yaml\n")
 	sb.WriteString("```\n\n")
 	sb.WriteString("Key schemas to review based on task type:\n\n")
 	switch fields.taskType {
