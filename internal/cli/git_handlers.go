@@ -313,7 +313,7 @@ func loadWorkspaceProfile() localSetupProfile {
 	path := filepath.Join(home, ".lightwave", "config", "workspace.yaml")
 	def := localSetupProfile{
 		ID:             "default",
-		WorkspaceRoots: []string{filepath.Join(home, "joelschaeffer")},
+		WorkspaceRoots: []string{filepath.Join(home, "dev")},
 		WorktreeRoot:   filepath.Join(home, ".lightwave", "worktrees"),
 		CursorWorktreeRoots: []string{
 			filepath.Join(home, ".cursor", "worktrees"),
