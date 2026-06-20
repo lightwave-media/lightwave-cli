@@ -29,20 +29,22 @@ type CLIDomain struct {
 }
 
 // CLICommand describes a single subcommand exposed by `lw <domain> <command>`.
+// Nested groups use Commands (e.g. voice profile list → handler key voice.profile.list).
 type CLICommand struct {
-	Name        string   `yaml:"name"`
-	Args        []string `yaml:"args,omitempty"`
-	Flags       []string `yaml:"flags,omitempty"`
-	Description string   `yaml:"description,omitempty"`
+	Name        string       `yaml:"name"`
+	Args        []string     `yaml:"args,omitempty"`
+	Flags       []string     `yaml:"flags,omitempty"`
+	Description string       `yaml:"description,omitempty"`
+	Commands    []CLICommand `yaml:"commands,omitempty"`
 }
 
 // rawCLIConfig is the on-disk shape used during decoding. Domains are
 // preserved as a yaml.Node so insertion order survives.
 type rawCLIConfig struct {
-	Meta          rawMeta           `yaml:"_meta"`
-	Domains       yaml.Node         `yaml:"domains"`
 	StatusAliases map[string]string `yaml:"status_aliases"`
+	Meta          rawMeta           `yaml:"_meta"`
 	GlobalFlags   []string          `yaml:"global_flags"`
+	Domains       yaml.Node         `yaml:"domains"`
 }
 
 type rawMeta struct {

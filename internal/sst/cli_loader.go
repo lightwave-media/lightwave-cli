@@ -1,6 +1,7 @@
 package sst
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -17,9 +18,25 @@ func CLIConfigPath(lightwaveRoot string) string {
 	)
 }
 
-// LoadCLIConfig reads commands.yaml and returns the validated, ordered CLIConfig.
+func cliSchemaDir(lightwaveRoot string) string {
+	return filepath.Join(
+		lightwaveRoot,
+		"lightwave-core", "src", "schemas", "interfaces", "cli",
+	)
+}
+
+type domainFragment struct {
+	Domain      string       `yaml:"domain"`
+	Description string       `yaml:"description"`
+	Status      string       `yaml:"_status"`
+	Commands    []CLICommand `yaml:"commands"`
+}
+
+// LoadCLIConfig reads commands.yaml, merges domain fragments (e.g. voice_domain.yaml),
+// and returns the validated CLIConfig.
 func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 	path := CLIConfigPath(lightwaveRoot)
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read CLI config %s: %w", path, err)
@@ -35,6 +52,10 @@ func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 		return nil, fmt.Errorf("decode CLI config: %w", err)
 	}
 
+	if err := mergeDomainFragments(cfg, cliSchemaDir(lightwaveRoot)); err != nil {
+		return nil, err
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate CLI config: %w", err)
 	}
@@ -42,41 +63,67 @@ func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 	return cfg, nil
 }
 
+func mergeDomainFragments(cfg *CLIConfig, dir string) error {
+	fragments := []string{"voice_domain.yaml"}
+	for _, name := range fragments {
+		path := filepath.Join(dir, name)
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+
+			return fmt.Errorf("read domain fragment %s: %w", path, err)
+		}
+
+		var frag domainFragment
+		if err := yaml.Unmarshal(data, &frag); err != nil {
+			return fmt.Errorf("parse domain fragment %s: %w", name, err)
+		}
+
+		if frag.Domain == "" {
+			return fmt.Errorf("domain fragment %s: missing domain field", name)
+		}
+
+		cfg.Domains = append(cfg.Domains, CLIDomain{
+			Name:        frag.Domain,
+			Description: frag.Description,
+			Status:      frag.Status,
+			Commands:    frag.Commands,
+		})
+	}
+
+	return nil
+}
+
 // Validate enforces the rules in commands.yaml `_validation`:
 // every domain has commands, every command has a name, descriptions present,
 // names unique within scope.
 func (c *CLIConfig) Validate() error {
 	if c.Version == "" {
-		return fmt.Errorf("missing _meta.version")
+		return errors.New("missing _meta.version")
 	}
 
 	seenDomain := map[string]bool{}
+
 	for _, d := range c.Domains {
 		if d.Name == "" {
-			return fmt.Errorf("domain with empty name")
+			return errors.New("domain with empty name")
 		}
+
 		if seenDomain[d.Name] {
 			return fmt.Errorf("duplicate domain %q", d.Name)
 		}
+
 		seenDomain[d.Name] = true
 
 		if len(d.Commands) == 0 {
 			return fmt.Errorf("domain %q has no commands", d.Name)
 		}
 
-		seenCmd := map[string]bool{}
-		for _, cmd := range d.Commands {
-			if cmd.Name == "" {
-				return fmt.Errorf("domain %q has command with empty name", d.Name)
-			}
-			if seenCmd[cmd.Name] {
-				return fmt.Errorf("domain %q has duplicate command %q", d.Name, cmd.Name)
-			}
-			seenCmd[cmd.Name] = true
-
-			if cmd.Description == "" {
-				return fmt.Errorf("%s.%s missing description", d.Name, cmd.Name)
-			}
+		if err := validateCommandTree(d.Name, "", d.Commands); err != nil {
+			return err
 		}
 	}
 
