@@ -314,3 +314,60 @@ func extractTaskDefName(arn string) string {
 	}
 	return arn
 }
+
+// RegisterRevisionWithImage clones a service's current task definition with a
+// new container image, registers it as a new revision, and returns the new ARN.
+// The image is swapped on the container whose name matches serviceName, falling
+// back to the first container. This is the new-image rollout path for
+// `lw deploy run --image`, replacing the describe|jq|register shell dance.
+func (e *ECSClient) RegisterRevisionWithImage(ctx context.Context, serviceName, image string) (string, error) {
+	svc, err := e.client.DescribeServices(ctx, &ecs.DescribeServicesInput{
+		Cluster:  &e.cluster,
+		Services: []string{serviceName},
+	})
+	if err != nil {
+		return "", fmt.Errorf("describe service: %w", err)
+	}
+	if len(svc.Services) == 0 || svc.Services[0].TaskDefinition == nil {
+		return "", fmt.Errorf("service %s not found", serviceName)
+	}
+
+	td, err := e.client.DescribeTaskDefinition(ctx, &ecs.DescribeTaskDefinitionInput{
+		TaskDefinition: svc.Services[0].TaskDefinition,
+	})
+	if err != nil {
+		return "", fmt.Errorf("describe task definition: %w", err)
+	}
+	def := td.TaskDefinition
+
+	containers := def.ContainerDefinitions
+	swapped := false
+	for i := range containers {
+		if containers[i].Name != nil && *containers[i].Name == serviceName {
+			containers[i].Image = aws.String(image)
+			swapped = true
+		}
+	}
+	if !swapped && len(containers) > 0 {
+		containers[0].Image = aws.String(image)
+	}
+
+	out, err := e.client.RegisterTaskDefinition(ctx, &ecs.RegisterTaskDefinitionInput{
+		Family:                  def.Family,
+		TaskRoleArn:             def.TaskRoleArn,
+		ExecutionRoleArn:        def.ExecutionRoleArn,
+		NetworkMode:             def.NetworkMode,
+		ContainerDefinitions:    containers,
+		Volumes:                 def.Volumes,
+		PlacementConstraints:    def.PlacementConstraints,
+		RequiresCompatibilities: def.RequiresCompatibilities,
+		Cpu:                     def.Cpu,
+		Memory:                  def.Memory,
+		RuntimePlatform:         def.RuntimePlatform,
+		EphemeralStorage:        def.EphemeralStorage,
+	})
+	if err != nil {
+		return "", fmt.Errorf("register task definition: %w", err)
+	}
+	return *out.TaskDefinition.TaskDefinitionArn, nil
+}
