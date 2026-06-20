@@ -243,6 +243,11 @@ func syncFlagsRegistryQuiet() (bool, error) {
 	// homepolicy.SyncFlagsRegistry is invoked from cli handlers; release uses inline sync.
 	stamp, err := flagsStampPath()
 	if err != nil {
+		dest := flagsRegistryPath()
+		if _, statErr := os.Stat(dest); statErr == nil {
+			return false, nil
+		}
+
 		return false, err
 	}
 
