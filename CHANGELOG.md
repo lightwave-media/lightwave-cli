@@ -9,6 +9,19 @@ from conventional commits (`feat:` / `fix:` / `chore:` / etc.). This
 file is the human-curated complement — what changed, why, and how it
 affects users — for releases that move the needle.
 
+## [3.7.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.6.0...v3.7.0) (2026-06-20)
+
+
+### Features
+
+* **failure:** wire failure file to lw issue create transport ([#153](https://github.com/lightwave-media/lightwave-cli/issues/153)) ([bd947ee](https://github.com/lightwave-media/lightwave-cli/commit/bd947eeddeeb6850dfa73ad2930912750c4a0dd8))
+* **git:** fleet audit/map/doctor/worktree handlers ([#154](https://github.com/lightwave-media/lightwave-cli/issues/154)) ([1651c26](https://github.com/lightwave-media/lightwave-cli/commit/1651c269f9847ae01b575bc1da4a44507e7a678e))
+
+
+### Bug Fixes
+
+* **cli:** wire path resolution to flat ~/dev/ layout ([#155](https://github.com/lightwave-media/lightwave-cli/issues/155)) ([29c310b](https://github.com/lightwave-media/lightwave-cli/commit/29c310b2a530fce2c5944e90b1e36cb5056f8a80))
+
 ## [3.6.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.5.0...v3.6.0) (2026-06-18)
 
 
