@@ -328,6 +328,7 @@ func (e *ECSClient) RegisterRevisionWithImage(ctx context.Context, serviceName, 
 	if err != nil {
 		return "", fmt.Errorf("describe service: %w", err)
 	}
+
 	if len(svc.Services) == 0 || svc.Services[0].TaskDefinition == nil {
 		return "", fmt.Errorf("service %s not found", serviceName)
 	}
@@ -338,16 +339,18 @@ func (e *ECSClient) RegisterRevisionWithImage(ctx context.Context, serviceName, 
 	if err != nil {
 		return "", fmt.Errorf("describe task definition: %w", err)
 	}
-	def := td.TaskDefinition
 
+	def := td.TaskDefinition
 	containers := def.ContainerDefinitions
 	swapped := false
+
 	for i := range containers {
 		if containers[i].Name != nil && *containers[i].Name == serviceName {
 			containers[i].Image = aws.String(image)
 			swapped = true
 		}
 	}
+
 	if !swapped && len(containers) > 0 {
 		containers[0].Image = aws.String(image)
 	}
@@ -369,5 +372,6 @@ func (e *ECSClient) RegisterRevisionWithImage(ctx context.Context, serviceName, 
 	if err != nil {
 		return "", fmt.Errorf("register task definition: %w", err)
 	}
+
 	return *out.TaskDefinition.TaskDefinitionArn, nil
 }
