@@ -36,6 +36,10 @@ func writeRegistry(t *testing.T, dir string) {
     description: test
     default: false
     owner: v_qa-engineer
+  - flag_key: autonomous_release_session_propagate
+    description: test
+    default: true
+    owner: v_release-engineer
 `
 	require.NoError(t, os.WriteFile(filepath.Join(flagsDir, "registry.yaml"), []byte(reg), 0o644))
 }

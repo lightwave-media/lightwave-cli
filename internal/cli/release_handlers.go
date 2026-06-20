@@ -301,6 +301,20 @@ func releaseMergeHandler(ctx context.Context, args []string, flags map[string]an
 	fmt.Printf("%s %s %d PR(s) for %s (%s)\n",
 		color.CyanString("●"), verb, len(eligible), repo, by)
 
+	if apply && len(eligible) > 0 && !releasePR {
+		mainSHA, shaErr := exec.CommandContext(ctx, "gh", "api",
+			fmt.Sprintf("repos/%s/git/ref/heads/main", repo),
+			"--jq", ".object.sha",
+		).CombinedOutput()
+		if shaErr == nil {
+			_ = releasePropagateHandler(ctx, nil, map[string]any{
+				"repo":     shortRepo(repo),
+				"main-sha": strings.TrimSpace(string(mainSHA)),
+				"yes":      true,
+			})
+		}
+	}
+
 	return nil
 }
 
