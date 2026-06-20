@@ -74,3 +74,15 @@ run = "go build -o ./bin/lw ./cmd/lw && bash dev/release_qa_pass.sh \"${LW_QA_AR
 [tasks."release:flags"]
 description = "List feature flags"
 run = "go build -o ./bin/lw ./cmd/lw && ./bin/lw release flag --list"
+
+[tasks."release:prepare"]
+description = "Commit (hook-safe), rebase main, ci, release:qa"
+run = "bash dev/release_prepare.sh --yes"
+
+[tasks."release:ship"]
+description = "Push branch and open/update PR"
+run = "LW_RELEASE_SUPERSEDES=170 bash dev/release_ship.sh --yes"
+
+[tasks."release:deliver"]
+description = "Full delivery: prepare then ship (one command)"
+depends = ["release:prepare", "release:ship"]

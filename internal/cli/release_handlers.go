@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/release"
 	"gopkg.in/yaml.v3"
 )
@@ -23,6 +24,8 @@ func init() {
 	RegisterHandler("release.cut", releaseCutHandler)
 	RegisterHandler("release.sign-off", releaseSignOffHandler)
 	RegisterHandler("release.merge", releaseMergeHandler)
+	RegisterHandler("release.prepare", releasePrepareHandler)
+	RegisterHandler("release.ship", releaseShipHandler)
 }
 
 type signoff struct {
@@ -455,4 +458,85 @@ func saveSignoffs(ledger signoffLedger) error {
 	}
 
 	return os.WriteFile(path, data, gitFilePerm)
+}
+
+func releasePrepareHandler(ctx context.Context, _ []string, flags map[string]any) error {
+	args := []string{}
+	if flagBool(flags, "yes") {
+		args = append(args, "--yes")
+	}
+
+	return runReleaseScript(ctx, "release_prepare.sh", args...)
+}
+
+func releaseShipHandler(ctx context.Context, _ []string, flags map[string]any) error {
+	extra := []string{}
+	if flagBool(flags, "yes") {
+		extra = append(extra, "--yes")
+	}
+
+	if t := flagString(flags, "title"); t != "" {
+		extra = append(extra, "--title", t)
+	}
+
+	if s := flagString(flags, "supersedes"); s != "" {
+		extra = append(extra, "--supersedes", s)
+	}
+
+	return runReleaseScript(ctx, "release_ship.sh", extra...)
+}
+
+func runReleaseScript(ctx context.Context, name string, args ...string) error {
+	root, err := releaseRepoRoot()
+	if err != nil {
+		return err
+	}
+
+	script := filepath.Join(root, "dev", name)
+	if _, err := os.Stat(script); err != nil {
+		return fmt.Errorf("missing %s (run from lightwave-cli checkout)", script)
+	}
+
+	cmd := exec.CommandContext(ctx, "bash", append([]string{script}, args...)...)
+	cmd.Dir = root
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Env = os.Environ()
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+
+	return nil
+}
+
+func releaseRepoRoot() (string, error) {
+	cfg := config.Get()
+	if cfg != nil && cfg.Paths.LightwaveRoot != "" {
+		candidate := filepath.Join(cfg.Paths.LightwaveRoot, "lightwave-cli")
+		if _, err := os.Stat(filepath.Join(candidate, "dev", "release_prepare.sh")); err == nil {
+			return candidate, nil
+		}
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(wd, "dev", "release_prepare.sh")); err == nil {
+			return wd, nil
+		}
+
+		parent := filepath.Dir(wd)
+		if parent == wd {
+			break
+		}
+
+		wd = parent
+	}
+
+	return "", errors.New("cannot locate lightwave-cli root (dev/release_prepare.sh)")
 }
