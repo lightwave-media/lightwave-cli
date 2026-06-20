@@ -17,7 +17,22 @@ func CLIConfigPath(lightwaveRoot string) string {
 	)
 }
 
-// LoadCLIConfig reads commands.yaml and returns the validated, ordered CLIConfig.
+func cliSchemaDir(lightwaveRoot string) string {
+	return filepath.Join(
+		lightwaveRoot,
+		"lightwave-core", "src", "schemas", "interfaces", "cli",
+	)
+}
+
+type domainFragment struct {
+	Domain      string       `yaml:"domain"`
+	Description string       `yaml:"description"`
+	Status      string       `yaml:"_status"`
+	Commands    []CLICommand `yaml:"commands"`
+}
+
+// LoadCLIConfig reads commands.yaml, merges domain fragments (e.g. release_domain.yaml),
+// and returns the validated CLIConfig.
 func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 	path := CLIConfigPath(lightwaveRoot)
 	data, err := os.ReadFile(path)
@@ -35,11 +50,50 @@ func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 		return nil, fmt.Errorf("decode CLI config: %w", err)
 	}
 
+	if err := mergeDomainFragments(cfg, cliSchemaDir(lightwaveRoot)); err != nil {
+		return nil, err
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("validate CLI config: %w", err)
 	}
 
 	return cfg, nil
+}
+
+func mergeDomainFragments(cfg *CLIConfig, dir string) error {
+	fragments := []string{"release_domain.yaml"}
+
+	for _, name := range fragments {
+		path := filepath.Join(dir, name)
+
+		data, err := os.ReadFile(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				continue
+			}
+
+			return fmt.Errorf("read domain fragment %s: %w", path, err)
+		}
+
+		var frag domainFragment
+		if err := yaml.Unmarshal(data, &frag); err != nil {
+			return fmt.Errorf("parse domain fragment %s: %w", name, err)
+		}
+
+		if frag.Domain == "" {
+			return fmt.Errorf("domain fragment %s: missing domain field", name)
+		}
+
+		cfg.Domains = append(cfg.Domains, CLIDomain{
+			Name:        frag.Domain,
+			Description: frag.Description,
+			Status:      frag.Status,
+			Commands:    frag.Commands,
+		})
+	}
+
+	return nil
 }
 
 // Validate enforces the rules in commands.yaml `_validation`:
@@ -51,13 +105,16 @@ func (c *CLIConfig) Validate() error {
 	}
 
 	seenDomain := map[string]bool{}
+
 	for _, d := range c.Domains {
 		if d.Name == "" {
 			return fmt.Errorf("domain with empty name")
 		}
+
 		if seenDomain[d.Name] {
 			return fmt.Errorf("duplicate domain %q", d.Name)
 		}
+
 		seenDomain[d.Name] = true
 
 		if len(d.Commands) == 0 {
@@ -65,13 +122,16 @@ func (c *CLIConfig) Validate() error {
 		}
 
 		seenCmd := map[string]bool{}
+
 		for _, cmd := range d.Commands {
 			if cmd.Name == "" {
 				return fmt.Errorf("domain %q has command with empty name", d.Name)
 			}
+
 			if seenCmd[cmd.Name] {
 				return fmt.Errorf("domain %q has duplicate command %q", d.Name, cmd.Name)
 			}
+
 			seenCmd[cmd.Name] = true
 
 			if cmd.Description == "" {
