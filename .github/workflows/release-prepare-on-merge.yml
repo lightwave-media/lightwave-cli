@@ -1,0 +1,28 @@
+name: release-prepare-on-merge
+
+# After a feature PR merges to main, refresh the Release PR immediately
+# instead of waiting for the 07:00 UTC nightly cron (Phase 5E fast path).
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  prepare-release-pr:
+    if: >-
+      github.event.pull_request.merged == true &&
+      !startsWith(github.event.pull_request.title, 'chore(main): release')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger release-please prepare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run release \
+            --repo "${{ github.repository }}" \
+            -f mode=prepare
+          echo "Release PR refresh dispatched (mode=prepare)"
