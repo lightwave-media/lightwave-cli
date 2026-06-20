@@ -62,3 +62,27 @@ run = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMO
 [tasks.ci]
 description = "Local CI: fmt-check + vet + lint + build + test"
 depends = ["fmt-check", "vet", "lint", "build", "test"]
+
+[tasks."release:gate"]
+description = "Dry-run lw release merge (autonomous gate)"
+run = "go build -o ./bin/lw ./cmd/lw && ./bin/lw release merge lightwave-cli"
+
+[tasks."release:qa"]
+description = "Run QA release pass matrix (local)"
+run = "go build -o ./bin/lw ./cmd/lw && bash dev/release_qa_pass.sh \"${LW_QA_ARTEFACT_DIR:-/tmp/qa-release-pass}\""
+
+[tasks."release:flags"]
+description = "List feature flags"
+run = "go build -o ./bin/lw ./cmd/lw && ./bin/lw release flag --list"
+
+[tasks."release:prepare"]
+description = "Commit (hook-safe), rebase main, ci, release:qa"
+run = "bash dev/release_prepare.sh --yes"
+
+[tasks."release:ship"]
+description = "Push branch and open/update PR"
+run = "LW_RELEASE_SUPERSEDES=170 bash dev/release_ship.sh --yes"
+
+[tasks."release:deliver"]
+description = "Full delivery: prepare then ship (one command)"
+depends = ["release:prepare", "release:ship"]
