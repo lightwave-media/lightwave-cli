@@ -23,6 +23,8 @@ const (
 )
 
 // SwarmRepos is the estate rollout set (mirrors bootstrap-github-org.sh).
+// null*/ micro-services use their own lightweight project boards; the main
+// Lightwave Swarm board only tracks repos with full issue workflow.
 var SwarmRepos = []string{
 	"lightwave-core",
 	"lightwave-cli",
@@ -33,12 +35,6 @@ var SwarmRepos = []string{
 	"lightwave-infrastructure-catalog",
 	"lightwave-infrastructure-live",
 	"createOS",
-	"nullclaw",
-	"nullhub",
-	"nullbuilder",
-	"nulltickets",
-	"nullwatch",
-	"nullboiler",
 	"joelschaeffer-site",
 	"homebrew-tap",
 }
