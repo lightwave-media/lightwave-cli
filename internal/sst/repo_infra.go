@@ -1,3 +1,5 @@
+// Package sst reads and serves Lightwave schema definitions (SST = source-of-truth).
+// Every enforcement check loads its schema at runtime — never hardcodes paths or values.
 package sst
 
 import (
@@ -69,6 +71,7 @@ type rawRepoInfraDoc struct {
 // LoadRepoInfra reads repo-infra.yaml and returns the enforcement config.
 func LoadRepoInfra(lightwaveRoot string) (*RepoInfraConfig, error) {
 	path := RepoInfraPath(lightwaveRoot)
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read repo-infra %s: %w", path, err)
@@ -83,12 +86,12 @@ func LoadRepoInfra(lightwaveRoot string) (*RepoInfraConfig, error) {
 		Version: raw.Meta.Version,
 	}
 
-	// Filter to universal-only entries for base enforcement.
 	for _, d := range raw.Example.RequiredDirs {
 		if d.Universality == "universal" {
 			cfg.RequiredDirs = append(cfg.RequiredDirs, d)
 		}
 	}
+
 	for _, f := range raw.Example.RequiredFiles {
 		if f.Universality == "universal" {
 			cfg.RequiredFiles = append(cfg.RequiredFiles, f)
@@ -110,6 +113,7 @@ func (c *RepoInfraConfig) UniversalFilePaths() []string {
 	for i, f := range c.RequiredFiles {
 		out[i] = f.Path
 	}
+
 	return out
 }
 
@@ -119,5 +123,6 @@ func (c *RepoInfraConfig) UniversalDirPaths() []string {
 	for i, d := range c.RequiredDirs {
 		out[i] = d.Path
 	}
+
 	return out
 }

@@ -31,6 +31,12 @@ func init() {
 	RegisterHandler("check.repo-infra", checkRepoInfraHandler)
 }
 
+const (
+	claudeMaxLines    = 32
+	driftThresholdDiv = 2
+	driftThresholdMin = 2
+)
+
 // repoInfraExempt lists repos exempt from conformance checks.
 var repoInfraExempt = map[string]string{
 	"boilerplate": "external gruntwork.io fork",
@@ -47,8 +53,8 @@ type repoInfraViolation struct {
 }
 
 type repoInfraDrift struct {
-	Pattern  string `json:"pattern"`
 	Repos    int    `json:"repos"`
+	Pattern  string `json:"pattern"`
 	Evidence string `json:"evidence"`
 }
 
@@ -174,7 +180,7 @@ func checkOneRepo(repoPath, name string, infraCfg *sst.RepoInfraConfig) []repoIn
 			content, rerr := os.ReadFile(fpath)
 			if rerr == nil {
 				lines := strings.Split(string(content), "\n")
-				if len(lines) > 32 {
+				if len(lines) > claudeMaxLines {
 					viols = append(viols, repoInfraViolation{
 						Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path,
 						Detail: fmt.Sprintf("CLAUDE.md is %d lines (should be ≤30 — thin pointer only)", len(lines)),
@@ -254,9 +260,9 @@ func detectDrift(repoPaths []string, infraCfg *sst.RepoInfraConfig) []repoInfraD
 	}
 
 	// Files that exist in >50% of repos but aren't in the schema
-	threshold := len(repoPaths) / 2
-	if threshold < 2 {
-		threshold = 2
+	threshold := len(repoPaths) / driftThresholdDiv
+	if threshold < driftThresholdMin {
+		threshold = driftThresholdMin
 	}
 
 	for name, count := range fileCount {
@@ -272,7 +278,7 @@ func detectDrift(repoPaths []string, infraCfg *sst.RepoInfraConfig) []repoInfraD
 		}
 		if !known {
 			drift = append(drift, repoInfraDrift{
-				Pattern:  fmt.Sprintf("file:%s", name),
+				Pattern:  "file:" + name,
 				Repos:    count,
 				Evidence: fmt.Sprintf("present in %d/%d repos, not in repo-infra.yaml v%s", count, len(repoPaths), infraCfg.Version),
 			})
@@ -293,7 +299,7 @@ func detectDrift(repoPaths []string, infraCfg *sst.RepoInfraConfig) []repoInfraD
 		}
 		if !known {
 			drift = append(drift, repoInfraDrift{
-				Pattern:  fmt.Sprintf("dir:%s/", name),
+				Pattern:  "dir:" + name + "/",
 				Repos:    count,
 				Evidence: fmt.Sprintf("present in %d/%d repos, not in repo-infra.yaml v%s", count, len(repoPaths), infraCfg.Version),
 			})
@@ -385,7 +391,7 @@ func printRepoInfraReport(r *repoInfraReport) {
 				}
 				d := ""
 				if v.Detail != "" {
-					d = fmt.Sprintf(" — %s", v.Detail)
+					d = " — " + v.Detail
 				}
 				fmt.Printf("    missing %s: %s%s%s\n", v.Kind, v.Missing, d, fix)
 			}
