@@ -1,8 +1,5 @@
 package cli_test
 
-// All tests are intentionally serial — RunHandler swaps os.Stdout globally.
-// Same constraint as check_schema_test.go. No t.Parallel() here.
-
 import (
 	"os"
 	"path/filepath"
@@ -60,13 +57,68 @@ func TestCheckRepoInfra_FixCreatesCLAUDEmd(t *testing.T) {
 	assert.Contains(t, string(content), "@AGENTS.md")
 }
 
-// scaffoldConformantRepo writes the minimum required files/dirs per repo-infra.yaml v1.2.0.
+//nolint:paralleltest
+func TestCheckRepoInfra_CLAUDEmdTooLong(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+	// Write a fat CLAUDE.md (exceeds 32 lines)
+	fat := make([]byte, 0, 4000)
+	for i := 0; i < 40; i++ {
+		fat = append(fat, []byte("line\n")...)
+	}
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "CLAUDE.md"), fat, 0o644))
+
+	out, err := testutil.RunHandler(t, "check.repo-infra", nil, map[string]any{"repo": dir})
+	require.Error(t, err, "fat CLAUDE.md must exit non-zero")
+	assert.Contains(t, out, "should be ≤30")
+}
+
+//nolint:paralleltest
+func TestCheckRepoInfra_EmptyFile(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "AGENTS.md"), []byte{}, 0o644))
+
+	out, err := testutil.RunHandler(t, "check.repo-infra", nil, map[string]any{"repo": dir})
+	require.Error(t, err, "empty file must exit non-zero")
+	assert.Contains(t, out, "empty")
+}
+
+//nolint:paralleltest
+func TestCheckRepoInfra_MiseTomlNoTasks(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "mise.toml"), []byte("[tools]\nnode = \"20\"\n"), 0o644))
+
+	out, err := testutil.RunHandler(t, "check.repo-infra", nil, map[string]any{"repo": dir})
+	require.Error(t, err, "mise.toml without [tasks] must exit non-zero")
+	assert.Contains(t, out, "[tasks]")
+}
+
+//nolint:paralleltest
+func TestCheckRepoInfra_SchemaVersionPrinted(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+
+	out, err := testutil.RunHandler(t, "check.repo-infra", nil, map[string]any{"repo": dir})
+	require.NoError(t, err)
+	assert.Contains(t, out, "v1.3.0")
+}
+
+// scaffoldConformantRepo writes the minimum required files/dirs per repo-infra.yaml.
 func scaffoldConformantRepo(t *testing.T, dir string) {
 	t.Helper()
 	for _, f := range []string{"AGENTS.md", "CLAUDE.md", "README.md", "mise.toml", ".gitignore"} {
-		require.NoError(t, os.WriteFile(filepath.Join(dir, f), []byte("# placeholder\n"), 0o644))
+		content := "# placeholder\n"
+		if f == "CLAUDE.md" {
+			content = "@AGENTS.md\n"
+		}
+		if f == "mise.toml" {
+			content = "[tasks]\nci = \"echo ok\"\n"
+		}
+		require.NoError(t, os.WriteFile(filepath.Join(dir, f), []byte(content), 0o644))
 	}
-	for _, d := range []string{".github", "dev", "docs"} {
+	for _, d := range []string{".github", "dev", "docs", "src", "tests"} {
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, d), 0o755))
 	}
 }

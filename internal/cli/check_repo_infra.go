@@ -9,6 +9,9 @@ package cli
 //           no pre-push gate installed (missing dev/), context blind to repo conventions.
 //   AFTER:  every session loads AGENTS.md via CLAUDE.md thin pointer; dev/hooks/
 //           installs the pre-push gate; lw check repo-infra --all catches drift before it accumulates.
+//
+// Schema source: lightwave-core/src/schemas/policy/governance/repo-infra.yaml
+// This handler reads the schema dynamically at each invocation — never hardcodes paths.
 
 import (
 	"context"
@@ -21,27 +24,11 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/lightwave-media/lightwave-cli/internal/sst"
 )
 
 func init() {
 	RegisterHandler("check.repo-infra", checkRepoInfraHandler)
-}
-
-// repoInfraRequiredFiles mirrors the universal required_files from
-// lightwave-core/src/schemas/policy/governance/repo-infra.yaml v1.2.0.
-// Conditional entries (.pre-commit-config.yaml etc.) are omitted.
-var repoInfraRequiredFiles = []string{
-	"AGENTS.md",
-	"CLAUDE.md",
-	"README.md",
-	"mise.toml",
-	".gitignore",
-}
-
-var repoInfraRequiredDirs = []string{
-	".github",
-	"dev",
-	"docs",
 }
 
 // repoInfraExempt lists repos exempt from conformance checks.
@@ -52,17 +39,27 @@ var repoInfraExempt = map[string]string{
 
 type repoInfraViolation struct {
 	Repo     string `json:"repo"`
-	RepoPath string `json:"-"`    // absolute path, not serialised
-	Kind     string `json:"kind"` // "file" | "dir"
+	RepoPath string `json:"-"`
+	Kind     string `json:"kind"`
 	Missing  string `json:"missing"`
+	Detail   string `json:"detail,omitempty"`
 	Fixable  bool   `json:"fixable"`
+}
+
+type repoInfraDrift struct {
+	Pattern  string `json:"pattern"`
+	Repos    int    `json:"repos"`
+	Evidence string `json:"evidence"`
 }
 
 type repoInfraReport struct {
 	Root       string               `json:"root"`
+	SchemaVer  string               `json:"schema_version"`
 	Checked    []string             `json:"checked"`
 	Exempt     []string             `json:"exempt"`
 	Violations []repoInfraViolation `json:"violations"`
+	Drift      []repoInfraDrift     `json:"drift,omitempty"`
+	LearnCount int                  `json:"learn_count,omitempty"`
 }
 
 func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]any) error {
@@ -73,6 +70,12 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 
 	root := cfg.Paths.LightwaveRoot
 
+	// Load schema dynamically
+	infraCfg, err := sst.LoadRepoInfra(root)
+	if err != nil {
+		return fmt.Errorf("load repo-infra schema: %w (exit 2)", err)
+	}
+
 	var repoPaths []string
 
 	switch {
@@ -81,7 +84,6 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 		if err != nil {
 			return fmt.Errorf("discover repos: %w (exit 2)", err)
 		}
-
 		repoPaths = discovered
 	case flagStr(flags, "repo") != "":
 		repoPaths = []string{resolveRepoPath(root, flagStr(flags, "repo"))}
@@ -90,22 +92,28 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 		if err != nil {
 			return fmt.Errorf("getwd: %w (exit 2)", err)
 		}
-
 		repoPaths = []string{cwd}
 	}
 
-	report := repoInfraReport{Root: root}
+	report := repoInfraReport{
+		Root:      root,
+		SchemaVer: infraCfg.Version,
+	}
 
 	for _, p := range repoPaths {
 		name := filepath.Base(p)
 		if reason, ok := repoInfraExempt[name]; ok {
 			report.Exempt = append(report.Exempt, fmt.Sprintf("%s (%s)", name, reason))
-
 			continue
 		}
-
 		report.Checked = append(report.Checked, name)
-		report.Violations = append(report.Violations, checkOneRepo(p, name)...)
+		report.Violations = append(report.Violations, checkOneRepo(p, name, infraCfg)...)
+	}
+
+	// Self-learning mode: detect patterns across repos and flag drift
+	if flagBool(flags, "learn") && len(repoPaths) > 1 {
+		report.Drift = detectDrift(repoPaths, infraCfg)
+		report.LearnCount = len(report.Drift)
 	}
 
 	if flagBool(flags, "fix") {
@@ -115,7 +123,6 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 	if asJSON(flags) {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
-
 		return enc.Encode(report)
 	}
 
@@ -128,29 +135,90 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 	return nil
 }
 
-func checkOneRepo(repoPath, name string) []repoInfraViolation {
+func checkOneRepo(repoPath, name string, infraCfg *sst.RepoInfraConfig) []repoInfraViolation {
 	var viols []repoInfraViolation
 
-	for _, f := range repoInfraRequiredFiles {
-		if _, err := os.Stat(filepath.Join(repoPath, f)); os.IsNotExist(err) {
-			v := repoInfraViolation{Repo: name, RepoPath: repoPath, Kind: "file", Missing: f}
-			if f == "CLAUDE.md" {
+	// Check each universal required file
+	for _, f := range infraCfg.RequiredFiles {
+		fpath := filepath.Join(repoPath, f.Path)
+		fi, err := os.Stat(fpath)
+		if os.IsNotExist(err) {
+			v := repoInfraViolation{Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path}
+			if f.Path == "CLAUDE.md" {
 				if _, aerr := os.Stat(filepath.Join(repoPath, "AGENTS.md")); aerr == nil {
 					v.Fixable = true
 				}
 			}
-
 			viols = append(viols, v)
+			continue
+		}
+		if err != nil {
+			viols = append(viols, repoInfraViolation{
+				Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path,
+				Detail: fmt.Sprintf("stat error: %v", err),
+			})
+			continue
+		}
+
+		// Content validation
+		if fi.Size() == 0 {
+			viols = append(viols, repoInfraViolation{
+				Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path,
+				Detail: "file is empty (0 bytes)",
+			})
+			continue
+		}
+
+		// CLAUDE.md must be a thin pointer (≤30 lines, references AGENTS.md)
+		if f.Path == "CLAUDE.md" {
+			content, rerr := os.ReadFile(fpath)
+			if rerr == nil {
+				lines := strings.Split(string(content), "\n")
+				if len(lines) > 32 {
+					viols = append(viols, repoInfraViolation{
+						Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path,
+						Detail: fmt.Sprintf("CLAUDE.md is %d lines (should be ≤30 — thin pointer only)", len(lines)),
+					})
+				}
+				if !strings.Contains(string(content), "AGENTS.md") {
+					viols = append(viols, repoInfraViolation{
+						Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path,
+						Detail: "CLAUDE.md must reference AGENTS.md (thin pointer pattern)",
+					})
+				}
+			}
+		}
+
+		// mise.toml must define a [tasks] section
+		if f.Path == "mise.toml" {
+			content, rerr := os.ReadFile(fpath)
+			if rerr == nil {
+				if !strings.Contains(string(content), "[tasks") {
+					viols = append(viols, repoInfraViolation{
+						Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path,
+						Detail: "mise.toml must define [tasks] section for ci/dispatch",
+					})
+				}
+			}
 		}
 	}
 
-	for _, d := range repoInfraRequiredDirs {
-		if _, err := os.Stat(filepath.Join(repoPath, d)); os.IsNotExist(err) {
+	// Check each universal required dir
+	for _, d := range infraCfg.RequiredDirs {
+		dpath := filepath.Join(repoPath, d.Path)
+		if fi, err := os.Stat(dpath); os.IsNotExist(err) {
 			viols = append(viols, repoInfraViolation{
-				Repo:     name,
-				RepoPath: repoPath,
-				Kind:     "dir",
-				Missing:  d + "/",
+				Repo: name, RepoPath: repoPath, Kind: "dir", Missing: d.Path + "/",
+			})
+		} else if err != nil {
+			viols = append(viols, repoInfraViolation{
+				Repo: name, RepoPath: repoPath, Kind: "dir", Missing: d.Path + "/",
+				Detail: fmt.Sprintf("stat error: %v", err),
+			})
+		} else if !fi.IsDir() {
+			viols = append(viols, repoInfraViolation{
+				Repo: name, RepoPath: repoPath, Kind: "dir", Missing: d.Path + "/",
+				Detail: "path exists but is not a directory",
 			})
 		}
 	}
@@ -158,121 +226,179 @@ func checkOneRepo(repoPath, name string) []repoInfraViolation {
 	return viols
 }
 
-// resolveRepoPath returns an absolute path: absolute args used as-is, bare names joined with root.
+// detectDrift scans all checked repos for patterns that exist but aren't in the schema.
+// This is the self-learning loop: it finds common files/dirs/patterns across repos
+// that the schema doesn't yet mandate.
+func detectDrift(repoPaths []string, infraCfg *sst.RepoInfraConfig) []repoInfraDrift {
+	var drift []repoInfraDrift
+
+	knownFiles := infraCfg.UniversalFilePaths()
+	knownDirs := infraCfg.UniversalDirPaths()
+
+	// Count file/dir occurrences across all repos
+	fileCount := map[string]int{}
+	dirCount := map[string]int{}
+
+	for _, rp := range repoPaths {
+		entries, err := os.ReadDir(rp)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if e.IsDir() {
+				dirCount[e.Name()]++
+			} else {
+				fileCount[e.Name()]++
+			}
+		}
+	}
+
+	// Files that exist in >50% of repos but aren't in the schema
+	threshold := len(repoPaths) / 2
+	if threshold < 2 {
+		threshold = 2
+	}
+
+	for name, count := range fileCount {
+		if count < threshold {
+			continue
+		}
+		known := false
+		for _, kf := range knownFiles {
+			if kf == name {
+				known = true
+				break
+			}
+		}
+		if !known {
+			drift = append(drift, repoInfraDrift{
+				Pattern:  fmt.Sprintf("file:%s", name),
+				Repos:    count,
+				Evidence: fmt.Sprintf("present in %d/%d repos, not in repo-infra.yaml v%s", count, len(repoPaths), infraCfg.Version),
+			})
+		}
+	}
+
+	// Dirs that exist in >50% of repos but aren't in the schema
+	for name, count := range dirCount {
+		if count < threshold {
+			continue
+		}
+		known := false
+		for _, kd := range knownDirs {
+			if kd == name {
+				known = true
+				break
+			}
+		}
+		if !known {
+			drift = append(drift, repoInfraDrift{
+				Pattern:  fmt.Sprintf("dir:%s/", name),
+				Repos:    count,
+				Evidence: fmt.Sprintf("present in %d/%d repos, not in repo-infra.yaml v%s", count, len(repoPaths), infraCfg.Version),
+			})
+		}
+	}
+
+	return drift
+}
+
 func resolveRepoPath(root, nameOrPath string) string {
 	if filepath.IsAbs(nameOrPath) {
 		return nameOrPath
 	}
-
 	return filepath.Join(root, nameOrPath)
 }
 
-// discoverLightwaveRepos returns sibling dirs under root that contain a mise.toml.
 func discoverLightwaveRepos(root string) ([]string, error) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil, err
 	}
-
 	var repos []string
-
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
-
 		p := filepath.Join(root, e.Name())
 		if _, err := os.Stat(filepath.Join(p, "mise.toml")); err == nil {
 			repos = append(repos, p)
 		}
 	}
-
 	return repos, nil
 }
 
-// applyRepoInfraFixes applies mechanical fixes only (CLAUDE.md creation).
-// Non-fixable violations are reported but not touched.
 func applyRepoInfraFixes(viols []repoInfraViolation) error {
 	var fixed, skipped int
-
 	for _, v := range viols {
 		if !v.Fixable {
 			fmt.Printf("%s %s/%s — manual fix required\n",
 				color.YellowString("SKIP"), v.Repo, v.Missing)
-
 			skipped++
-
 			continue
 		}
-
 		if v.Missing == "CLAUDE.md" {
 			claudePath := filepath.Join(v.RepoPath, "CLAUDE.md")
-
 			const filePerms = 0o644
 			if err := os.WriteFile(claudePath, []byte("@AGENTS.md\n"), filePerms); err != nil {
 				fmt.Printf("%s %s/CLAUDE.md: %v\n", color.RedString("ERROR"), v.Repo, err)
-
 				continue
 			}
-
 			fmt.Printf("%s %s/CLAUDE.md created\n", color.GreenString("FIXED"), v.Repo)
-
 			fixed++
 		}
 	}
-
 	if skipped > 0 {
 		fmt.Printf("\n%d violation(s) require manual intervention (dev/, .github/ scaffold)\n", skipped)
 	}
-
 	if fixed > 0 && skipped == 0 {
 		return nil
 	}
-
 	if skipped > 0 {
 		return fmt.Errorf("%d violation(s) not auto-fixed", skipped)
 	}
-
 	return nil
 }
 
 func printRepoInfraReport(r *repoInfraReport) {
-	fmt.Printf("%s %s\n", color.CyanString("repo-infra check:"), r.Root)
+	fmt.Printf("%s %s (schema v%s)\n", color.CyanString("repo-infra check:"), r.Root, r.SchemaVer)
 	fmt.Printf("  checked: %s\n", strings.Join(r.Checked, ", "))
-
 	if len(r.Exempt) > 0 {
 		fmt.Printf("  exempt:  %s\n", strings.Join(r.Exempt, ", "))
 	}
-
-	if len(r.Violations) == 0 {
-		fmt.Println(color.GreenString("\n✓ all repos conform to repo-infra.yaml v1.2.0"))
-
+	if len(r.Violations) == 0 && len(r.Drift) == 0 {
+		fmt.Println(color.GreenString("\n✓ all repos conform"))
 		return
 	}
-
-	fmt.Printf("\n%s (%d)\n",
-		color.YellowString("violations (per repo-infra.yaml v1.2.0)"),
-		len(r.Violations))
-
-	byRepo := map[string][]repoInfraViolation{}
-
-	for _, v := range r.Violations {
-		byRepo[v.Repo] = append(byRepo[v.Repo], v)
-	}
-
-	for repo, viols := range byRepo {
-		fmt.Printf("\n  %s\n", color.YellowString(repo))
-
-		for _, v := range viols {
-			fix := ""
-			if v.Fixable {
-				fix = color.CyanString("  [--fix available]")
-			}
-
-			fmt.Printf("    missing %s: %s%s\n", v.Kind, v.Missing, fix)
+	if len(r.Violations) > 0 {
+		fmt.Printf("\n%s (%d)\n", color.YellowString("violations"), len(r.Violations))
+		byRepo := map[string][]repoInfraViolation{}
+		for _, v := range r.Violations {
+			byRepo[v.Repo] = append(byRepo[v.Repo], v)
 		}
+		for repo, viols := range byRepo {
+			fmt.Printf("\n  %s\n", color.YellowString(repo))
+			for _, v := range viols {
+				fix := ""
+				if v.Fixable {
+					fix = color.CyanString("  [--fix available]")
+				}
+				d := ""
+				if v.Detail != "" {
+					d = fmt.Sprintf(" — %s", v.Detail)
+				}
+				fmt.Printf("    missing %s: %s%s%s\n", v.Kind, v.Missing, d, fix)
+			}
+		}
+		fmt.Printf("\n%s\n", color.CyanString("Run `lw check repo-infra --fix` to apply mechanical fixes."))
 	}
-
-	fmt.Printf("\n%s\n", color.CyanString("Run `lw check repo-infra --fix` to apply mechanical fixes (CLAUDE.md only)."))
-	fmt.Printf("See repo-infra.yaml v1.2.0 for dev/ and .github/ scaffold instructions.\n")
+	if len(r.Drift) > 0 {
+		fmt.Printf("\n%s (%d)\n", color.MagentaString("drift (patterns not in schema)"), len(r.Drift))
+		for _, d := range r.Drift {
+			fmt.Printf("  %s — %s\n", d.Pattern, d.Evidence)
+		}
+		fmt.Printf("\n%s\n",
+			color.MagentaString("Run `lw check repo-infra --learn` to regenerate drift analysis."))
+		fmt.Printf("Review drift patterns and update repo-infra.yaml if they should be universal.\n")
+	}
 }
