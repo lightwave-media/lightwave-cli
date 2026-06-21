@@ -37,26 +37,26 @@ func TestOperatorFlow_VersionHomeSyncReleaseFlags(t *testing.T) {
 	}
 
 	type step struct {
-		name   string
-		args   []string
-		wantIn []string
+		name        string
+		args        []string
+		mustContain []string
 	}
 
 	steps := []step{
 		{
-			name:   "version",
-			args:   []string{"version"},
-			wantIn: []string{"lw version"},
+			name:        "version",
+			args:        []string{"version"},
+			mustContain: []string{"lw version"},
 		},
 		{
-			name:   "home_sync",
-			args:   []string{"home", "sync"},
-			wantIn: []string{"home sync:"},
+			name:        "home_sync",
+			args:        []string{"home", "sync"},
+			mustContain: []string{"home sync:"},
 		},
 		{
 			name: "release_flag_list",
 			args: []string{"release", "flag", "_", "--list"},
-			wantIn: []string{
+			mustContain: []string{
 				"autonomous_release_merge",
 				"lw_voice_commands",
 				"autonomous_qa_release_pass",
@@ -71,7 +71,7 @@ func TestOperatorFlow_VersionHomeSyncReleaseFlags(t *testing.T) {
 			out, err := runLW(t, bin, fleet, env, s.args...)
 			require.NoError(t, err, "stderr+stdout:\n%s", out)
 
-			for _, needle := range s.wantIn {
+			for _, needle := range s.mustContain {
 				require.Contains(t, out, needle)
 			}
 
