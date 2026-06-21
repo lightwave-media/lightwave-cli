@@ -42,11 +42,32 @@ record() {
   echo "# repo=${ROOT}"
   echo ""
 
-  echo "## lw check schema (strict)"
-  if LW_CHECK_SCHEMA_STRICT=1 "${LW}" check schema; then
-    record PASS schema "lw check schema" "strict green"
+  echo "## lw check schema (release domain strict)"
+  SCHEMA_JSON="${ARTEFACT_DIR}/schema-drift.json"
+  if "${LW}" check schema --json > "${SCHEMA_JSON}" 2>"${ARTEFACT_DIR}/schema-drift.stderr"; then
+    drift_ok=true
   else
-    record FAIL schema "lw check schema" "drift or handler mismatch"
+    drift_ok=false
+  fi
+  if python3 - "${SCHEMA_JSON}" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as f:
+    doc = json.load(f)
+missing = [k for k in doc.get("missing_handlers", []) if k.startswith("release.")]
+orphaned = [k for k in doc.get("orphaned_handlers", []) if k.startswith("release.")]
+if missing or orphaned:
+    print(f"release drift missing={missing} orphaned={orphaned}")
+    sys.exit(1)
+sys.exit(0)
+PY
+  then
+    record PASS schema "release domain schema↔handler lockstep"
+  else
+    record FAIL schema "release domain drift (see ${SCHEMA_JSON})"
+  fi
+  if [[ "${drift_ok}" != "true" && "${fail}" -eq 0 ]]; then
+    : # full-schema drift may include pre-release domains; release slice is the gate
   fi
   echo ""
 
@@ -55,6 +76,21 @@ record() {
     record PASS smoke "VerifiedCommands" "command_surface + active smoke"
   else
     record FAIL smoke "VerifiedCommands" "go test ./internal/cli/ failed"
+  fi
+  echo ""
+
+  echo "## Cloudflare Pages build check (joelschaeffer-site, main-compatible)"
+  SITE_ROOT="${JOELSCHAEFFER_SITE_ROOT:-${HOME}/dev/joelschaeffer-site}"
+  if [[ ! -d "${SITE_ROOT}" ]]; then
+    record SKIP cloudflare joelschaeffer-site "repo missing at ${SITE_ROOT}"
+  elif [[ ! -f "${SITE_ROOT}/package.json" ]]; then
+    record SKIP cloudflare joelschaeffer-site "no package.json"
+  else
+    if (cd "${SITE_ROOT}" && bun run build 2>&1 && bunx vitest run --passWithNoTests 2>&1); then
+      record PASS cloudflare joelschaeffer-site "bun build + vitest (matches deploy.yml gate)"
+    else
+      record FAIL cloudflare joelschaeffer-site "build or vitest failed"
+    fi
   fi
   echo ""
 

@@ -303,7 +303,16 @@ func DevDomainsEnabled() bool {
 		return false
 	}
 
-	devBin := filepath.Join(home, ".local", "bin", "lw")
+	devLW := filepath.Join(home, ".local", "bin", "lw")
 
-	return real == devBin || strings.HasPrefix(real, filepath.Join(home, "dev", ".worktrees", "lightwave-cli"))
+	devReal, err := filepath.EvalSymlinks(devLW)
+	if err != nil {
+		devReal = devLW
+	}
+
+	if real == devReal {
+		return true
+	}
+
+	return strings.HasPrefix(real, filepath.Join(home, "dev", ".worktrees", "lightwave-cli"))
 }

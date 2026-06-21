@@ -15,10 +15,11 @@ import (
 	"github.com/lightwave-media/lightwave-cli/internal/config"
 )
 
+const voiceCommandsFlag = "lw_voice_commands"
+
 const (
-	voiceCommandsFlag = "lw_voice_commands"
-	dirPerm           = 0o755
-	filePerm          = 0o644
+	flagDirPerm  = 0o755
+	flagFilePerm = 0o644
 )
 
 // FlagDef is the stamp shape from config/flags/registry.yaml.
@@ -92,11 +93,11 @@ func SetFlag(flagKey string, enabled bool) error {
 		return fmt.Errorf("marshal flags print: %w", err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(printPath), dirPerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(printPath), flagDirPerm); err != nil {
 		return err
 	}
 
-	return os.WriteFile(printPath, out, filePerm)
+	return os.WriteFile(printPath, out, flagFilePerm)
 }
 
 // ListFlags returns effective on/off for every registered flag.
@@ -298,11 +299,11 @@ func syncFileIfDrift(stamp, dest string) (bool, error) {
 		return false, fmt.Errorf("read flags print %s: %w", dest, err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dest), dirPerm); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), flagDirPerm); err != nil {
 		return false, err
 	}
 
-	if err := os.WriteFile(dest, stampData, filePerm); err != nil {
+	if err := os.WriteFile(dest, stampData, flagFilePerm); err != nil {
 		return false, err
 	}
 

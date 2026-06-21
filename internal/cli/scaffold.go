@@ -25,6 +25,7 @@ var (
 	scaffoldOutput     string
 	scaffoldBlueprints string
 	scaffoldNoHooks    bool
+	scaffoldForce      bool
 )
 
 var scaffoldCmd = &cobra.Command{
@@ -54,6 +55,7 @@ func init() {
 	scaffoldCmd.Flags().StringVarP(&scaffoldOutput, "output-folder", "o", "", "Output directory (required)")
 	scaffoldCmd.Flags().StringVar(&scaffoldBlueprints, "blueprints-dir", "", "Override the blueprint library location")
 	scaffoldCmd.Flags().BoolVar(&scaffoldNoHooks, "no-hooks", false, "Skip blueprint hooks")
+	scaffoldCmd.Flags().BoolVar(&scaffoldForce, "force", false, "Overwrite existing files (default: refuse if the blueprint would clobber any)")
 	_ = scaffoldCmd.MarkFlagRequired("output-folder")
 }
 
@@ -88,6 +90,7 @@ func runScaffold(cmd *cobra.Command, args []string) error {
 		Vars:          scaffoldVars,
 		VarFiles:      scaffoldVarFiles,
 		NoHooks:       scaffoldNoHooks,
+		Force:         scaffoldForce,
 	})
 }
 

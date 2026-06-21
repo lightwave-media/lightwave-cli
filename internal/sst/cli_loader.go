@@ -32,7 +32,7 @@ type domainFragment struct {
 	Commands    []CLICommand `yaml:"commands"`
 }
 
-// LoadCLIConfig reads commands.yaml, merges domain fragments (e.g. voice_domain.yaml),
+// LoadCLIConfig reads commands.yaml, merges domain fragments (e.g. voice_domain.yaml, release_domain.yaml),
 // and returns the validated CLIConfig.
 func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 	path := CLIConfigPath(lightwaveRoot)
@@ -65,6 +65,7 @@ func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 
 func mergeDomainFragments(cfg *CLIConfig, dir string) error {
 	fragments := []string{"voice_domain.yaml", "release_domain.yaml"}
+
 	for _, name := range fragments {
 		path := filepath.Join(dir, name)
 

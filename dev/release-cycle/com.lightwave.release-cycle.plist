@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- LaunchAgent template for the hourly release-train gate report (ADR-0032).
+     Install: see dev/release-cycle/README.md. Replace the two __HOME__ tokens
+     and the __REPO__ token with absolute paths before loading. -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lightwave.release-cycle</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>__REPO__/dev/release-cycle/release-cycle.sh</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- launchd starts with a minimal PATH; lw + gh live in the brew prefix. -->
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+  </dict>
+
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/.lightwave/logs/release-cycle.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/.lightwave/logs/release-cycle.log</string>
+</dict>
+</plist>

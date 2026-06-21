@@ -10,7 +10,7 @@ import (
 
 const qaReleasePassFlag = "autonomous_qa_release_pass"
 
-const blockerCaptureGroups = 2 // full match + capture group
+const qaVerdictSubmatchLen = 2
 
 var blockerLine = regexp.MustCompile(`(?m)^QA-RELEASE-VERDICT: blockers=([0-9]+)`)
 
@@ -42,7 +42,7 @@ func RequireQaReleasePass() error {
 	}
 
 	m := blockerLine.FindSubmatch(data)
-	if len(m) != blockerCaptureGroups {
+	if len(m) < qaVerdictSubmatchLen {
 		return fmt.Errorf("verdict at %s missing QA-RELEASE-VERDICT line", path)
 	}
 
@@ -73,7 +73,7 @@ func WriteStubVerdict(dir string) error {
 		dir = filepath.Dir(qaVerdictPath())
 	}
 
-	if err := os.MkdirAll(dir, dirPerm); err != nil {
+	if err := os.MkdirAll(dir, flagDirPerm); err != nil {
 		return err
 	}
 
@@ -83,5 +83,5 @@ func WriteStubVerdict(dir string) error {
 QA-RELEASE-VERDICT: blockers=0 tests_proposed=0
 `) + "\n"
 
-	return os.WriteFile(filepath.Join(dir, "06-qa-release-verdict.md"), []byte(body), filePerm)
+	return os.WriteFile(filepath.Join(dir, "06-qa-release-verdict.md"), []byte(body), flagFilePerm)
 }
