@@ -62,3 +62,11 @@ run = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMO
 [tasks.ci]
 description = "Local CI: fmt-check + vet + lint + build + test"
 depends = ["fmt-check", "vet", "lint", "build", "test"]
+
+[tasks."release:gate"]
+description = "Dry-run lw release merge (autonomous gate)"
+run = "go run ./cmd/lw release merge lightwave-cli"
+
+[tasks."release:flags"]
+description = "List feature flags"
+run = "go run ./cmd/lw release flag --list"

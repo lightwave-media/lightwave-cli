@@ -5,18 +5,49 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/lightwave-media/lightwave-cli/internal/blueprint"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/lightwave-media/lightwave-cli/internal/homepolicy"
 )
 
 func init() {
 	RegisterHandler("home.render", homeRenderHandler)
+	RegisterHandler("home.sync", homeSyncHandler)
 	RegisterHandler("home.validate", homeValidateHandler)
 	RegisterHandler("home.diff", homeDiffHandler)
 	RegisterHandler("home.pin", homePinHandler)
 	RegisterHandler("home.reset", homeResetHandler)
 	RegisterHandler("home.reboot", homeRebootHandler)
+}
+
+func homeSyncHandler(_ context.Context, _ []string, _ map[string]any) error {
+	start := time.Now()
+
+	result, err := homepolicy.SyncBaseline()
+	if err != nil {
+		emitOperatorCLI("home.sync", "fail", err.Error(), 1, start, nil)
+		return err
+	}
+
+	measurements := map[string]any{"files_updated": len(result.Updated)}
+
+	detail := "policy print already current"
+	if len(result.Updated) > 0 {
+		detail = fmt.Sprintf("updated %d file(s)", len(result.Updated))
+		fmt.Printf("home sync: updated %d policy file(s):\n", len(result.Updated))
+
+		for _, rel := range result.Updated {
+			fmt.Printf("  ~ %s\n", rel)
+		}
+	} else {
+		fmt.Println("home sync: policy print already current")
+	}
+
+	emitOperatorCLI("home.sync", "pass", detail, 0, start, measurements)
+
+	return nil
 }
 
 func homeRenderHandler(ctx context.Context, _ []string, flags map[string]any) error {
@@ -27,7 +58,7 @@ func homeRenderHandler(ctx context.Context, _ []string, flags map[string]any) er
 	}
 
 	root := lightwaveRoot()
-	bp := blueprint.BlueprintsDir(filepath.Join(root, "lightwave-core"))
+	bp := blueprint.BlueprintsDir(root)
 
 	path, err := blueprint.Resolve(bp, "lightwave-home")
 	if err != nil {

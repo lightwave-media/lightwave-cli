@@ -34,7 +34,7 @@ var selfSyncCmd = &cobra.Command{
 }
 
 func init() {
-	selfSyncCmd.Flags().BoolVar(&selfSyncHome, "home", false, "Also run lw home render after sync")
+	selfSyncCmd.Flags().BoolVar(&selfSyncHome, "home", false, "Also run lw home sync (policy stamp→print) after rebuild")
 	selfCmd.AddCommand(selfSyncCmd)
 }
 
@@ -71,12 +71,12 @@ func selfSyncRun(_ *cobra.Command, _ []string) error {
 	fmt.Printf("self sync: installed %s\n", out)
 
 	if selfSyncHome {
-		render := exec.CommandContext(context.Background(), out, "home", "render")
-		render.Stdout = os.Stdout
-		render.Stderr = os.Stderr
+		sync := exec.CommandContext(context.Background(), out, "home", "sync")
+		sync.Stdout = os.Stdout
+		sync.Stderr = os.Stderr
 
-		if err := render.Run(); err != nil {
-			return fmt.Errorf("self sync: home render: %w", err)
+		if err := sync.Run(); err != nil {
+			return fmt.Errorf("self sync: home sync: %w", err)
 		}
 	}
 

@@ -173,9 +173,10 @@ func setDefaults() {
 	viper.SetDefault("paperclip.url", "http://localhost:3100")
 	_ = viper.BindEnv("paperclip.url", "PAPERCLIP_URL")
 
-	// Paths
+	// Paths — LW_LIGHTWAVE_ROOT overrides default ~/dev (needed for sandboxed e2e + CI).
 	viper.SetDefault("paths.lightwave_root", filepath.Join(home, "dev"))
 	viper.SetDefault("paths.platform", filepath.Join(home, "dev", "lightwave-platform"))
+	_ = viper.BindEnv("paths.lightwave_root", "LW_LIGHTWAVE_ROOT", "LW_DEV_ROOT")
 }
 
 // Get returns the loaded config (loads if not already loaded)

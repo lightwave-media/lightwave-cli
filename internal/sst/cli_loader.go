@@ -64,7 +64,7 @@ func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 }
 
 func mergeDomainFragments(cfg *CLIConfig, dir string) error {
-	fragments := []string{"voice_domain.yaml"}
+	fragments := []string{"voice_domain.yaml", "release_domain.yaml"}
 	for _, name := range fragments {
 		path := filepath.Join(dir, name)
 

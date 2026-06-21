@@ -12,6 +12,7 @@ import (
 
 	"github.com/lightwave-media/lightwave-cli/internal/blueprint"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/lightwave-media/lightwave-cli/internal/release"
 	"github.com/lightwave-media/lightwave-cli/internal/voice"
 )
 
@@ -34,7 +35,15 @@ func init() {
 	RegisterHandler("voice.ceremony.end", voiceCeremonyEndHandler)
 }
 
+func gateVoice() error {
+	return release.GateVoice()
+}
+
 func voiceProfileListHandler(_ context.Context, _ []string, _ map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	ids, err := voice.ListProfileIDs()
 	if err != nil {
 		return err
@@ -50,6 +59,10 @@ func voiceProfileListHandler(_ context.Context, _ []string, _ map[string]any) er
 }
 
 func voiceProfileValidateHandler(_ context.Context, _ []string, flags map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	persona := flagStr(flags, "persona")
 	if persona == "" {
 		return errors.New("voice profile validate: --persona required")
@@ -74,6 +87,10 @@ func voiceProfileValidateHandler(_ context.Context, _ []string, flags map[string
 }
 
 func voiceProfileSetHandler(_ context.Context, _ []string, flags map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	persona := flagStr(flags, "persona")
 
 	profile := flagStr(flags, "profile")
@@ -101,11 +118,20 @@ func voiceProfileSetHandler(_ context.Context, _ []string, flags map[string]any)
 }
 
 func voiceProfileDiffHandler(_ context.Context, _ []string, _ map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	fmt.Println("voice profile diff: no drift (operator print matches blueprint)")
+
 	return nil
 }
 
 func voiceSpeakHandler(ctx context.Context, _ []string, flags map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	persona := flagStr(flags, "persona")
 
 	text := flagStr(flags, "text")
@@ -143,13 +169,17 @@ func voiceSpeakHandler(ctx context.Context, _ []string, flags map[string]any) er
 }
 
 func voiceRegistryRenderHandler(ctx context.Context, _ []string, flags map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	cfg := config.Get()
 	if cfg == nil {
 		return errors.New("voice registry render: config not loaded")
 	}
 
 	root := cfg.Paths.LightwaveRoot
-	bp := blueprint.BlueprintsDir(filepath.Join(root, "lightwave-core"))
+	bp := blueprint.BlueprintsDir(root)
 
 	path, err := blueprint.Resolve(bp, "lightwave-home")
 	if err != nil {
@@ -178,6 +208,10 @@ func voiceRegistryRenderHandler(ctx context.Context, _ []string, flags map[strin
 }
 
 func voiceCeremonyStartHandler(_ context.Context, _ []string, flags map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	repo, _ := os.Getwd()
 
 	session := flagStr(flags, "session")
@@ -203,6 +237,10 @@ func voiceCeremonyStartHandler(_ context.Context, _ []string, flags map[string]a
 }
 
 func voiceCeremonyStatusHandler(_ context.Context, _ []string, flags map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	repo, _ := os.Getwd()
 
 	session := flagStr(flags, "session")
@@ -222,6 +260,10 @@ func voiceCeremonyStatusHandler(_ context.Context, _ []string, flags map[string]
 }
 
 func voiceCeremonyTurnHandler(_ context.Context, _ []string, flags map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	repo, _ := os.Getwd()
 	session := flagStr(flags, "session")
 
@@ -247,6 +289,10 @@ func voiceCeremonyTurnHandler(_ context.Context, _ []string, flags map[string]an
 }
 
 func voiceCeremonyCoachHandler(ctx context.Context, _ []string, flags map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	repo, _ := os.Getwd()
 
 	session := flagStr(flags, "session")
@@ -301,6 +347,10 @@ func voiceCeremonyCoachHandler(ctx context.Context, _ []string, flags map[string
 }
 
 func voiceCeremonyEndHandler(_ context.Context, _ []string, flags map[string]any) error {
+	if err := gateVoice(); err != nil {
+		return err
+	}
+
 	repo, _ := os.Getwd()
 
 	session := flagStr(flags, "session")

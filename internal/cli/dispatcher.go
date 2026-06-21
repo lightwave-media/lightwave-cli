@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/lightwave-media/lightwave-cli/internal/config"
@@ -48,7 +49,7 @@ func BuildDispatched(root *cobra.Command, overrideDomains map[string]bool) error
 			continue
 		}
 
-		if domain.Status == sst.StatusInDevelopment && os.Getenv("LW_CLI_DEV_DOMAINS") != "1" {
+		if domain.Status == sst.StatusInDevelopment && !DevDomainsEnabled() {
 			continue
 		}
 
@@ -252,6 +253,10 @@ var booleanFlags = map[string]bool{
 	"skip-github":     true,
 	"apply":           true,
 	"no-fetch":        true,
+	"on":              true,
+	"off":             true,
+	"list":            true,
+	"release-pr":      true,
 }
 
 func isBooleanFlag(name string) bool {
@@ -273,4 +278,32 @@ var stringArrayFlags = map[string]bool{
 
 func isStringArrayFlag(name string) bool {
 	return stringArrayFlags[name]
+}
+
+// DevDomainsEnabled exposes in_development schema domains (release, voice, …).
+// Explicit LW_CLI_DEV_DOMAINS=1 always wins; otherwise auto-enable for the
+// dev fast-path binary at ~/.local/bin/lw (mise lw:sync target).
+func DevDomainsEnabled() bool {
+	if os.Getenv("LW_CLI_DEV_DOMAINS") == "1" {
+		return true
+	}
+
+	exe, err := os.Executable()
+	if err != nil {
+		return false
+	}
+
+	real, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		real = exe
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return false
+	}
+
+	devBin := filepath.Join(home, ".local", "bin", "lw")
+
+	return real == devBin || strings.HasPrefix(real, filepath.Join(home, "dev", ".worktrees", "lightwave-cli"))
 }

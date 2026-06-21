@@ -43,7 +43,7 @@ func createRepoHandler(ctx context.Context, args []string, flags map[string]any)
 	}
 
 	root := lightwaveRoot()
-	bpDir := blueprint.BlueprintsDir(filepath.Join(root, "lightwave-core"))
+	bpDir := blueprint.BlueprintsDir(root)
 
 	bpPath, err := blueprint.Resolve(bpDir, "repo-bootstrap")
 	if err != nil {
