@@ -2,7 +2,9 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/fatih/color"
@@ -29,27 +31,82 @@ func deployClusterFor(env string) string {
 
 func deployRunHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw deploy run <env> [--service=<name>] [--dry-run]")
+		return errors.New("usage: lw deploy run <env> --service=<name> [--image=<uri>] [--dry-run]")
 	}
+
 	env := args[0]
+
 	service := flagStr(flags, "service")
 	if service == "" {
-		return fmt.Errorf("--service is required (which ECS service to redeploy)")
+		return errors.New("--service is required (which ECS service to redeploy)")
 	}
+
+	cluster := deployClusterFor(env)
+
+	// New-image rollout when an image is supplied (--image flag or the
+	// LW_DEPLOY_IMAGE CI env var): register a new task-def revision with that
+	// image, point the service at it, and wait for it to stabilise. Otherwise
+	// force a redeploy of the current task definition.
+	image := flagStr(flags, "image")
+	if image == "" {
+		image = os.Getenv("LW_DEPLOY_IMAGE")
+	}
+
 	if flagBool(flags, "dry-run") {
-		fmt.Printf("[dry-run] would force new deployment of %s on cluster %s\n",
-			color.CyanString(service), color.CyanString(deployClusterFor(env)))
+		if image != "" {
+			fmt.Printf("[dry-run] would roll %s on %s to image %s (register revision, update service, wait stable)\n",
+				color.CyanString(service), color.CyanString(cluster), color.CyanString(image))
+		} else {
+			fmt.Printf("[dry-run] would force new deployment of %s on cluster %s\n",
+				color.CyanString(service), color.CyanString(cluster))
+		}
+
 		return nil
 	}
-	client, err := aws.NewECSClient(ctx, deployClusterFor(env))
+
+	client, err := aws.NewECSClient(ctx, cluster)
 	if err != nil {
 		return err
 	}
+
+	if image != "" {
+		return deployImageRollout(ctx, client, service, image)
+	}
+
 	fmt.Printf("Deploying %s to %s...\n", color.CyanString(service), color.CyanString(env))
+
 	if err := client.UpdateService(ctx, service, true); err != nil {
 		return err
 	}
+
 	fmt.Println(color.GreenString("✓ Deployment initiated"))
+
+	return nil
+}
+
+// deployImageRollout registers a new task-def revision with the given image,
+// points the service at it, and blocks until the service stabilises (or the
+// deployment circuit breaker rolls it back).
+func deployImageRollout(ctx context.Context, client *aws.ECSClient, service, image string) error {
+	fmt.Printf("Rolling %s to %s...\n", color.CyanString(service), color.CyanString(image))
+
+	arn, err := client.RegisterRevisionWithImage(ctx, service, image)
+	if err != nil {
+		return err
+	}
+
+	if err := client.UpdateServiceWithTaskDef(ctx, service, arn); err != nil {
+		return err
+	}
+
+	fmt.Printf("Registered %s; waiting for the service to stabilise...\n", color.CyanString(arn))
+
+	if err := client.WaitForStableService(ctx, service); err != nil {
+		return fmt.Errorf("service did not stabilise (the deployment circuit breaker may have rolled it back): %w", err)
+	}
+
+	fmt.Println(color.GreenString("✓ Deployment stable"))
+
 	return nil
 }
 
