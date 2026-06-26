@@ -153,6 +153,31 @@ echo "QA matrix: pass=${pass} fail=${fail} skip=${skip}"
 echo "log: ${MATRIX}"
 echo "summary: ${SUMMARY}"
 
+OBS_DIR="${LW_OBSERVABILITY_DIR:-${HOME}/.lightwave/observability}"
+mkdir -p "${OBS_DIR}"
+OUTCOME="pass"
+if [[ "${fail}" -gt 0 ]]; then OUTCOME="fail"; fi
+python3 - <<PY
+import json, datetime, os
+rec = {
+    "ts": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "outcome": "${OUTCOME}",
+    "pass": ${pass},
+    "fail": ${fail},
+    "skip": ${skip},
+    "artefact_dir": "${ARTEFACT_DIR}",
+    "measurements": {"matrix_log": "${MATRIX}", "summary": "${SUMMARY}"},
+    "detail": f"pass={pass} fail={fail} skip={skip}",
+}
+path = os.path.join("${OBS_DIR}", "release-qa.jsonl")
+with open(path, "a", encoding="utf-8") as f:
+    f.write(json.dumps(rec) + "\n")
+print(f"observability: {path}")
+PY
+
 if [[ "${fail}" -gt 0 ]]; then
+  FB_DIR="${HOME}/.lightwave/brain/tool-feedback/lw"
+  mkdir -p "${FB_DIR}"
+  printf '%s\n' "{\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"lesson\":\"release QA matrix has ${fail} FAIL row(s)\",\"cure\":\"inspect ${MATRIX}; land CI tests; re-run dev/release_qa_pass.sh\",\"source_verb\":\"release.qa_pass\",\"audience\":\"v_qa-engineer\"}" >> "${FB_DIR}/$(date -u +%Y-%m-%d).jsonl"
   exit 1
 fi

@@ -1,5 +1,7 @@
 package release_test
 
+//nolint:paralleltest // pinFlags mutates process env via t.Setenv
+
 import (
 	"os"
 	"path/filepath"

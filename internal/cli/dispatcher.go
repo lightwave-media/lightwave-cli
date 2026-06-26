@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -29,7 +30,7 @@ import (
 func BuildDispatched(root *cobra.Command, overrideDomains map[string]bool) error {
 	cfg := config.Get()
 	if cfg == nil {
-		return fmt.Errorf("dispatcher: config not loaded")
+		return errors.New("dispatcher: config not loaded")
 	}
 
 	schema, err := sst.LoadCLIConfig(cfg.Paths.LightwaveRoot)
@@ -48,7 +49,7 @@ func BuildDispatched(root *cobra.Command, overrideDomains map[string]bool) error
 			continue
 		}
 
-		if domain.Status == sst.StatusInDevelopment && !devDomainsEnabled() {
+		if domain.Status == sst.StatusInDevelopment && !DevDomainsEnabled() {
 			continue
 		}
 
@@ -58,19 +59,17 @@ func BuildDispatched(root *cobra.Command, overrideDomains map[string]bool) error
 		}
 
 		var attached int
-		for _, cmd := range domain.Commands {
-			key := sst.CommandKey(domain.Name, cmd.Name)
-			handler, ok := LookupHandler(key)
-			if !ok {
-				continue
+
+		for i := range domain.Commands {
+			if n := attachDomainCommand(domainCmd, domain.Name, "", &domain.Commands[i]); n > 0 {
+				attached += n
 			}
-			domainCmd.AddCommand(buildSubcommand(cmd, key, handler))
-			attached++
 		}
 
 		if attached == 0 {
 			continue
 		}
+
 		root.AddCommand(domainCmd)
 	}
 
@@ -93,11 +92,13 @@ func buildSubcommand(cmd sst.CLICommand, key string, handler Handler) *cobra.Com
 	flagValues := map[string]*string{}
 	flagBools := map[string]*bool{}
 	flagSlices := map[string]*[]string{}
+
 	for _, raw := range cmd.Flags {
 		name := strings.TrimPrefix(raw, "--")
 		if name == "" {
 			continue
 		}
+
 		switch {
 		case isBooleanFlag(name):
 			b := false
@@ -121,25 +122,70 @@ func buildSubcommand(cmd sst.CLICommand, key string, handler Handler) *cobra.Com
 				flags[name] = *p
 			}
 		}
+
 		for name, p := range flagBools {
 			if cobraCmd.Flags().Changed(name) {
 				flags[name] = *p
 			}
 		}
+
 		for name, p := range flagSlices {
 			if cobraCmd.Flags().Changed(name) {
 				flags[name] = *p
 			}
 		}
+
 		ctx := cobraCmd.Context()
 		if ctx == nil {
 			ctx = context.Background()
 		}
+
 		_ = key // reserved for future structured logging
+
 		return handler(ctx, args, flags)
 	}
 
 	return c
+}
+
+// attachDomainCommand registers a command or nested group on parent. Returns
+// the number of leaf handlers attached.
+func attachDomainCommand(parent *cobra.Command, domain, prefix string, cmd *sst.CLICommand) int {
+	fullName := cmd.Name
+	if prefix != "" {
+		fullName = prefix + "." + cmd.Name
+	}
+
+	if len(cmd.Commands) > 0 {
+		group := &cobra.Command{
+			Use:   cmd.Name,
+			Short: cmd.Description,
+		}
+
+		var attached int
+		for i := range cmd.Commands {
+			attached += attachDomainCommand(group, domain, fullName, &cmd.Commands[i])
+		}
+
+		if attached == 0 {
+			return 0
+		}
+
+		parent.AddCommand(group)
+
+		return attached
+	}
+
+	key := sst.CommandKey(domain, fullName)
+
+	handler, ok := LookupHandler(key)
+	if !ok {
+		return 0
+	}
+
+	parent.AddCommand(buildSubcommand(*cmd, key, handler))
+
+	return 1
 }
 
 // buildUseString emits "name <arg1> <arg2>" for cobra's Use field.
@@ -147,11 +193,14 @@ func buildUseString(cmd sst.CLICommand) string {
 	if len(cmd.Args) == 0 {
 		return cmd.Name
 	}
+
 	parts := make([]string, 0, 1+len(cmd.Args))
+
 	parts = append(parts, cmd.Name)
 	for _, a := range cmd.Args {
 		parts = append(parts, "<"+a+">")
 	}
+
 	return strings.Join(parts, " ")
 }
 
@@ -231,10 +280,10 @@ func isStringArrayFlag(name string) bool {
 	return stringArrayFlags[name]
 }
 
-// devDomainsEnabled exposes in_development schema domains (release, …).
+// DevDomainsEnabled exposes in_development schema domains (release, voice, …).
 // Explicit LW_CLI_DEV_DOMAINS=1 always wins; otherwise auto-enable for the
 // dev fast-path binary at ~/.local/bin/lw (mise lw:sync target).
-func devDomainsEnabled() bool {
+func DevDomainsEnabled() bool {
 	if os.Getenv("LW_CLI_DEV_DOMAINS") == "1" {
 		return true
 	}
@@ -261,5 +310,9 @@ func devDomainsEnabled() bool {
 		devReal = devLW
 	}
 
-	return real == devReal
+	if real == devReal {
+		return true
+	}
+
+	return strings.HasPrefix(real, filepath.Join(home, "dev", ".worktrees", "lightwave-cli"))
 }

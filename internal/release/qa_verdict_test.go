@@ -1,5 +1,7 @@
 package release_test
 
+//nolint:paralleltest // pinFlags mutates process env via t.Setenv
+
 import (
 	"path/filepath"
 	"testing"
@@ -14,7 +16,7 @@ func TestRequireQaReleasePass_SkipsWhenFlagOff(t *testing.T) { //nolint:parallel
 	require.NoError(t, release.RequireQaReleasePass())
 }
 
-func TestRequireQaReleasePass_BlocksWithoutVerdict(t *testing.T) {
+func TestRequireQaReleasePass_BlocksWithoutVerdict(t *testing.T) { //nolint:paralleltest // pinFlags uses t.Setenv
 	home := pinFlags(t)
 	require.NoError(t, release.SetFlag("autonomous_qa_release_pass", true))
 

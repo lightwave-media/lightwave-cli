@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
@@ -52,7 +53,28 @@ type checkRollupEntry struct {
 	State      string `json:"state"`
 }
 
-func releaseFlagHandler(_ context.Context, args []string, flags map[string]any) error {
+func releaseFlagHandler(_ context.Context, args []string, flags map[string]any) (err error) {
+	start := time.Now()
+
+	defer func() {
+		outcome := "pass"
+		code := 0
+		detail := ""
+
+		if err != nil {
+			outcome = "fail"
+			code = 1
+			detail = err.Error()
+		}
+
+		m := map[string]any{"list": flagBool(flags, "list")}
+		if len(args) > 0 {
+			m["flag_key"] = args[0]
+		}
+
+		emitOperatorCLI("release.flag", outcome, detail, code, start, m)
+	}()
+
 	if flagBool(flags, "list") || len(args) == 0 {
 		items, err := release.ListFlags()
 		if err != nil {
@@ -193,7 +215,31 @@ func releaseSignOffHandler(_ context.Context, args []string, flags map[string]an
 	return nil
 }
 
-func releaseMergeHandler(ctx context.Context, args []string, flags map[string]any) error {
+func releaseMergeHandler(ctx context.Context, args []string, flags map[string]any) (err error) {
+	start := time.Now()
+
+	defer func() {
+		outcome := "pass"
+		code := 0
+		detail := ""
+
+		if err != nil {
+			outcome = "fail"
+			code = 1
+			detail = err.Error()
+		}
+
+		m := map[string]any{
+			"release_pr": flagBool(flags, "release-pr"),
+			"apply":      flagBool(flags, "yes"),
+		}
+		if len(args) > 0 {
+			m["repo"] = args[0]
+		}
+
+		emitOperatorCLI("release.merge", outcome, detail, code, start, m)
+	}()
+
 	if len(args) < 1 {
 		return errors.New("usage: lw release merge <repo> [--pr N] [--yes] [--release-pr]")
 	}

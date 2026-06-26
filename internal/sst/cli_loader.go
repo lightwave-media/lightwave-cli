@@ -1,6 +1,7 @@
 package sst
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -31,10 +32,11 @@ type domainFragment struct {
 	Commands    []CLICommand `yaml:"commands"`
 }
 
-// LoadCLIConfig reads commands.yaml, merges domain fragments (e.g. release_domain.yaml),
+// LoadCLIConfig reads commands.yaml, merges domain fragments (e.g. voice_domain.yaml, release_domain.yaml),
 // and returns the validated CLIConfig.
 func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 	path := CLIConfigPath(lightwaveRoot)
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read CLI config %s: %w", path, err)
@@ -62,7 +64,7 @@ func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 }
 
 func mergeDomainFragments(cfg *CLIConfig, dir string) error {
-	fragments := []string{"release_domain.yaml"}
+	fragments := []string{"voice_domain.yaml", "release_domain.yaml"}
 
 	for _, name := range fragments {
 		path := filepath.Join(dir, name)
@@ -101,14 +103,14 @@ func mergeDomainFragments(cfg *CLIConfig, dir string) error {
 // names unique within scope.
 func (c *CLIConfig) Validate() error {
 	if c.Version == "" {
-		return fmt.Errorf("missing _meta.version")
+		return errors.New("missing _meta.version")
 	}
 
 	seenDomain := map[string]bool{}
 
 	for _, d := range c.Domains {
 		if d.Name == "" {
-			return fmt.Errorf("domain with empty name")
+			return errors.New("domain with empty name")
 		}
 
 		if seenDomain[d.Name] {
@@ -121,22 +123,8 @@ func (c *CLIConfig) Validate() error {
 			return fmt.Errorf("domain %q has no commands", d.Name)
 		}
 
-		seenCmd := map[string]bool{}
-
-		for _, cmd := range d.Commands {
-			if cmd.Name == "" {
-				return fmt.Errorf("domain %q has command with empty name", d.Name)
-			}
-
-			if seenCmd[cmd.Name] {
-				return fmt.Errorf("domain %q has duplicate command %q", d.Name, cmd.Name)
-			}
-
-			seenCmd[cmd.Name] = true
-
-			if cmd.Description == "" {
-				return fmt.Errorf("%s.%s missing description", d.Name, cmd.Name)
-			}
+		if err := validateCommandTree(d.Name, "", d.Commands); err != nil {
+			return err
 		}
 	}
 

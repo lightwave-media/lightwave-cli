@@ -3,38 +3,34 @@ package sst
 import "fmt"
 
 // CommandKey returns the canonical handler-registry key for a command.
-// Format: "<domain>.<command>", e.g. "task.list".
+// Format: "<domain>.<command>", e.g. "task.list" or "voice.profile.list".
 func CommandKey(domain, command string) string {
 	return fmt.Sprintf("%s.%s", domain, command)
 }
 
 // Index flattens the CLI config to a map keyed by "<domain>.<command>"
-// for O(1) handler lookup at dispatch time.
+// for O(1) handler lookup at dispatch time. Nested command groups flatten
+// to dotted keys (voice.profile.list).
 func (c *CLIConfig) Index() map[string]CLICommand {
 	out := make(map[string]CLICommand, len(c.Domains)*8)
 	for _, d := range c.Domains {
-		for _, cmd := range d.Commands {
-			out[CommandKey(d.Name, cmd.Name)] = cmd
-		}
+		flattenCommandIndex(d.Name, "", d.Commands, out)
 	}
+
 	return out
 }
 
-// Keys returns the deterministic ordered list of "<domain>.<command>" keys.
+// Keys returns the deterministic ordered list of leaf "<domain>.<command>" keys.
 func (c *CLIConfig) Keys() []string {
 	out := make([]string, 0, len(c.Domains)*8)
 	for _, d := range c.Domains {
-		for _, cmd := range d.Commands {
-			out = append(out, CommandKey(d.Name, cmd.Name))
-		}
+		out = append(out, flattenCommandKeys(d.Name, "", d.Commands)...)
 	}
+
 	return out
 }
 
-// KeysPublished returns the ordered keys for domains that are NOT
-// in_development. Used by the strict schema-drift gate so that commands
-// declared with _status: in_development do not trigger a "missing handler"
-// failure before their Go companion lands.
+// KeysPublished returns leaf keys for domains that are NOT in_development.
 func (c *CLIConfig) KeysPublished() []string {
 	out := make([]string, 0, len(c.Domains))
 
@@ -43,9 +39,7 @@ func (c *CLIConfig) KeysPublished() []string {
 			continue
 		}
 
-		for _, cmd := range d.Commands {
-			out = append(out, CommandKey(d.Name, cmd.Name))
-		}
+		out = append(out, flattenCommandKeys(d.Name, "", d.Commands)...)
 	}
 
 	return out
@@ -58,5 +52,6 @@ func (c *CLIConfig) FindDomain(name string) *CLIDomain {
 			return &c.Domains[i]
 		}
 	}
+
 	return nil
 }
