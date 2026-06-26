@@ -9,6 +9,14 @@ from conventional commits (`feat:` / `fix:` / `chore:` / etc.). This
 file is the human-curated complement — what changed, why, and how it
 affects users — for releases that move the needle.
 
+## [3.9.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.8.0...v3.9.0) (2026-06-26)
+
+
+### Features
+
+* **deploy:** lw deploy run --image rolls a new task-def revision ([#169](https://github.com/lightwave-media/lightwave-cli/issues/169)) ([de84d5d](https://github.com/lightwave-media/lightwave-cli/commit/de84d5dd7be8b6e6d61b307e1210ef0e044e3d58))
+* **voice:** lw voice ceremony, profile, speak, registry ([#172](https://github.com/lightwave-media/lightwave-cli/issues/172)) ([eed8ea9](https://github.com/lightwave-media/lightwave-cli/commit/eed8ea9641e1768dde34b0b465940faf1e26783b))
+
 ## [3.8.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.7.0...v3.8.0) (2026-06-26)
 
 
