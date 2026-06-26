@@ -9,6 +9,18 @@ from conventional commits (`feat:` / `fix:` / `chore:` / etc.). This
 file is the human-curated complement — what changed, why, and how it
 affects users — for releases that move the needle.
 
+## [3.8.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.7.0...v3.8.0) (2026-06-26)
+
+
+### Features
+
+* **check:** dynamic repo-infra validation ([55645a8](https://github.com/lightwave-media/lightwave-cli/commit/55645a8c906c548c8e1c2e5a75d4def074a24093))
+
+
+### Bug Fixes
+
+* **scrum:** remove null* repos from SwarmRepos ([1697126](https://github.com/lightwave-media/lightwave-cli/commit/1697126acb9621bec498e37277bc09d222fe0ac2))
+
 ## [3.7.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.6.0...v3.7.0) (2026-06-20)
 
 
