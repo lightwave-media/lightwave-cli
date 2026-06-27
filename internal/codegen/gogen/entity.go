@@ -1,3 +1,5 @@
+// Package gogen generates Go structs and PostgreSQL DDL from SST entity
+// YAML schemas declared in lightwave-core/src/schemas/data/.
 package gogen
 
 import (
@@ -32,14 +34,15 @@ type EntitySchema struct {
 }
 
 // FieldDef is a single field entry from required_fields / optional_fields.
+// Fields are ordered largest-first to minimise struct padding.
 type FieldDef struct {
 	Name       string `yaml:"name"`
 	Type       string `yaml:"type"`
 	Storage    string `yaml:"storage"`
 	FKRef      string `yaml:"fk_ref"`
 	FKColumn   string `yaml:"fk_column"`
-	Indexed    bool   `yaml:"indexed"`
 	ColumnType string `yaml:"column_type"`
+	Indexed    bool   `yaml:"indexed"`
 }
 
 // Relations holds the parent/children FK metadata.
@@ -60,13 +63,17 @@ func Load(path string) (*EntitySchema, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var e EntitySchema
+
 	if err := yaml.Unmarshal(data, &e); err != nil {
 		return nil, err
 	}
+
 	if e.Meta.TableKind != "entity" {
 		return nil, fmt.Errorf("%s: not an entity schema (table_kind=%q)", filepath.Base(path), e.Meta.TableKind)
 	}
+
 	return &e, nil
 }
 
@@ -77,16 +84,21 @@ func FindEntities(dir string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var out []string
+
 	for _, entry := range entries {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".yaml") || entry.Name() == "__index.yaml" {
 			continue
 		}
+
 		p := filepath.Join(dir, entry.Name())
+
 		if _, err := Load(p); err == nil {
 			out = append(out, p)
 		}
 	}
+
 	return out, nil
 }
 
@@ -95,6 +107,7 @@ func GoType(sstType string) string {
 	if strings.HasPrefix(sstType, "list[") {
 		return "json.RawMessage"
 	}
+
 	switch sstType {
 	case "str":
 		return "string"
@@ -121,9 +134,11 @@ func SQLType(sstType, columnType string) string {
 	if columnType != "" {
 		return strings.ToUpper(columnType)
 	}
+
 	if strings.HasPrefix(sstType, "list[") {
 		return "JSONB"
 	}
+
 	switch sstType {
 	case "str":
 		return "TEXT"
@@ -152,20 +167,25 @@ func SQLType(sstType, columnType string) string {
 func TableFromFKRef(fkRef string) string {
 	parts := strings.Split(strings.TrimRight(fkRef, "/"), "/")
 	name := parts[len(parts)-1]
+
 	if strings.HasSuffix(name, "y") {
 		return name[:len(name)-1] + "ies"
 	}
+
 	return name + "s"
 }
 
 // CamelCase converts snake_case to CamelCase.
 func CamelCase(s string) string {
 	var b strings.Builder
+
 	for part := range strings.SplitSeq(s, "_") {
 		if len(part) == 0 {
 			continue
 		}
+
 		b.WriteString(strings.ToUpper(part[:1]) + part[1:])
 	}
+
 	return b.String()
 }

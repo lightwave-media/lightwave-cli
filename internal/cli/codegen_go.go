@@ -44,9 +44,10 @@ func init() {
 	codegenCmd.AddCommand(codegenGoCmd)
 }
 
-func runCodegenGo(cmd *cobra.Command, args []string) error {
+func runCodegenGo(_ *cobra.Command, args []string) error {
 	cfg := config.Get()
 	root := cfg.Paths.LightwaveRoot
+
 	if root == "" {
 		home, _ := os.UserHomeDir()
 		root = filepath.Join(home, "dev")
@@ -58,6 +59,7 @@ func runCodegenGo(cmd *cobra.Command, args []string) error {
 	}
 
 	entityDir := filepath.Join(root, "lightwave-core", "src", "schemas", family)
+
 	if _, err := os.Stat(entityDir); err != nil {
 		return fmt.Errorf("schema directory not found: %s (is lightwave-core checked out at %s?)", entityDir, root)
 	}
@@ -71,28 +73,33 @@ func runCodegenGo(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("scanning %s: %w", entityDir, err)
 	}
+
 	if len(paths) == 0 {
 		color.Yellow("no entity schemas found in %s", entityDir)
 		return nil
 	}
 
-	// Filter by --only
 	if codegenGoOnly != "" {
 		var filtered []string
+
 		for _, p := range paths {
 			base := strings.TrimSuffix(filepath.Base(p), ".yaml")
+
 			if base == codegenGoOnly {
 				filtered = append(filtered, p)
 			}
 		}
+
 		if len(filtered) == 0 {
 			return fmt.Errorf("no entity named %q found in %s", codegenGoOnly, entityDir)
 		}
+
 		paths = filtered
 	}
 
 	stale := 0
 	generated := 0
+
 	for _, p := range paths {
 		e, err := gogen.Load(p)
 		if err != nil {
@@ -107,28 +114,34 @@ func runCodegenGo(cmd *cobra.Command, args []string) error {
 		if codegenGoCheck {
 			stale += checkFile(goFile, out.GoFile)
 			stale += checkFile(sqlFile, out.SQLFile)
+
 			continue
 		}
 
 		if codegenDryRun {
 			fmt.Printf("── %s.go ──\n%s\n", e.Meta.TableName, out.GoFile)
 			fmt.Printf("── %s.sql ──\n%s\n", e.Meta.TableName, out.SQLFile)
+
 			generated++
+
 			continue
 		}
 
-		if err := os.MkdirAll(outDir, 0o755); err != nil {
+		if err := os.MkdirAll(outDir, codegenDirPerm); err != nil {
 			return fmt.Errorf("creating output dir: %w", err)
 		}
-		if err := os.WriteFile(goFile, []byte(out.GoFile), 0o644); err != nil {
+
+		if err := os.WriteFile(goFile, []byte(out.GoFile), codegenFilePerm); err != nil {
 			return fmt.Errorf("writing %s: %w", goFile, err)
 		}
-		if err := os.WriteFile(sqlFile, []byte(out.SQLFile), 0o644); err != nil {
+
+		if err := os.WriteFile(sqlFile, []byte(out.SQLFile), codegenFilePerm); err != nil {
 			return fmt.Errorf("writing %s: %w", sqlFile, err)
 		}
 
 		color.Green("✓ %s", goFile)
 		color.Green("✓ %s", sqlFile)
+
 		generated++
 	}
 
@@ -136,13 +149,16 @@ func runCodegenGo(cmd *cobra.Command, args []string) error {
 		if stale > 0 {
 			return fmt.Errorf("%d generated file(s) are stale — run: lw codegen go", stale)
 		}
+
 		color.Green("✓ all generated files are up to date")
+
 		return nil
 	}
 
 	if !codegenDryRun {
 		fmt.Printf("\nGenerated %s entities → %s\n", color.CyanString("%d", generated), outDir)
 	}
+
 	return nil
 }
 
@@ -150,13 +166,16 @@ func runCodegenGo(cmd *cobra.Command, args []string) error {
 // Returns 1 if stale or missing, 0 if current.
 func checkFile(path, want string) int {
 	got, err := os.ReadFile(path)
+
 	if err != nil || string(got) != want {
 		if err != nil {
 			color.Red("MISSING %s", path)
 		} else {
 			color.Red("STALE   %s", path)
 		}
+
 		return 1
 	}
+
 	return 0
 }
