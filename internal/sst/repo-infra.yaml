@@ -1,0 +1,220 @@
+_meta:
+  version: "1.3.0"
+  schema_id: "lightwave://schemas/policy/governance/repo-infra"
+  title: "Canonical LightWave Repo Infrastructure"
+  description: |
+    Declares the canonical structure every LightWave repo MUST scaffold
+    at the top level for AI agent integration, CI/CD, validity gating,
+    git hooks, and engineer docs. Names each required dir/file, its
+    purpose, its consumer (which tool reads it), and its trigger event.
+
+    Lightwave-core is the first conformant repo and the SST stamp for
+    the pattern. Other LightWave repos (lightwave-cli, lightwave-sys,
+    lightwave-ui, lightwave-platform, root-folder) run the conformance
+    check via `lw repo conform` (Phase 7+ blueprint).
+
+    The pattern was synthesized 2026-05-26 from research into
+    lightwave-sys's structure (which had richer .github/, AGENTS.md,
+    dev/cli.sh, dev/ci.sh) + lightwave-core's structure. Git hooks live
+    under dev/hooks/ (core.hooksPath=dev/hooks). The schema unifies the
+    best of both and locks the AGENTS.md/CLAUDE.md split (canonical vs
+    thin pointer) as the convention.
+
+    v1.1.0 (2026-06-05) adds the mise layer. Every repo declares a top-level
+    mise.toml whose `mise run ci` is THE local-CI command, invoked uniformly
+    by dev/hooks/pre-push (core.hooksPath=dev/hooks, installed by
+    ~/.lightwave/lib/gate/conform.sh) and by generated GitHub Actions — so
+    local and CI cannot drift. dev/ci.sh is retired in favour of `mise run
+    ci`. AGENTS.md now declares the definition of done. Enforcement is thus
+    harness-agnostic: the gate fires for every actor (Claude, Pi, ZeroClaw,
+    human, cron) at the git boundary, never inside one agent harness.
+
+    v1.3.0 (2026-06-16) adds required_actions: documents the canonical
+    post-failure-context composite action (lightwave-core/.github/actions/
+    post-failure-context/) as the standard pattern for posting structured
+    failure output to PRs as agent-ready prompts. External repos reference
+    it via `uses: lightwave-media/lightwave-core/.github/actions/
+    post-failure-context@v1`; the same repo uses `./.github/actions/
+    post-failure-context`. Automated enforcement via `lw check repo-infra`
+    is planned but not yet shipped.
+
+    v1.2.0 (2026-06-12) resolves Decision 1A of the mise plan: mise [tasks]
+    are the CANONICAL check definitions, not a mirror of anything. GitHub
+    workflows consume them via jdx/mise-action + `mise run ci` (no
+    hand-written check steps); dev/hooks/pre-push runs the same graph
+    (with LW_REQUIRE_DOCS_VALIDATOR=1, since host-runtime validators must
+    exist on dev machines); dev/ci.sh is a thin `exec mise run` shim kept
+    for muscle memory only. Workflow tool versions come from mise.toml
+    [tools] — never hardcoded in workflow env blocks.
+  generates:
+    - "pydantic:RepoInfra"
+  depends_on:
+    - "lightwave://schemas/data/meta/lightwave-settings"
+    - "lightwave://schemas/data/meta/lightwave-contract"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier for this infra spec version (e.g. 'lightwave-repo-v1')."
+  - name: required_dirs
+    type: "list[InfraDir]"
+    description: |
+      Top-level directories every conformant repo declares. Sub-schema InfraDir:
+      path (str, must end with '/'), purpose (str, prose), consumer (str — the
+      tool reading it), trigger (str — when), universality (enum: universal |
+      conditional), contents (str, prose describing what lives inside),
+      gitignored (list[str], optional — files explicitly excluded from git),
+      install (str, optional — bootstrap command).
+  - name: required_files
+    type: "list[InfraFile]"
+    description: |
+      Top-level files every conformant repo declares. Sub-schema InfraFile:
+      path (str), purpose (str), consumer (str), universality (enum:
+      universal | conditional).
+  - name: required_actions
+    type: "list[InfraAction]"
+    optional: true
+    description: |
+      Reusable GitHub Actions (composite or reusable workflow) every conformant
+      repo should wire into its CI. Sub-schema InfraAction:
+      uses (str — the action ref, e.g. org/repo/.github/actions/<name>@<tag>),
+      purpose (str, prose), consumer (str — which tools/agents read it),
+      universality (enum: universal | conditional),
+      pattern (str, optional — canonical YAML snippet showing correct usage).
+
+example:
+  id: "lightwave-repo-v1"
+  required_dirs:
+    - path: ".claude/"
+      purpose: "Claude Code per-repo overrides; vendored canonical hooks if applicable."
+      consumer: "claude-code"
+      trigger: "session-start, per-tool-call"
+      universality: "conditional"
+      contents: "skills/ (repo-specific only), settings.local.json (gitignored). Workspace hooks live at root-folder/.claude/hooks/; vendor here only if the repo legitimately needs a unique override."
+      gitignored: ["settings.local.json", "settings.json"]
+    - path: ".gemini/"
+      purpose: "Gemini per-repo overrides (style-guide.md, etc.)."
+      consumer: "gemini-cli"
+      trigger: "session-start"
+      universality: "conditional"
+      contents: "style-guide.md and similar per-repo Gemini config."
+    - path: ".github/"
+      purpose: "GitHub integration: CI workflows, issue/PR templates, bot config."
+      consumer: "github-actions, github.com"
+      trigger: "push, PR, schedule, issue events"
+      universality: "universal"
+      contents: |
+        Required: workflows/<repo-name>-ci.yml, dependabot.yml.
+        Should-have: CODEOWNERS, ISSUE_TEMPLATE/{bug_report,feature_request,tool_gap,config}.yml,
+        pull_request_template.md, actionlint.yaml, labeler.yml, label-policy.json,
+        workflows/issues-opened-lint.yml (optional bot backstop for non-compliant bodies).
+        blank_issues_enabled: false in ISSUE_TEMPLATE/config.yml — agents file via
+        `lw issue create`, humans via the web template picker (`gh issue create --web`).
+    - path: "dev/"
+      purpose: "Dev environment + git-hook quality gate + language-specific helpers."
+      consumer: "engineer locally, mise for local CI, every actor at git push"
+      trigger: "manual (./dev/cli.sh up, mise run ci); automatic (git commit/push)"
+      universality: "universal"
+      contents: |
+        README.md — how to use this dev env.
+        cli.sh — lifecycle helper (up/down/shell/build/clean).
+        hooks/ — git hooks installed via core.hooksPath=dev/hooks by
+          ~/.lightwave/lib/gate/conform.sh (or ./dev/hooks/install.sh):
+          pre-commit delegates to the pre-commit framework; pre-push runs
+          `mise run ci` (REQUIRED hard gate) + act (opt-in LW_PREPUSH_ACT=1)
+          + review (opt-in LW_PREPUSH_REVIEW=1). Bypass: LW_SKIP_PRE_PUSH=1.
+          Conform regenerates its own (sentinel-marked) hooks and preserves
+          bespoke ones (e.g. lightwave-core's richer pre-push).
+        docker-compose.yml, docker-compose.ci.yml, Dockerfile — when the dev
+          or build environment is containerized (conditional).
+        ci.sh — RETIRED: superseded by `mise run ci`. May survive as a thin
+          `exec mise run ci "$@"` shim for muscle memory.
+    - path: "docs/"
+      purpose: "Engineer + public documentation (lean OR mdbook by audience)."
+      consumer: "engineers, GitHub Pages (if docs-deploy.yml), agents"
+      trigger: "engineer reads, agent ingest"
+      universality: "universal"
+      contents: |
+        Lean repos: Guides/, references/, governance/ (per lightwave-core).
+        Public repos: docs/book/ (mdbook + SUMMARY.md). Choice is per-repo.
+        Validator-canonical files live in docs/governance/.
+    - path: "src/"
+      purpose: "Source — language-specific layout."
+      consumer: "compiler / interpreter / test runner"
+      trigger: "build, test"
+      universality: "universal"
+      contents: "Language-conventional layout (Rust crates/, Python lightwave/, etc.)."
+    - path: "tests/"
+      purpose: "Tests."
+      consumer: "pytest / cargo test / npm test / go test"
+      trigger: "ci, local"
+      universality: "universal"
+      contents: "Language-conventional test layout."
+  required_actions:
+    - uses: "lightwave-media/lightwave-core/.github/actions/post-failure-context@v1"
+      purpose: |
+        Posts structured CI failure output to the PR as an agent-ready prompt.
+        Ensures any agent reading the PR gets the exact error text + a fix directive
+        without requiring log access.
+      consumer: "github-actions, claude-code, pi, all agents reading PRs"
+      universality: "conditional"
+      pattern: |
+        - name: Post failure context
+          if: failure()
+          uses: lightwave-media/lightwave-core/.github/actions/post-failure-context@v1
+          with:
+            job-name: <human-readable-job-name>
+            output-file: /tmp/<job>-output.txt
+  required_files:
+    - path: "AGENTS.md"
+      purpose: |
+        CANONICAL multi-agent instructions. Read by every AI tool by default.
+        Declares the definition of done: `mise run ci` green + a test that
+        pins the change.
+      consumer: "claude-code, codex, pi, zed, gemini, all AI agents"
+      universality: "universal"
+    - path: "CLAUDE.md"
+      purpose: "Thin pointer to AGENTS.md + Claude-Code-specific overrides only (<30 lines)."
+      consumer: "claude-code"
+      universality: "universal"
+    - path: "README.md"
+      purpose: "Repo overview for humans landing on GitHub."
+      consumer: "humans, GitHub"
+      universality: "universal"
+    - path: "mise.toml"
+      purpose: |
+        Pinned toolchain ([tools]) + the canonical local-CI task graph
+        ([tasks], esp. `ci`). `mise run ci` is THE local-CI command — invoked
+        by dev/hooks/pre-push and by generated GitHub Actions, so local and CI
+        cannot drift. A repo's own [tasks.ci] overrides the global
+        ~/.config/mise/tasks/ci auto-detect fallback. Canonical filename is
+        `mise.toml` (not `.mise.toml`).
+      consumer: "mise, dev/hooks/pre-push, github-actions"
+      universality: "universal"
+    - path: ".gitignore"
+      purpose: "Files git should never track."
+      consumer: "git"
+      universality: "universal"
+    - path: ".pre-commit-config.yaml"
+      purpose: "pre-commit framework config (ruff, file-hygiene, lang-specific hooks)."
+      consumer: "pre-commit (https://pre-commit.com)"
+      universality: "conditional"
+      contents: |
+        Forced at repo root by the framework's CWD-walk lookup; can't be moved
+        without passing --config to every invocation. Only present when the
+        repo opts into the pre-commit framework (lightwave-core does; lightwave-sys
+        doesn't — they use raw .githooks/ only without the framework).
+    - path: ".gitattributes"
+      purpose: "Per-path attributes (line-endings, linguist hints, merge drivers)."
+      consumer: "git"
+      universality: "conditional"
+    - path: ".envrc"
+      purpose: "direnv config — auto-load shell env on cd."
+      consumer: "direnv"
+      universality: "conditional"
+    - path: ".editorconfig"
+      purpose: "Cross-IDE indentation + line-ending conventions."
+      consumer: "editors (VS Code, Zed, IntelliJ, …)"
+      universality: "conditional"

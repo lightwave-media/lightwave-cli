@@ -3,12 +3,17 @@
 package sst
 
 import (
+	_ "embed"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
 )
+
+//go:embed repo-infra.yaml
+var bundledRepoInfra []byte
 
 // RepoInfraPath returns the absolute path to repo-infra.yaml from the workspace root.
 func RepoInfraPath(lightwaveRoot string) string {
@@ -74,7 +79,11 @@ func LoadRepoInfra(lightwaveRoot string) (*RepoInfraConfig, error) {
 
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return nil, fmt.Errorf("read repo-infra %s: %w", path, err)
+		if !errors.Is(err, os.ErrNotExist) {
+			return nil, fmt.Errorf("read repo-infra %s: %w", path, err)
+		}
+		// lightwave-core not checked out — use the bundled snapshot.
+		data = bundledRepoInfra
 	}
 
 	var raw rawRepoInfraSchema
