@@ -71,6 +71,11 @@ func TestCollectionFieldRuntimeConformance(t *testing.T) {
 	contractsTS, err := zodgen.EmitContracts(append([]*zodgen.Schema{component, section}, extra...), enums)
 	require.NoError(t, err)
 
+	// contracts.generated.ts now references enum consts via an import from
+	// "./enums.generated" (lightwave-cli#86); the bare node driver can't
+	// resolve that path, so inline the enum module ahead of the contracts.
+	enumsTS := zodgen.EmitEnums(enums)
+
 	// The happy-path case (#5) IS the stamp's example block — decode it so the
 	// test can never drift from the schema it guards.
 	collection, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", "collection.yaml"))
@@ -125,7 +130,10 @@ func TestCollectionFieldRuntimeConformance(t *testing.T) {
 	casesJSON, err := json.Marshal(cases)
 	require.NoError(t, err)
 
-	driver := stripTypeExports(contractsTS) + "\n" + runtimeHarness(string(casesJSON))
+	driver := "import { z } from \"zod\";\n" +
+		toDriverJS(enumsTS) + "\n" +
+		toDriverJS(contractsTS) + "\n" +
+		runtimeHarness(string(casesJSON))
 
 	dir := t.TempDir()
 	require.NoError(t, os.Symlink(zodNM, filepath.Join(dir, "node_modules")))
@@ -141,16 +149,18 @@ func TestCollectionFieldRuntimeConformance(t *testing.T) {
 	assert.Contains(t, string(out), "OK:", "driver did not report success: %s", out)
 }
 
-// stripTypeExports drops the `export type … = z.infer<…>;` lines so the emitted
-// contract module is plain ESM JavaScript, runnable by node without a
-// TypeScript loader. The z.object/z.enum/superRefine declarations are already
-// valid JS.
-func stripTypeExports(ts string) string {
+// toDriverJS reduces an emitted module to plain ESM JavaScript runnable by
+// node without a TypeScript loader or module resolution: it drops the header
+// comments, every `import …` line (zod is re-added once by the caller; the
+// enums.generated import is satisfied by inlining the enum module), and the
+// `export type … = z.infer<…>;` lines. The remaining `export const`
+// z.object/z.enum/superRefine declarations are already valid JS.
+func toDriverJS(ts string) string {
 	lines := strings.Split(ts, "\n")
 	kept := lines[:0]
 
 	for _, l := range lines {
-		if strings.HasPrefix(l, "export type ") {
+		if strings.HasPrefix(l, "export type ") || strings.HasPrefix(l, "import ") || strings.HasPrefix(l, "// ") {
 			continue
 		}
 

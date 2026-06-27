@@ -84,7 +84,9 @@ func zodObject(fields []FieldDecl, propTypes map[string][]FieldDecl, depth int) 
 
 	entries := make([]string, 0, len(fields))
 
-	for _, f := range fields {
+	for i := range fields {
+		f := &fields[i]
+
 		expr, err := zodExpr(f.Type, f.Options, propTypes, depth)
 		if err != nil {
 			return "", fmt.Errorf("field %s: %w", f.Name, err)
@@ -226,6 +228,8 @@ func ResolveValuesRefs(fields []FieldDecl, enums map[string]*EnumStamp) error {
 		for j, o := range stamp.Options {
 			f.Options[j] = o.Value
 		}
+
+		f.EnumTSName = TSName(stamp.Meta.Generates)
 	}
 
 	return nil
@@ -259,6 +263,7 @@ func ResolveSubSchemaValuesRefs(subs map[string]map[string]SubField, enums map[s
 				sf.Options[j] = o.Value
 			}
 
+			sf.EnumTSName = TSName(stamp.Meta.Generates)
 			fields[fieldName] = sf
 		}
 	}

@@ -191,11 +191,13 @@ func TestEmitContractsCollection(t *testing.T) {
 	require.NoError(t, err)
 
 	for _, want := range []string{
-		// kind resolves from ui_collection_types; Field.type/of_type from ui_field_types.
-		`kind: z.enum(["projects"])`,
-		`type: z.enum(["text", "number", "bool", "select", "media", "array"])`,
+		// kind resolves from ui_collection_types; Field.type/of_type from
+		// ui_field_types — both reference the exported enum const, not an
+		// inline z.enum (lightwave-cli#86).
+		`kind: UiCollectionType`,
+		`type: UiFieldType`,
 		// nullable sub-fields are also optional so a record may omit the key.
-		`of_type: z.enum(["text", "number", "bool", "select", "media", "array"]).nullable().optional()`,
+		`of_type: UiFieldType.nullable().optional()`,
 		`of_schema: z.string().nullable().optional()`,
 		`options: z.array(z.string()).nullable().optional()`,
 		// the lean field set is an array of the refined Field const.
@@ -210,6 +212,51 @@ func TestEmitContractsCollection(t *testing.T) {
 	} {
 		assert.Contains(t, got, want)
 	}
+}
+
+// TestEmitContractsEnumConstsAndShared pins the two lightwave-cli#86
+// emit-quality behaviors: enum fields with a typescript-targeted values_ref
+// reference the exported const (and the consts are imported), and a sub-schema
+// shared identically across contracts (PropField) emits once as a bare const.
+func TestEmitContractsEnumConstsAndShared(t *testing.T) {
+	t.Parallel()
+	component, section, enums := loadFixtures(t)
+
+	extra := make([]*zodgen.Schema, 0, 5)
+
+	for _, name := range []string{"page_definition.yaml", "site_config.yaml", "app_shell.yaml", "collection.yaml", "ui_node.yaml"} {
+		s, err := zodgen.LoadSchema(filepath.Join("testdata", "ui", name))
+		require.NoError(t, err, name)
+
+		extra = append(extra, s)
+	}
+
+	got, err := zodgen.EmitContracts(append([]*zodgen.Schema{component, section}, extra...), enums)
+	require.NoError(t, err)
+
+	for _, want := range []string{
+		// values_ref enum fields reference the exported const.
+		`category: ComponentCategory`,
+		`family: SectionFamily`,
+		`page_type: PageType`,
+		`kind: AppShellKind`,
+		`kind: UiCollectionType`,
+		// referenced consts are imported (sorted, deduped).
+		`import { AppShellKind, ComponentCategory, PageType, SectionFamily, UiCollectionType, UiFieldType } from "./enums.generated";`,
+		// PropField shared once as a bare const, referenced from SectionContract.
+		"// ── Shared ──",
+		`export const PropField = z.object({`,
+		`props: z.array(PropField)`,
+	} {
+		assert.Contains(t, got, want)
+	}
+
+	// The prefixed duplicates are gone — PropField is shared, not per-contract.
+	assert.NotContains(t, got, "ComponentContractPropField")
+	assert.NotContains(t, got, "SectionContractPropField")
+
+	// Inline enums (no values_ref) stay inline — router has no enum stamp.
+	assert.Contains(t, got, `router: z.enum(["react-router", "tanstack-router", "none"])`)
 }
 
 func TestResolveSubSchemaValuesRefs(t *testing.T) {
