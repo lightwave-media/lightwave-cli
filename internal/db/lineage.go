@@ -14,14 +14,14 @@ import (
 
 // LineageGap represents a missing or incomplete upstream document
 type LineageGap struct {
-	DocumentType  string // prd, sad, nfr, ddd, api_spec
-	Status        string // missing, draft, stale
-	Severity      string // required, recommended
-	EntityType    string // epic, story
-	EntityID      string
-	EntityShortID string
-	EntityName    string // human-readable name for display
-	TaskCount     int    // for stories: number of tasks that triggered threshold
+	DocumentType  string `json:"document_type"` // prd, sad, nfr, ddd, api_spec
+	Status        string `json:"status"`        // missing, draft, stale
+	Severity      string `json:"severity"`      // required, recommended
+	EntityType    string `json:"entity_type"`   // epic, story
+	EntityID      string `json:"entity_id"`
+	EntityShortID string `json:"entity_short_id"`
+	EntityName    string `json:"entity_name"` // human-readable name for display
+	TaskCount     int    `json:"task_count"`  // for stories: number of tasks that triggered threshold
 }
 
 // DocumentTypeConfig holds SST metadata for a document category

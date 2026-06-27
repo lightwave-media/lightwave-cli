@@ -106,7 +106,8 @@ func lineageFixHandler(ctx context.Context, args []string, flags map[string]any)
 		return fmt.Errorf("fixing lineage: %w", err)
 	}
 
-	for _, d := range created {
+	for i := range created {
+		d := &created[i]
 		color.Green("✓ created %s %s (%s)", d.Category, d.ShortID, d.Title)
 	}
 
