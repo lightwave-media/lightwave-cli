@@ -69,6 +69,7 @@ func Execute() error {
 // dispatcher and removes its entry from this set.
 func legacyHardcodedDomains() map[string]bool {
 	return map[string]bool{
+		"docs":     true,
 		"spec":     true,
 		"scaffold": true,
 	}
