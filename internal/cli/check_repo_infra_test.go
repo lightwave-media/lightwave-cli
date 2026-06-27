@@ -105,6 +105,39 @@ func TestCheckRepoInfra_SchemaVersionPrinted(t *testing.T) {
 	assert.Contains(t, out, "v1.3.0")
 }
 
+//nolint:paralleltest
+func TestCheckRepoInfra_CINodeWarnOnInlineSteps(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+
+	// Add a Node footprint + ci.yml with inline steps (no shared workflow delegation).
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"x"}`), 0o644))
+	wfDir := filepath.Join(dir, ".github", "workflows")
+	require.NoError(t, os.MkdirAll(wfDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(wfDir, "ci.yml"), []byte("jobs:\n  ci:\n    steps:\n      - run: npm test\n"), 0o644))
+
+	out, err := testutil.RunHandler(t, "check.repo-infra", nil, map[string]any{"repo": dir})
+	require.NoError(t, err) // warn only — must not return an error
+	assert.Contains(t, out, "warnings (advisory)")
+	assert.Contains(t, out, "ci-node")
+}
+
+//nolint:paralleltest
+func TestCheckRepoInfra_CINodeCleanWhenDelegates(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"x"}`), 0o644))
+	wfDir := filepath.Join(dir, ".github", "workflows")
+	require.NoError(t, os.MkdirAll(wfDir, 0o755))
+	ciYML := "jobs:\n  ci:\n    uses: lightwave-media/.github/.github/workflows/ci-node.yml@abc123\n"
+	require.NoError(t, os.WriteFile(filepath.Join(wfDir, "ci.yml"), []byte(ciYML), 0o644))
+
+	out, err := testutil.RunHandler(t, "check.repo-infra", nil, map[string]any{"repo": dir})
+	require.NoError(t, err)
+	assert.NotContains(t, out, "ci-node")
+}
+
 // scaffoldConformantRepo writes the minimum required files/dirs per repo-infra.yaml.
 func scaffoldConformantRepo(t *testing.T, dir string) {
 	t.Helper()
