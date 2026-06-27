@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -127,10 +128,11 @@ func findWorkspaceRoot() (string, error) {
 		if parent == dir {
 			break
 		}
+
 		dir = parent
 	}
 
-	return "", fmt.Errorf("could not find workspace root (directory containing lightwave-platform)")
+	return "", errors.New("could not find workspace root (directory containing lightwave-platform)")
 }
 
 func init() {

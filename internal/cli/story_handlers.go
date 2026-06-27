@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -33,18 +34,22 @@ func storyListHandler(ctx context.Context, _ []string, flags map[string]any) err
 	if asJSON(flags) {
 		return emitJSON(stories)
 	}
+
 	if len(stories) == 0 {
 		fmt.Println(color.YellowString("No stories found"))
 		return nil
 	}
+
 	printStoryTable(stories)
+
 	return nil
 }
 
 func storyShowHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("story id required")
+		return errors.New("story id required")
 	}
+
 	pool, err := db.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
@@ -63,19 +68,23 @@ func storyShowHandler(ctx context.Context, args []string, flags map[string]any) 
 	fmt.Printf("Story %s: %s\n", color.YellowString(story.ShortID), story.Name)
 	fmt.Printf("  Status:   %s\n", story.Status)
 	fmt.Printf("  Priority: %s\n", story.Priority)
+
 	if story.UserType != nil {
 		fmt.Printf("  User:     %s\n", *story.UserType)
 	}
+
 	if story.Description != nil && *story.Description != "" {
 		fmt.Printf("\n%s\n", *story.Description)
 	}
+
 	return nil
 }
 
 func storyLinkHandler(ctx context.Context, args []string, _ map[string]any) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: lw story link <story-id> <task-id>")
+		return errors.New("usage: lw story link <story-id> <task-id>")
 	}
+
 	storyID, taskID := args[0], args[1]
 
 	pool, err := db.Connect(ctx)
@@ -88,7 +97,9 @@ func storyLinkHandler(ctx context.Context, args []string, _ map[string]any) erro
 	if err != nil {
 		return err
 	}
+
 	fmt.Printf("Linked task %s → story %s\n",
 		color.CyanString(task.ShortID), color.YellowString(storyID))
+
 	return nil
 }

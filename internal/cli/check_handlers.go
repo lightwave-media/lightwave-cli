@@ -55,10 +55,12 @@ func checkCIHandler(_ context.Context, _ []string, flags map[string]any) error {
 	if err != nil {
 		return err
 	}
+
 	target := "ci-local"
 	if flagBool(flags, "skip-tests") {
 		target = "ci-local-fast"
 	}
+
 	return runMake(dir, target)
 }
 
@@ -66,13 +68,16 @@ func checkRuffHandler(_ context.Context, _ []string, flags map[string]any) error
 	if flagBool(flags, "staged") {
 		return runRuffStaged(flagBool(flags, "fix"))
 	}
+
 	dir, err := resolveMakeDir("platform")
 	if err != nil {
 		return err
 	}
+
 	if flagBool(flags, "fix") {
 		return runMake(dir, "ruff-fix")
 	}
+
 	return runMake(dir, "ruff")
 }
 
@@ -83,27 +88,33 @@ func checkRuffHandler(_ context.Context, _ []string, flags map[string]any) error
 func runRuffStaged(fix bool) error {
 	cfg := config.Get()
 	if cfg == nil {
-		return fmt.Errorf("config not loaded")
+		return errors.New("config not loaded")
 	}
+
 	root := cfg.Paths.LightwaveRoot
+
 	files, err := stagedPythonFiles(root)
 	if err != nil {
 		return err
 	}
+
 	if len(files) == 0 {
 		fmt.Println(color.GreenString("✓ no staged .py files — ruff skipped"))
 		return nil
 	}
+
 	args := []string{"check"}
 	if fix {
 		args = append(args, "--fix")
 	}
+
 	args = append(args, files...)
 	c := exec.Command("ruff", args...)
 	c.Dir = root
 	c.Stdin = os.Stdin
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
+
 	return c.Run()
 }
 
@@ -113,10 +124,12 @@ func runRuffStaged(fix bool) error {
 func stagedPythonFiles(root string) ([]string, error) {
 	c := exec.Command("git", "diff", "--cached", "--name-only", "--diff-filter=ACMR")
 	c.Dir = root
+
 	out, err := c.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("git diff --cached: %s", strings.TrimSpace(string(out)))
 	}
+
 	var files []string
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		line = strings.TrimSpace(line)
@@ -124,6 +137,7 @@ func stagedPythonFiles(root string) ([]string, error) {
 			files = append(files, line)
 		}
 	}
+
 	return files, nil
 }
 
@@ -132,6 +146,7 @@ func checkTypesHandler(_ context.Context, _ []string, _ map[string]any) error {
 	if err != nil {
 		return err
 	}
+
 	return runMake(dir, "npm-type-check")
 }
 
@@ -140,6 +155,7 @@ func checkDomainsHandler(_ context.Context, _ []string, _ map[string]any) error 
 	if err != nil {
 		return err
 	}
+
 	return runMake(dir, "lint-api-domains")
 }
 
@@ -160,8 +176,9 @@ const EnvCheckSchemaStrict = "LW_CHECK_SCHEMA_STRICT"
 func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) error {
 	cfg := config.Get()
 	if cfg == nil {
-		return fmt.Errorf("config not loaded")
+		return errors.New("config not loaded")
 	}
+
 	schema, err := sst.LoadCLIConfig(cfg.Paths.LightwaveRoot)
 	if err != nil {
 		return fmt.Errorf("load CLI schema: %w", err)
@@ -176,22 +193,26 @@ func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) err
 	for _, k := range schemaKeys {
 		schemaSet[k] = true
 	}
+
 	registrySet := make(map[string]bool, len(registryKeys))
 	for _, k := range registryKeys {
 		registrySet[k] = true
 	}
 
 	var missing, orphaned []string
+
 	for _, k := range schemaKeys {
 		if !registrySet[k] {
 			missing = append(missing, k)
 		}
 	}
+
 	for _, k := range registryKeys {
 		if !schemaSet[k] {
 			orphaned = append(orphaned, k)
 		}
 	}
+
 	sort.Strings(missing)
 	sort.Strings(orphaned)
 
@@ -223,6 +244,7 @@ func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) err
 		return fmt.Errorf("schema↔handler drift detected (%d missing, %d orphaned); see report above. Cure: add the missing handler OR add/remove the schema entry, then re-run `lw check schema`",
 			len(missing), len(orphaned))
 	}
+
 	return nil
 }
 
@@ -233,22 +255,28 @@ func checkLocksHandler(_ context.Context, _ []string, _ map[string]any) error {
 	if cfg == nil {
 		return errors.New("config not loaded")
 	}
+
 	root := cfg.Paths.LightwaveRoot
 	files := []string{"uv.lock", "pnpm-lock.yaml"}
 	dirty := []string{}
+
 	for _, f := range files {
 		out, err := runGitDiff(root, f)
 		if err != nil {
 			return fmt.Errorf("git diff %s: %w", f, err)
 		}
+
 		if strings.TrimSpace(out) != "" {
 			dirty = append(dirty, f)
 		}
 	}
+
 	if len(dirty) > 0 {
 		return fmt.Errorf("uncommitted lock changes: %s", strings.Join(dirty, ", "))
 	}
+
 	fmt.Println(color.GreenString("✓ lock files clean"))
+
 	return nil
 }
 
@@ -259,6 +287,7 @@ func checkDepsHandler(_ context.Context, _ []string, _ map[string]any) error {
 	if err != nil {
 		return err
 	}
+
 	return runMake(dir, "deps-check")
 }
 
@@ -269,24 +298,31 @@ func checkGitHandler(_ context.Context, _ []string, _ map[string]any) error {
 	if cfg == nil {
 		return errors.New("config not loaded")
 	}
+
 	root := cfg.Paths.LightwaveRoot
 	c := exec.Command("git", "diff", "--quiet")
+
 	c.Dir = root
 	if err := c.Run(); err != nil {
-		return fmt.Errorf("uncommitted changes in tracked files")
+		return errors.New("uncommitted changes in tracked files")
 	}
+
 	fmt.Println(color.GreenString("✓ working tree clean"))
+
 	return nil
 }
 
 // checkAWSHandler verifies AWS credentials resolve via STS.
 func checkAWSHandler(_ context.Context, _ []string, _ map[string]any) error {
 	c := exec.Command("aws", "sts", "get-caller-identity")
+
 	out, err := c.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("AWS credentials not configured: %s", strings.TrimSpace(string(out)))
 	}
+
 	fmt.Println(color.GreenString("✓ AWS credentials valid"))
+
 	return nil
 }
 
@@ -294,24 +330,28 @@ func checkAWSHandler(_ context.Context, _ []string, _ map[string]any) error {
 func checkDockerHandler(_ context.Context, _ []string, _ map[string]any) error {
 	c := exec.Command("docker", "info")
 	if err := c.Run(); err != nil {
-		return fmt.Errorf("docker daemon not running")
+		return errors.New("docker daemon not running")
 	}
+
 	fmt.Println(color.GreenString("✓ Docker daemon running"))
+
 	return nil
 }
 
 func checkECSHandler(_ context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw check ecs <service> [--environment=<env>]")
+		return errors.New("usage: lw check ecs <service> [--environment=<env>]")
 	}
+
 	env := flagStrOr(flags, "environment", "prod")
-	cluster := fmt.Sprintf("platform-%s", env)
+	cluster := "platform-" + env
 	c := exec.Command("aws", "ecs", "describe-services",
 		"--cluster", cluster, "--services", args[0],
 		"--query", "services[0].{Status:status,Desired:desiredCount,Running:runningCount}",
 		"--output", "table")
 	c.Stdout = os.Stdout
 	c.Stderr = os.Stderr
+
 	return c.Run()
 }
 
@@ -325,23 +365,28 @@ func checkComposeHandler(ctx context.Context, args []string, flags map[string]an
 		if flags == nil {
 			flags = map[string]any{}
 		}
+
 		flags["env"] = "local"
 	}
+
 	return composeVerifyHandler(ctx, args, flags)
 }
 
 func checkSmokeHandler(_ context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw check smoke <target> [--env=<env>]")
+		return errors.New("usage: lw check smoke <target> [--env=<env>]")
 	}
+
 	dir, err := resolveMakeDir("platform")
 	if err != nil {
 		return err
 	}
+
 	extra := []string{"TARGET=" + args[0]}
 	if env := flagStr(flags, "env"); env != "" {
 		extra = append(extra, "ENV="+env)
 	}
+
 	return runMake(dir, "smoke", extra...)
 }
 
@@ -349,11 +394,13 @@ func checkSmokeHandler(_ context.Context, args []string, flags map[string]any) e
 func runGitDiff(root, path string) (string, error) {
 	c := exec.Command("git", "diff", "--", path)
 	c.Dir = root
+
 	out, err := c.CombinedOutput()
 	if err != nil {
 		// non-zero exit also means changes — but we want stdout regardless
 		return string(out), nil
 	}
+
 	return string(out), nil
 }
 
@@ -362,11 +409,11 @@ func runGitDiff(root, path string) (string, error) {
 // the dispatcher subsumed the legacy cobra tree (Phase 5 sweep).
 type schemaDriftReport struct {
 	SchemaVersion     string   `json:"schema_version"`
+	MissingHandlers   []string `json:"missing_handlers"`
+	OrphanedHandlers  []string `json:"orphaned_handlers"`
 	DomainCount       int      `json:"domain_count"`
 	CommandCount      int      `json:"command_count"`
 	HandlerCount      int      `json:"handler_count"`
-	MissingHandlers   []string `json:"missing_handlers"`
-	OrphanedHandlers  []string `json:"orphaned_handlers"`
 	HandlerMatchRatio float64  `json:"handler_match_ratio"`
 }
 
@@ -386,14 +433,17 @@ func printSchemaDriftHuman(r schemaDriftReport) {
 		fmt.Printf("\n%s (%d)\n",
 			color.YellowString("missing handlers (declared in schema, no Go handler)"),
 			len(r.MissingHandlers))
+
 		for _, k := range r.MissingHandlers {
 			fmt.Printf("  - %s\n", k)
 		}
 	}
+
 	if len(r.OrphanedHandlers) > 0 {
 		fmt.Printf("\n%s (%d)\n",
 			color.RedString("orphaned handlers (registered but not in schema)"),
 			len(r.OrphanedHandlers))
+
 		for _, k := range r.OrphanedHandlers {
 			fmt.Printf("  - %s\n", k)
 		}

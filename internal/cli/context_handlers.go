@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"fmt"
+	"errors"
 )
 
 // Schema-driven context handlers. commands.yaml v3.0.0 declares 3 commands:
@@ -22,13 +22,13 @@ func init() {
 }
 
 func contextInitHandler(_ context.Context, _ []string, _ map[string]any) error {
-	return fmt.Errorf("context init: not yet wired (6-layer composer per ai/agents/context_layers.yaml — needs lightwave-core entrypoint before this can shell to it)")
+	return errors.New("context init: not yet wired (6-layer composer per ai/agents/context_layers.yaml — needs lightwave-core entrypoint before this can shell to it)")
 }
 
 func contextRefreshHandler(_ context.Context, _ []string, _ map[string]any) error {
-	return fmt.Errorf("context refresh: not yet wired (depends on context init composer)")
+	return errors.New("context refresh: not yet wired (depends on context init composer)")
 }
 
 func contextShowHandler(_ context.Context, _ []string, _ map[string]any) error {
-	return fmt.Errorf("context show: not yet wired (depends on context init composer)")
+	return errors.New("context show: not yet wired (depends on context init composer)")
 }

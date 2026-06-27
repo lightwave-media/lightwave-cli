@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/fatih/color"
@@ -24,9 +25,9 @@ import (
 type sstFileCoverage struct {
 	RelPath   string   `json:"rel_path"`
 	Status    string   `json:"status"`
-	HasStatus bool     `json:"has_status"`
-	Consumers []string `json:"consumers"`
 	Domain    string   `json:"domain"`
+	Consumers []string `json:"consumers"`
+	HasStatus bool     `json:"has_status"`
 }
 
 // =============================================================================
@@ -152,6 +153,7 @@ func runSSTCoverage(cmd *cobra.Command, args []string) error {
 	if sstCoverageJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+
 		return enc.Encode(display)
 	}
 
@@ -162,6 +164,7 @@ func runSSTCoverage(cmd *cobra.Command, args []string) error {
 	}
 
 	printSSTSummary(files)
+
 	return nil
 }
 
@@ -174,10 +177,12 @@ func resolveBrainDir() (string, error) {
 	if b := os.Getenv("BRAIN"); b != "" {
 		return b, nil
 	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", fmt.Errorf("resolving home dir: %w", err)
 	}
+
 	return filepath.Join(home, ".brain"), nil
 }
 
@@ -192,14 +197,17 @@ func walkBrainYAMLs(brainDir string) ([]sstFileCoverage, error) {
 		if err != nil {
 			return nil // skip unreadable paths
 		}
+
 		if info.IsDir() {
 			// Skip hidden dirs and common non-spec dirs
 			base := info.Name()
 			if base == "__pycache__" || base == ".git" || base == "node_modules" {
 				return filepath.SkipDir
 			}
+
 			return nil
 		}
+
 		if !strings.HasSuffix(path, ".yaml") && !strings.HasSuffix(path, ".yml") {
 			return nil
 		}
@@ -207,6 +215,7 @@ func walkBrainYAMLs(brainDir string) ([]sstFileCoverage, error) {
 		rel, _ := filepath.Rel(brainDir, path)
 		cov := parseSSTFileCoverage(path, rel)
 		files = append(files, cov)
+
 		return nil
 	})
 	if err != nil {
@@ -216,6 +225,7 @@ func walkBrainYAMLs(brainDir string) ([]sstFileCoverage, error) {
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].RelPath < files[j].RelPath
 	})
+
 	return files, nil
 }
 
@@ -257,6 +267,7 @@ func topLevelDir(relPath string) string {
 	if len(parts) > 0 {
 		return parts[0]
 	}
+
 	return ""
 }
 
@@ -282,6 +293,7 @@ func buildConsumerCorpus(brainDir string) consumerCorpus {
 	if cfg == nil {
 		return consumerCorpus{}
 	}
+
 	root := cfg.Paths.LightwaveRoot
 
 	return consumerCorpus{
@@ -315,6 +327,7 @@ func readFileSilent(path string) []byte {
 	if err != nil {
 		return nil
 	}
+
 	return b
 }
 
@@ -323,36 +336,45 @@ func readFileSilent(path string) []byte {
 // are read. Used to build a needle-search corpus without a shell-out.
 func concatTreeRead(paths ...string) []byte {
 	var buf bytes.Buffer
+
 	for _, p := range paths {
 		info, err := os.Stat(p)
 		if err != nil {
 			continue
 		}
+
 		if !info.IsDir() {
 			buf.Write(readFileSilent(p))
 			buf.WriteByte('\n')
+
 			continue
 		}
+
 		_ = filepath.Walk(p, func(walkPath string, walkInfo os.FileInfo, walkErr error) error {
 			if walkErr != nil {
 				return nil
 			}
+
 			if walkInfo.IsDir() {
 				base := walkInfo.Name()
 				if base == "node_modules" || base == "__pycache__" || base == ".git" || base == ".venv" {
 					return filepath.SkipDir
 				}
+
 				return nil
 			}
+
 			ext := strings.ToLower(filepath.Ext(walkPath))
 			switch ext {
 			case ".go", ".py", ".ts", ".tsx", ".yaml", ".yml", ".md", ".toml", ".html", ".j2":
 				buf.Write(readFileSilent(walkPath))
 				buf.WriteByte('\n')
 			}
+
 			return nil
 		})
 	}
+
 	return buf.Bytes()
 }
 
@@ -360,6 +382,7 @@ func concatTreeRead(paths ...string) []byte {
 // Returns a slice of short consumer-type labels.
 func detectSSTConsumers(brainDir, absPath string, corpus consumerCorpus) []string {
 	var consumers []string
+
 	rel, _ := filepath.Rel(brainDir, absPath)
 	base := filepath.Base(absPath)
 	stem := strings.TrimSuffix(strings.TrimSuffix(base, ".yaml"), ".yml")
@@ -368,14 +391,17 @@ func detectSSTConsumers(brainDir, absPath string, corpus consumerCorpus) []strin
 		if len(buf) == 0 {
 			return false
 		}
+
 		for _, n := range needles {
 			if n == "" {
 				continue
 			}
+
 			if bytes.Contains(buf, []byte(n)) {
 				return true
 			}
 		}
+
 		return false
 	}
 
@@ -421,6 +447,7 @@ func detectSSTConsumers(brainDir, absPath string, corpus consumerCorpus) []strin
 	// Heuristic 8: runtime_validator — loader.load("<stem>") in platform/core.
 	if stem != "" {
 		needle1 := "loader.load(\"" + stem + "\""
+
 		needle2 := "loader.load('" + stem + "'"
 		if matches(corpus.runtimeValidator, needle1, needle2) {
 			consumers = append(consumers, "runtime_validator")
@@ -446,6 +473,7 @@ func containsStr(slice []string, s string) bool {
 			return true
 		}
 	}
+
 	return false
 }
 
@@ -455,21 +483,27 @@ func containsStr(slice []string, s string) bool {
 
 func runCheckStatus(files []sstFileCoverage) error {
 	var missing []string
+
 	for _, f := range files {
 		if !f.HasStatus {
 			missing = append(missing, f.RelPath)
 		}
 	}
+
 	if len(missing) == 0 {
 		fmt.Printf("%s All %d brain YAML files have _meta.status\n",
 			color.GreenString("✓"), len(files))
+
 		return nil
 	}
+
 	fmt.Fprintf(os.Stderr, "%s %d files missing _meta.status:\n",
 		color.RedString("✗"), len(missing))
+
 	for _, p := range missing {
 		fmt.Fprintf(os.Stderr, "  %s\n", p)
 	}
+
 	return fmt.Errorf("status coverage incomplete: %d/%d files missing _meta.status",
 		len(missing), len(files))
 }
@@ -490,6 +524,7 @@ type sstProposal struct {
 // computeSSTProposals returns files with detected consumers that aren't enforced/orphan.
 func computeSSTProposals(brainDir string, files []sstFileCoverage) []sstProposal {
 	var proposals []sstProposal
+
 	for _, f := range files {
 		if len(f.Consumers) > 0 && f.Status != "enforced" && f.Status != "orphan" {
 			proposals = append(proposals, sstProposal{
@@ -501,6 +536,7 @@ func computeSSTProposals(brainDir string, files []sstFileCoverage) []sstProposal
 			})
 		}
 	}
+
 	return proposals
 }
 
@@ -525,21 +561,25 @@ func runAutoPromote(brainDir string, files []sstFileCoverage) error {
 	if !sstCoverageApply {
 		fmt.Printf("\n%s Run with --apply to write changes.\n",
 			color.CyanString("ℹ"))
+
 		return nil
 	}
 
 	// Apply: write _meta.status: enforced into each file
 	applied := 0
+
 	for _, p := range proposals {
 		if err := injectStatusEnforced(p.absPath); err != nil {
 			fmt.Fprintf(os.Stderr, "  %s %s: %v\n", color.RedString("✗"), p.rel, err)
 		} else {
 			fmt.Printf("  %s %s\n", color.GreenString("✓"), p.rel)
+
 			applied++
 		}
 	}
 
 	fmt.Printf("\n%d/%d files updated.\n", applied, len(proposals))
+
 	return nil
 }
 
@@ -549,10 +589,10 @@ func runAutoPromote(brainDir string, files []sstFileCoverage) error {
 
 type triageGroupReport struct {
 	Domain        string   `json:"domain"`
+	FilesProposed []string `json:"files_proposed"`
 	FilesTotal    int      `json:"files_total"`
 	FilesUpdated  int      `json:"files_updated"`
 	FilesSkipped  int      `json:"files_skipped"`
-	FilesProposed []string `json:"files_proposed"`
 }
 
 type triageReport struct {
@@ -569,27 +609,34 @@ func parseTriageScopes(raw string) []string {
 	if strings.TrimSpace(raw) == "" {
 		out := make([]string, len(defaultTriageScopes))
 		copy(out, defaultTriageScopes)
+
 		return out
 	}
+
 	var out []string
+
 	for _, s := range strings.Split(raw, ",") {
 		if t := strings.TrimSpace(s); t != "" {
 			out = append(out, t)
 		}
 	}
+
 	return out
 }
 
 // runTriage walks scopes, groups proposals by domain, prompts per group, and applies.
 func runTriage(brainDir string, files []sstFileCoverage) error {
 	scopes := parseTriageScopes(sstCoverageScope)
+
 	scopeSet := map[string]bool{}
 	for _, s := range scopes {
 		scopeSet[s] = true
 	}
 
 	allProposals := computeSSTProposals(brainDir, files)
+
 	var inScope []sstProposal
+
 	for _, p := range allProposals {
 		if scopeSet[p.domain] {
 			inScope = append(inScope, p)
@@ -604,6 +651,7 @@ func runTriage(brainDir string, files []sstFileCoverage) error {
 
 	// Stable order following scope list
 	var orderedDomains []string
+
 	for _, s := range scopes {
 		if _, ok := groups[s]; ok {
 			orderedDomains = append(orderedDomains, s)
@@ -621,10 +669,13 @@ func runTriage(brainDir string, files []sstFileCoverage) error {
 		if sstCoverageJSON {
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
+
 			return enc.Encode(report)
 		}
+
 		fmt.Printf("%s No triage candidates in scope %s.\n",
 			color.CyanString("ℹ"), strings.Join(scopes, ","))
+
 		return nil
 	}
 
@@ -637,12 +688,14 @@ func runTriage(brainDir string, files []sstFileCoverage) error {
 
 		if !sstCoverageJSON {
 			fmt.Printf("\n%s\n", color.CyanString("── "+domain+" ──"))
+
 			tbl := tablewriter.NewWriter(os.Stdout)
 			tbl.SetHeader([]string{"Path", "Current", "Proposed", "Consumers"})
 			tbl.SetAutoWrapText(false)
 			tbl.SetBorder(false)
 			tbl.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
 			tbl.SetAlignment(tablewriter.ALIGN_LEFT)
+
 			for _, p := range props {
 				tbl.Append([]string{
 					p.rel,
@@ -651,6 +704,7 @@ func runTriage(brainDir string, files []sstFileCoverage) error {
 					strings.Join(p.consumers, ", "),
 				})
 			}
+
 			tbl.Render()
 		}
 
@@ -658,16 +712,21 @@ func runTriage(brainDir string, files []sstFileCoverage) error {
 		if !apply {
 			fmt.Printf("\nApply %s to all %d files in %s? [y/N/q]: ",
 				color.GreenString("enforced"), len(props), color.CyanString(domain))
+
 			reader := bufio.NewReader(os.Stdin)
 			line, _ := reader.ReadString('\n')
+
 			ans := strings.ToLower(strings.TrimSpace(line))
 			if ans == "q" {
 				if !sstCoverageJSON {
 					fmt.Printf("%s Triage aborted.\n", color.YellowString("⚠"))
 				}
+
 				report.Groups = append(report.Groups, groupReport)
+
 				goto finalize
 			}
+
 			apply = ans == "y" || ans == "yes"
 		}
 
@@ -676,22 +735,29 @@ func runTriage(brainDir string, files []sstFileCoverage) error {
 			if !apply {
 				report.FilesSkipped = append(report.FilesSkipped, p.rel)
 				groupReport.FilesSkipped++
+
 				continue
 			}
+
 			if sstCoverageDryRun {
 				report.FilesUpdated = append(report.FilesUpdated, p.rel)
 				groupReport.FilesUpdated++
+
 				continue
 			}
+
 			if err := injectStatusEnforced(p.absPath); err != nil {
 				report.Errors = append(report.Errors, fmt.Sprintf("%s: %v", p.rel, err))
 				if !sstCoverageJSON {
 					fmt.Fprintf(os.Stderr, "  %s %s: %v\n", color.RedString("✗"), p.rel, err)
 				}
+
 				continue
 			}
+
 			report.FilesUpdated = append(report.FilesUpdated, p.rel)
 			groupReport.FilesUpdated++
+
 			if !sstCoverageJSON {
 				fmt.Printf("  %s %s\n", color.GreenString("✓"), p.rel)
 			}
@@ -704,6 +770,7 @@ finalize:
 	if sstCoverageJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+
 		return enc.Encode(report)
 	}
 
@@ -711,15 +778,18 @@ finalize:
 	if sstCoverageDryRun {
 		verb = "would update"
 	}
+
 	fmt.Printf("\n%s %d %s, %d skipped, %d errors.\n",
 		color.CyanString("─"),
 		len(report.FilesUpdated), verb,
 		len(report.FilesSkipped),
 		len(report.Errors),
 	)
+
 	if len(report.Errors) > 0 {
 		return fmt.Errorf("triage completed with %d errors", len(report.Errors))
 	}
+
 	return nil
 }
 
@@ -745,8 +815,10 @@ func injectStatusEnforced(absPath string) error {
 	}
 
 	var buf bytes.Buffer
+
 	enc := yaml.NewEncoder(&buf)
 	enc.SetIndent(2)
+
 	if err := enc.Encode(&doc); err != nil {
 		return fmt.Errorf("encode YAML: %w", err)
 	}
@@ -774,6 +846,7 @@ func setYAMLMetaStatus(root *yaml.Node, status string) error {
 				&yaml.Node{Kind: yaml.ScalarNode, Value: "status"},
 				&yaml.Node{Kind: yaml.ScalarNode, Value: status},
 			)
+
 			return nil
 		}
 	}
@@ -789,6 +862,7 @@ func setYAMLMetaStatus(root *yaml.Node, status string) error {
 	// Prepend _meta: {status: enforced}
 	metaKey := &yaml.Node{Kind: yaml.ScalarNode, Value: "_meta"}
 	root.Content = append([]*yaml.Node{metaKey, metaVal}, root.Content...)
+
 	return nil
 }
 
@@ -798,11 +872,13 @@ func setYAMLMetaStatus(root *yaml.Node, status string) error {
 
 func filterSSTOrphans(files []sstFileCoverage) []sstFileCoverage {
 	var out []sstFileCoverage
+
 	for _, f := range files {
 		if len(f.Consumers) == 0 {
 			out = append(out, f)
 		}
 	}
+
 	return out
 }
 
@@ -859,6 +935,7 @@ func printSSTByDomain(files []sstFileCoverage) {
 	for k := range domains {
 		keys = append(keys, k)
 	}
+
 	sort.Strings(keys)
 
 	for _, domain := range keys {
@@ -866,6 +943,7 @@ func printSSTByDomain(files []sstFileCoverage) {
 		domainFiles := domains[domain]
 
 		enforced, aspirational, orphan := 0, 0, 0
+
 		for _, f := range domainFiles {
 			switch f.Status {
 			case "enforced":
@@ -876,14 +954,16 @@ func printSSTByDomain(files []sstFileCoverage) {
 				aspirational++
 			}
 		}
+
 		fmt.Printf("  %s enforced  %s aspirational  %s orphan\n\n",
-			color.GreenString(fmt.Sprintf("%d", enforced)),
-			color.YellowString(fmt.Sprintf("%d", aspirational)),
-			color.RedString(fmt.Sprintf("%d", orphan)),
+			color.GreenString(strconv.Itoa(enforced)),
+			color.YellowString(strconv.Itoa(aspirational)),
+			color.RedString(strconv.Itoa(orphan)),
 		)
 
 		for _, f := range domainFiles {
 			statusIcon := "○"
+
 			switch f.Status {
 			case "enforced":
 				statusIcon = color.GreenString("●")
@@ -892,10 +972,12 @@ func printSSTByDomain(files []sstFileCoverage) {
 			default:
 				statusIcon = color.YellowString("○")
 			}
+
 			consumerStr := ""
 			if len(f.Consumers) > 0 {
 				consumerStr = " [" + strings.Join(f.Consumers, ",") + "]"
 			}
+
 			fmt.Printf("  %s %s%s\n", statusIcon, f.RelPath, consumerStr)
 		}
 	}
@@ -908,6 +990,7 @@ func printSSTByDomain(files []sstFileCoverage) {
 func printSSTSummary(files []sstFileCoverage) {
 	total := len(files)
 	enforced, aspirational, orphan, missing := 0, 0, 0, 0
+
 	for _, f := range files {
 		switch f.Status {
 		case "enforced":
@@ -917,6 +1000,7 @@ func printSSTSummary(files []sstFileCoverage) {
 		default:
 			aspirational++
 		}
+
 		if !f.HasStatus {
 			missing++
 		}
@@ -924,11 +1008,12 @@ func printSSTSummary(files []sstFileCoverage) {
 
 	fmt.Printf("\n%s\n", color.CyanString("─── Summary ───"))
 	fmt.Printf("  Total files:   %d\n", total)
-	fmt.Printf("  %s enforced\n", color.GreenString(fmt.Sprintf("%d", enforced)))
-	fmt.Printf("  %s aspirational\n", color.YellowString(fmt.Sprintf("%d", aspirational)))
-	fmt.Printf("  %s orphan\n", color.RedString(fmt.Sprintf("%d", orphan)))
+	fmt.Printf("  %s enforced\n", color.GreenString(strconv.Itoa(enforced)))
+	fmt.Printf("  %s aspirational\n", color.YellowString(strconv.Itoa(aspirational)))
+	fmt.Printf("  %s orphan\n", color.RedString(strconv.Itoa(orphan)))
+
 	if missing > 0 {
 		fmt.Printf("  %s missing _meta.status (run --check-status for details)\n",
-			color.RedString(fmt.Sprintf("%d", missing)))
+			color.RedString(strconv.Itoa(missing)))
 	}
 }

@@ -53,9 +53,9 @@ type repoInfraViolation struct {
 }
 
 type repoInfraDrift struct {
-	Repos    int    `json:"repos"`
 	Pattern  string `json:"pattern"`
 	Evidence string `json:"evidence"`
+	Repos    int    `json:"repos"`
 }
 
 type repoInfraReport struct {
@@ -90,6 +90,7 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 		if err != nil {
 			return fmt.Errorf("discover repos: %w (exit 2)", err)
 		}
+
 		repoPaths = discovered
 	case flagStr(flags, "repo") != "":
 		repoPaths = []string{resolveRepoPath(root, flagStr(flags, "repo"))}
@@ -98,6 +99,7 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 		if err != nil {
 			return fmt.Errorf("getwd: %w (exit 2)", err)
 		}
+
 		repoPaths = []string{cwd}
 	}
 
@@ -112,6 +114,7 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 			report.Exempt = append(report.Exempt, fmt.Sprintf("%s (%s)", name, reason))
 			continue
 		}
+
 		report.Checked = append(report.Checked, name)
 		report.Violations = append(report.Violations, checkOneRepo(p, name, infraCfg)...)
 	}
@@ -129,6 +132,7 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 	if asJSON(flags) {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+
 		return enc.Encode(report)
 	}
 
@@ -147,6 +151,7 @@ func checkOneRepo(repoPath, name string, infraCfg *sst.RepoInfraConfig) []repoIn
 	// Check each universal required file
 	for _, f := range infraCfg.RequiredFiles {
 		fpath := filepath.Join(repoPath, f.Path)
+
 		fi, err := os.Stat(fpath)
 		if os.IsNotExist(err) {
 			v := repoInfraViolation{Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path}
@@ -155,14 +160,18 @@ func checkOneRepo(repoPath, name string, infraCfg *sst.RepoInfraConfig) []repoIn
 					v.Fixable = true
 				}
 			}
+
 			viols = append(viols, v)
+
 			continue
 		}
+
 		if err != nil {
 			viols = append(viols, repoInfraViolation{
 				Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path,
 				Detail: fmt.Sprintf("stat error: %v", err),
 			})
+
 			continue
 		}
 
@@ -172,6 +181,7 @@ func checkOneRepo(repoPath, name string, infraCfg *sst.RepoInfraConfig) []repoIn
 				Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path,
 				Detail: "file is empty (0 bytes)",
 			})
+
 			continue
 		}
 
@@ -186,6 +196,7 @@ func checkOneRepo(repoPath, name string, infraCfg *sst.RepoInfraConfig) []repoIn
 						Detail: fmt.Sprintf("CLAUDE.md is %d lines (should be ≤30 — thin pointer only)", len(lines)),
 					})
 				}
+
 				if !strings.Contains(string(content), "AGENTS.md") {
 					viols = append(viols, repoInfraViolation{
 						Repo: name, RepoPath: repoPath, Kind: "file", Missing: f.Path,
@@ -250,6 +261,7 @@ func detectDrift(repoPaths []string, infraCfg *sst.RepoInfraConfig) []repoInfraD
 		if err != nil {
 			continue
 		}
+
 		for _, e := range entries {
 			if e.IsDir() {
 				dirCount[e.Name()]++
@@ -269,13 +281,16 @@ func detectDrift(repoPaths []string, infraCfg *sst.RepoInfraConfig) []repoInfraD
 		if count < threshold {
 			continue
 		}
+
 		known := false
+
 		for _, kf := range knownFiles {
 			if kf == name {
 				known = true
 				break
 			}
 		}
+
 		if !known {
 			drift = append(drift, repoInfraDrift{
 				Pattern:  "file:" + name,
@@ -290,13 +305,16 @@ func detectDrift(repoPaths []string, infraCfg *sst.RepoInfraConfig) []repoInfraD
 		if count < threshold {
 			continue
 		}
+
 		known := false
+
 		for _, kd := range knownDirs {
 			if kd == name {
 				known = true
 				break
 			}
 		}
+
 		if !known {
 			drift = append(drift, repoInfraDrift{
 				Pattern:  "dir:" + name + "/",
@@ -313,6 +331,7 @@ func resolveRepoPath(root, nameOrPath string) string {
 	if filepath.IsAbs(nameOrPath) {
 		return nameOrPath
 	}
+
 	return filepath.Join(root, nameOrPath)
 }
 
@@ -321,88 +340,115 @@ func discoverLightwaveRepos(root string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var repos []string
+
 	for _, e := range entries {
 		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 			continue
 		}
+
 		p := filepath.Join(root, e.Name())
 		if _, err := os.Stat(filepath.Join(p, "mise.toml")); err == nil {
 			repos = append(repos, p)
 		}
 	}
+
 	return repos, nil
 }
 
 func applyRepoInfraFixes(viols []repoInfraViolation) error {
 	var fixed, skipped int
+
 	for _, v := range viols {
 		if !v.Fixable {
 			fmt.Printf("%s %s/%s — manual fix required\n",
 				color.YellowString("SKIP"), v.Repo, v.Missing)
+
 			skipped++
+
 			continue
 		}
+
 		if v.Missing == "CLAUDE.md" {
 			claudePath := filepath.Join(v.RepoPath, "CLAUDE.md")
+
 			const filePerms = 0o644
 			if err := os.WriteFile(claudePath, []byte("@AGENTS.md\n"), filePerms); err != nil {
 				fmt.Printf("%s %s/CLAUDE.md: %v\n", color.RedString("ERROR"), v.Repo, err)
 				continue
 			}
+
 			fmt.Printf("%s %s/CLAUDE.md created\n", color.GreenString("FIXED"), v.Repo)
+
 			fixed++
 		}
 	}
+
 	if skipped > 0 {
 		fmt.Printf("\n%d violation(s) require manual intervention (dev/, .github/ scaffold)\n", skipped)
 	}
+
 	if fixed > 0 && skipped == 0 {
 		return nil
 	}
+
 	if skipped > 0 {
 		return fmt.Errorf("%d violation(s) not auto-fixed", skipped)
 	}
+
 	return nil
 }
 
 func printRepoInfraReport(r *repoInfraReport) {
 	fmt.Printf("%s %s (schema v%s)\n", color.CyanString("repo-infra check:"), r.Root, r.SchemaVer)
 	fmt.Printf("  checked: %s\n", strings.Join(r.Checked, ", "))
+
 	if len(r.Exempt) > 0 {
 		fmt.Printf("  exempt:  %s\n", strings.Join(r.Exempt, ", "))
 	}
+
 	if len(r.Violations) == 0 && len(r.Drift) == 0 {
 		fmt.Println(color.GreenString("\n✓ all repos conform"))
 		return
 	}
+
 	if len(r.Violations) > 0 {
 		fmt.Printf("\n%s (%d)\n", color.YellowString("violations"), len(r.Violations))
+
 		byRepo := map[string][]repoInfraViolation{}
 		for _, v := range r.Violations {
 			byRepo[v.Repo] = append(byRepo[v.Repo], v)
 		}
+
 		for repo, viols := range byRepo {
 			fmt.Printf("\n  %s\n", color.YellowString(repo))
+
 			for _, v := range viols {
 				fix := ""
 				if v.Fixable {
 					fix = color.CyanString("  [--fix available]")
 				}
+
 				d := ""
 				if v.Detail != "" {
 					d = " — " + v.Detail
 				}
+
 				fmt.Printf("    missing %s: %s%s%s\n", v.Kind, v.Missing, d, fix)
 			}
 		}
+
 		fmt.Printf("\n%s\n", color.CyanString("Run `lw check repo-infra --fix` to apply mechanical fixes."))
 	}
+
 	if len(r.Drift) > 0 {
 		fmt.Printf("\n%s (%d)\n", color.MagentaString("drift (patterns not in schema)"), len(r.Drift))
+
 		for _, d := range r.Drift {
 			fmt.Printf("  %s — %s\n", d.Pattern, d.Evidence)
 		}
+
 		fmt.Printf("\n%s\n",
 			color.MagentaString("Run `lw check repo-infra --learn` to regenerate drift analysis."))
 		fmt.Printf("Review drift patterns and update repo-infra.yaml if they should be universal.\n")

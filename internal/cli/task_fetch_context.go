@@ -40,6 +40,7 @@ func AttachOrphanTaskCommands(root *cobra.Command) {
 	if taskCmd == nil {
 		return
 	}
+
 	if findSubcommand(taskCmd, "fetch-context") == nil {
 		taskCmd.AddCommand(newTaskFetchContextCobraCmd())
 	}
@@ -57,6 +58,7 @@ func findSubcommand(parent *cobra.Command, name string) *cobra.Command {
 			return c
 		}
 	}
+
 	return nil
 }
 
@@ -79,44 +81,52 @@ Examples:
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flags := map[string]any{}
+
 			if cmd.Flags().Changed("domain") {
 				v, _ := cmd.Flags().GetString("domain")
 				flags["domain"] = v
 			}
+
 			if cmd.Flags().Changed("json") {
 				v, _ := cmd.Flags().GetBool("json")
 				flags["json"] = v
 			}
+
 			return taskFetchContextHandler(cmd.Context(), args, flags)
 		},
 	}
 	c.Flags().String("domain", "", "Restrict search to a single docs domain (software, cinematography, …); default searches all")
 	c.Flags().Bool("json", false, "Emit a JSON envelope (path index + body) instead of rendered markdown")
+
 	return c
 }
 
 func taskFetchContextHandler(_ context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("task id required (e.g. T-0001)")
+		return errors.New("task id required (e.g. T-0001)")
 	}
+
 	id := args[0]
 
 	cfg := config.Get()
 	if cfg == nil {
-		return fmt.Errorf("config not loaded")
+		return errors.New("config not loaded")
 	}
+
 	root := cfg.Paths.LightwaveRoot
 	if root == "" {
-		return fmt.Errorf("paths.lightwave_root not configured")
+		return errors.New("paths.lightwave_root not configured")
 	}
 
 	domain := flagStr(flags, "domain")
+
 	seed, err := mddocs.FindByID(root, domain, id)
 	if err != nil {
 		if errors.Is(err, mddocs.ErrNotFound) {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+
 		return err
 	}
 
@@ -135,6 +145,7 @@ func taskFetchContextHandler(_ context.Context, args []string, flags map[string]
 	}
 
 	fmt.Print(bundle.Render())
+
 	return nil
 }
 
@@ -146,9 +157,9 @@ type bundleJSON struct {
 	Story    map[string]any   `json:"story,omitempty"`
 	Epic     map[string]any   `json:"epic,omitempty"`
 	Sprint   map[string]any   `json:"sprint,omitempty"`
+	Markdown string           `json:"markdown"`
 	Refs     []map[string]any `json:"refs,omitempty"`
 	Warnings []string         `json:"warnings,omitempty"`
-	Markdown string           `json:"markdown"`
 }
 
 func buildBundleJSON(b *mddocs.Bundle) bundleJSON {
@@ -160,12 +171,15 @@ func buildBundleJSON(b *mddocs.Bundle) bundleJSON {
 	if b.Story != nil {
 		out.Story = artefactJSON(b.Story)
 	}
+
 	if b.Epic != nil {
 		out.Epic = artefactJSON(b.Epic)
 	}
+
 	if b.Sprint != nil {
 		out.Sprint = artefactJSON(b.Sprint)
 	}
+
 	for _, r := range b.Refs {
 		out.Refs = append(out.Refs, map[string]any{
 			"kind": r.Kind,
@@ -173,6 +187,7 @@ func buildBundleJSON(b *mddocs.Bundle) bundleJSON {
 			"body": r.Body,
 		})
 	}
+
 	return out
 }
 

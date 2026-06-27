@@ -359,6 +359,7 @@ func escapeJSString(s string) string {
 	s = strings.ReplaceAll(s, `"`, `\"`)
 	s = strings.ReplaceAll(s, "\n", `\n`)
 	s = strings.ReplaceAll(s, "\r", `\r`)
+
 	return s
 }
 
@@ -387,6 +388,7 @@ func getBrowserTabsCDP() ([]BrowserTab, error) {
 	tabURL := fmt.Sprintf("http://localhost:%d/json/list", browserDebugPort)
 
 	client := &http.Client{Timeout: 2 * time.Second}
+
 	resp, err := client.Get(tabURL)
 	if err != nil {
 		return nil, fmt.Errorf("CDP unavailable on port %d: %w", browserDebugPort, err)
@@ -405,6 +407,7 @@ func getBrowserTabsCDP() ([]BrowserTab, error) {
 
 	// Filter to only page types
 	var pages []BrowserTab
+
 	for _, tab := range tabs {
 		if tab.Type == "page" {
 			pages = append(pages, tab)

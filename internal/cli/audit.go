@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -29,10 +30,10 @@ type AuditFinding struct {
 	Severity       string `json:"severity" yaml:"severity"`
 	Category       string `json:"category" yaml:"category"`
 	File           string `json:"file,omitempty" yaml:"file,omitempty"`
-	Line           int    `json:"line,omitempty" yaml:"line,omitempty"`
 	Finding        string `json:"finding" yaml:"finding"`
 	Detail         string `json:"detail,omitempty" yaml:"detail,omitempty"`
 	Recommendation string `json:"recommendation" yaml:"recommendation"`
+	Line           int    `json:"line,omitempty" yaml:"line,omitempty"`
 	Gateable       bool   `json:"gateable" yaml:"gateable"`
 }
 
@@ -43,9 +44,9 @@ func (f AuditFinding) CompositeKey() string {
 type ReportMeta struct {
 	GeneratedAt     time.Time `json:"generated_at"`
 	Scope           string    `json:"scope"`
-	DurationSeconds int       `json:"duration_seconds"`
 	GitCommit       string    `json:"git_commit"`
 	GitBranch       string    `json:"git_branch"`
+	DurationSeconds int       `json:"duration_seconds"`
 }
 
 type SeverityCounts struct {
@@ -56,11 +57,11 @@ type SeverityCounts struct {
 }
 
 type ExecutiveSummary struct {
-	HealthScore        int            `json:"health_score"`
 	Status             string         `json:"status"`
 	Narrative          string         `json:"narrative"`
-	FindingsTotal      int            `json:"findings_total"`
 	FindingsBySeverity SeverityCounts `json:"findings_by_severity"`
+	HealthScore        int            `json:"health_score"`
+	FindingsTotal      int            `json:"findings_total"`
 }
 
 type SectionSummary struct {
@@ -75,10 +76,10 @@ type DriftSection struct {
 }
 
 type GatesSection struct {
+	Gaps        []string `json:"gaps"`
 	Implemented int      `json:"implemented"`
 	Missing     int      `json:"missing"`
 	CoveragePct int      `json:"coverage_pct"`
-	Gaps        []string `json:"gaps"`
 }
 
 type ReportSections struct {
@@ -97,12 +98,12 @@ type TrendComparison struct {
 }
 
 type AuditReport struct {
-	Meta             ReportMeta       `json:"meta"`
-	ExecutiveSummary ExecutiveSummary `json:"executive_summary"`
 	Sections         ReportSections   `json:"sections"`
+	Trend            *TrendComparison `json:"trend,omitempty"`
+	Meta             ReportMeta       `json:"meta"`
 	Findings         []AuditFinding   `json:"findings"`
 	Recommendations  []string         `json:"recommendations"`
-	Trend            *TrendComparison `json:"trend,omitempty"`
+	ExecutiveSummary ExecutiveSummary `json:"executive_summary"`
 }
 
 // =============================================================================
@@ -111,11 +112,11 @@ type AuditReport struct {
 
 type securityPattern struct {
 	re             *regexp.Regexp
+	fileMatch      func(string) bool
 	severity       string
 	category       string
 	finding        string
 	recommendation string
-	fileMatch      func(string) bool
 }
 
 var skipDirs = map[string]bool{
@@ -226,25 +227,32 @@ func initSecurityPatterns() []securityPattern {
 
 func collectSecurity(rootDir string) ([]AuditFinding, *SectionSummary, error) {
 	patterns := initSecurityPatterns()
+
 	var findings []AuditFinding
+
 	filesScanned := 0
 
 	err := filepath.WalkDir(rootDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil // skip unreadable
 		}
+
 		if d.IsDir() {
 			if skipDirs[d.Name()] {
 				return filepath.SkipDir
 			}
+
 			return nil
 		}
+
 		if !isAnyCode(path) {
 			return nil
 		}
+
 		filesScanned++
 
 		relPath, _ := filepath.Rel(rootDir, path)
+
 		f, err := os.Open(path)
 		if err != nil {
 			return nil
@@ -252,14 +260,17 @@ func collectSecurity(rootDir string) ([]AuditFinding, *SectionSummary, error) {
 		defer f.Close()
 
 		scanner := bufio.NewScanner(f)
+
 		lineNum := 0
 		for scanner.Scan() {
 			lineNum++
 			line := scanner.Text()
+
 			for _, p := range patterns {
 				if p.fileMatch != nil && !p.fileMatch(path) {
 					continue
 				}
+
 				if p.re.MatchString(line) {
 					findings = append(findings, AuditFinding{
 						Source:         "security",
@@ -275,10 +286,12 @@ func collectSecurity(rootDir string) ([]AuditFinding, *SectionSummary, error) {
 				}
 			}
 		}
+
 		return nil
 	})
 
 	summary := &SectionSummary{FilesScanned: filesScanned, FindingsCount: len(findings)}
+
 	return findings, summary, err
 }
 
@@ -321,9 +334,11 @@ func collectGates() ([]AuditFinding, *GatesSection, error) {
 		return nil, nil, fmt.Errorf("cannot parse gates.yaml: %w", err)
 	}
 
-	var implemented, missing int
-	var gaps []string
-	var findings []AuditFinding
+	var (
+		implemented, missing int
+		gaps                 []string
+		findings             []AuditFinding
+	)
 
 	countTier := func(existing, gapList []gateEntry) {
 		for _, g := range existing {
@@ -331,14 +346,17 @@ func collectGates() ([]AuditFinding, *GatesSection, error) {
 				implemented++
 			} else {
 				missing++
+
 				gaps = append(gaps, g.ID)
 			}
 		}
+
 		for _, g := range gapList {
 			if g.Status == "implemented" {
 				implemented++
 			} else {
 				missing++
+
 				gaps = append(gaps, g.ID)
 				findings = append(findings, AuditFinding{
 					Source:         "gates",
@@ -346,7 +364,7 @@ func collectGates() ([]AuditFinding, *GatesSection, error) {
 					Category:       "gate_missing",
 					Finding:        fmt.Sprintf("Gate %q not implemented", g.ID),
 					Detail:         g.Rationale,
-					Recommendation: fmt.Sprintf("Implement gate %s", g.ID),
+					Recommendation: "Implement gate " + g.ID,
 					Gateable:       false,
 				})
 			}
@@ -358,6 +376,7 @@ func collectGates() ([]AuditFinding, *GatesSection, error) {
 	countTier(gates.TierCI.Existing, gates.TierCI.Gaps)
 
 	total := implemented + missing
+
 	pct := 0
 	if total > 0 {
 		pct = (implemented * 100) / total
@@ -369,6 +388,7 @@ func collectGates() ([]AuditFinding, *GatesSection, error) {
 		CoveragePct: pct,
 		Gaps:        gaps,
 	}
+
 	return findings, section, nil
 }
 
@@ -378,11 +398,11 @@ func collectGates() ([]AuditFinding, *GatesSection, error) {
 
 type qualityPattern struct {
 	re             *regexp.Regexp
+	fileMatch      func(string) bool
 	severity       string
 	category       string
 	finding        string
 	recommendation string
-	fileMatch      func(string) bool
 }
 
 func initQualityPatterns() []qualityPattern {
@@ -434,25 +454,32 @@ func initQualityPatterns() []qualityPattern {
 
 func collectQuality(rootDir string) ([]AuditFinding, *SectionSummary, error) {
 	patterns := initQualityPatterns()
+
 	var findings []AuditFinding
+
 	filesScanned := 0
 
 	err := filepath.WalkDir(rootDir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
+
 		if d.IsDir() {
 			if skipDirs[d.Name()] {
 				return filepath.SkipDir
 			}
+
 			return nil
 		}
+
 		if !isAnyCode(path) {
 			return nil
 		}
+
 		filesScanned++
 
 		relPath, _ := filepath.Rel(rootDir, path)
+
 		f, err := os.Open(path)
 		if err != nil {
 			return nil
@@ -460,14 +487,17 @@ func collectQuality(rootDir string) ([]AuditFinding, *SectionSummary, error) {
 		defer f.Close()
 
 		scanner := bufio.NewScanner(f)
+
 		lineNum := 0
 		for scanner.Scan() {
 			lineNum++
 			line := scanner.Text()
+
 			for _, p := range patterns {
 				if p.fileMatch != nil && !p.fileMatch(path) {
 					continue
 				}
+
 				if p.re.MatchString(line) {
 					findings = append(findings, AuditFinding{
 						Source:         "quality",
@@ -483,10 +513,12 @@ func collectQuality(rootDir string) ([]AuditFinding, *SectionSummary, error) {
 				}
 			}
 		}
+
 		return nil
 	})
 
 	summary := &SectionSummary{FilesScanned: filesScanned, FindingsCount: len(findings)}
+
 	return findings, summary, err
 }
 
@@ -502,6 +534,7 @@ func collectDrift(_ string) ([]AuditFinding, *DriftSection, error) {
 
 	cmd := exec.Command("make", "dj-manage", "CMD=drift_report --json")
 	cmd.Dir = dir
+
 	out, err := cmd.Output()
 	if err != nil {
 		// Drift requires Django/Docker — gracefully skip
@@ -511,17 +544,17 @@ func collectDrift(_ string) ([]AuditFinding, *DriftSection, error) {
 
 	// Parse the drift JSON output
 	var driftOutput struct {
+		Items []struct {
+			Schema string `json:"schema"`
+			Key    string `json:"key"`
+			Status string `json:"status"`
+			Detail string `json:"detail"`
+		} `json:"items"`
 		Summary struct {
 			Missing int `json:"missing"`
 			Drifted int `json:"drifted"`
 			Orphans int `json:"orphans"`
-		} `json:"summary"`
-		Items []struct {
-			Schema string `json:"schema"`
-			Key    string `json:"key"`
-			Status string `json:"status"` // MISSING, DRIFT, ORPHAN
-			Detail string `json:"detail"`
-		} `json:"items"`
+		} `json:"summary"` // MISSING, DRIFT, ORPHAN
 	}
 
 	if err := json.Unmarshal(out, &driftOutput); err != nil {
@@ -531,9 +564,11 @@ func collectDrift(_ string) ([]AuditFinding, *DriftSection, error) {
 	}
 
 	var findings []AuditFinding
+
 	for _, item := range driftOutput.Items {
 		sev := "medium"
 		cat := "drifted"
+
 		switch item.Status {
 		case "MISSING":
 			cat = "missing"
@@ -542,6 +577,7 @@ func collectDrift(_ string) ([]AuditFinding, *DriftSection, error) {
 			cat = "orphan"
 			sev = "low"
 		}
+
 		findings = append(findings, AuditFinding{
 			Source:         "drift",
 			Severity:       sev,
@@ -558,6 +594,7 @@ func collectDrift(_ string) ([]AuditFinding, *DriftSection, error) {
 		Drifted: driftOutput.Summary.Drifted,
 		Orphans: driftOutput.Summary.Orphans,
 	}
+
 	return findings, section, nil
 }
 
@@ -570,6 +607,7 @@ func calculateScore(c SeverityCounts) int {
 	if score < 0 {
 		return 0
 	}
+
 	return score
 }
 
@@ -577,14 +615,17 @@ func statusFromScore(score int) string {
 	if score >= 80 {
 		return "on_track"
 	}
+
 	if score >= 50 {
 		return "at_risk"
 	}
+
 	return "off_track"
 }
 
 func countSeverities(findings []AuditFinding) SeverityCounts {
 	var c SeverityCounts
+
 	for _, f := range findings {
 		switch f.Severity {
 		case "critical":
@@ -597,19 +638,24 @@ func countSeverities(findings []AuditFinding) SeverityCounts {
 			c.Low++
 		}
 	}
+
 	return c
 }
 
 func dedup(findings []AuditFinding) []AuditFinding {
 	seen := make(map[string]bool)
+
 	var out []AuditFinding
+
 	for _, f := range findings {
 		key := f.CompositeKey()
 		if !seen[key] {
 			seen[key] = true
+
 			out = append(out, f)
 		}
 	}
+
 	return out
 }
 
@@ -618,27 +664,34 @@ func buildNarrative(counts SeverityCounts, gates *GatesSection, drift *DriftSect
 	if counts.Critical > 0 {
 		parts = append(parts, fmt.Sprintf("%d critical", counts.Critical))
 	}
+
 	if counts.High > 0 {
 		parts = append(parts, fmt.Sprintf("%d high", counts.High))
 	}
+
 	if counts.Medium > 0 {
 		parts = append(parts, fmt.Sprintf("%d medium", counts.Medium))
 	}
+
 	if counts.Low > 0 {
 		parts = append(parts, fmt.Sprintf("%d low", counts.Low))
 	}
+
 	if gates != nil {
 		parts = append(parts, fmt.Sprintf("gate coverage %d%%", gates.CoveragePct))
 	}
+
 	if drift != nil {
 		total := drift.Missing + drift.Drifted + drift.Orphans
 		if total > 0 {
 			parts = append(parts, fmt.Sprintf("%d drift items", total))
 		}
 	}
+
 	if len(parts) == 0 {
 		return "No findings"
 	}
+
 	return strings.Join(parts, ", ")
 }
 
@@ -653,7 +706,7 @@ func buildRecommendations(findings []AuditFinding, gates *GatesSection) []string
 	// Gate gaps
 	if gates != nil {
 		for _, gap := range gates.Gaps {
-			recs = append(recs, fmt.Sprintf("Implement gate: %s", gap))
+			recs = append(recs, "Implement gate: "+gap)
 		}
 	}
 	// High findings (limit to top 5)
@@ -664,15 +717,18 @@ func buildRecommendations(findings []AuditFinding, gates *GatesSection) []string
 			highCount++
 		}
 	}
+
 	if len(recs) > 10 {
 		recs = recs[:10]
 	}
+
 	return recs
 }
 
 func gitInfo() (string, string) {
 	commit, _ := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
 	branch, _ := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output()
+
 	return strings.TrimSpace(string(commit)), strings.TrimSpace(string(branch))
 }
 
@@ -688,17 +744,20 @@ func computeTrend(current *AuditReport) *TrendComparison {
 
 	// Load most recent previous report
 	var prev *AuditReport
+
 	for i := len(reports) - 1; i >= 0; i-- {
 		dateStr := extractDate(reports[i])
 		if dateStr == current.Meta.GeneratedAt.Format("2006-01-02") {
 			continue // skip current
 		}
+
 		p, err := loadReportFromPath(reports[i])
 		if err == nil {
 			prev = p
 			break
 		}
 	}
+
 	if prev == nil {
 		return nil
 	}
@@ -708,18 +767,22 @@ func computeTrend(current *AuditReport) *TrendComparison {
 	for _, f := range prev.Findings {
 		prevKeys[f.CompositeKey()] = true
 	}
+
 	currKeys := make(map[string]bool)
 	for _, f := range current.Findings {
 		currKeys[f.CompositeKey()] = true
 	}
 
 	newCount := 0
+
 	for k := range currKeys {
 		if !prevKeys[k] {
 			newCount++
 		}
 	}
+
 	resolvedCount := 0
+
 	for k := range prevKeys {
 		if !currKeys[k] {
 			resolvedCount++
@@ -754,16 +817,19 @@ func saveReport(report *AuditReport) error {
 
 	// JSON
 	jsonPath := filepath.Join(dir, dateStr+"_audit.json")
+
 	jsonData, err := json.MarshalIndent(report, "", "  ")
 	if err != nil {
 		return err
 	}
+
 	if err := os.WriteFile(jsonPath, jsonData, 0644); err != nil {
 		return err
 	}
 
 	// Markdown
 	mdPath := filepath.Join(dir, dateStr+"_adversarial_audit.md")
+
 	md := renderMarkdown(report)
 	if err := os.WriteFile(mdPath, []byte(md), 0644); err != nil {
 		return err
@@ -777,9 +843,11 @@ func loadLatestReport() (*AuditReport, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if len(reports) == 0 {
 		return nil, fmt.Errorf("no audit reports found in %s", auditDir())
 	}
+
 	return loadReportFromPath(reports[len(reports)-1])
 }
 
@@ -793,20 +861,25 @@ func loadReportFromPath(path string) (*AuditReport, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var report AuditReport
 	if err := json.Unmarshal(data, &report); err != nil {
 		return nil, fmt.Errorf("cannot parse %s: %w", path, err)
 	}
+
 	return &report, nil
 }
 
 func listReportFiles() ([]string, error) {
 	pattern := filepath.Join(auditDir(), "*_audit.json")
+
 	matches, err := filepath.Glob(pattern)
 	if err != nil {
 		return nil, err
 	}
+
 	sort.Strings(matches)
+
 	return matches, nil
 }
 
@@ -817,16 +890,20 @@ func extractDate(path string) string {
 
 func pruneReports(retentionDays int) error {
 	cutoff := time.Now().AddDate(0, 0, -retentionDays)
+
 	reports, err := listReportFiles()
 	if err != nil {
 		return err
 	}
+
 	for _, r := range reports {
 		dateStr := extractDate(r)
+
 		t, err := time.Parse("2006-01-02", dateStr)
 		if err != nil {
 			continue
 		}
+
 		if t.Before(cutoff) {
 			os.Remove(r)
 			// Also remove companion markdown
@@ -834,6 +911,7 @@ func pruneReports(retentionDays int) error {
 			os.Remove(mdPath)
 		}
 	}
+
 	return nil
 }
 
@@ -843,6 +921,7 @@ func pruneReports(retentionDays int) error {
 
 func renderMarkdown(r *AuditReport) string {
 	var b strings.Builder
+
 	date := r.Meta.GeneratedAt.Format("2006-01-02")
 
 	b.WriteString(fmt.Sprintf("# Adversarial Audit Report — %s\n\n", date))
@@ -853,36 +932,44 @@ func renderMarkdown(r *AuditReport) string {
 	// Findings tables by severity
 	for _, sev := range []string{"critical", "high", "medium"} {
 		var rows []AuditFinding
+
 		for _, f := range r.Findings {
 			if f.Severity == sev {
 				rows = append(rows, f)
 			}
 		}
+
 		if len(rows) == 0 {
 			continue
 		}
+
 		sevTitle := strings.ToUpper(sev[:1]) + sev[1:]
 		b.WriteString(fmt.Sprintf("## %s Findings (%d)\n\n", sevTitle, len(rows)))
 		b.WriteString("| # | Source | Category | File | Finding | Recommendation |\n")
 		b.WriteString("|---|--------|----------|------|---------|----------------|\n")
+
 		for i, f := range rows {
 			loc := f.File
 			if f.Line > 0 {
 				loc = fmt.Sprintf("%s:%d", f.File, f.Line)
 			}
+
 			b.WriteString(fmt.Sprintf("| %d | %s | %s | %s | %s | %s |\n",
 				i+1, f.Source, f.Category, loc, f.Finding, f.Recommendation))
 		}
+
 		b.WriteString("\n")
 	}
 
 	// Low findings count only
 	lowCount := 0
+
 	for _, f := range r.Findings {
 		if f.Severity == "low" {
 			lowCount++
 		}
 	}
+
 	if lowCount > 0 {
 		b.WriteString(fmt.Sprintf("## Low Findings\n%d low-severity findings (use `--verbose` to expand)\n\n", lowCount))
 	}
@@ -891,8 +978,10 @@ func renderMarkdown(r *AuditReport) string {
 	if r.Sections.Gates != nil {
 		g := r.Sections.Gates
 		total := g.Implemented + g.Missing
+
 		b.WriteString("## Gate Coverage\n")
 		b.WriteString(fmt.Sprintf("%d/%d gates active (%d%%)\n\n", g.Implemented, total, g.CoveragePct))
+
 		if len(g.Gaps) > 0 {
 			b.WriteString("Missing: " + strings.Join(g.Gaps, ", ") + "\n\n")
 		}
@@ -901,38 +990,48 @@ func renderMarkdown(r *AuditReport) string {
 	// Drift
 	if r.Sections.Drift != nil {
 		d := r.Sections.Drift
+
 		b.WriteString("## Schema Drift\n")
 		b.WriteString(fmt.Sprintf("%d missing | %d drifted | %d orphans\n\n", d.Missing, d.Drifted, d.Orphans))
 	}
 
 	// Metrics
 	b.WriteString("## Metrics\n")
+
 	c := r.ExecutiveSummary.FindingsBySeverity
 	b.WriteString(fmt.Sprintf("- Total findings: %d (critical: %d, high: %d, medium: %d, low: %d)\n",
 		r.ExecutiveSummary.FindingsTotal, c.Critical, c.High, c.Medium, c.Low))
+
 	if r.Sections.Security != nil {
 		b.WriteString(fmt.Sprintf("- Files scanned (security): %d\n", r.Sections.Security.FilesScanned))
 	}
+
 	if r.Sections.Quality != nil {
 		b.WriteString(fmt.Sprintf("- Files scanned (quality): %d\n", r.Sections.Quality.FilesScanned))
 	}
+
 	if r.Trend != nil {
 		t := r.Trend
+
 		sign := "+"
 		if t.Delta < 0 {
 			sign = ""
 		}
+
 		b.WriteString(fmt.Sprintf("- vs previous (%s): %s%d score, %d new, %d resolved\n",
 			t.PreviousDate, sign, t.Delta, t.NewFindings, t.ResolvedFindings))
 	}
+
 	b.WriteString("\n")
 
 	// Recommendations
 	if len(r.Recommendations) > 0 {
 		b.WriteString("## Recommendations\n")
+
 		for i, rec := range r.Recommendations {
 			b.WriteString(fmt.Sprintf("%d. %s\n", i+1, rec))
 		}
+
 		b.WriteString("\n")
 	}
 
@@ -956,9 +1055,11 @@ func renderTerminal(r *AuditReport) {
 	if r.ExecutiveSummary.HealthScore < 80 {
 		scoreColor = color.YellowString
 	}
+
 	if r.ExecutiveSummary.HealthScore < 50 {
 		scoreColor = color.RedString
 	}
+
 	fmt.Printf("  Health Score: %s  Status: %s\n", scoreColor("%d/100", r.ExecutiveSummary.HealthScore), r.ExecutiveSummary.Status)
 	fmt.Printf("  %s\n\n", r.ExecutiveSummary.Narrative)
 
@@ -967,11 +1068,12 @@ func renderTerminal(r *AuditReport) {
 		color.RedString("%d", c.Critical),
 		color.YellowString("%d", c.High),
 		color.CyanString("%d", c.Medium),
-		fmt.Sprintf("%d", c.Low),
+		strconv.Itoa(c.Low),
 	)
 
 	// Critical + High findings table
 	var tableRows []AuditFinding
+
 	for _, f := range r.Findings {
 		if f.Severity == "critical" || f.Severity == "high" {
 			tableRows = append(tableRows, f)
@@ -996,14 +1098,17 @@ func renderTerminal(r *AuditReport) {
 			if len(loc) > 50 {
 				loc = "..." + loc[len(loc)-47:]
 			}
+
 			sev := f.Severity
 			if sev == "critical" {
 				sev = color.RedString("CRIT")
 			} else {
 				sev = color.YellowString("HIGH")
 			}
+
 			table.Append([]string{sev, f.Source, f.Category, loc, f.Finding})
 		}
+
 		table.Render()
 		fmt.Println()
 	}
@@ -1020,12 +1125,14 @@ func renderTerminal(r *AuditReport) {
 	// Trend
 	if r.Trend != nil {
 		t := r.Trend
+
 		deltaStr := fmt.Sprintf("%+d", t.Delta)
 		if t.Delta > 0 {
 			deltaStr = color.GreenString(deltaStr)
 		} else if t.Delta < 0 {
 			deltaStr = color.RedString(deltaStr)
 		}
+
 		fmt.Printf("  Trend vs %s: %s score  %d new  %d resolved\n\n",
 			t.PreviousDate, deltaStr, t.NewFindings, t.ResolvedFindings)
 	}
@@ -1051,6 +1158,7 @@ func renderDiff(current, previous *AuditReport) {
 	for _, f := range previous.Findings {
 		prevKeys[f.CompositeKey()] = f
 	}
+
 	currKeys := make(map[string]AuditFinding)
 	for _, f := range current.Findings {
 		currKeys[f.CompositeKey()] = f
@@ -1058,66 +1166,86 @@ func renderDiff(current, previous *AuditReport) {
 
 	// Resolved
 	var resolved []AuditFinding
+
 	for k, f := range prevKeys {
 		if _, ok := currKeys[k]; !ok {
 			resolved = append(resolved, f)
 		}
 	}
+
 	if len(resolved) > 0 {
 		fmt.Printf("  %s (%d):\n", color.GreenString("Resolved"), len(resolved))
+
 		for _, f := range resolved {
 			fmt.Printf("    - [%s] %s", strings.ToUpper(f.Severity), f.Finding)
+
 			if f.File != "" {
 				fmt.Printf(" in %s:%d", f.File, f.Line)
 			}
+
 			fmt.Println()
 		}
+
 		fmt.Println()
 	}
 
 	// New
 	var newFindings []AuditFinding
+
 	for k, f := range currKeys {
 		if _, ok := prevKeys[k]; !ok {
 			newFindings = append(newFindings, f)
 		}
 	}
+
 	if len(newFindings) > 0 {
 		fmt.Printf("  %s (%d):\n", color.RedString("New"), len(newFindings))
+
 		for _, f := range newFindings {
 			fmt.Printf("    - [%s] %s", strings.ToUpper(f.Severity), f.Finding)
+
 			if f.File != "" {
 				fmt.Printf(" in %s:%d", f.File, f.Line)
 			}
+
 			fmt.Println()
 		}
+
 		fmt.Println()
 	}
 
 	// Persistent
 	var persistent []AuditFinding
+
 	for k, f := range currKeys {
 		if _, ok := prevKeys[k]; ok {
 			persistent = append(persistent, f)
 		}
 	}
+
 	if len(persistent) > 0 {
 		fmt.Printf("  Persistent (%d):\n", len(persistent))
 		// Only show critical/high persistent
 		shown := 0
+
 		for _, f := range persistent {
 			if f.Severity == "critical" || f.Severity == "high" {
 				fmt.Printf("    - [%s] %s", strings.ToUpper(f.Severity), f.Finding)
+
 				if f.File != "" {
 					fmt.Printf(" in %s:%d", f.File, f.Line)
 				}
+
 				fmt.Println()
+
 				shown++
 			}
 		}
+
 		if shown < len(persistent) {
 			fmt.Printf("    ... and %d medium/low\n", len(persistent)-shown)
 		}
+
 		fmt.Println()
 	}
 }
@@ -1180,17 +1308,21 @@ Examples:
 
 func runAudit(scope string) error {
 	start := time.Now()
+
 	cfg := config.Get()
 	if cfg == nil {
 		return errors.New("no configuration found; run `lw config init` to initialize")
 	}
+
 	rootDir := cfg.Paths.LightwaveRoot
 
 	fmt.Printf("%s Running audit (scope: %s) against %s\n\n",
 		color.CyanString("▶"), scope, rootDir)
 
-	var allFindings []AuditFinding
-	var sections ReportSections
+	var (
+		allFindings []AuditFinding
+		sections    ReportSections
+	)
 
 	runScope := func(name string) bool {
 		return scope == "all" || scope == name
@@ -1199,6 +1331,7 @@ func runAudit(scope string) error {
 	// Security
 	if runScope("security") {
 		fmt.Printf("  %s Security scan...", color.CyanString("●"))
+
 		findings, summary, err := collectSecurity(rootDir)
 		if err != nil {
 			fmt.Printf(" %s\n", color.RedString("error: %v", err))
@@ -1212,12 +1345,14 @@ func runAudit(scope string) error {
 	// Gates
 	if runScope("gates") {
 		fmt.Printf("  %s Gate analysis...", color.CyanString("●"))
+
 		findings, gateSection, err := collectGates()
 		if err != nil {
 			fmt.Printf(" %s\n", color.RedString("error: %v", err))
 		} else {
 			fmt.Printf(" %d/%d implemented (%d%%)\n",
 				gateSection.Implemented, gateSection.Implemented+gateSection.Missing, gateSection.CoveragePct)
+
 			allFindings = append(allFindings, findings...)
 			sections.Gates = gateSection
 		}
@@ -1226,6 +1361,7 @@ func runAudit(scope string) error {
 	// Quality
 	if runScope("quality") {
 		fmt.Printf("  %s Quality scan...", color.CyanString("●"))
+
 		findings, summary, err := collectQuality(rootDir)
 		if err != nil {
 			fmt.Printf(" %s\n", color.RedString("error: %v", err))
@@ -1239,12 +1375,14 @@ func runAudit(scope string) error {
 	// Drift
 	if runScope("drift") {
 		fmt.Printf("  %s Drift check...", color.CyanString("●"))
+
 		findings, driftSection, err := collectDrift(rootDir)
 		if err != nil {
 			fmt.Printf(" %s\n", color.RedString("error: %v", err))
 		} else if driftSection != nil {
 			total := driftSection.Missing + driftSection.Drifted + driftSection.Orphans
 			fmt.Printf(" %d items\n", total)
+
 			allFindings = append(allFindings, findings...)
 			sections.Drift = driftSection
 		} else {
@@ -1291,9 +1429,11 @@ func runAudit(scope string) error {
 
 	// Output
 	fmt.Println()
+
 	if auditJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+
 		return enc.Encode(report)
 	}
 
@@ -1301,6 +1441,7 @@ func runAudit(scope string) error {
 
 	date := report.Meta.GeneratedAt.Format("2006-01-02")
 	fmt.Printf("  Saved: %s\n", color.CyanString("%s/{%s_audit.json,%s_adversarial_audit.md}", auditDir(), date, date))
+
 	return nil
 }
 
@@ -1425,9 +1566,9 @@ Examples:
 			}
 			table.Append([]string{
 				extractDate(r),
-				fmt.Sprintf("%d", report.ExecutiveSummary.HealthScore),
+				strconv.Itoa(report.ExecutiveSummary.HealthScore),
 				report.ExecutiveSummary.Status,
-				fmt.Sprintf("%d", report.ExecutiveSummary.FindingsTotal),
+				strconv.Itoa(report.ExecutiveSummary.FindingsTotal),
 				report.Meta.Scope,
 			})
 		}

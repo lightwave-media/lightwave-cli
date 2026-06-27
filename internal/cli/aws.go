@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/fatih/color"
@@ -125,7 +127,7 @@ Examples:
 		serviceName := args[0]
 
 		if taskDefFile == "" {
-			return fmt.Errorf("--file is required")
+			return errors.New("--file is required")
 		}
 
 		client, err := aws.NewECSClient(ctx, ecsCluster)
@@ -378,6 +380,7 @@ func showAllServicesStatus(ctx context.Context, client *aws.ECSClient) error {
 
 	for _, svcArn := range services {
 		svcName := extractShortID(svcArn)
+
 		status, err := client.GetServiceStatus(ctx, svcName)
 		if err != nil {
 			continue
@@ -391,13 +394,14 @@ func showAllServicesStatus(ctx context.Context, client *aws.ECSClient) error {
 		table.Append([]string{
 			status.Name,
 			status.Status,
-			fmt.Sprintf("%d", status.RunningCount),
-			fmt.Sprintf("%d", status.DesiredCount),
+			strconv.Itoa(int(status.RunningCount)),
+			strconv.Itoa(int(status.DesiredCount)),
 			healthStr,
 		})
 	}
 
 	table.Render()
+
 	return nil
 }
 
@@ -418,8 +422,8 @@ func showServiceStatus(ctx context.Context, client *aws.ECSClient, serviceName s
 	}
 
 	fmt.Printf("%s %s\n", color.CyanString("Running:"), fmt.Sprintf("%d / %d", status.RunningCount, status.DesiredCount))
-	fmt.Printf("%s %s\n", color.CyanString("Pending:"), fmt.Sprintf("%d", status.PendingCount))
-	fmt.Printf("%s %s\n", color.CyanString("Health:"), healthColor(fmt.Sprintf("%v", status.Healthy)))
+	fmt.Printf("%s %s\n", color.CyanString("Pending:"), strconv.Itoa(int(status.PendingCount)))
+	fmt.Printf("%s %s\n", color.CyanString("Health:"), healthColor(strconv.FormatBool(status.Healthy)))
 	fmt.Println()
 
 	fmt.Printf("%s %s\n", color.CyanString("Task Definition:"), status.TaskDefinition)
@@ -433,6 +437,7 @@ func extractShortID(arn string) string {
 	if len(parts) > 1 {
 		return parts[1]
 	}
+
 	return arn
 }
 
@@ -442,5 +447,6 @@ func splitLast(s, sep string) []string {
 			return []string{s[:i], s[i+1:]}
 		}
 	}
+
 	return []string{s}
 }

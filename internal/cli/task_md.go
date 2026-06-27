@@ -104,6 +104,7 @@ Examples:
 	c.Flags().BoolVar(&taskMdNewDryRun, "dry-run", false, "Resolve ID + filename, do not write")
 	_ = c.MarkFlagRequired("domain")
 	_ = c.MarkFlagRequired("title")
+
 	return c
 }
 
@@ -118,10 +119,12 @@ func runTaskMdNew(_ *cobra.Command, _ []string) error {
 		if taskMdNewBody != "" {
 			return errors.New("--body and --body-file are mutually exclusive")
 		}
+
 		b, err := os.ReadFile(taskMdNewBodyFile)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", taskMdNewBodyFile, err)
 		}
+
 		body = string(b)
 	}
 
@@ -145,11 +148,13 @@ func runTaskMdNew(_ *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
+
 		fmt.Println(color.CyanString("DRY RUN — no file written"))
 		fmt.Printf("Domain:  %s\n", opts.Domain)
 		fmt.Printf("Next ID: %s\n", nextID)
 		fmt.Printf("Title:   %s\n", opts.Title)
 		fmt.Printf("Body:    %d bytes\n", len(opts.Body))
+
 		return nil
 	}
 
@@ -157,6 +162,7 @@ func runTaskMdNew(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	if taskMdNewJSON {
 		return emitJSON(map[string]any{
 			"id":     id,
@@ -165,7 +171,9 @@ func runTaskMdNew(_ *cobra.Command, _ []string) error {
 			"title":  opts.Title,
 		})
 	}
+
 	fmt.Printf("created %s at %s\n", color.CyanString(id), path)
+
 	return nil
 }
 
@@ -208,6 +216,7 @@ Examples:
 	c.Flags().StringVar(&taskMdEditParentEpic, "parent-epic", "", "Update parent_epic")
 	c.Flags().StringVar(&taskMdEditAssignedSprint, "assigned-sprint", "", "Update assigned_sprint")
 	c.Flags().StringVar(&taskMdEditPriority, "priority", "", "Update priority")
+
 	return c
 }
 
@@ -216,40 +225,49 @@ func runTaskMdEdit(cmd *cobra.Command, args []string) error {
 	if cfg == nil {
 		return errors.New("config not loaded")
 	}
+
 	id := args[0]
 	opts := mdtasks.EditOptions{
 		LightwaveRoot: cfg.Paths.LightwaveRoot,
 		Domain:        taskMdEditDomain,
 	}
 	any := false
+
 	if cmd.Flags().Changed("title") {
 		opts.Title = &taskMdEditTitle
 		any = true
 	}
+
 	if cmd.Flags().Changed("status") {
 		opts.Status = &taskMdEditStatus
 		any = true
 	}
+
 	if cmd.Flags().Changed("assigned-to") {
 		opts.AssignedTo = &taskMdEditAssignedTo
 		any = true
 	}
+
 	if cmd.Flags().Changed("parent-story") {
 		opts.ParentStory = &taskMdEditParentStory
 		any = true
 	}
+
 	if cmd.Flags().Changed("parent-epic") {
 		opts.ParentEpic = &taskMdEditParentEpic
 		any = true
 	}
+
 	if cmd.Flags().Changed("assigned-sprint") {
 		opts.AssignedSprint = &taskMdEditAssignedSprint
 		any = true
 	}
+
 	if cmd.Flags().Changed("priority") {
 		opts.Priority = &taskMdEditPriority
 		any = true
 	}
+
 	if !any {
 		return errors.New("no fields to update — pass at least one --status / --assigned-to / etc.")
 	}
@@ -258,7 +276,9 @@ func runTaskMdEdit(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	fmt.Printf("edited %s -> %s\n", color.CyanString(id), path)
+
 	return nil
 }
 
@@ -277,6 +297,7 @@ func newTaskMdCloseCmd() *cobra.Command {
 		RunE:         runTaskMdClose,
 	}
 	c.Flags().StringVar(&taskMdCloseDomain, "domain", "", "Restrict lookup to a single domain")
+
 	return c
 }
 
@@ -285,11 +306,14 @@ func runTaskMdClose(_ *cobra.Command, args []string) error {
 	if cfg == nil {
 		return errors.New("config not loaded")
 	}
+
 	path, err := mdtasks.Close(args[0], cfg.Paths.LightwaveRoot, taskMdCloseDomain)
 	if err != nil {
 		return err
 	}
+
 	fmt.Printf("closed %s — %s\n", color.CyanString(args[0]), path)
+
 	return nil
 }
 
@@ -324,6 +348,7 @@ Examples:
 	}
 	c.Flags().BoolVar(&taskMdIndexJSON, "json", false, "Print the full Index JSON on stdout (also writes to disk)")
 	c.Flags().BoolVar(&taskMdIndexPretty, "pretty", false, "Print a table of indexed entries grouped by kind")
+
 	return c
 }
 
@@ -332,10 +357,12 @@ func runTaskMdIndex(_ *cobra.Command, _ []string) error {
 	if cfg == nil {
 		return errors.New("config not loaded")
 	}
+
 	idx, err := mdindex.Build(cfg.Paths.LightwaveRoot)
 	if err != nil {
 		return err
 	}
+
 	path, err := idx.Write()
 	if err != nil {
 		return err
@@ -349,11 +376,13 @@ func runTaskMdIndex(_ *cobra.Command, _ []string) error {
 		color.CyanString(filepath.Base(cfg.Paths.LightwaveRoot)),
 		color.YellowString("%d", idx.Stats["total"]),
 		path)
+
 	for _, k := range []string{"task", "user-story", "epic-brief", "sprint"} {
 		if n := idx.Stats[k]; n > 0 {
 			fmt.Printf("  %-12s %d\n", k, n)
 		}
 	}
+
 	if n := idx.Stats["parse_errors"]; n > 0 {
 		fmt.Println(color.RedString("  parse_errors %d (run with --json for paths)", n))
 	}
@@ -361,6 +390,7 @@ func runTaskMdIndex(_ *cobra.Command, _ []string) error {
 	if taskMdIndexPretty {
 		printIndexTable(idx)
 	}
+
 	return nil
 }
 
@@ -368,16 +398,20 @@ func printIndexTable(idx *mdindex.Index) {
 	if len(idx.Entries) == 0 {
 		return
 	}
+
 	tbl := tablewriter.NewWriter(os.Stdout)
 	tbl.SetHeader([]string{"ID", "Kind", "Domain", "Status", "Title"})
 	tbl.SetBorder(false)
+
 	for _, e := range idx.Entries {
 		title := e.Title
 		if len(title) > 60 {
 			title = title[:57] + "…"
 		}
+
 		tbl.Append([]string{e.ID, e.Kind, e.Domain, e.Status, title})
 	}
+
 	fmt.Println()
 	tbl.Render()
 }

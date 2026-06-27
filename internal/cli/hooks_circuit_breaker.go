@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -18,9 +19,9 @@ const PushCircuitBreakerThreshold = 3
 
 // circuitBreakerEntry is the per-branch row in the state file.
 type circuitBreakerEntry struct {
-	ConsecutiveFailures int    `json:"consecutiveFailures"`
 	LastError           string `json:"lastError"`
 	LastAttempt         string `json:"lastAttempt"`
+	ConsecutiveFailures int    `json:"consecutiveFailures"`
 }
 
 func init() {
@@ -42,10 +43,11 @@ func init() {
 func hooksCircuitBreakerCheckHandler(_ context.Context, _ []string, flags map[string]any) error {
 	branch, _ := flags["branch"].(string)
 	if branch == "" {
-		return fmt.Errorf("--branch is required")
+		return errors.New("--branch is required")
 	}
 
 	path := pushCircuitBreakerStatePath()
+
 	state, err := readCircuitBreakerState(path)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, color.YellowString("warning: %v", err))
@@ -59,17 +61,21 @@ func hooksCircuitBreakerCheckHandler(_ context.Context, _ []string, flags map[st
 
 	fmt.Fprintln(os.Stderr, color.RedString("Push circuit breaker tripped for branch %q.", branch))
 	fmt.Fprintf(os.Stderr, "  consecutive failures: %d (threshold: %d)\n", entry.ConsecutiveFailures, PushCircuitBreakerThreshold)
+
 	if entry.LastAttempt != "" {
 		fmt.Fprintf(os.Stderr, "  last attempt:         %s\n", formatAttempt(entry.LastAttempt))
 	}
+
 	if entry.LastError != "" {
 		fmt.Fprintf(os.Stderr, "  last error:           %s\n", entry.LastError)
 	}
+
 	fmt.Fprintln(os.Stderr, "")
 	fmt.Fprintln(os.Stderr, "Escalate to your manager with the repeating error before pushing again.")
 	fmt.Fprintf(os.Stderr, "To unblock manually, delete the %q entry from %s.\n", branch, path)
 
 	os.Exit(1)
+
 	return nil
 }
 
@@ -78,10 +84,12 @@ func pushCircuitBreakerStatePath() string {
 	if x := os.Getenv("XDG_STATE_HOME"); x != "" {
 		return filepath.Join(x, "lightwave", "push-circuit-breaker.json")
 	}
+
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
 	}
+
 	return filepath.Join(home, ".local", "state", "lightwave", "push-circuit-breaker.json")
 }
 
@@ -92,20 +100,25 @@ func readCircuitBreakerState(path string) (map[string]circuitBreakerEntry, error
 	if path == "" {
 		return map[string]circuitBreakerEntry{}, nil
 	}
+
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return map[string]circuitBreakerEntry{}, nil
 		}
+
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
+
 	state := map[string]circuitBreakerEntry{}
 	if len(data) == 0 {
 		return state, nil
 	}
+
 	if err := json.Unmarshal(data, &state); err != nil {
 		return nil, fmt.Errorf("parsing %s: %w", path, err)
 	}
+
 	return state, nil
 }
 
@@ -116,5 +129,6 @@ func formatAttempt(iso string) string {
 	if err != nil {
 		return iso
 	}
+
 	return fmt.Sprintf("%s (%s ago)", t.UTC().Format("2006-01-02 15:04 UTC"), time.Since(t).Round(time.Second))
 }

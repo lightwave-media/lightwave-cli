@@ -2,7 +2,7 @@ package cli
 
 import (
 	"context"
-	"fmt"
+	"errors"
 )
 
 // Schema-driven plan handlers. commands.yaml v3.0.0 declares 2 commands:
@@ -19,22 +19,27 @@ func planSyncHandler(ctx context.Context, _ []string, flags map[string]any) erro
 	if t := flagStr(flags, "task"); t != "" {
 		args = append(args, "--task", t)
 	}
+
 	if flagBool(flags, "pull") {
 		args = append(args, "--pull")
 	}
+
 	if flagBool(flags, "push") {
 		args = append(args, "--push")
 	}
+
 	return djangoManage(ctx, args...)
 }
 
 func planGenerateHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw plan generate <task_id> [--from-prelim]")
+		return errors.New("usage: lw plan generate <task_id> [--from-prelim]")
 	}
+
 	mgmt := []string{"plan_generate", args[0]}
 	if flagBool(flags, "from-prelim") {
 		mgmt = append(mgmt, "--from-prelim")
 	}
+
 	return djangoManage(ctx, mgmt...)
 }

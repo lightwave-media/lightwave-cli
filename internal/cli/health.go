@@ -70,6 +70,7 @@ func runHealth(asJSON bool) error {
 	if cfg == nil {
 		return errors.New("no configuration found; run `lw config init` to initialize")
 	}
+
 	start := time.Now()
 
 	checks := []healthCheck{}
@@ -119,11 +120,13 @@ func runHealth(asJSON bool) error {
 
 	// ── Determine overall ────────────────────────────────────────────────────
 	overall := "ok"
+
 	for _, c := range checks {
 		if c.Status == "fail" {
 			overall = "fail"
 			break
 		}
+
 		if c.Status == "warn" && overall == "ok" {
 			overall = "warn"
 		}
@@ -138,6 +141,7 @@ func runHealth(asJSON bool) error {
 	if asJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+
 		return enc.Encode(report)
 	}
 
@@ -152,13 +156,16 @@ func checkBinary(name, bin string, optional bool) healthCheck {
 	t := time.Now()
 	path, err := exec.LookPath(bin)
 	elapsed := fmt.Sprintf("%dms", time.Since(t).Milliseconds())
+
 	if err != nil {
 		status := "fail"
 		if optional {
 			status = "warn"
 		}
+
 		return healthCheck{Name: name, Status: status, Detail: "not found in PATH", Elapsed: elapsed}
 	}
+
 	return healthCheck{Name: name, Status: "ok", Detail: path, Elapsed: elapsed}
 }
 
@@ -166,9 +173,11 @@ func checkPath(name, path string) healthCheck {
 	if path == "" {
 		return healthCheck{Name: name, Status: "warn", Detail: "not configured"}
 	}
+
 	if _, err := os.Stat(path); err != nil {
 		return healthCheck{Name: name, Status: "fail", Detail: "path does not exist: " + path}
 	}
+
 	return healthCheck{Name: name, Status: "ok", Detail: path}
 }
 
@@ -179,30 +188,37 @@ func checkEnvVar(name string, optional bool) healthCheck {
 		if !optional {
 			status = "fail"
 		}
+
 		return healthCheck{Name: name, Status: status, Detail: "not set"}
 	}
 	// Show first 4 chars only to confirm presence without exposing secrets
 	masked := val[:min(4, len(val))] + "****"
+
 	return healthCheck{Name: name, Status: "ok", Detail: masked}
 }
 
 func checkPostgres(cfg *config.Config) healthCheck {
 	t := time.Now()
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
 	pool, err := db.Connect(ctx)
+
 	elapsed := fmt.Sprintf("%dms", time.Since(t).Milliseconds())
 	if err != nil {
 		return healthCheck{Name: "PostgreSQL", Status: "warn", Detail: "cannot connect: " + err.Error(), Elapsed: elapsed}
 	}
 
 	var result int
+
 	err = pool.QueryRow(ctx, "SELECT 1").Scan(&result)
+
 	elapsed = fmt.Sprintf("%dms", time.Since(t).Milliseconds())
 	if err != nil {
 		return healthCheck{Name: "PostgreSQL", Status: "warn", Detail: "ping failed: " + err.Error(), Elapsed: elapsed}
 	}
+
 	return healthCheck{
 		Name:    "PostgreSQL",
 		Status:  "ok",
@@ -216,17 +232,22 @@ func checkHTTP(name, url string, optional bool) healthCheck {
 	client := &http.Client{Timeout: 3 * time.Second}
 	resp, err := client.Get(url) //nolint:noctx
 	elapsed := fmt.Sprintf("%dms", time.Since(t).Milliseconds())
+
 	if err != nil {
 		status := "warn"
 		if !optional {
 			status = "fail"
 		}
+
 		return healthCheck{Name: name, Status: status, Detail: "unreachable: " + url, Elapsed: elapsed}
 	}
+
 	defer resp.Body.Close()
+
 	if resp.StatusCode >= 500 {
 		return healthCheck{Name: name, Status: "warn", Detail: fmt.Sprintf("HTTP %d at %s", resp.StatusCode, url), Elapsed: elapsed}
 	}
+
 	return healthCheck{Name: name, Status: "ok", Detail: fmt.Sprintf("HTTP %d at %s", resp.StatusCode, url), Elapsed: elapsed}
 }
 
@@ -234,6 +255,7 @@ func min(a, b int) int {
 	if a < b {
 		return a
 	}
+
 	return b
 }
 
@@ -272,9 +294,12 @@ func printHealthTable(r healthReport) error {
 		if len(detail) > 60 {
 			detail = "..." + detail[len(detail)-57:]
 		}
+
 		table.Append([]string{c.Name, statusLabel[c.Status], detail, c.Elapsed})
 	}
+
 	table.Render()
 	fmt.Println()
+
 	return nil
 }

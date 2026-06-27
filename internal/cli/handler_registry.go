@@ -29,9 +29,11 @@ func RegisterHandler(key string, h Handler) {
 	if _, exists := handlerRegistry[key]; exists {
 		panic(fmt.Sprintf("RegisterHandler: duplicate key %q", key))
 	}
+
 	if h == nil {
 		panic(fmt.Sprintf("RegisterHandler: nil handler for %q", key))
 	}
+
 	handlerRegistry[key] = h
 }
 
@@ -39,7 +41,9 @@ func RegisterHandler(key string, h Handler) {
 func LookupHandler(key string) (Handler, bool) {
 	handlerRegistryMu.RLock()
 	defer handlerRegistryMu.RUnlock()
+
 	h, ok := handlerRegistry[key]
+
 	return h, ok
 }
 
@@ -53,6 +57,8 @@ func RegisteredKeys() []string {
 	for k := range handlerRegistry {
 		keys = append(keys, k)
 	}
+
 	sort.Strings(keys)
+
 	return keys
 }

@@ -97,9 +97,11 @@ func generateSpec(tc *db.TaskContext) string {
 	if tc.EpicName != nil && *tc.EpicName != "" {
 		sb.WriteString("## Epic Context\n\n")
 		sb.WriteString(fmt.Sprintf("**Epic:** %s\n", *tc.EpicName))
+
 		if tc.EpicID != nil {
 			sb.WriteString(fmt.Sprintf("**Epic ID:** %s\n", *tc.EpicID))
 		}
+
 		if tc.EpicStatus != nil {
 			sb.WriteString(fmt.Sprintf("**Epic Status:** %s\n\n", *tc.EpicStatus))
 		}
@@ -109,12 +111,15 @@ func generateSpec(tc *db.TaskContext) string {
 	if tc.SprintName != nil && *tc.SprintName != "" {
 		sb.WriteString("## Sprint Context\n\n")
 		sb.WriteString(fmt.Sprintf("**Sprint:** %s\n", *tc.SprintName))
+
 		if tc.SprintID != nil {
 			sb.WriteString(fmt.Sprintf("**Sprint ID:** %s\n", *tc.SprintID))
 		}
+
 		if tc.SprintStatus != nil {
 			sb.WriteString(fmt.Sprintf("**Sprint Status:** %s\n", *tc.SprintStatus))
 		}
+
 		if tc.SprintStart != nil && tc.SprintEnd != nil {
 			sb.WriteString(fmt.Sprintf("**Sprint Dates:** %s to %s\n\n",
 				tc.SprintStart.Format("2006-01-02"),
@@ -125,7 +130,7 @@ func generateSpec(tc *db.TaskContext) string {
 	// User story
 	if tc.StoryName != nil && *tc.StoryName != "" {
 		sb.WriteString("## User Story\n\n")
-		sb.WriteString(fmt.Sprintf("%s\n\n", *tc.StoryName))
+		sb.WriteString(*tc.StoryName + "\n\n")
 	}
 
 	// Acceptance criteria — extract from description first
@@ -145,6 +150,7 @@ func generateSpec(tc *db.TaskContext) string {
 
 	// Acceptance criteria
 	sb.WriteString("## Acceptance Criteria\n\n")
+
 	if len(acLines) > 0 {
 		for _, line := range acLines {
 			sb.WriteString("- [ ] " + line + "\n")
@@ -153,6 +159,7 @@ func generateSpec(tc *db.TaskContext) string {
 		sb.WriteString("**WARNING: No acceptance criteria defined.**\n")
 		sb.WriteString("Add acceptance criteria to the task description before spawning a session.\n")
 	}
+
 	sb.WriteString("- [ ] All tests passing\n\n")
 
 	// Anti-slop checklist from CLAUDE.md
@@ -175,6 +182,7 @@ func generateSpec(tc *db.TaskContext) string {
 	// Files that will likely change
 	sb.WriteString("## Expected Changes\n\n")
 	sb.WriteString("Based on task type, these file patterns will likely change:\n\n")
+
 	switch tc.TaskType {
 	case "feature":
 		sb.WriteString("- New models/services (if necessary)\n")
@@ -188,12 +196,14 @@ func generateSpec(tc *db.TaskContext) string {
 		sb.WriteString("- Infrastructure/build files\n")
 		sb.WriteString("- Configuration\n")
 	}
+
 	sb.WriteString("\n")
 
 	// Generated metadata
 	sb.WriteString("---\n\n")
 	sb.WriteString(fmt.Sprintf("**Generated:** %s  \n", time.Now().Format("2006-01-02 15:04:05 MST")))
 	sb.WriteString(fmt.Sprintf("**Task Type:** %s  \n", tc.TaskType))
+
 	if tc.TaskCategory != "" {
 		sb.WriteString(fmt.Sprintf("**Category:** %s  \n", tc.TaskCategory))
 	}
@@ -226,6 +236,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 		"--repo", defaultGHRepo,
 		"--json", "number,title,body,labels,milestone,url",
 	)
+
 	out, err := ghCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("gh issue view failed: %w\n%s", err, string(out))
@@ -244,15 +255,20 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 	// Header
 	sb.WriteString("# Execution Spec\n\n")
 	sb.WriteString(fmt.Sprintf("**Task:** %s  \n", title))
+
 	if fields.taskID != "" {
 		sb.WriteString(fmt.Sprintf("**Task ID:** %s  \n", fields.taskID))
 	}
+
 	sb.WriteString(fmt.Sprintf("**GitHub Issue:** #%d  \n", issue.Number))
 	sb.WriteString(fmt.Sprintf("**URL:** %s  \n", issue.URL))
+
 	if fields.priority != "" {
 		sb.WriteString(fmt.Sprintf("**Priority:** %s  \n", fields.priority))
 	}
+
 	sb.WriteString(fmt.Sprintf("**Type:** %s  \n", fields.taskType))
+
 	sessionType := inferSessionTypeFromIssue(issue)
 	sb.WriteString(fmt.Sprintf("**Session Type:** %s  \n", sessionType))
 	sb.WriteString(fmt.Sprintf("**Working Dir:** %s  \n\n", sessionType.WorkingDir()))
@@ -269,6 +285,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 		if end := strings.Index(rest, "\n**"); end >= 0 {
 			rest = rest[:end]
 		}
+
 		story := strings.TrimSpace(rest)
 		if story != "" {
 			sb.WriteString("## User Story\n\n")
@@ -279,6 +296,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 
 	// Description — non-field text lines from the body
 	var descLines []string
+
 	for _, line := range strings.Split(issue.Body, "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "**") || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, "Synced from") {
@@ -288,8 +306,10 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 		if strings.HasPrefix(trimmed, "- ") || strings.HasPrefix(trimmed, "* ") {
 			continue
 		}
+
 		descLines = append(descLines, trimmed)
 	}
+
 	if len(descLines) > 0 {
 		sb.WriteString("## Description\n\n")
 		sb.WriteString(strings.Join(descLines, "\n"))
@@ -299,6 +319,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 	// Acceptance Criteria
 	if fields.acceptanceCriteria != "" {
 		sb.WriteString("## Acceptance Criteria\n\n")
+
 		for _, line := range strings.Split(fields.acceptanceCriteria, "\n") {
 			line = strings.TrimSpace(line)
 			if line != "" {
@@ -316,6 +337,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 				}
 			}
 		}
+
 		sb.WriteString("- [ ] All tests passing\n\n")
 	} else {
 		sb.WriteString("## Acceptance Criteria\n\n")
@@ -327,9 +349,11 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 	// Dependencies
 	if len(fields.deps) > 0 {
 		sb.WriteString("## Dependencies\n\n")
+
 		for _, dep := range fields.deps {
 			sb.WriteString(fmt.Sprintf("- `%s`\n", dep))
 		}
+
 		sb.WriteString("\n")
 	}
 
@@ -340,6 +364,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 	sb.WriteString("lightwave-core/src/schemas/__index.yaml\n")
 	sb.WriteString("```\n\n")
 	sb.WriteString("Key schemas to review based on task type:\n\n")
+
 	switch fields.taskType {
 	case "feature":
 		sb.WriteString("- `schemas.apps` — app registry\n")
@@ -351,6 +376,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 		sb.WriteString("- `schemas.cli` — CLI command definitions\n")
 		sb.WriteString("- `schemas.apps` — app registry\n")
 	}
+
 	sb.WriteString("\nAlways check `__index.yaml` before hardcoding values.\n\n")
 
 	// Anti-slop checklist
@@ -372,6 +398,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 
 	// Expected changes
 	sb.WriteString("## Expected Changes\n\n")
+
 	switch fields.taskType {
 	case "feature":
 		sb.WriteString("- New models/services (if necessary)\n")
@@ -384,10 +411,12 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 		sb.WriteString("- Infrastructure/build files\n")
 		sb.WriteString("- Configuration\n")
 	}
+
 	sb.WriteString("\n")
 
 	// Git workflow
 	branchName := IssueBranchName(issue.Number, title, fields.taskType)
+
 	sb.WriteString("## Git Workflow\n\n")
 	sb.WriteString(fmt.Sprintf("**Branch:** `%s`  \n", branchName))
 	sb.WriteString(fmt.Sprintf("**PR Body Must Include:** `Closes #%d`  \n\n", issue.Number))
@@ -408,14 +437,17 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 		} else {
 			outDir = "specs"
 		}
+
 		if mkErr := os.MkdirAll(outDir, 0o755); mkErr != nil {
 			outDir = "/tmp" // fallback
 		}
 	}
+
 	filename := fmt.Sprintf("spec-issue-%s.md", issueNum)
 	if fields.taskID != "" {
 		filename = fmt.Sprintf("spec-%s.md", fields.taskID)
 	}
+
 	specPath := filepath.Join(outDir, filename)
 
 	if err := os.WriteFile(specPath, []byte(spec), 0644); err != nil {
@@ -424,6 +456,7 @@ func generateSpecFromIssue(issueNum string, outDir string) error {
 
 	fmt.Printf("Spec generated: %s\n", color.GreenString(specPath))
 	fmt.Printf("Spec size: %d bytes\n", len(spec))
+
 	return nil
 }
 
@@ -462,8 +495,8 @@ Examples:
 
 // validationResult captures the outcome of spec validation.
 type validationResult struct {
-	passed   bool
 	failures []string
+	passed   bool
 }
 
 // validateIssueSpec runs architect validation on a GitHub issue.
@@ -474,6 +507,7 @@ func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*vali
 		"--repo", defaultGHRepo,
 		"--json", "number,title,body,labels,url",
 	)
+
 	out, err := ghCmd.CombinedOutput()
 	if err != nil {
 		return nil, fmt.Errorf("gh issue view failed: %w\n%s", err, string(out))
@@ -501,12 +535,13 @@ func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*vali
 	if fields.taskType == "" {
 		result.failures = append(result.failures, "Missing task type")
 	} else if !validTypes[fields.taskType] {
-		result.failures = append(result.failures, fmt.Sprintf("Unknown task type: %s", fields.taskType))
+		result.failures = append(result.failures, "Unknown task type: "+fields.taskType)
 	}
 
 	// Check 3: Dependencies are satisfied (GitHub Issues primary, DB fallback)
 	if len(fields.deps) > 0 {
 		closedIDs := closedIssueTaskIDs()
+
 		pool, _ := db.GetPool(ctx)
 		for _, dep := range fields.deps {
 			// Primary: check closed GitHub Issues
@@ -520,6 +555,7 @@ func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*vali
 					result.failures = append(result.failures, fmt.Sprintf("Dependency %s not found", dep))
 					continue
 				}
+
 				switch task.Status {
 				case "done", "cancelled", "archived":
 					continue
@@ -538,7 +574,9 @@ func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*vali
 	// Print results
 	if len(result.failures) > 0 {
 		result.passed = false
+
 		fmt.Println(color.RedString("VALIDATION FAILED"))
+
 		for _, f := range result.failures {
 			fmt.Printf("  %s %s\n", color.RedString("✗"), f)
 		}
@@ -556,6 +594,7 @@ func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*vali
 			// Comment on issue
 			comment := fmt.Sprintf("## Architect Validation Failed\n\n%s\n\nPlease address these issues before this task can be spawned.",
 				formatFailures(result.failures))
+
 			commentCmd := exec.Command("gh", "issue", "comment", issueNum,
 				"--repo", defaultGHRepo,
 				"--body", comment,
@@ -575,6 +614,7 @@ func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*vali
 			// Comment approval on issue
 			comment := fmt.Sprintf("## Architect Validation Passed\n\nAll checks passed at %s. Ready for session spawn.",
 				time.Now().Format("2006-01-02 15:04:05 MST"))
+
 			commentCmd := exec.Command("gh", "issue", "comment", issueNum,
 				"--repo", defaultGHRepo,
 				"--body", comment,
@@ -582,6 +622,7 @@ func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*vali
 			if commentOut, commentErr := commentCmd.CombinedOutput(); commentErr != nil {
 				fmt.Printf("  %s comment: %v\n%s", color.YellowString("Warning:"), commentErr, string(commentOut))
 			}
+
 			fmt.Printf("  Approval logged on issue #%s\n", issueNum)
 		}
 	}
@@ -594,7 +635,9 @@ func validateIssueSpec(ctx context.Context, issueNum string, dryRun bool) (*vali
 // these are rendered separately in the spec.
 func stripDescriptionSections(desc string) string {
 	lines := strings.Split(desc, "\n")
+
 	var out []string
+
 	inACSection := false
 
 	for _, line := range lines {
@@ -615,6 +658,7 @@ func stripDescriptionSections(desc string) string {
 			inACSection = true
 			continue
 		}
+
 		if inACSection {
 			if strings.HasPrefix(trimmed, "#") || (strings.HasPrefix(trimmed, "**") && !strings.HasPrefix(trimmed, "**-") && !strings.Contains(lower, "acceptance")) {
 				inACSection = false
@@ -635,7 +679,9 @@ func stripDescriptionSections(desc string) string {
 // or falls back to any bullet list items in the description.
 func extractACFromDescription(desc string) []string {
 	lines := strings.Split(desc, "\n")
+
 	var acLines []string
+
 	inACSection := false
 
 	for _, line := range lines {
@@ -652,6 +698,7 @@ func extractACFromDescription(desc string) []string {
 		if inACSection && strings.HasPrefix(trimmed, "#") {
 			break
 		}
+
 		if inACSection && strings.HasPrefix(trimmed, "**") && !strings.HasPrefix(trimmed, "**-") {
 			// Next bold field marker — end AC section
 			if !strings.Contains(lower, "acceptance") {
@@ -681,6 +728,7 @@ func formatFailures(failures []string) string {
 	for _, f := range failures {
 		sb.WriteString(fmt.Sprintf("- ✗ %s\n", f))
 	}
+
 	return sb.String()
 }
 

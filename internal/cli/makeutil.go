@@ -29,10 +29,12 @@ func resolveMakeDir(scope string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("unknown scope %q (valid: %s)", scope, scopeList())
 	}
+
 	cfg := config.Get()
 	if cfg == nil {
 		return "", errors.New("no configuration found; run `lw config init` to initialize")
 	}
+
 	return filepath.Join(cfg.Paths.LightwaveRoot, rel), nil
 }
 
@@ -76,6 +78,7 @@ func listMakeTargets(scope string) error {
 	}
 
 	path := filepath.Join(dir, "Makefile")
+
 	f, err := os.Open(path)
 	if err != nil {
 		return fmt.Errorf("cannot read Makefile: %w", err)
@@ -85,7 +88,9 @@ func listMakeTargets(scope string) error {
 	fmt.Printf("Targets in %s (%s):\n\n", color.CyanString(scope), dir)
 
 	scanner := bufio.NewScanner(f)
+
 	var comment string
+
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -104,6 +109,7 @@ func listMakeTargets(scope string) error {
 					comment = ""
 					continue
 				}
+
 				if comment != "" {
 					fmt.Printf("  %-24s %s\n", color.GreenString(target), comment)
 				} else {
@@ -111,11 +117,14 @@ func listMakeTargets(scope string) error {
 				}
 			}
 		}
+
 		if !strings.HasPrefix(line, "#") {
 			comment = ""
 		}
 	}
+
 	fmt.Println()
+
 	return scanner.Err()
 }
 
@@ -124,5 +133,6 @@ func scopeList() string {
 	for k := range makeScopes {
 		names = append(names, k)
 	}
+
 	return strings.Join(names, ", ")
 }
