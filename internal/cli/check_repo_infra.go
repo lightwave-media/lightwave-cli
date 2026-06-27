@@ -3,6 +3,7 @@ package cli
 // check_repo_infra.go — lw check repo-infra
 //
 // linked-incident: failures/2026-06-15-repo-infra-drift.yaml
+// linked-incident (ci-node): lightwave-media/lightwave-cli#122
 //
 // Anti-pattern caught:
 //   BEFORE: agent sessions start without AGENTS.md/CLAUDE.md — no rules loaded,
@@ -50,6 +51,7 @@ type repoInfraViolation struct {
 	Missing  string `json:"missing"`
 	Detail   string `json:"detail,omitempty"`
 	Fixable  bool   `json:"fixable"`
+	Severity string `json:"severity,omitempty"` // "" or "error" = hard; "warn" = advisory
 }
 
 type repoInfraDrift struct {
@@ -138,8 +140,16 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 
 	printRepoInfraReport(&report)
 
-	if len(report.Violations) > 0 {
-		return fmt.Errorf("%d violation(s) found in %d repo(s)", len(report.Violations), len(report.Checked))
+	hardViolations := 0
+
+	for _, v := range report.Violations {
+		if v.Severity != gitSeverityWarn {
+			hardViolations++
+		}
+	}
+
+	if hardViolations > 0 {
+		return fmt.Errorf("%d violation(s) found in %d repo(s)", hardViolations, len(report.Checked))
 	}
 
 	return nil
@@ -240,7 +250,54 @@ func checkOneRepo(repoPath, name string, infraCfg *sst.RepoInfraConfig) []repoIn
 		}
 	}
 
+	// ci-node conformance: warn if a Node/TS repo doesn't delegate to the shared workflow
+	viols = append(viols, checkCINodeConformance(repoPath, name)...)
+
 	return viols
+}
+
+// checkCINodeConformance warns when a Node/TS repo hand-crafts inline CI steps
+// instead of delegating to lightwave-media/.github/.github/workflows/ci-node.yml.
+// Linked incident: lightwave-media/lightwave-cli#122
+func checkCINodeConformance(repoPath, name string) []repoInfraViolation {
+	// Only applies to repos with a Node/TS footprint.
+	hasNode := false
+
+	for _, indicator := range []string{"package.json", "tsconfig.json", ".nvmrc"} {
+		if _, err := os.Stat(filepath.Join(repoPath, indicator)); err == nil {
+			hasNode = true
+
+			break
+		}
+	}
+
+	if !hasNode {
+		return nil
+	}
+
+	ciFile := filepath.Join(repoPath, ".github", "workflows", "ci.yml")
+
+	data, err := os.ReadFile(ciFile)
+	if err != nil {
+		// No ci.yml — nothing to check.
+		return nil
+	}
+
+	const sharedWorkflow = "lightwave-media/.github/.github/workflows/ci-node.yml"
+
+	if strings.Contains(string(data), sharedWorkflow) {
+		return nil
+	}
+
+	return []repoInfraViolation{{
+		Repo:     name,
+		RepoPath: repoPath,
+		Kind:     "ci-node",
+		Missing:  ".github/workflows/ci.yml",
+		Detail: "Node/TS repo does not delegate to " + sharedWorkflow +
+			" — replace inline steps. Fix hint: jobs.ci.uses: " + sharedWorkflow + "@<sha>",
+		Severity: gitSeverityWarn,
+	}}
 }
 
 // detectDrift scans all checked repos for patterns that exist but aren't in the schema.
@@ -413,11 +470,21 @@ func printRepoInfraReport(r *repoInfraReport) {
 		return
 	}
 
-	if len(r.Violations) > 0 {
-		fmt.Printf("\n%s (%d)\n", color.YellowString("violations"), len(r.Violations))
+	var hardViols, warnViols []repoInfraViolation
+
+	for _, v := range r.Violations {
+		if v.Severity == gitSeverityWarn {
+			warnViols = append(warnViols, v)
+		} else {
+			hardViols = append(hardViols, v)
+		}
+	}
+
+	if len(hardViols) > 0 {
+		fmt.Printf("\n%s (%d)\n", color.YellowString("violations"), len(hardViols))
 
 		byRepo := map[string][]repoInfraViolation{}
-		for _, v := range r.Violations {
+		for _, v := range hardViols {
 			byRepo[v.Repo] = append(byRepo[v.Repo], v)
 		}
 
@@ -440,6 +507,19 @@ func printRepoInfraReport(r *repoInfraReport) {
 		}
 
 		fmt.Printf("\n%s\n", color.CyanString("Run `lw check repo-infra --fix` to apply mechanical fixes."))
+	}
+
+	if len(warnViols) > 0 {
+		fmt.Printf("\n%s (%d)\n", color.YellowString("warnings (advisory)"), len(warnViols))
+
+		for _, v := range warnViols {
+			d := ""
+			if v.Detail != "" {
+				d = "\n      " + v.Detail
+			}
+
+			fmt.Printf("  ⚠  %s [%s]: %s%s\n", v.Repo, v.Kind, v.Missing, d)
+		}
 	}
 
 	if len(r.Drift) > 0 {
