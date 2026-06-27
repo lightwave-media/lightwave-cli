@@ -22,8 +22,10 @@ var (
 
 // rootCmd represents the base command
 var rootCmd = &cobra.Command{
-	Use:   "lw",
-	Short: "LightWave CLI - Task management and scaffolding",
+	Use:           "lw",
+	Short:         "LightWave CLI - Task management and scaffolding",
+	SilenceErrors: true,
+	SilenceUsage:  true,
 	Long: `Schema-driven CLI for the LightWave platform — Go services, Terragrunt
 infrastructure, TypeScript UI. Codegen, scaffolds, validators, deploy gates.
 

@@ -33,7 +33,7 @@ func TestWrapConnectError_NetOpErrFormatted(t *testing.T) {
 	}
 	msg := got.Error()
 	for _, want := range []string{
-		"Cannot connect to platform database at 127.0.0.1:5433.",
+		"cannot connect to platform database at 127.0.0.1:5433",
 		"Run `lw dev start`",
 		"brew services start postgresql@14",
 		"set LW_DB_URL",
@@ -51,7 +51,7 @@ func TestWrapConnectError_DNSErrFormatted(t *testing.T) {
 	if got == nil {
 		t.Fatal("expected wrapped error, got nil")
 	}
-	if !strings.Contains(got.Error(), "Cannot connect to platform database at nowhere.invalid:5432.") {
+	if !strings.Contains(got.Error(), "cannot connect to platform database at nowhere.invalid:5432") {
 		t.Errorf("expected host:port in message, got: %s", got.Error())
 	}
 }
@@ -62,5 +62,23 @@ func TestWrapConnectError_PreservesUnwrap(t *testing.T) {
 	// Wrapped via %w → errors.Is should reach the underlying net.OpError.
 	if !errors.Is(got, netErr) {
 		t.Error("expected errors.Is to find wrapped net.OpError via %w chain")
+	}
+}
+
+func TestWrapConnectError_WrapsErrDBUnavailable(t *testing.T) {
+	t.Parallel()
+	netErr := &net.OpError{Op: "dial", Net: "tcp", Err: errors.New("connect: connection refused")}
+	got := WrapConnectError(netErr, "localhost", 5433)
+	if !errors.Is(got, ErrDBUnavailable) {
+		t.Error("expected errors.Is(err, ErrDBUnavailable) to be true for connect failures")
+	}
+}
+
+func TestWrapConnectError_NonConnectDoesNotWrapUnavailable(t *testing.T) {
+	t.Parallel()
+	plain := errors.New("relation \"foo\" does not exist")
+	got := WrapConnectError(plain, "localhost", 5433)
+	if errors.Is(got, ErrDBUnavailable) {
+		t.Error("expected non-connect errors to NOT wrap ErrDBUnavailable")
 	}
 }
