@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/db"
@@ -93,7 +95,7 @@ Examples:
   lw story create --name="Dashboard view" --user-type=admin --sprint=def456`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if storyCreateName == "" {
-			return fmt.Errorf("--name is required")
+			return errors.New("--name is required")
 		}
 
 		ctx := context.Background()
@@ -208,7 +210,7 @@ func printStoryTable(stories []db.Story) {
 
 		points := "-"
 		if s.StoryPoints != nil {
-			points = fmt.Sprintf("%d", *s.StoryPoints)
+			points = strconv.Itoa(int(*s.StoryPoints))
 		}
 
 		table.Rich([]string{

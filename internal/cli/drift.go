@@ -1,7 +1,7 @@
 package cli
 
 import (
-	"fmt"
+	"errors"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -56,19 +56,19 @@ in sync with YAML ideal state.`,
 		parts = append(parts, "drift_report")
 
 		if driftSchema != "" {
-			parts = append(parts, fmt.Sprintf("--schema %s", driftSchema))
+			parts = append(parts, "--schema "+driftSchema)
 		}
 		if driftJSON {
 			parts = append(parts, "--json")
 		}
 		if driftOutput != "" {
-			parts = append(parts, fmt.Sprintf("--output %s", driftOutput))
+			parts = append(parts, "--output "+driftOutput)
 		}
 		if driftOrphans {
 			parts = append(parts, "--include-orphans")
 		}
 
-		return runMake(dir, "dj-manage", fmt.Sprintf("CMD=%s", strings.Join(parts, " ")))
+		return runMake(dir, "dj-manage", "CMD="+strings.Join(parts, " "))
 	},
 }
 
@@ -92,16 +92,16 @@ Use 'lw drift report' first to preview changes.`,
 		if driftReconcileAll {
 			parts = append(parts, "reconcile")
 		} else if driftSchema != "" {
-			parts = append(parts, "reconcile", fmt.Sprintf("--schema %s", driftSchema))
+			parts = append(parts, "reconcile", "--schema "+driftSchema)
 		} else {
-			return fmt.Errorf("specify --schema <name> or --all")
+			return errors.New("specify --schema <name> or --all")
 		}
 
 		if driftReconcileDryRun {
 			parts = append(parts, "--check")
 		}
 
-		return runMake(dir, "dj-manage", fmt.Sprintf("CMD=%s", strings.Join(parts, " ")))
+		return runMake(dir, "dj-manage", "CMD="+strings.Join(parts, " "))
 	},
 }
 

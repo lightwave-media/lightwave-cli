@@ -34,6 +34,7 @@ func hooksSearchRoots() []string {
 	if err != nil {
 		return nil
 	}
+
 	return []string{
 		filepath.Join(home, "dev", "lightwave-media"),
 		filepath.Join(home, "dev", "lightwave-sys"),
@@ -56,51 +57,65 @@ func hooksInstallHandler(_ context.Context, _ []string, flags map[string]any) er
 	if err != nil {
 		return fmt.Errorf("getwd: %w", err)
 	}
+
 	repo, err := nearestRepoRoot(cwd)
 	if err != nil {
 		return err
 	}
+
 	if !hasPreCommitConfig(repo) {
 		return fmt.Errorf("no .pre-commit-config.yaml at %s", repo)
 	}
+
 	if flagBool(flags, "dry-run") {
 		fmt.Printf("would install pre-commit + pre-push hooks at %s\n", repo)
 		return nil
 	}
+
 	return installHooks(repo)
 }
 
 func hooksDoctorHandler(_ context.Context, _ []string, flags map[string]any) error {
 	repos := discoverRepos()
+
 	statuses := make([]repoStatus, 0, len(repos))
 	for _, r := range repos {
 		statuses = append(statuses, repoStatusFor(r))
 	}
+
 	sort.Slice(statuses, func(i, j int) bool { return statuses[i].Path < statuses[j].Path })
 
 	if asJSON(flags) {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+
 		return enc.Encode(statuses)
 	}
+
 	if len(statuses) == 0 {
 		fmt.Println(color.YellowString("no LightWave repos with .pre-commit-config.yaml found"))
 		return nil
 	}
+
 	bad := 0
+
 	for _, s := range statuses {
 		mark := color.GreenString("✓")
 		if !s.ok() {
 			mark = color.RedString("✗")
 			bad++
 		}
+
 		fmt.Printf("  %s %s  (pre-commit=%v pre-push=%v)\n",
 			mark, s.Path, s.PreCommit, s.PrePush)
 	}
+
 	fmt.Printf("\n%d repo(s) checked, %d need attention\n", len(statuses), bad)
+
 	if bad > 0 {
 		return fmt.Errorf("%d repo(s) missing hooks — run `lw hooks sync`", bad)
 	}
+
 	return nil
 }
 
@@ -110,19 +125,24 @@ func hooksSyncHandler(_ context.Context, _ []string, flags map[string]any) error
 		fmt.Println(color.YellowString("no LightWave repos with .pre-commit-config.yaml found"))
 		return nil
 	}
+
 	dry := flagBool(flags, "dry-run")
 	for _, r := range repos {
 		if dry {
 			fmt.Printf("would install hooks at %s\n", r)
 			continue
 		}
+
 		fmt.Printf("→ %s\n", r)
+
 		if err := installHooks(r); err != nil {
 			fmt.Printf("  %s %v\n", color.RedString("✗"), err)
 			continue
 		}
+
 		fmt.Printf("  %s installed\n", color.GreenString("✓"))
 	}
+
 	return nil
 }
 
@@ -131,12 +151,14 @@ func hooksSyncHandler(_ context.Context, _ []string, flags map[string]any) error
 // Depth-1 walk keeps the cost ~O(top-level dirs) on a typical laptop.
 func discoverRepos() []string {
 	seen := map[string]bool{}
+
 	var out []string
 
 	check := func(p string) {
 		if seen[p] {
 			return
 		}
+
 		seen[p] = true
 		if isGitRepo(p) && hasPreCommitConfig(p) {
 			out = append(out, p)
@@ -148,19 +170,25 @@ func discoverRepos() []string {
 		if err != nil || !info.IsDir() {
 			continue
 		}
+
 		check(root)
+
 		entries, err := os.ReadDir(root)
 		if err != nil {
 			continue
 		}
+
 		for _, e := range entries {
 			if !e.IsDir() {
 				continue
 			}
+
 			check(filepath.Join(root, e.Name()))
 		}
 	}
+
 	sort.Strings(out)
+
 	return out
 }
 
@@ -182,10 +210,12 @@ func nearestRepoRoot(start string) (string, error) {
 		if isGitRepo(dir) {
 			return dir, nil
 		}
+
 		parent := filepath.Dir(dir)
 		if parent == dir {
 			return "", fmt.Errorf("not inside a git repo: %s", start)
 		}
+
 		dir = parent
 	}
 }
@@ -204,14 +234,17 @@ func repoStatusFor(repo string) repoStatus {
 // framework marker. Bare files left behind by `git init` don't count.
 func hookInstalled(repo, name string) bool {
 	path := filepath.Join(repo, ".git", "hooks", name)
+
 	info, err := os.Stat(path)
 	if err != nil || !info.Mode().IsRegular() {
 		return false
 	}
+
 	body, err := os.ReadFile(path)
 	if err != nil {
 		return false
 	}
+
 	return containsPreCommitMarker(body)
 }
 
@@ -233,10 +266,12 @@ func installHooks(repo string) error {
 		c := exec.Command("pre-commit", args...)
 		c.Dir = repo
 		c.Stdout = os.Stdout
+
 		c.Stderr = os.Stderr
 		if err := c.Run(); err != nil {
 			return fmt.Errorf("pre-commit %v: %w", args, err)
 		}
 	}
+
 	return nil
 }

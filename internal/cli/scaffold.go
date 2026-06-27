@@ -3,11 +3,14 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 
+	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/blueprint"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +29,7 @@ var (
 	scaffoldBlueprints string
 	scaffoldNoHooks    bool
 	scaffoldForce      bool
+	scaffoldList       bool
 )
 
 var scaffoldCmd = &cobra.Command{
@@ -44,7 +48,12 @@ All variables come from --var/--var-file (blueprint defaults fill the rest).
 Examples:
   lw scaffold react-component -o ./out --var category=marketing --var component_name=Hero
   lw scaffold site-section -o ./src/components/marketing --var-file vars.yml`,
-	Args:         cobra.ExactArgs(1),
+	Args: func(cmd *cobra.Command, args []string) error {
+		if scaffoldList {
+			return nil
+		}
+		return cobra.ExactArgs(1)(cmd, args)
+	},
 	SilenceUsage: true,
 	RunE:         runScaffold,
 }
@@ -52,11 +61,11 @@ Examples:
 func init() {
 	scaffoldCmd.Flags().StringArrayVar(&scaffoldVars, "var", nil, "Set a blueprint variable NAME=VALUE (repeatable)")
 	scaffoldCmd.Flags().StringArrayVar(&scaffoldVarFiles, "var-file", nil, "Load variables from a YAML file (repeatable)")
-	scaffoldCmd.Flags().StringVarP(&scaffoldOutput, "output-folder", "o", "", "Output directory (required)")
+	scaffoldCmd.Flags().StringVarP(&scaffoldOutput, "output-folder", "o", "", "Output directory (required unless --list)")
 	scaffoldCmd.Flags().StringVar(&scaffoldBlueprints, "blueprints-dir", "", "Override the blueprint library location")
 	scaffoldCmd.Flags().BoolVar(&scaffoldNoHooks, "no-hooks", false, "Skip blueprint hooks")
 	scaffoldCmd.Flags().BoolVar(&scaffoldForce, "force", false, "Overwrite existing files (default: refuse if the blueprint would clobber any)")
-	_ = scaffoldCmd.MarkFlagRequired("output-folder")
+	scaffoldCmd.Flags().BoolVar(&scaffoldList, "list", false, "List all available blueprints and templates")
 }
 
 // blueprintsDir resolves the library, honoring an explicit override first.
@@ -74,6 +83,10 @@ func blueprintsDir(override string) (string, error) {
 }
 
 func runScaffold(cmd *cobra.Command, args []string) error {
+	if scaffoldList {
+		return runScaffoldList()
+	}
+
 	dir, err := blueprintsDir(scaffoldBlueprints)
 	if err != nil {
 		return err
@@ -92,6 +105,35 @@ func runScaffold(cmd *cobra.Command, args []string) error {
 		NoHooks:       scaffoldNoHooks,
 		Force:         scaffoldForce,
 	})
+}
+
+func runScaffoldList() error {
+	cfg := config.Get()
+	if cfg == nil {
+		return errors.New("config not loaded")
+	}
+
+	entries, err := blueprint.List(cfg.Paths.LightwaveRoot)
+	if err != nil {
+		return err
+	}
+
+	fmt.Printf("%s\n\n", color.CyanString("Available blueprints and templates (lw scaffold <slug>)"))
+
+	tw := tablewriter.NewWriter(os.Stdout)
+	tw.SetHeader([]string{"Kind", "Slug", "Dir"})
+	tw.SetBorder(false)
+	tw.SetColumnSeparator("  ")
+	tw.SetHeaderAlignment(tablewriter.ALIGN_LEFT)
+	tw.SetAlignment(tablewriter.ALIGN_LEFT)
+
+	for _, e := range entries {
+		tw.Append([]string{e.Kind, e.Slug, e.Dir})
+	}
+
+	tw.Render()
+
+	return nil
 }
 
 // --- `lw ui component <category>/<Name>` — sugar over scaffold react-component.

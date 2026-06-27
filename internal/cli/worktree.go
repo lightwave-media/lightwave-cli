@@ -31,6 +31,7 @@ type worktreeMeta struct {
 }
 
 type worktreeInfo struct {
+	modTime   time.Time
 	Path      string `json:"path"`
 	Issue     string `json:"issue"`
 	Branch    string `json:"branch"`
@@ -38,7 +39,6 @@ type worktreeInfo struct {
 	CreatedAt string `json:"created_at"`
 	ActStatus string `json:"act_status,omitempty"`
 	IdleDays  int    `json:"idle_days"`
-	modTime   time.Time
 }
 
 // =============================================================================
@@ -102,10 +102,12 @@ func readMeta(wpath string) (*worktreeMeta, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var m worktreeMeta
 	if err := yaml.Unmarshal(data, &m); err != nil {
 		return nil, fmt.Errorf("parsing .lw-worktree.yaml: %w", err)
 	}
+
 	return &m, nil
 }
 
@@ -114,6 +116,7 @@ func writeMeta(wpath string, m *worktreeMeta) error {
 	if err != nil {
 		return err
 	}
+
 	return os.WriteFile(metaPath(wpath), data, 0644)
 }
 
@@ -122,6 +125,7 @@ func readActStatus(wpath string) string {
 	if err != nil {
 		return ""
 	}
+
 	return strings.TrimSpace(string(data))
 }
 
@@ -129,6 +133,7 @@ func validateBranch(branch string) error {
 	if !branchPattern.MatchString(branch) {
 		return fmt.Errorf("branch %q violates naming convention\n  expected: feature/<id>-<desc>, fix/<id>-<desc>, or hotfix/v<semver>-<desc>", branch)
 	}
+
 	return nil
 }
 
@@ -136,16 +141,20 @@ func buildBranch(issue, branchType, description string) (string, error) {
 	if branchType == "" {
 		branchType = "feature"
 	}
+
 	if branchType == "hotfix" {
-		return "", fmt.Errorf("hotfix branches require --branch with explicit semver: hotfix/v<semver>-<desc>")
+		return "", errors.New("hotfix branches require --branch with explicit semver: hotfix/v<semver>-<desc>")
 	}
+
 	if description == "" {
-		return "", fmt.Errorf("--description is required when --branch is not set")
+		return "", errors.New("--description is required when --branch is not set")
 	}
+
 	branch := fmt.Sprintf("%s/%s-%s", branchType, issue, description)
 	if err := validateBranch(branch); err != nil {
 		return "", err
 	}
+
 	return branch, nil
 }
 
@@ -160,24 +169,31 @@ func loadAllWorktrees() ([]worktreeInfo, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
+
 		return nil, err
 	}
 
 	var infos []worktreeInfo
+
 	for _, e := range entries {
 		if !e.IsDir() || !strings.HasPrefix(e.Name(), "issue-") {
 			continue
 		}
+
 		wpath := filepath.Join(root, e.Name())
+
 		meta, err := readMeta(wpath)
 		if err != nil {
 			continue
 		}
+
 		info, _ := e.Info()
+
 		var modTime time.Time
 		if info != nil {
 			modTime = info.ModTime()
 		}
+
 		idle := int(time.Since(modTime).Hours() / 24)
 		infos = append(infos, worktreeInfo{
 			Path:      wpath,
@@ -190,6 +206,7 @@ func loadAllWorktrees() ([]worktreeInfo, error) {
 			modTime:   modTime,
 		})
 	}
+
 	return infos, nil
 }
 
@@ -449,7 +466,7 @@ Examples:
 			actFile := actStatusPath(cwd)
 			data, err := os.ReadFile(actFile)
 			if err != nil {
-				return fmt.Errorf("no .act-status file in cwd")
+				return errors.New("no .act-status file in cwd")
 			}
 			parts := strings.SplitN(strings.TrimSpace(string(data)), "\n", 2)
 			if len(parts) == 0 || parts[0] != "passed" {
@@ -633,6 +650,7 @@ func printWorktreeJSON(info worktreeInfo, created bool) error {
 	}
 	enc := json.NewEncoder(os.Stdout)
 	enc.SetIndent("", "  ")
+
 	return enc.Encode(out)
 }
 

@@ -104,11 +104,11 @@ Examples:
 // cdnConfig is the subset of assets.yaml we care about.
 type cdnConfig struct {
 	CDN struct {
+		Paths  map[string]string `yaml:"paths"`
 		Origin struct {
 			Bucket string `yaml:"bucket"`
 			Region string `yaml:"region"`
 		} `yaml:"origin"`
-		Paths map[string]string `yaml:"paths"`
 	} `yaml:"cdn"`
 }
 
@@ -119,6 +119,7 @@ func loadCdnSST() (bucket, region string, allowed map[string]struct{}, err error
 	if cfg == nil {
 		return "", "", nil, errors.New("config not loaded")
 	}
+
 	defs := filepath.Join(cfg.Paths.LightwaveRoot,
 		"lightwave-core", "src", "schemas")
 
@@ -129,6 +130,7 @@ func loadCdnSST() (bucket, region string, allowed map[string]struct{}, err error
 	if err != nil {
 		return "", "", nil, fmt.Errorf("read %s: %w", assetsPath, err)
 	}
+
 	var assets cdnConfig
 	if err := yaml.Unmarshal(assetsRaw, &assets); err != nil {
 		return "", "", nil, fmt.Errorf("parse assets.yaml: %w", err)
@@ -144,13 +146,15 @@ func loadCdnSST() (bucket, region string, allowed map[string]struct{}, err error
 	if err := yaml.Unmarshal(domainsRaw, &domainsMap); err != nil {
 		return "", "", nil, fmt.Errorf("parse domains.yaml: %w", err)
 	}
+
 	infraDomain := findInfraDomain(domainsMap)
 	if infraDomain == "" {
-		return "", "", nil, fmt.Errorf("infrastructure_domain not found in domains.yaml")
+		return "", "", nil, errors.New("infrastructure_domain not found in domains.yaml")
 	}
 
 	bucket = strings.ReplaceAll(assets.CDN.Origin.Bucket,
 		"{{ infrastructure_domain }}", infraDomain)
+
 	region = assets.CDN.Origin.Region
 	if region == "" {
 		region = "us-east-1"
@@ -162,11 +166,14 @@ func loadCdnSST() (bucket, region string, allowed map[string]struct{}, err error
 		if name == "" {
 			continue
 		}
+
 		allowed[name] = struct{}{}
 	}
+
 	if len(allowed) == 0 {
-		return "", "", nil, fmt.Errorf("cdn.paths is empty in assets.yaml")
+		return "", "", nil, errors.New("cdn.paths is empty in assets.yaml")
 	}
+
 	return bucket, region, allowed, nil
 }
 
@@ -179,6 +186,7 @@ func findInfraDomain(m map[string]any) string {
 			return s
 		}
 	}
+
 	for _, v := range m {
 		if child, ok := v.(map[string]any); ok {
 			if s := findInfraDomain(child); s != "" {
@@ -186,6 +194,7 @@ func findInfraDomain(m map[string]any) string {
 			}
 		}
 	}
+
 	return ""
 }
 
@@ -193,17 +202,22 @@ func findInfraDomain(m map[string]any) string {
 // Pure function — no AWS calls, easy to unit test.
 func computeDrift(bucketPrefixes []string, allowed map[string]struct{}) []string {
 	var drift []string
+
 	for _, p := range bucketPrefixes {
 		name := strings.Trim(p, "/")
 		if name == "" {
 			continue
 		}
+
 		if _, ok := allowed[name]; ok {
 			continue
 		}
+
 		drift = append(drift, name)
 	}
+
 	sort.Strings(drift)
+
 	return drift
 }
 
@@ -217,12 +231,14 @@ func listTopLevelPrefixes(ctx context.Context, client *s3.Client, bucket string)
 	if err != nil {
 		return nil, fmt.Errorf("list bucket %s: %w", bucket, err)
 	}
+
 	prefixes := make([]string, 0, len(out.CommonPrefixes))
 	for _, p := range out.CommonPrefixes {
 		if p.Prefix != nil {
 			prefixes = append(prefixes, *p.Prefix)
 		}
 	}
+
 	return prefixes, nil
 }
 
@@ -233,8 +249,11 @@ type prefixStats struct {
 }
 
 func statPrefix(ctx context.Context, client *s3.Client, bucket, prefix string) (prefixStats, error) {
-	var stats prefixStats
-	var token *string
+	var (
+		stats prefixStats
+		token *string
+	)
+
 	for {
 		out, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 			Bucket:            aws.String(bucket),
@@ -244,24 +263,31 @@ func statPrefix(ctx context.Context, client *s3.Client, bucket, prefix string) (
 		if err != nil {
 			return stats, err
 		}
+
 		for _, o := range out.Contents {
 			stats.objects++
 			if o.Size != nil {
 				stats.bytes += *o.Size
 			}
 		}
+
 		if out.IsTruncated == nil || !*out.IsTruncated {
 			break
 		}
+
 		token = out.NextContinuationToken
 	}
+
 	return stats, nil
 }
 
 // deletePrefix removes every object under a prefix in batches of 1000.
 func deletePrefix(ctx context.Context, client *s3.Client, bucket, prefix string) (int64, error) {
-	var deleted int64
-	var token *string
+	var (
+		deleted int64
+		token   *string
+	)
+
 	for {
 		listOut, err := client.ListObjectsV2(ctx, &s3.ListObjectsV2Input{
 			Bucket:            aws.String(bucket),
@@ -271,9 +297,11 @@ func deletePrefix(ctx context.Context, client *s3.Client, bucket, prefix string)
 		if err != nil {
 			return deleted, fmt.Errorf("list %s: %w", prefix, err)
 		}
+
 		if len(listOut.Contents) == 0 {
 			break
 		}
+
 		ids := make([]s3types.ObjectIdentifier, 0, len(listOut.Contents))
 		for _, o := range listOut.Contents {
 			ids = append(ids, s3types.ObjectIdentifier{Key: o.Key})
@@ -287,12 +315,16 @@ func deletePrefix(ctx context.Context, client *s3.Client, bucket, prefix string)
 		if err != nil {
 			return deleted, fmt.Errorf("delete batch under %s: %w", prefix, err)
 		}
+
 		deleted += int64(len(ids))
+
 		if listOut.IsTruncated == nil || !*listOut.IsTruncated {
 			break
 		}
+
 		token = listOut.NextContinuationToken
 	}
+
 	return deleted, nil
 }
 
@@ -324,6 +356,7 @@ func runCdnReconcile(ctx context.Context) error {
 	for k := range allowed {
 		allowedList = append(allowedList, k)
 	}
+
 	sort.Strings(allowedList)
 
 	fmt.Printf("Bucket: %s (%s)\n", color.CyanString(bucket), region)
@@ -334,6 +367,7 @@ func runCdnReconcile(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("load AWS config: %w", err)
 	}
+
 	client := s3.NewFromConfig(awsCfg)
 
 	bucketPrefixes, err := listTopLevelPrefixes(ctx, client, bucket)
@@ -348,16 +382,19 @@ func runCdnReconcile(ctx context.Context) error {
 	}
 
 	fmt.Printf("Drift (%d prefixes not in SST):\n", len(drift))
+
 	type driftRow struct {
 		name  string
 		stats prefixStats
 	}
+
 	rows := make([]driftRow, 0, len(drift))
 	for _, name := range drift {
 		stats, err := statPrefix(ctx, client, bucket, name+"/")
 		if err != nil {
 			return err
 		}
+
 		rows = append(rows, driftRow{name: name, stats: stats})
 		fmt.Printf("  %s  %d objects  %s\n",
 			color.YellowString("%-20s", name+"/"),
@@ -372,7 +409,9 @@ func runCdnReconcile(ctx context.Context) error {
 	if !cdnReconcileYes {
 		fmt.Printf("\nDelete %d legacy prefixes from %s? [y/N] ",
 			len(drift), bucket)
+
 		var confirm string
+
 		_, _ = fmt.Scanln(&confirm)
 		if confirm != "y" && confirm != "Y" && confirm != "yes" {
 			fmt.Println("Cancelled")
@@ -381,13 +420,16 @@ func runCdnReconcile(ctx context.Context) error {
 	}
 
 	var totalDeleted int64
+
 	for _, row := range rows {
 		fmt.Printf("Deleting %s ...\n", row.name+"/")
+
 		n, err := deletePrefix(ctx, client, bucket, row.name+"/")
 		if err != nil {
 			fmt.Printf("  %s %s: %v\n", color.RedString("FAIL"), row.name, err)
 			continue
 		}
+
 		fmt.Printf("  %s %s (%d objects)\n",
 			color.GreenString("DELETED"), row.name, n)
 		totalDeleted += n
@@ -395,6 +437,7 @@ func runCdnReconcile(ctx context.Context) error {
 
 	fmt.Printf("\nDeleted %s objects across %d prefixes\n",
 		color.GreenString("%d", totalDeleted), len(rows))
+
 	return nil
 }
 

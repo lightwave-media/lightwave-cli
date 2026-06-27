@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/fatih/color"
@@ -358,12 +359,14 @@ func createGitHubIssueForTask(task *db.Task) (int, error) {
 	body.WriteString(fmt.Sprintf("**Task ID:** %s\n", task.ShortID))
 	body.WriteString(fmt.Sprintf("**Priority:** %s\n", task.Priority))
 	body.WriteString(fmt.Sprintf("**Type:** %s\n", task.TaskType))
+
 	if task.Description != nil && *task.Description != "" {
 		body.WriteString(fmt.Sprintf("\n%s\n", *task.Description))
 	}
 
 	// Map priority to label
 	priorityLabel := "p3"
+
 	switch {
 	case strings.Contains(task.Priority, "p1"):
 		priorityLabel = "p1"
@@ -388,6 +391,7 @@ func createGitHubIssueForTask(task *db.Task) (int, error) {
 	}
 
 	cmd := exec.Command("gh", ghArgs...)
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return 0, fmt.Errorf("gh issue create: %w\n%s", err, string(out))
@@ -395,6 +399,7 @@ func createGitHubIssueForTask(task *db.Task) (int, error) {
 
 	// Parse issue URL from output to get number
 	outStr := strings.TrimSpace(string(out))
+
 	parts := strings.Split(outStr, "/")
 	if len(parts) > 0 {
 		var num int
@@ -415,10 +420,11 @@ func createGitHubIssueForTask(task *db.Task) (int, error) {
 func addIssueToProject(issueNumber int) {
 	// First get the node ID of the issue
 	cmd := exec.Command("gh", "issue", "view",
-		fmt.Sprintf("%d", issueNumber),
+		strconv.Itoa(issueNumber),
 		"--repo", defaultGHRepo,
 		"--json", "id",
 	)
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return
@@ -573,6 +579,7 @@ func printTaskDetails(t *db.Task) {
 	if t.BranchName != nil && *t.BranchName != "" {
 		fmt.Printf("%s %s\n", color.CyanString("Branch:"), *t.BranchName)
 	}
+
 	if t.PRUrl != nil && *t.PRUrl != "" {
 		fmt.Printf("%s %s\n", color.CyanString("PR:"), *t.PRUrl)
 	}
@@ -655,21 +662,26 @@ func printTaskContext(tc *db.TaskContext) {
 	fmt.Printf("%s %s\n", color.CyanString("Status:"), colorStatus(tc.Status, tc.StatusDisplay()))
 	fmt.Printf("%s %s\n", color.CyanString("Priority:"), colorPriority(tc.Priority, tc.PriorityDisplay()))
 	fmt.Printf("%s %s\n", color.CyanString("Type:"), tc.TaskType)
+
 	if tc.TaskCategory != "" {
 		fmt.Printf("%s %s\n", color.CyanString("Category:"), tc.TaskCategory)
 	}
+
 	fmt.Println()
 
 	// Epic
 	if tc.EpicName != nil {
 		fmt.Println(color.CyanString("Epic:"))
 		fmt.Printf("  Name:   %s\n", *tc.EpicName)
+
 		if tc.EpicStatus != nil {
 			fmt.Printf("  Status: %s\n", *tc.EpicStatus)
 		}
+
 		if tc.EpicID != nil {
 			fmt.Printf("  ID:     %s\n", *tc.EpicID)
 		}
+
 		fmt.Println()
 	}
 
@@ -677,15 +689,19 @@ func printTaskContext(tc *db.TaskContext) {
 	if tc.SprintName != nil {
 		fmt.Println(color.CyanString("Sprint:"))
 		fmt.Printf("  Name:   %s\n", *tc.SprintName)
+
 		if tc.SprintStatus != nil {
 			fmt.Printf("  Status: %s\n", *tc.SprintStatus)
 		}
+
 		if tc.SprintStart != nil && tc.SprintEnd != nil {
 			fmt.Printf("  Dates:  %s - %s\n", tc.SprintStart.Format("2006-01-02"), tc.SprintEnd.Format("2006-01-02"))
 		}
+
 		if tc.SprintID != nil {
 			fmt.Printf("  ID:     %s\n", *tc.SprintID)
 		}
+
 		fmt.Println()
 	}
 
@@ -705,15 +721,19 @@ func printTaskContext(tc *db.TaskContext) {
 	// Dev context
 	if (tc.BranchName != nil && *tc.BranchName != "") || (tc.PRUrl != nil && *tc.PRUrl != "") || (tc.AssignedAgent != nil && *tc.AssignedAgent != "") {
 		fmt.Println(color.CyanString("Development:"))
+
 		if tc.BranchName != nil && *tc.BranchName != "" {
 			fmt.Printf("  Branch: %s\n", *tc.BranchName)
 		}
+
 		if tc.PRUrl != nil && *tc.PRUrl != "" {
 			fmt.Printf("  PR:     %s\n", *tc.PRUrl)
 		}
+
 		if tc.AssignedAgent != nil && *tc.AssignedAgent != "" {
 			fmt.Printf("  Agent:  %s\n", *tc.AssignedAgent)
 		}
+
 		fmt.Println()
 	}
 

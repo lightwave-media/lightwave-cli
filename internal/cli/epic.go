@@ -2,8 +2,10 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/db"
@@ -48,7 +50,7 @@ Examples:
   lw epic create --name="LightWave Platform Q1" --status=active --priority=p1_urgent`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if epicCreateName == "" {
-			return fmt.Errorf("--name is required")
+			return errors.New("--name is required")
 		}
 
 		ctx := context.Background()
@@ -227,7 +229,7 @@ func printEpicTable(epics []db.Epic) {
 			e.Status,
 			priority,
 			repo,
-			fmt.Sprintf("%d", e.TaskCount),
+			strconv.Itoa(e.TaskCount),
 		}, []tablewriter.Colors{
 			{tablewriter.FgYellowColor},
 			{},

@@ -91,6 +91,7 @@ func gatewayBaseURL() string {
 	if u := os.Getenv("LW_GATEWAY_URL"); u != "" {
 		return strings.TrimRight(u, "/")
 	}
+
 	return "http://localhost:9701"
 }
 
@@ -134,32 +135,38 @@ func runMsgSend(cmd *cobra.Command, _ []string) error {
 	if msgSendJSON {
 		return emitJSON(resp)
 	}
+
 	fmt.Printf("delivered to %s via %s",
 		color.CyanString(req.Channel), color.YellowString(req.Persona))
+
 	if resp.MessageID != "" {
 		fmt.Printf(" (id=%s)", resp.MessageID)
 	}
+
 	fmt.Println()
+
 	return nil
 }
 
 func readMsgBody() (string, error) {
 	switch {
 	case msgSendTextFile == "" && msgSendText == "":
-		return "", fmt.Errorf("supply --text or --text-file")
+		return "", errors.New("supply --text or --text-file")
 	case msgSendTextFile != "" && msgSendText != "":
-		return "", fmt.Errorf("--text and --text-file are mutually exclusive")
+		return "", errors.New("--text and --text-file are mutually exclusive")
 	case msgSendTextFile == "-":
 		b, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return "", fmt.Errorf("read stdin: %w", err)
 		}
+
 		return string(b), nil
 	case msgSendTextFile != "":
 		b, err := os.ReadFile(msgSendTextFile)
 		if err != nil {
 			return "", fmt.Errorf("read %s: %w", msgSendTextFile, err)
 		}
+
 		return string(b), nil
 	default:
 		return msgSendText, nil
@@ -168,16 +175,20 @@ func readMsgBody() (string, error) {
 
 func previewMsgSend(req MsgSendRequest) error {
 	url := gatewayBaseURL() + "/msg/send"
+
 	fmt.Println(color.CyanString("DRY RUN — no HTTP request issued"))
 	fmt.Printf("POST %s\n", url)
 	fmt.Printf("Channel: %s\n", req.Channel)
 	fmt.Printf("Persona: %s\n", req.Persona)
 	fmt.Printf("Body size: %d bytes\n", len(req.Text))
+
 	preview := req.Text
 	if len(preview) > 200 {
 		preview = preview[:200] + "…"
 	}
+
 	fmt.Printf("Body preview:\n%s\n", preview)
+
 	return nil
 }
 
@@ -187,8 +198,10 @@ func postMsgSend(ctx context.Context, req MsgSendRequest) (*MsgSendResponse, err
 	if ctx == nil {
 		ctx = context.Background()
 	}
+
 	if msgSendTimeout > 0 {
 		var cancel context.CancelFunc
+
 		ctx, cancel = context.WithTimeout(ctx, msgSendTimeout)
 		defer cancel()
 	}
@@ -202,6 +215,7 @@ func postMsgSend(ctx context.Context, req MsgSendRequest) (*MsgSendResponse, err
 	if err != nil {
 		return nil, err
 	}
+
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("User-Agent", "lw-msg")
 
@@ -213,6 +227,7 @@ func postMsgSend(ctx context.Context, req MsgSendRequest) (*MsgSendResponse, err
 			return nil, fmt.Errorf("gateway POST timed out after %s (LW_GATEWAY_URL=%s)",
 				msgSendTimeout, gatewayBaseURL())
 		}
+
 		return nil, fmt.Errorf("POST %s: %w (is the gateway running? set LW_GATEWAY_URL or boot zeroclaw-gateway)", url, err)
 	}
 	defer httpResp.Body.Close()
@@ -233,5 +248,6 @@ func postMsgSend(ctx context.Context, req MsgSendRequest) (*MsgSendResponse, err
 			return nil, fmt.Errorf("decode response: %w (raw: %s)", err, string(respBytes))
 		}
 	}
+
 	return &resp, nil
 }

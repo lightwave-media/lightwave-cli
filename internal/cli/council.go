@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,6 +20,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+const councilStatusRunning = "running"
+
 // =============================================================================
 // Augusta base URL
 // =============================================================================
@@ -26,6 +30,7 @@ func augustaBaseURL() string {
 	if u := os.Getenv("LW_AUGUSTA_URL"); u != "" {
 		return strings.TrimRight(u, "/")
 	}
+
 	return "http://localhost:9700"
 }
 
@@ -42,11 +47,13 @@ var councilAllowedPersonas = map[string]bool{
 func checkCouncilPersona() error {
 	p := os.Getenv("LW_PERSONA")
 	if p == "" {
-		return fmt.Errorf("LW_PERSONA is not set; council requires v_core, council, or orchestrator persona")
+		return errors.New("LW_PERSONA is not set; council requires v_core, council, or orchestrator persona")
 	}
+
 	if !councilAllowedPersonas[p] {
 		return fmt.Errorf("LW_PERSONA=%q is not authorized for council; must be v_core, council, or orchestrator", p)
 	}
+
 	return nil
 }
 
@@ -105,12 +112,12 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		question := councilQuestion(cmd, args)
 		if question == "" {
-			return fmt.Errorf("question is required (use --question or positional argument)")
+			return errors.New("question is required (use --question or positional argument)")
 		}
 
 		roles := councilRoles()
 		if len(roles) == 0 {
-			return fmt.Errorf("at least one role is required")
+			return errors.New("at least one role is required")
 		}
 
 		return runCouncilStart(question, roles)
@@ -121,6 +128,7 @@ func councilQuestion(cmd *cobra.Command, args []string) string {
 	if len(args) > 0 {
 		return args[0]
 	}
+
 	return cmd.Flag("question").Value.String()
 }
 
@@ -129,19 +137,24 @@ func councilRoles() []string {
 	if councilStartAllRoles {
 		return []string{"cto", "ceo", "cfo"}
 	}
+
 	if councilStartCTO {
 		roles = append(roles, "cto")
 	}
+
 	if councilStartCEO {
 		roles = append(roles, "ceo")
 	}
+
 	if councilStartCFO {
 		roles = append(roles, "cfo")
 	}
+
 	if len(roles) == 0 {
 		// Default: all three
 		return []string{"cto", "ceo", "cfo"}
 	}
+
 	return roles
 }
 
@@ -151,10 +164,10 @@ func councilRoles() []string {
 
 type councilStartRequest struct {
 	Question string   `json:"question"`
-	Roles    []string `json:"roles"`
 	Caller   string   `json:"caller"`
-	Models   []string `json:"models,omitempty"`
 	Chairman string   `json:"chairman,omitempty"`
+	Roles    []string `json:"roles"`
+	Models   []string `json:"models,omitempty"`
 }
 
 type councilStartResponse struct {
@@ -170,20 +183,20 @@ type councilSSEEvent struct {
 }
 
 type councilStageProgress struct {
-	Index  int    `json:"index"`
-	Total  int    `json:"total"`
 	Role   string `json:"role"`
 	Model  string `json:"model"`
-	Status string `json:"status"` // "running", "succeeded", "failed"
+	Status string `json:"status"`
 	Error  string `json:"error,omitempty"`
+	Index  int    `json:"index"`
+	Total  int    `json:"total"`
 }
 
 type councilResult struct {
-	Stage1   []councilStage1Result  `json:"stage1"`
-	Stage2   []councilStage2Result  `json:"stage2"`
 	Stage3   *councilStage3Result   `json:"stage3"`
 	Metadata *councilResultMetadata `json:"metadata"`
 	Cost     *councilCost           `json:"cost"`
+	Stage1   []councilStage1Result  `json:"stage1"`
+	Stage2   []councilStage2Result  `json:"stage2"`
 }
 
 type councilStage1Result struct {
@@ -211,9 +224,9 @@ type councilStage3Result struct {
 
 type councilResultMetadata struct {
 	Question  string   `json:"question"`
-	Roles     []string `json:"roles"`
 	StartedAt string   `json:"started_at"`
 	EndedAt   string   `json:"ended_at"`
+	Roles     []string `json:"roles"`
 }
 
 type councilCost struct {
@@ -221,12 +234,12 @@ type councilCost struct {
 }
 
 type councilHistoryItem struct {
+	Cost      *councilCost `json:"cost,omitempty"`
 	ID        string       `json:"id"`
 	Question  string       `json:"question"`
-	Roles     []string     `json:"roles"`
 	Status    string       `json:"status"`
 	StartedAt string       `json:"started_at"`
-	Cost      *councilCost `json:"cost,omitempty"`
+	Roles     []string     `json:"roles"`
 }
 
 type councilStatusResponse struct {
@@ -246,22 +259,29 @@ func councilPOST(path string, body any) (*http.Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("marshal request: %w", err)
 	}
+
 	url := augustaBaseURL() + path
+
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Content-Type", "application/json")
+
 	return councilHTTPClient.Do(req)
 }
 
 func councilGET(path string) (*http.Response, error) {
 	url := augustaBaseURL() + path
+
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
+
 	req.Header.Set("Accept", "application/json")
+
 	return councilHTTPClient.Do(req)
 }
 
@@ -288,6 +308,7 @@ func runCouncilStart(question string, roles []string) error {
 			req.Models[i] = strings.TrimSpace(req.Models[i])
 		}
 	}
+
 	if councilStartChairman != "" {
 		req.Chairman = councilStartChairman
 	}
@@ -308,6 +329,7 @@ func runCouncilStart(question string, roles []string) error {
 	if err := decodeJSON(resp.Body, &startResp); err != nil {
 		return fmt.Errorf("parse start response: %w", err)
 	}
+
 	if startResp.Error != "" {
 		return fmt.Errorf("Augusta error: %s", startResp.Error)
 	}
@@ -329,14 +351,17 @@ func runCouncilStart(question string, roles []string) error {
 // streamCouncilProgress connects to the SSE endpoint and renders progress.
 func streamCouncilProgress(id string) error {
 	url := augustaBaseURL() + "/council/" + id + "/status"
+
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
 	}
+
 	req.Header.Set("Accept", "text/event-stream")
 
 	// Use a long timeout for SSE streaming
 	client := &http.Client{Timeout: 10 * time.Minute}
+
 	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("connect to SSE stream: %w", err)
@@ -352,14 +377,17 @@ func streamCouncilProgress(id string) error {
 	// SSE lines can be long (up to 1MB for large events)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 
-	var currentStage string
-	var stageLabel string
+	var (
+		currentStage string
+		stageLabel   string
+	)
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		if line == "" {
 			continue
 		}
+
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
@@ -385,20 +413,25 @@ func streamCouncilProgress(id string) error {
 		case "stage1_progress":
 			var prog councilStageProgress
 			json.Unmarshal(event.Data, &prog)
+
 			statusIcon := "✓"
 			statusColor := color.GreenString
-			if prog.Status == "failed" {
+
+			switch prog.Status {
+			case "failed":
 				statusIcon = "✗"
 				statusColor = color.RedString
-			} else if prog.Status == "running" {
+			case councilStatusRunning:
 				statusIcon = "⏳"
 				statusColor = color.YellowString
 			}
+
 			fmt.Printf("    [%d/%d] %s via %s %s\n",
 				prog.Index, prog.Total,
 				color.CyanString(prog.Role),
 				color.HiBlackString(prog.Model),
 				statusColor(statusIcon))
+
 			if prog.Error != "" {
 				fmt.Printf("           %s\n", color.RedString("Error: "+prog.Error))
 			}
@@ -421,18 +454,22 @@ func streamCouncilProgress(id string) error {
 
 		case "stage2_progress":
 			var prog struct {
-				Index  int    `json:"index"`
-				Total  int    `json:"total"`
 				Model  string `json:"model"`
 				Status string `json:"status"`
+				Index  int    `json:"index"`
+				Total  int    `json:"total"`
 			}
 			json.Unmarshal(event.Data, &prog)
+
 			statusIcon := "✓"
-			if prog.Status == "running" {
+
+			switch prog.Status {
+			case councilStatusRunning:
 				statusIcon = "⏳"
-			} else if prog.Status == "failed" {
+			case "failed":
 				statusIcon = "✗"
 			}
+
 			fmt.Printf("    [%d/%d] %s ranked %s\n",
 				prog.Index, prog.Total,
 				color.HiBlackString(prog.Model),
@@ -457,6 +494,7 @@ func streamCouncilProgress(id string) error {
 				Message string `json:"message"`
 			}
 			json.Unmarshal(event.Data, &errPayload)
+
 			return fmt.Errorf("council error: %s", errPayload.Message)
 
 		default:
@@ -470,6 +508,7 @@ func streamCouncilProgress(id string) error {
 	if err := scanner.Err(); err != nil {
 		return fmt.Errorf("SSE stream error: %w", err)
 	}
+
 	return nil
 }
 
@@ -485,6 +524,7 @@ func fetchAndDisplayResult(id string) error {
 		fmt.Println(color.YellowString("Deliberation still running. Use 'lw council status %s' to check.", id))
 		return nil
 	}
+
 	if resp.StatusCode != http.StatusOK {
 		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
 		return fmt.Errorf("fetch result: HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
@@ -514,8 +554,10 @@ func printCouncilResult(r *councilResult) error {
 	// Stage 1 — responses
 	if len(r.Stage1) > 0 {
 		fmt.Println(color.CyanString("── Stage 1: Individual Responses ──"))
+
 		for _, s := range r.Stage1 {
 			fmt.Printf("  %s via %s\n", color.CyanString(s.Role), color.HiBlackString(s.Model))
+
 			if s.Error != "" {
 				fmt.Printf("    %s: %s\n", color.RedString("Error"), s.Error)
 			} else {
@@ -524,12 +566,14 @@ func printCouncilResult(r *councilResult) error {
 				if len(content) > 500 {
 					content = content[:500] + "..."
 				}
+
 				for _, line := range strings.Split(content, "\n") {
 					if line != "" {
 						fmt.Printf("    %s\n", line)
 					}
 				}
 			}
+
 			fmt.Println()
 		}
 	}
@@ -537,6 +581,7 @@ func printCouncilResult(r *councilResult) error {
 	// Stage 2 — aggregate rankings
 	if len(r.Stage2) > 0 {
 		fmt.Println(color.CyanString("── Stage 2: Aggregate Rankings ──"))
+
 		table := tablewriter.NewWriter(os.Stdout)
 		table.SetHeader([]string{"Role", "Model", "Rank", "Score"})
 		table.SetBorder(false)
@@ -549,11 +594,12 @@ func printCouncilResult(r *councilResult) error {
 				table.Append([]string{
 					rank.Role,
 					s2.Model,
-					fmt.Sprintf("%d", rank.Rank),
+					strconv.Itoa(rank.Rank),
 					fmt.Sprintf("%.2f", rank.Score),
 				})
 			}
 		}
+
 		table.Render()
 		fmt.Println()
 	}
@@ -561,13 +607,17 @@ func printCouncilResult(r *councilResult) error {
 	// Stage 3 — chairman synthesis
 	if r.Stage3 != nil {
 		fmt.Println(color.CyanString("── Stage 3: Chairman Synthesis ──"))
+
 		if r.Stage3.Model != "" {
 			fmt.Printf("  Chairman: %s\n", color.HiBlackString(r.Stage3.Model))
 		}
+
 		fmt.Println()
+
 		for _, line := range strings.Split(r.Stage3.Synthesis, "\n") {
 			fmt.Printf("  %s\n", line)
 		}
+
 		fmt.Println()
 	}
 
@@ -633,7 +683,7 @@ var councilStatusCmd = &cobra.Command{
 
 func councilStatusColor(status string) string {
 	switch status {
-	case "running":
+	case councilStatusRunning:
 		return color.YellowString(status)
 	case "complete":
 		return color.GreenString(status)

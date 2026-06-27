@@ -20,6 +20,7 @@ func notifyJoel(message string) {
 func escapeAppleScript(s string) string {
 	s = strings.ReplaceAll(s, `\`, `\\`)
 	s = strings.ReplaceAll(s, `"`, `\"`)
+
 	return s
 }
 
@@ -52,11 +53,13 @@ func InferSessionType(labels []string) SessionType {
 	for _, l := range labels {
 		labelSet[l] = true
 	}
+
 	for _, sp := range sessionTypePriority {
 		if labelSet[sp.label] {
 			return sp.sessionType
 		}
 	}
+
 	return SessionBackend
 }
 
@@ -67,6 +70,7 @@ func inferSessionTypeFromIssue(issue ghIssue) SessionType {
 	for _, l := range issue.Labels {
 		labelNames = append(labelNames, l.Name)
 	}
+
 	return InferSessionType(labelNames)
 }
 
@@ -92,6 +96,7 @@ var slugRe = regexp.MustCompile(`[^a-z0-9]+`)
 // Format: {type}/issue-{N}-{slug}
 func IssueBranchName(issueNumber int, title string, taskType string) string {
 	prefix := "feat"
+
 	switch taskType {
 	case "bug", "fix", "hotfix":
 		prefix = "fix"
@@ -101,6 +106,7 @@ func IssueBranchName(issueNumber int, title string, taskType string) string {
 
 	slug := strings.ToLower(title)
 	slug = slugRe.ReplaceAllString(slug, "-")
+
 	slug = strings.Trim(slug, "-")
 	if len(slug) > 40 {
 		slug = slug[:40]

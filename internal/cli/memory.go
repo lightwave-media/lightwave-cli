@@ -79,11 +79,13 @@ func init() {
 	for _, c := range []*cobra.Command{memoryPutCmd, memoryGetCmd, memoryListCmd, memoryDeleteCmd} {
 		c.Flags().StringVar(&memNamespace, "namespace", "", "Namespace (agent user-id)")
 	}
+
 	for _, c := range []*cobra.Command{memoryPutCmd, memoryGetCmd, memoryDeleteCmd} {
 		c.Flags().StringVar(&memKey, "key", "", "Key (may contain / for hierarchy)")
 		_ = c.MarkFlagRequired("key")
 		_ = c.MarkFlagRequired("namespace")
 	}
+
 	memoryPutCmd.Flags().StringVar(&memValue, "value", "", "Inline value (use --value-file for binary / large values)")
 	memoryPutCmd.Flags().StringVar(&memValueFile, "value-file", "", "Read value from file (use - for stdin)")
 	memoryListCmd.Flags().BoolVar(&memJSON, "json", false, "Emit JSON array of keys (or namespaces)")
@@ -97,22 +99,25 @@ func init() {
 
 func runMemoryPut(_ *cobra.Command, _ []string) error {
 	var value []byte
+
 	switch {
 	case memValueFile == "" && memValue == "":
-		return fmt.Errorf("supply --value or --value-file")
+		return errors.New("supply --value or --value-file")
 	case memValueFile != "" && memValue != "":
-		return fmt.Errorf("--value and --value-file are mutually exclusive")
+		return errors.New("--value and --value-file are mutually exclusive")
 	case memValueFile == "-":
 		b, err := io.ReadAll(os.Stdin)
 		if err != nil {
 			return fmt.Errorf("read stdin: %w", err)
 		}
+
 		value = b
 	case memValueFile != "":
 		b, err := os.ReadFile(memValueFile)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", memValueFile, err)
 		}
+
 		value = b
 	default:
 		value = []byte(memValue)
@@ -122,9 +127,11 @@ func runMemoryPut(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	fmt.Printf("wrote %s/%s (%d bytes) -> %s\n",
 		color.CyanString(memNamespace), color.YellowString(memKey),
 		len(value), path)
+
 	return nil
 }
 
@@ -135,8 +142,10 @@ func runMemoryGet(_ *cobra.Command, _ []string) error {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
+
 		return err
 	}
+
 	if memJSON {
 		return emitJSON(map[string]any{
 			"namespace": memNamespace,
@@ -145,7 +154,9 @@ func runMemoryGet(_ *cobra.Command, _ []string) error {
 			"size":      len(value),
 		})
 	}
+
 	_, err = os.Stdout.Write(value)
+
 	return err
 }
 
@@ -155,16 +166,20 @@ func runMemoryList(_ *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
+
 		if memJSON {
 			return emitJSON(nss)
 		}
+
 		if len(nss) == 0 {
 			fmt.Println(color.YellowString("No namespaces written yet."))
 			return nil
 		}
+
 		for _, ns := range nss {
 			fmt.Println(ns)
 		}
+
 		return nil
 	}
 
@@ -172,16 +187,20 @@ func runMemoryList(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	if memJSON {
 		return emitJSON(keys)
 	}
+
 	if len(keys) == 0 {
 		fmt.Println(color.YellowString("(empty)"))
 		return nil
 	}
+
 	for _, k := range keys {
 		fmt.Println(k)
 	}
+
 	return nil
 }
 
@@ -189,7 +208,9 @@ func runMemoryDelete(_ *cobra.Command, _ []string) error {
 	if err := memory.Delete(memNamespace, memKey); err != nil {
 		return err
 	}
+
 	fmt.Printf("deleted %s/%s\n",
 		color.CyanString(memNamespace), color.YellowString(memKey))
+
 	return nil
 }

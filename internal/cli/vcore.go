@@ -94,14 +94,18 @@ func runVcoreStart(_ *cobra.Command, _ []string) error {
 				s.PID, s.StartedAt.Local().Format(time.RFC3339))
 			os.Exit(1)
 		}
+
 		return err
 	}
+
 	if vcoreStartJSON {
 		return emitJSON(s)
 	}
+
 	fmt.Printf("started v_core (pid %s) — binary %s\n",
 		color.CyanString("%d", s.PID), s.Binary)
 	fmt.Printf("  log: %s\n", s.LogPath)
+
 	return nil
 }
 
@@ -110,14 +114,18 @@ func runVcoreStop(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	if s == nil {
 		fmt.Println(color.YellowString("v_core is not running"))
 		return nil
 	}
+
 	if err := vcore.Stop(vcoreStopForce); err != nil {
 		return err
 	}
+
 	fmt.Printf("stopped v_core (was pid %d)\n", s.PID)
+
 	return nil
 }
 
@@ -126,6 +134,7 @@ func runVcoreStatus(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	if vcoreStatusJSON {
 		payload := map[string]any{"running": s != nil}
 		if s != nil {
@@ -135,17 +144,21 @@ func runVcoreStatus(_ *cobra.Command, _ []string) error {
 			payload["log_path"] = s.LogPath
 			payload["uptime_seconds"] = int(time.Since(s.StartedAt).Seconds())
 		}
+
 		return emitJSON(payload)
 	}
+
 	if s == nil {
 		fmt.Println(color.YellowString("v_core is not running"))
 		return nil
 	}
+
 	fmt.Printf("%s %s\n", color.CyanString("PID:"), color.GreenString("%d", s.PID))
 	fmt.Printf("%s %s\n", color.CyanString("Binary:"), s.Binary)
 	fmt.Printf("%s %s\n", color.CyanString("Started:"), s.StartedAt.Local().Format("2006-01-02 15:04:05"))
 	fmt.Printf("%s %s\n", color.CyanString("Uptime:"), time.Since(s.StartedAt).Truncate(time.Second))
 	fmt.Printf("%s %s\n", color.CyanString("Log:"), s.LogPath)
+
 	return nil
 }
 
@@ -154,6 +167,7 @@ func runVcoreLogs(_ *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		fmt.Println(color.YellowString("no log yet — v_core has never run"))
 		return nil
@@ -162,6 +176,7 @@ func runVcoreLogs(_ *cobra.Command, _ []string) error {
 	if vcoreLogsFollow {
 		return tailFollow(path)
 	}
+
 	return tailN(path, vcoreLogsTail)
 }
 
@@ -173,6 +188,7 @@ func tailN(path string, n int) error {
 	if err != nil {
 		return err
 	}
+
 	if n <= 0 {
 		_, err := os.Stdout.Write(data)
 		return err
@@ -180,6 +196,7 @@ func tailN(path string, n int) error {
 	// Walk backwards counting newlines.
 	cut := len(data)
 	lines := 0
+
 	for i := len(data) - 1; i >= 0; i-- {
 		if data[i] == '\n' {
 			lines++
@@ -189,10 +206,13 @@ func tailN(path string, n int) error {
 			}
 		}
 	}
+
 	if lines <= n {
 		cut = 0
 	}
+
 	_, err = os.Stdout.Write(data[cut:])
+
 	return err
 }
 
@@ -209,6 +229,7 @@ func tailFollow(path string) error {
 	if _, err := f.Seek(0, io.SeekEnd); err != nil {
 		return err
 	}
+
 	buf := make([]byte, 4096)
 	for {
 		n, err := f.Read(buf)
@@ -217,9 +238,11 @@ func tailFollow(path string) error {
 				return werr
 			}
 		}
+
 		if err != nil && !errors.Is(err, io.EOF) {
 			return err
 		}
+
 		if n == 0 {
 			time.Sleep(200 * time.Millisecond)
 		}

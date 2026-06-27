@@ -66,29 +66,29 @@ type JourneyMeta struct {
 
 // JourneyAssertion holds a single assertion
 type JourneyAssertion struct {
-	StatusCode          int    `yaml:"status_code,omitempty"`
+	Expected            any    `yaml:"expected,omitempty"`
+	UserIsAuth          any    `yaml:"user_is_authenticated,omitempty"`
+	SessionTokenCleared any    `yaml:"session_token_cleared,omitempty"`
 	ElementPresent      string `yaml:"element_present,omitempty"`
 	Field               string `yaml:"field,omitempty"`
-	Expected            any    `yaml:"expected,omitempty"`
 	RedirectTo          string `yaml:"redirect_to,omitempty"`
-	UserIsAuth          any    `yaml:"user_is_authenticated,omitempty"`
 	TemplateUsed        string `yaml:"template_used,omitempty"`
-	SessionTokenCleared any    `yaml:"session_token_cleared,omitempty"`
 	EmailSent           string `yaml:"email_sent,omitempty"`
+	StatusCode          int    `yaml:"status_code,omitempty"`
 }
 
 // JourneyStep holds a single step in a journey
 type JourneyStep struct {
-	Step       int                `yaml:"step"`
+	FormData   map[string]string  `yaml:"form_data,omitempty"`
+	Headers    map[string]string  `yaml:"headers,omitempty"`
 	Name       string             `yaml:"name"`
 	Endpoint   string             `yaml:"endpoint,omitempty"`
 	URL        string             `yaml:"url"`
 	Method     string             `yaml:"method"`
 	UserType   string             `yaml:"user_type,omitempty"`
 	Layout     string             `yaml:"layout,omitempty"`
-	FormData   map[string]string  `yaml:"form_data,omitempty"`
-	Headers    map[string]string  `yaml:"headers,omitempty"`
 	Assertions []JourneyAssertion `yaml:"assertions"`
+	Step       int                `yaml:"step"`
 }
 
 // JourneyFlow holds the flow section
@@ -111,6 +111,7 @@ func runCodegenJourneys(cmd *cobra.Command, args []string) error {
 	if cfg == nil {
 		return errors.New("config not loaded")
 	}
+
 	root := cfg.Paths.LightwaveRoot
 	if root == "" {
 		home, _ := os.UserHomeDir()
@@ -146,6 +147,7 @@ func runCodegenJourneys(cmd *cobra.Command, args []string) error {
 	for _, yamlFile := range yamlFiles {
 		// Parse relative path to get category/name
 		relPath, _ := filepath.Rel(journeysDir, yamlFile)
+
 		parts := strings.Split(relPath, string(filepath.Separator))
 		if len(parts) < 2 {
 			continue
@@ -159,10 +161,12 @@ func runCodegenJourneys(cmd *cobra.Command, args []string) error {
 		if !codegenForce {
 			if _, err := os.Stat(outFile); err == nil {
 				skipped++
+
 				if verbose {
 					fmt.Printf("  %s %s/%s (exists, use --force to overwrite)\n",
 						color.YellowString("SKIP"), category, name)
 				}
+
 				continue
 			}
 		}
@@ -171,7 +175,9 @@ func runCodegenJourneys(cmd *cobra.Command, args []string) error {
 		spec, err := parseJourneyYAML(yamlFile)
 		if err != nil {
 			fmt.Printf("  %s %s/%s: %v\n", color.RedString("ERROR"), category, name, err)
+
 			errors++
+
 			continue
 		}
 
@@ -181,26 +187,33 @@ func runCodegenJourneys(cmd *cobra.Command, args []string) error {
 		if codegenDryRun {
 			fmt.Printf("  %s %s/%s → %s\n",
 				color.CyanString("DRY"), category, name, outFile)
+
 			generated++
+
 			continue
 		}
 
 		// Ensure output directory exists
 		if err := os.MkdirAll(filepath.Dir(outFile), 0755); err != nil {
 			fmt.Printf("  %s mkdir %s: %v\n", color.RedString("ERROR"), filepath.Dir(outFile), err)
+
 			errors++
+
 			continue
 		}
 
 		// Write the test file
 		if err := os.WriteFile(outFile, []byte(testCode), 0644); err != nil {
 			fmt.Printf("  %s write %s: %v\n", color.RedString("ERROR"), outFile, err)
+
 			errors++
+
 			continue
 		}
 
 		fmt.Printf("  %s %s/%s → %s\n",
 			color.GreenString("GEN"), category, name, outFile)
+
 		generated++
 	}
 
@@ -219,6 +232,7 @@ func runCodegenJourneys(cmd *cobra.Command, args []string) error {
 			globPattern := filepath.Join(outputDir, "**", "*.generated.spec.ts")
 			prettierCmd := exec.Command("sh", "-c",
 				fmt.Sprintf("npx prettier --write '%s'", globPattern))
+
 			prettierCmd.Dir = root
 			if err := prettierCmd.Run(); err == nil {
 				fmt.Println(color.GreenString("done"))
@@ -243,6 +257,7 @@ func findJourneyYAMLs(dir string, filter string) ([]string, error) {
 			if _, err := os.Stat(target); err == nil {
 				return []string{target}, nil
 			}
+
 			return nil, fmt.Errorf("journey not found: %s", target)
 		}
 		// Category filter
@@ -253,9 +268,11 @@ func findJourneyYAMLs(dir string, filter string) ([]string, error) {
 		if err != nil {
 			return nil // skip errors
 		}
+
 		if !info.IsDir() && strings.HasSuffix(path, ".yaml") {
 			files = append(files, path)
 		}
+
 		return nil
 	})
 
@@ -317,9 +334,11 @@ const APP_DOMAIN =
 		case "POST":
 			sb.WriteString(fmt.Sprintf("    const response = await request.post(`%s`, {\n", url))
 			sb.WriteString("      data: {\n")
+
 			for k, v := range step.FormData {
 				sb.WriteString(fmt.Sprintf("        %s: \"%s\",\n", k, v))
 			}
+
 			sb.WriteString("      },\n")
 			sb.WriteString("    });\n")
 		case "DELETE":
@@ -328,6 +347,7 @@ const APP_DOMAIN =
 
 		// Check if any assertion needs the response body
 		needsBody := false
+
 		for _, a := range step.Assertions {
 			if a.Field != "" || a.UserIsAuth != nil {
 				needsBody = true
@@ -345,11 +365,14 @@ const APP_DOMAIN =
 			if a.StatusCode > 0 {
 				sb.WriteString(fmt.Sprintf("    expect(response.status()).toBe(%d);\n", a.StatusCode))
 			}
+
 			if a.ElementPresent != "" {
 				sb.WriteString(fmt.Sprintf("    await expect(page.locator('%s')).toBeVisible();\n", a.ElementPresent))
 			}
+
 			if a.Field != "" {
 				fieldPath := strings.TrimPrefix(a.Field, "response.")
+
 				expected := fmt.Sprintf("%v", a.Expected)
 				switch expected {
 				case "present":
@@ -362,9 +385,11 @@ const APP_DOMAIN =
 					sb.WriteString(fmt.Sprintf("    expect(body.%s).toBe(\"%s\");\n", fieldPath, expected))
 				}
 			}
+
 			if a.RedirectTo != "" {
 				sb.WriteString(fmt.Sprintf("    expect(response.headers()[\"location\"]).toContain(\"%s\");\n", a.RedirectTo))
 			}
+
 			if a.UserIsAuth != nil {
 				sb.WriteString(fmt.Sprintf("    expect(body.is_authenticated).toBe(%v);\n", a.UserIsAuth))
 			}
@@ -384,5 +409,6 @@ func resolveURLTemplate(url string) string {
 	url = strings.ReplaceAll(url, "{{ api_base }}", "${API_BASE}")
 	url = strings.ReplaceAll(url, "{{ domain }}", "${API_BASE}")
 	url = strings.ReplaceAll(url, "{{ app_domain }}", "${APP_DOMAIN}")
+
 	return url
 }

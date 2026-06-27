@@ -39,24 +39,24 @@ Examples:
 		// Build the management command string
 		var parts []string
 		parts = append(parts, "send_email")
-		parts = append(parts, fmt.Sprintf("--template %s", emailTemplate))
-		parts = append(parts, fmt.Sprintf("--to %s", emailTo))
+		parts = append(parts, "--template "+emailTemplate)
+		parts = append(parts, "--to "+emailTo)
 		parts = append(parts, fmt.Sprintf("--subject %q", emailSubject))
 
 		if emailProps != "" {
-			parts = append(parts, fmt.Sprintf("--props %s", emailProps))
+			parts = append(parts, "--props "+emailProps)
 		}
 		if emailFrom != "" {
-			parts = append(parts, fmt.Sprintf("--from %s", emailFrom))
+			parts = append(parts, "--from "+emailFrom)
 		}
 		if emailTenant != "" {
-			parts = append(parts, fmt.Sprintf("--tenant %s", emailTenant))
+			parts = append(parts, "--tenant "+emailTenant)
 		}
 		if emailDryRun {
 			parts = append(parts, "--dry-run")
 		}
 
-		return runMake(dir, "dj-manage", fmt.Sprintf("CMD=%s", strings.Join(parts, " ")))
+		return runMake(dir, "dj-manage", "CMD="+strings.Join(parts, " "))
 	},
 }
 

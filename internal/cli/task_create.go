@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -23,12 +24,12 @@ type taskCreateResult struct {
 	PaperclipIssueID    string      `json:"paperclip_issue_id,omitempty"`
 	PaperclipIdentifier string      `json:"paperclip_identifier,omitempty"`
 	PaperclipURL        string      `json:"paperclip_url,omitempty"`
-	GitHubIssueNumber   int         `json:"github_issue_number,omitempty"`
 	GitHubURL           string      `json:"github_url,omitempty"`
 	Documents           []docRef    `json:"documents,omitempty"`
 	Attachments         []attachRef `json:"attachments,omitempty"`
 	Labels              []string    `json:"labels,omitempty"`
 	Warnings            []string    `json:"warnings,omitempty"`
+	GitHubIssueNumber   int         `json:"github_issue_number,omitempty"`
 	DryRun              bool        `json:"dry_run,omitempty"`
 }
 
@@ -67,10 +68,11 @@ type attachRef struct {
 // task still lands as a usable record.
 func runTaskCreate(cmd *cobra.Command, args []string) error {
 	if taskCreateTitle == "" {
-		return fmt.Errorf("--title is required")
+		return errors.New("--title is required")
 	}
+
 	if taskCreateDescription != "" && taskCreateDescriptionFile != "" {
-		return fmt.Errorf("--description and --description-file are mutually exclusive")
+		return errors.New("--description and --description-file are mutually exclusive")
 	}
 
 	body, err := resolveTaskBody()
@@ -97,15 +99,18 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		agentID   string
 		agentName string
 	)
+
 	if taskCreateAssign != "" {
 		agents, err := pc.ListAllAgents(ctx)
 		if err != nil {
 			return fmt.Errorf("paperclip: list agents: %w", err)
 		}
+
 		target := findAgentByName(agents, taskCreateAssign)
 		if target == nil {
 			return fmt.Errorf("agent %q not found in any Paperclip company", taskCreateAssign)
 		}
+
 		companyID = target.CompanyID
 		agentID = target.ID
 		agentName = target.Name
@@ -133,6 +138,7 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		SprintID:    taskCreateSprint,
 		StoryID:     taskCreateStory,
 	}
+
 	task, err := db.CreateTask(ctx, pool, createOpts)
 	if err != nil {
 		return fmt.Errorf("createOS: create task: %w", err)
@@ -164,15 +170,18 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 			BlocksIDs:          taskCreateBlocks,
 			BillingCode:        taskCreateBillingCode,
 		}
+
 		created, err := pc.CreateIssue(ctx, companyID, issue)
 		if err != nil {
 			// Mark createOS task errored — keep going so the user sees the partial state.
 			_, _ = db.UpdateTask(ctx, pool, task.ID, db.TaskUpdateOptions{
 				Status: ptr("errored"),
 			})
+
 			return fmt.Errorf("paperclip: create issue (createOS task %s left in errored state): %w",
 				task.ShortID, err)
 		}
+
 		result.PaperclipIssueID = created.ID
 		result.PaperclipIdentifier = created.Identifier
 		result.PaperclipURL = paperclipIssueURL(created.Identifier)
@@ -184,11 +193,14 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 				result.Warnings = append(result.Warnings, warn)
 				continue
 			}
+
 			if _, err := pc.AddIssueLabel(ctx, created.ID, labelID); err != nil {
 				result.Warnings = append(result.Warnings,
 					fmt.Sprintf("attach label %q: %v", name, err))
+
 				continue
 			}
+
 			result.Labels = append(result.Labels, name)
 		}
 
@@ -198,8 +210,10 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				result.Warnings = append(result.Warnings,
 					fmt.Sprintf("put document %q (%s): %v", d.key, d.path, err))
+
 				continue
 			}
+
 			result.Documents = append(result.Documents, docRef{
 				Key:      doc.Key,
 				Revision: doc.Revision,
@@ -212,8 +226,10 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 			if err != nil {
 				result.Warnings = append(result.Warnings,
 					fmt.Sprintf("upload attachment %s: %v", p, err))
+
 				continue
 			}
+
 			result.Attachments = append(result.Attachments, attachRef{
 				Path: p,
 				ID:   att.ID,
@@ -229,8 +245,10 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	if taskCreateSkipGitHub {
 		result.Warnings = append(result.Warnings,
 			"GitHub leg skipped (--skip-github)")
+
 		return printTaskCreateResult(task, result)
 	}
+
 	issueNum, ghErr := createGitHubIssueForTask(task)
 	if ghErr != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("github: %v", ghErr))
@@ -265,8 +283,10 @@ func resolveTaskBody() (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("read --description-file %s: %w", taskCreateDescriptionFile, err)
 		}
+
 		return string(raw), nil
 	}
+
 	return strings.ReplaceAll(taskCreateDescription, `\n`, "\n"), nil
 }
 
@@ -281,26 +301,33 @@ func collectDocuments() ([]docInput, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read --prd %s: %w", taskCreatePRD, err)
 		}
+
 		out = append(out, docInput{key: "prd", path: taskCreatePRD, body: body})
 	}
+
 	if taskCreatePlan != "" {
 		body, err := os.ReadFile(taskCreatePlan)
 		if err != nil {
 			return nil, fmt.Errorf("read --plan %s: %w", taskCreatePlan, err)
 		}
+
 		out = append(out, docInput{key: "plan", path: taskCreatePlan, body: body})
 	}
+
 	for _, kv := range taskCreateDocs {
 		key, path, ok := strings.Cut(kv, "=")
 		if !ok || key == "" || path == "" {
 			return nil, fmt.Errorf("--doc must be key=path, got %q", kv)
 		}
+
 		body, err := os.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("read --doc %s=%s: %w", key, path, err)
 		}
+
 		out = append(out, docInput{key: key, path: path, body: body})
 	}
+
 	return out, nil
 }
 
@@ -311,6 +338,7 @@ func collectAttachments() ([]string, error) {
 			return nil, fmt.Errorf("--attach %s: %w", p, err)
 		}
 	}
+
 	return taskCreateAttach, nil
 }
 
@@ -319,12 +347,14 @@ func findAgentByName(agents []paperclip.Agent, name string) *paperclip.Agent {
 	normalize := func(s string) string {
 		return strings.ToLower(strings.ReplaceAll(s, "-", " "))
 	}
+
 	target := normalize(name)
 	for i := range agents {
 		if normalize(agents[i].Name) == target {
 			return &agents[i]
 		}
 	}
+
 	return nil
 }
 
@@ -352,10 +382,12 @@ func resolveOrCreateLabel(ctx context.Context, pc *paperclip.Client, companyID, 
 	if err == nil {
 		return label.ID, ""
 	}
+
 	created, err := pc.CreateLabel(ctx, companyID, name, "")
 	if err != nil {
 		return "", fmt.Sprintf("resolve label %q: %v", name, err)
 	}
+
 	return created.ID, ""
 }
 
@@ -364,11 +396,13 @@ func paperclipIssueURL(identifier string) string {
 	if identifier == "" {
 		return ""
 	}
+
 	base := "http://localhost:3100"
 	// Mirror paperclip.NewClient's base URL resolution.
 	if u := os.Getenv("PAPERCLIP_URL"); u != "" {
 		base = strings.TrimRight(u, "/")
 	}
+
 	return fmt.Sprintf("%s/issues/%s", base, identifier)
 }
 
@@ -384,12 +418,15 @@ func printDryRun(body string, docs []docInput, attachments []string, agentName, 
 		for _, d := range docs {
 			out.Documents = append(out.Documents, docRef{Key: d.key})
 		}
+
 		for _, a := range attachments {
 			out.Attachments = append(out.Attachments, attachRef{Path: a})
 		}
+
 		out.Labels = taskCreateLabels
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+
 		return enc.Encode(out)
 	}
 
@@ -397,46 +434,60 @@ func printDryRun(body string, docs []docInput, attachments []string, agentName, 
 	fmt.Printf("  Title:    %s\n", taskCreateTitle)
 	fmt.Printf("  Priority: %s (paperclip: %s)\n", taskCreatePriority, normalizePaperclipPriority(taskCreatePriority))
 	fmt.Printf("  Type:     %s\n", taskCreateType)
+
 	if agentName != "" {
 		fmt.Printf("  Assignee: %s (company %s)\n", agentName, companyID)
 	} else {
 		fmt.Printf("  Assignee: %s — Paperclip leg will be skipped\n", color.YellowString("(none)"))
 	}
+
 	if len(taskCreateLabels) > 0 {
 		fmt.Printf("  Labels:   %s\n", strings.Join(taskCreateLabels, ", "))
 	}
+
 	if taskCreateParent != "" {
 		fmt.Printf("  Parent:   %s\n", taskCreateParent)
 	}
+
 	if taskCreateProject != "" {
 		fmt.Printf("  Project:  %s\n", taskCreateProject)
 	}
+
 	if len(taskCreateBlocks) > 0 {
 		fmt.Printf("  Blocks:   %s\n", strings.Join(taskCreateBlocks, ", "))
 	}
+
 	if len(taskCreateBlockedBy) > 0 {
 		fmt.Printf("  BlockedBy: %s\n", strings.Join(taskCreateBlockedBy, ", "))
 	}
+
 	if len(docs) > 0 {
 		fmt.Println("  Documents:")
+
 		for _, d := range docs {
 			fmt.Printf("    %s ← %s (%d bytes)\n", d.key, d.path, len(d.body))
 		}
 	}
+
 	if len(attachments) > 0 {
 		fmt.Println("  Attachments:")
+
 		for _, a := range attachments {
 			fmt.Printf("    %s\n", filepath.Base(a))
 		}
 	}
+
 	if len(body) > 0 {
 		preview := body
 		if len(preview) > 200 {
 			preview = preview[:200] + "…"
 		}
+
 		fmt.Printf("  Body:     %d bytes\n            %s\n", len(body), strings.ReplaceAll(preview, "\n", " "))
 	}
+
 	fmt.Printf("\n%s no mutations performed.\n", color.YellowString("⚠"))
+
 	return nil
 }
 
@@ -445,39 +496,49 @@ func printTaskCreateResult(task *db.Task, result taskCreateResult) error {
 	if taskCreateJSON {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
+
 		return enc.Encode(result)
 	}
 
 	fmt.Printf("Created task %s: %s\n", color.YellowString(task.ShortID), task.Title)
+
 	if result.PaperclipIdentifier != "" {
 		fmt.Printf("  → Paperclip:  %s  %s\n",
 			color.CyanString(result.PaperclipIdentifier),
 			color.HiBlackString(result.PaperclipURL))
 	}
+
 	if result.GitHubIssueNumber > 0 {
 		fmt.Printf("  → GitHub:     #%d  %s\n",
 			result.GitHubIssueNumber,
 			color.HiBlackString(result.GitHubURL))
 	}
+
 	if len(result.Documents) > 0 {
 		var keys []string
 		for _, d := range result.Documents {
 			keys = append(keys, d.Key)
 		}
+
 		fmt.Printf("  → Documents:  %s\n", strings.Join(keys, ", "))
 	}
+
 	if len(result.Attachments) > 0 {
 		var names []string
 		for _, a := range result.Attachments {
 			names = append(names, filepath.Base(a.Path))
 		}
+
 		fmt.Printf("  → Attached:   %s\n", strings.Join(names, ", "))
 	}
+
 	if len(result.Labels) > 0 {
 		fmt.Printf("  → Labels:     %s\n", strings.Join(result.Labels, ", "))
 	}
+
 	for _, w := range result.Warnings {
 		fmt.Printf("  %s %s\n", color.YellowString("Warning:"), w)
 	}
+
 	return nil
 }

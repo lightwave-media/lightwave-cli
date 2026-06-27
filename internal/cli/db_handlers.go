@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -43,6 +44,7 @@ func djangoManage(ctx context.Context, args ...string) error {
 	defer cancel()
 
 	full := append([]string{"exec", "backend", "python", "manage.py"}, args...)
+
 	return runCompose(ctx, full...)
 }
 
@@ -50,7 +52,9 @@ func djangoManage(ctx context.Context, args ...string) error {
 func pgExec(ctx context.Context, args ...string) error {
 	ctx, cancel := context.WithTimeout(ctx, dbExecTimeout)
 	defer cancel()
+
 	full := append([]string{"exec", "db", "psql", "-U", "postgres"}, args...)
+
 	return runCompose(ctx, full...)
 }
 
@@ -61,22 +65,27 @@ func dbShellHandler(ctx context.Context, _ []string, flags map[string]any) error
 	if env != "" && env != "local" {
 		return fmt.Errorf("db shell: only --env=local supported (got %q)", env)
 	}
+
 	return pgExec(ctx, "lightwave_platform")
 }
 
 func dbDumpHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw db dump <env> [--output=<file>] [--tables=t1,t2]")
+		return errors.New("usage: lw db dump <env> [--output=<file>] [--tables=t1,t2]")
 	}
+
 	env := args[0]
 	if env != "local" {
 		return fmt.Errorf("db dump: remote env dumps not yet wired (got %q)", env)
 	}
+
 	out := flagStr(flags, "output")
 	if out == "" {
 		out = fmt.Sprintf("dump-%s-%s.sql", env, time.Now().Format("20060102-150405"))
 	}
+
 	cmdArgs := []string{"exec", "-T", "db", "pg_dump", "-U", "postgres", "lightwave_platform"}
+
 	if t := flagStr(flags, "tables"); t != "" {
 		for name := range strings.SplitSeq(t, ",") {
 			name = strings.TrimSpace(name)
@@ -88,24 +97,30 @@ func dbDumpHandler(ctx context.Context, args []string, flags map[string]any) err
 
 	ctx, cancel := context.WithTimeout(ctx, dbExecTimeout)
 	defer cancel()
+
 	c := composeCmd(ctx, cmdArgs...)
+
 	f, err := os.Create(out)
 	if err != nil {
 		return fmt.Errorf("open output file: %w", err)
 	}
 	defer f.Close()
+
 	c.Stdout = f
 	if err := c.Run(); err != nil {
 		return fmt.Errorf("pg_dump: %w", err)
 	}
+
 	fmt.Printf("Dumped → %s\n", color.CyanString(out))
+
 	return nil
 }
 
 func dbRestoreHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw db restore <file> [--env=local] [--confirm]")
+		return errors.New("usage: lw db restore <file> [--env=local] [--confirm]")
 	}
+
 	file := args[0]
 	if !flagBool(flags, "confirm") {
 		if !promptYesNo(fmt.Sprintf("Restore %s into %s? Existing data will be replaced.",
@@ -114,19 +129,25 @@ func dbRestoreHandler(ctx context.Context, args []string, flags map[string]any) 
 			return nil
 		}
 	}
+
 	ctx, cancel := context.WithTimeout(ctx, dbExecTimeout)
 	defer cancel()
+
 	c := composeCmd(ctx, "exec", "-T", "db", "psql", "-U", "postgres", "lightwave_platform")
+
 	f, err := os.Open(file)
 	if err != nil {
 		return fmt.Errorf("open input file: %w", err)
 	}
 	defer f.Close()
+
 	c.Stdin = f
 	if err := c.Run(); err != nil {
 		return fmt.Errorf("restore: %w", err)
 	}
+
 	fmt.Printf("Restored from %s\n", color.CyanString(file))
+
 	return nil
 }
 
@@ -137,15 +158,19 @@ func dbResetHandler(ctx context.Context, _ []string, flags map[string]any) error
 			return nil
 		}
 	}
+
 	pool, err := db.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}
 	defer db.Close()
+
 	if _, err := pool.Exec(ctx, "DROP SCHEMA public CASCADE; CREATE SCHEMA public"); err != nil {
 		return fmt.Errorf("drop public: %w", err)
 	}
+
 	fmt.Println("Public schema dropped + recreated")
+
 	return djangoManage(ctx, "migrate")
 }
 
@@ -154,15 +179,18 @@ func dbMigrateHandler(ctx context.Context, _ []string, flags map[string]any) err
 	if flagBool(flags, "fake") {
 		args = append(args, "--fake")
 	}
+
 	if v := flagStr(flags, "plan"); v != "" {
 		// `--plan` is a Django boolean flag; if user supplied a value, ignore
 		// and pass through as bool. (Schema lists --plan; bool table excludes
 		// it because task.create reuses the name.)
 		args = append(args, "--plan")
 	}
+
 	if v := flagStr(flags, "app"); v != "" {
 		args = append(args, v)
 	}
+
 	return djangoManage(ctx, args...)
 }
 
@@ -171,12 +199,15 @@ func dbMakemigrationsHandler(ctx context.Context, _ []string, flags map[string]a
 	if v := flagStr(flags, "app"); v != "" {
 		args = append(args, v)
 	}
+
 	if flagBool(flags, "empty") {
 		args = append(args, "--empty")
 	}
+
 	if v := flagStr(flags, "name"); v != "" {
 		args = append(args, "-n", v)
 	}
+
 	return djangoManage(ctx, args...)
 }
 
@@ -185,23 +216,28 @@ func dbCheckHandler(ctx context.Context, _ []string, flags map[string]any) error
 	if flagBool(flags, "deploy") {
 		args = append(args, "--deploy")
 	}
+
 	if v := flagStr(flags, "fail-level"); v != "" {
 		args = append(args, "--fail-level", v)
 	}
+
 	return djangoManage(ctx, args...)
 }
 
 func dbSchemaInitHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw db schema-init <schema-name>")
+		return errors.New("usage: lw db schema-init <schema-name>")
 	}
+
 	name := args[0]
 	if err := djangoManage(ctx, "create_test_tenant", "--schema", name); err != nil {
 		return err
 	}
+
 	if flagBool(flags, "skip-migrate") {
 		return nil
 	}
+
 	return djangoManage(ctx, "migrate_schemas", "--schema", name)
 }
 
@@ -211,6 +247,7 @@ func dbSchemaListHandler(ctx context.Context, _ []string, flags map[string]any) 
 		return fmt.Errorf("connect: %w", err)
 	}
 	defer db.Close()
+
 	rows, err := pool.Query(ctx, `
 		SELECT schema_name FROM information_schema.schemata
 		WHERE schema_name NOT IN ('pg_catalog','information_schema','pg_toast')
@@ -222,49 +259,61 @@ func dbSchemaListHandler(ctx context.Context, _ []string, flags map[string]any) 
 		return err
 	}
 	defer rows.Close()
+
 	var schemas []string
 	for rows.Next() {
 		var n string
 		if err := rows.Scan(&n); err != nil {
 			return err
 		}
+
 		schemas = append(schemas, n)
 	}
+
 	if asJSON(flags) {
 		return emitJSON(schemas)
 	}
+
 	for _, s := range schemas {
 		fmt.Println(s)
 	}
+
 	return nil
 }
 
 func dbSchemaDropHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw db schema-drop <schema-name> [--force]")
+		return errors.New("usage: lw db schema-drop <schema-name> [--force]")
 	}
+
 	name := args[0]
 	if name == "public" {
-		return fmt.Errorf("refusing to drop 'public' schema (use lw db reset)")
+		return errors.New("refusing to drop 'public' schema (use lw db reset)")
 	}
+
 	if !flagBool(flags, "force") {
 		if !promptYesNo(fmt.Sprintf("Drop schema %q (CASCADE)?", name)) {
 			fmt.Println("Cancelled")
 			return nil
 		}
 	}
+
 	pool, err := db.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("connect: %w", err)
 	}
 	defer db.Close()
+
 	if !validIdent(name) {
 		return fmt.Errorf("invalid schema name %q", name)
 	}
+
 	if _, err := pool.Exec(ctx, fmt.Sprintf("DROP SCHEMA %q CASCADE", name)); err != nil {
 		return fmt.Errorf("drop schema: %w", err)
 	}
+
 	fmt.Printf("Dropped schema %s\n", color.RedString(name))
+
 	return nil
 }
 
@@ -273,6 +322,7 @@ func dbMigrateSchemasHandler(ctx context.Context, _ []string, flags map[string]a
 	if v := flagStr(flags, "schema"); v != "" {
 		args = append(args, "--schema", v)
 	}
+
 	return djangoManage(ctx, args...)
 }
 
@@ -282,6 +332,7 @@ func validIdent(s string) bool {
 	if s == "" {
 		return false
 	}
+
 	for _, r := range s {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z',
@@ -290,6 +341,7 @@ func validIdent(s string) bool {
 			return false
 		}
 	}
+
 	return true
 }
 
@@ -297,5 +349,6 @@ func flagStrOr(flags map[string]any, name, fallback string) string {
 	if v := flagStr(flags, name); v != "" {
 		return v
 	}
+
 	return fallback
 }

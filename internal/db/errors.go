@@ -8,6 +8,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
+// ErrDBUnavailable is returned when the platform Postgres is unreachable.
+// Callers (SOPs, scheduled agents) should treat exit code 3 as "skip, retry later"
+// rather than a hard failure. Check with errors.Is(err, db.ErrDBUnavailable).
+var ErrDBUnavailable = errors.New("platform database unavailable")
+
 // WrapConnectError converts a low-level pgx/network connection failure into
 // a multi-line, actionable message. Non-connection errors pass through
 // unchanged. The original error is always wrapped via %w so callers can
@@ -20,14 +25,14 @@ func WrapConnectError(err error, host string, port int) error {
 		return err
 	}
 
-	return fmt.Errorf(`Cannot connect to platform database at %s:%d.
+	return fmt.Errorf(`%w: cannot connect to platform database at %s:%d.
 
 Likely fix:
   1. Run `+"`lw dev start`"+` to bring up the Docker stack
   2. OR start the local mirror: `+"`brew services start postgresql@14`"+`
   3. OR set LW_DB_URL to point at a different DSN
 
-Original error: %w`, host, port, err)
+Original error: %w`, ErrDBUnavailable, host, port, err)
 }
 
 // isConnectFailure reports whether err is a pgx / net dial-time failure

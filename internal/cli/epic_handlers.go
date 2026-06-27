@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/fatih/color"
@@ -31,18 +32,22 @@ func epicListHandler(ctx context.Context, _ []string, flags map[string]any) erro
 	if asJSON(flags) {
 		return emitJSON(epics)
 	}
+
 	if len(epics) == 0 {
 		fmt.Println(color.YellowString("No epics found"))
 		return nil
 	}
+
 	printEpicTable(epics)
+
 	return nil
 }
 
 func epicInfoHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("epic id required")
+		return errors.New("epic id required")
 	}
+
 	pool, err := db.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
@@ -60,20 +65,25 @@ func epicInfoHandler(ctx context.Context, args []string, flags map[string]any) e
 
 	fmt.Printf("Epic %s: %s\n", color.YellowString(epic.ShortID), epic.Name)
 	fmt.Printf("  Status:   %s\n", epic.Status)
+
 	if epic.Priority != nil {
 		fmt.Printf("  Priority: %s\n", *epic.Priority)
 	}
+
 	if epic.GithubRepo != nil {
 		fmt.Printf("  Repo:     %s\n", *epic.GithubRepo)
 	}
+
 	fmt.Printf("  Tasks:    %d\n", epic.TaskCount)
+
 	return nil
 }
 
 func epicTasksHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("epic id required")
+		return errors.New("epic id required")
 	}
+
 	pool, err := db.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
@@ -98,9 +108,12 @@ func epicTasksHandler(ctx context.Context, args []string, flags map[string]any) 
 		fmt.Printf("Epic %s has no tasks\n", color.YellowString(epic.ShortID))
 		return nil
 	}
+
 	fmt.Printf("Epic %s: %s (%d tasks)\n", color.YellowString(epic.ShortID), epic.Name, len(tasks))
+
 	for _, t := range tasks {
 		fmt.Printf("  %s [%s] %s\n", color.CyanString(t.ShortID), t.Status, t.Title)
 	}
+
 	return nil
 }

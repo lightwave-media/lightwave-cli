@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -53,6 +54,7 @@ func taskListHandler(ctx context.Context, _ []string, flags map[string]any) erro
 			}
 		}
 	}
+
 	if flagBool(flags, "all") {
 		opts.Limit = 0
 	}
@@ -65,18 +67,22 @@ func taskListHandler(ctx context.Context, _ []string, flags map[string]any) erro
 	if asJSON(flags) {
 		return emitJSON(tasks)
 	}
+
 	if len(tasks) == 0 {
 		fmt.Println(color.YellowString("No tasks found"))
 		return nil
 	}
+
 	printTaskTable(tasks)
+
 	return nil
 }
 
 func taskInfoHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("task id required")
+		return errors.New("task id required")
 	}
+
 	pool, err := db.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
@@ -87,10 +93,13 @@ func taskInfoHandler(ctx context.Context, args []string, flags map[string]any) e
 	if err != nil {
 		return err
 	}
+
 	if asJSON(flags) {
 		return emitJSON(task)
 	}
+
 	printTaskDetails(task)
+
 	return nil
 }
 
@@ -99,20 +108,23 @@ func taskInfoHandler(ctx context.Context, args []string, flags map[string]any) e
 // unmodified. Title is the positional arg.
 func taskCreateHandler(_ context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("title argument required: lw task create <title>")
+		return errors.New("title argument required: lw task create <title>")
 	}
 
 	taskCreateTitle = args[0]
 	taskCreateDescription = flagStr(flags, "description")
 	taskCreateDescriptionFile = flagStr(flags, "description-file")
+
 	taskCreatePriority = "p3_medium"
 	if v := flagStr(flags, "priority"); v != "" {
 		taskCreatePriority = v
 	}
+
 	taskCreateType = "feature"
 	if v := flagStr(flags, "type"); v != "" {
 		taskCreateType = v
 	}
+
 	taskCreateCategory = flagStr(flags, "category")
 	taskCreateEpic = flagStr(flags, "epic")
 	taskCreateSprint = flagStr(flags, "sprint")
@@ -141,8 +153,9 @@ func taskCreateHandler(_ context.Context, args []string, flags map[string]any) e
 // named after the task's short id and a slugified title.
 func taskStartHandler(ctx context.Context, args []string, _ map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("task id required")
+		return errors.New("task id required")
 	}
+
 	pool, err := db.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
@@ -156,6 +169,7 @@ func taskStartHandler(ctx context.Context, args []string, _ map[string]any) erro
 
 	branch := fmt.Sprintf("feature/%s-%s", task.ShortID, slugify(task.Title))
 	status := "in_progress"
+
 	updated, err := db.UpdateTask(ctx, pool, task.ID, db.TaskUpdateOptions{
 		Status: &status,
 		Branch: &branch,
@@ -171,14 +185,16 @@ func taskStartHandler(ctx context.Context, args []string, _ map[string]any) erro
 
 	fmt.Printf("Started task %s — branch %s\n",
 		color.CyanString(updated.ShortID), color.YellowString(branch))
+
 	return nil
 }
 
 // taskStatusHandler updates a task's status. Args: id, status.
 func taskStatusHandler(ctx context.Context, args []string, _ map[string]any) error {
 	if len(args) < 2 {
-		return fmt.Errorf("usage: lw task status <id> <status>")
+		return errors.New("usage: lw task status <id> <status>")
 	}
+
 	pool, err := db.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
@@ -186,12 +202,15 @@ func taskStatusHandler(ctx context.Context, args []string, _ map[string]any) err
 	defer db.Close()
 
 	status := args[1]
+
 	updated, err := db.UpdateTask(ctx, pool, args[0], db.TaskUpdateOptions{Status: &status})
 	if err != nil {
 		return err
 	}
+
 	fmt.Printf("Task %s → %s\n",
 		color.CyanString(updated.ShortID), colorStatus(status, status))
+
 	return nil
 }
 
@@ -199,8 +218,9 @@ func taskStatusHandler(ctx context.Context, args []string, _ map[string]any) err
 // the task. Delegates branch + base resolution to gh.
 func taskPRHandler(ctx context.Context, args []string, _ map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("task id required")
+		return errors.New("task id required")
 	}
+
 	pool, err := db.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
@@ -213,6 +233,7 @@ func taskPRHandler(ctx context.Context, args []string, _ map[string]any) error {
 	}
 
 	title := fmt.Sprintf("[%s] %s", task.ShortID, task.Title)
+
 	body := fmt.Sprintf("Task: %s\nID: %s\n", task.ShortID, task.ID)
 	if task.Description != nil && *task.Description != "" {
 		body += "\n" + *task.Description + "\n"
@@ -229,6 +250,7 @@ func taskPRHandler(ctx context.Context, args []string, _ map[string]any) error {
 	}
 
 	url := strings.TrimSpace(string(out))
+
 	updated, err := db.UpdateTask(ctx, pool, task.ID, db.TaskUpdateOptions{
 		PRUrl:  &url,
 		Status: ptrStr("in_review"),
@@ -239,6 +261,7 @@ func taskPRHandler(ctx context.Context, args []string, _ map[string]any) error {
 
 	fmt.Printf("PR opened for %s: %s\n",
 		color.CyanString(updated.ShortID), color.BlueString(url))
+
 	return nil
 }
 
@@ -255,8 +278,9 @@ func taskPRHandler(ctx context.Context, args []string, _ map[string]any) error {
 // flip — this command is about disk + GitHub + memory side effects.
 func taskDoneHandler(_ context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("task id required (T-NNNN)")
+		return errors.New("task id required (T-NNNN)")
 	}
+
 	taskID := args[0]
 	dryRun := flagBool(flags, "dry-run")
 	yes := flagBool(flags, "yes")
@@ -264,9 +288,10 @@ func taskDoneHandler(_ context.Context, args []string, flags map[string]any) err
 	issue := 0
 	if v := flagStr(flags, "issue"); v != "" {
 		if _, err := fmt.Sscanf(v, "%d", &issue); err != nil || issue <= 0 {
-			return fmt.Errorf("--issue must be a positive integer")
+			return errors.New("--issue must be a positive integer")
 		}
 	}
+
 	repo := flagStr(flags, "repo")
 
 	if !dryRun && !yes {
@@ -290,7 +315,9 @@ func taskDoneHandler(_ context.Context, args []string, flags map[string]any) err
 	if res.DryRun {
 		return nil
 	}
+
 	fmt.Printf("Task %s %s\n", color.CyanString(taskID), color.GreenString("cleaned up"))
+
 	return nil
 }
 
@@ -301,7 +328,9 @@ func flagSlice(flags map[string]any, name string) []string {
 	if !ok {
 		return nil
 	}
+
 	s, _ := v.([]string)
+
 	return s
 }
 
@@ -310,26 +339,34 @@ func ptrStr(s string) *string { return &s }
 // slugify produces a kebab-case slug truncated to 40 chars for branch naming.
 func slugify(s string) string {
 	s = strings.ToLower(s)
+
 	var b strings.Builder
+
 	prevDash := false
+
 	for _, r := range s {
 		switch {
 		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
 			b.WriteRune(r)
+
 			prevDash = false
 		default:
 			if !prevDash && b.Len() > 0 {
 				b.WriteRune('-')
+
 				prevDash = true
 			}
 		}
 	}
+
 	out := strings.TrimRight(b.String(), "-")
 	if len(out) > 40 {
 		out = strings.TrimRight(out[:40], "-")
 	}
+
 	if out == "" {
 		out = "task"
 	}
+
 	return out
 }

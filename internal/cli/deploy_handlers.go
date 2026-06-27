@@ -26,7 +26,7 @@ func init() {
 }
 
 func deployClusterFor(env string) string {
-	return fmt.Sprintf("platform-%s", env)
+	return "platform-" + env
 }
 
 func deployRunHandler(ctx context.Context, args []string, flags map[string]any) error {
@@ -112,21 +112,26 @@ func deployImageRollout(ctx context.Context, client *aws.ECSClient, service, ima
 
 func deployStatusHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw deploy status <env> [--service=<name>] [--json]")
+		return errors.New("usage: lw deploy status <env> [--service=<name>] [--json]")
 	}
+
 	env := args[0]
+
 	client, err := aws.NewECSClient(ctx, deployClusterFor(env))
 	if err != nil {
 		return err
 	}
+
 	if svc := flagStr(flags, "service"); svc != "" {
 		status, err := client.GetServiceStatus(ctx, svc)
 		if err != nil {
 			return err
 		}
+
 		if asJSON(flags) {
 			return emitJSON(status)
 		}
+
 		fmt.Printf("%s on %s\n", color.CyanString(status.Name), color.CyanString(env))
 		fmt.Printf("  status:        %s\n", status.Status)
 		fmt.Printf("  desired:       %d\n", status.DesiredCount)
@@ -134,43 +139,54 @@ func deployStatusHandler(ctx context.Context, args []string, flags map[string]an
 		fmt.Printf("  pending:       %d\n", status.PendingCount)
 		fmt.Printf("  task-def:      %s\n", status.TaskDefinition)
 		fmt.Printf("  last-deploy:   %s\n", status.LastDeployment)
+
 		if status.Healthy {
 			fmt.Println(color.GreenString("  healthy:       yes"))
 		} else {
 			fmt.Println(color.YellowString("  healthy:       no"))
 		}
+
 		return nil
 	}
+
 	services, err := client.ListServices(ctx)
 	if err != nil {
 		return err
 	}
+
 	if asJSON(flags) {
 		return emitJSON(services)
 	}
+
 	for _, s := range services {
 		fmt.Println(s)
 	}
+
 	return nil
 }
 
 func deployLogsHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw deploy logs <service> [--env=<env>] [--follow] [--since=<duration>]")
+		return errors.New("usage: lw deploy logs <service> [--env=<env>] [--follow] [--since=<duration>]")
 	}
+
 	service := args[0]
 	env := flagStrOr(flags, "env", "prod")
 	logGroup := fmt.Sprintf("/ecs/%s-%s", deployClusterFor(env), service)
+
 	client, err := aws.NewLogsClient(ctx)
 	if err != nil {
 		return err
 	}
+
 	if !flagBool(flags, "follow") {
 		// One-shot read: fall through to TailLogs but cancel after a brief idle.
 		ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		defer cancel()
+
 		return streamLogs(ctx, client, logGroup, "")
 	}
+
 	return streamLogs(ctx, client, logGroup, "")
 }
 
@@ -179,9 +195,11 @@ func streamLogs(ctx context.Context, client *aws.LogsClient, group, prefix strin
 	if err != nil {
 		return err
 	}
+
 	for ev := range events {
 		fmt.Printf("%s %s\n", ev.Timestamp.Format(time.RFC3339), ev.Message)
 	}
+
 	return nil
 }
 
@@ -190,7 +208,8 @@ func streamLogs(ctx context.Context, client *aws.LogsClient, group, prefix strin
 // gap rather than silently no-op.
 func deployRollbackHandler(_ context.Context, args []string, _ map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw deploy rollback <env> [--service=<name>] [--version=<rev>]")
+		return errors.New("usage: lw deploy rollback <env> [--service=<name>] [--version=<rev>]")
 	}
-	return fmt.Errorf("deploy rollback: not yet wired (ECS task-def revision rollback needs --version flag implementation; for emergency rollback use `lw aws ecs apply-task-def`)")
+
+	return errors.New("deploy rollback: not yet wired (ECS task-def revision rollback needs --version flag implementation; for emergency rollback use `lw aws ecs apply-task-def`)")
 }

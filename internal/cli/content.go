@@ -61,7 +61,7 @@ content/ directory mounts at /content in dev compose.`,
 			parts = append(parts, "--force")
 		}
 
-		return runMake(dir, "dj-manage", fmt.Sprintf("CMD=%s", strings.Join(parts, " ")))
+		return runMake(dir, "dj-manage", "CMD="+strings.Join(parts, " "))
 	},
 }
 
@@ -85,7 +85,7 @@ Use this before 'apply' to preview what would change. No DB writes.`,
 			parts = append(parts, "--json")
 		}
 
-		return runMake(dir, "dj-manage", fmt.Sprintf("CMD=%s", strings.Join(parts, " ")))
+		return runMake(dir, "dj-manage", "CMD="+strings.Join(parts, " "))
 	},
 }
 
@@ -145,6 +145,6 @@ not auto-apply.`,
 			parts = append(parts, "--review-notes", fmt.Sprintf("%q", contentPromoteNotes))
 		}
 
-		return runMake(dir, "dj-manage", fmt.Sprintf("CMD=%s", strings.Join(parts, " ")))
+		return runMake(dir, "dj-manage", "CMD="+strings.Join(parts, " "))
 	},
 }

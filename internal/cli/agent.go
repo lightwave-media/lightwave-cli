@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/fatih/color"
@@ -167,17 +168,20 @@ func runAgentSpawn(cmd *cobra.Command, _ []string) error {
 		if err != nil {
 			return err
 		}
+
 		agentSpawnRepo = cwd
 	}
+
 	absRepo, err := filepath.Abs(agentSpawnRepo)
 	if err != nil {
 		return fmt.Errorf("resolve --repo: %w", err)
 	}
+
 	agentSpawnRepo = absRepo
 
 	cfg := config.Get()
 	if cfg == nil {
-		return fmt.Errorf("config not loaded")
+		return errors.New("config not loaded")
 	}
 
 	// 1. Load persona prompt.
@@ -190,6 +194,7 @@ func runAgentSpawn(cmd *cobra.Command, _ []string) error {
 				pnf.Name, strings.Join(pnf.SearchedIn, "\n          "))
 			os.Exit(1)
 		}
+
 		return err
 	}
 
@@ -198,6 +203,7 @@ func runAgentSpawn(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return fmt.Errorf("fetch task %s: %w", agentSpawnTask, err)
 	}
+
 	bundle, err := mddocs.BuildBundle(cfg.Paths.LightwaveRoot, seed)
 	if err != nil {
 		return fmt.Errorf("build context bundle: %w", err)
@@ -209,6 +215,7 @@ func runAgentSpawn(cmd *cobra.Command, _ []string) error {
 
 	if agentSpawnDryRun {
 		short := id[:8]
+
 		fmt.Println(color.CyanString("DRY RUN — no worktree created, no process spawned"))
 		fmt.Printf("Agent id (would be): %s\n", short)
 		fmt.Printf("Persona:             %s (from %s)\n", agentSpawnPersona, personaPath)
@@ -219,12 +226,15 @@ func runAgentSpawn(cmd *cobra.Command, _ []string) error {
 			strings.ToLower(agentSpawnTask), slugify(agentSpawnPersona), short)
 		fmt.Printf("Shell:               %s %s\n", agentSpawnShell, strings.Join(agentSpawnShellArgs, " "))
 		fmt.Printf("Prompt size:         %d bytes\n", len(prompt))
+
 		if len(bundle.Warnings) > 0 {
 			fmt.Println(color.YellowString("Bundle warnings:"))
+
 			for _, w := range bundle.Warnings {
 				fmt.Printf("  - %s\n", w)
 			}
 		}
+
 		return nil
 	}
 
@@ -269,6 +279,7 @@ func runAgentSpawn(cmd *cobra.Command, _ []string) error {
 	fmt.Printf("  branch:   %s\n", a.Branch)
 	fmt.Printf("  pid:      %d\n", a.PID)
 	fmt.Printf("  log:      %s\n", a.LogPath)
+
 	return nil
 }
 
@@ -284,6 +295,7 @@ func assemblePrompt(personaBody, personaPath, bundle string) string {
 	b.WriteString("\n```\n\n")
 	b.WriteString("## Task context\n\n")
 	b.WriteString(bundle)
+
 	return b.String()
 }
 
@@ -296,6 +308,7 @@ func runAgentList(_ *cobra.Command, _ []string) error {
 	for _, a := range agents {
 		_ = agent.RefreshStatus(a)
 	}
+
 	if len(agents) == 0 {
 		fmt.Println(color.YellowString("No agents spawned yet."))
 		return nil
@@ -304,6 +317,7 @@ func runAgentList(_ *cobra.Command, _ []string) error {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.SetHeader([]string{"ID", "Status", "Persona", "Task", "PID", "Started", "Worktree"})
 	table.SetBorder(false)
+
 	for _, a := range agents {
 		started := a.StartedAt.Local().Format("2006-01-02 15:04")
 		table.Append([]string{
@@ -311,12 +325,14 @@ func runAgentList(_ *cobra.Command, _ []string) error {
 			string(a.Status),
 			a.Persona,
 			a.TaskID,
-			fmt.Sprintf("%d", a.PID),
+			strconv.Itoa(a.PID),
 			started,
 			a.Worktree,
 		})
 	}
+
 	table.Render()
+
 	return nil
 }
 
@@ -325,9 +341,11 @@ func runAgentStatus(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	if err := agent.RefreshStatus(a); err != nil {
 		return err
 	}
+
 	fmt.Println()
 	fmt.Printf("%s %s\n", color.CyanString("Agent:"), color.YellowString(a.ID))
 	fmt.Printf("%s %s\n", color.CyanString("Status:"), colorAgentStatus(a.Status))
@@ -341,12 +359,15 @@ func runAgentStatus(_ *cobra.Command, args []string) error {
 	fmt.Printf("%s %s\n", color.CyanString("Log:"), a.LogPath)
 	fmt.Printf("%s %s\n", color.CyanString("Context:"), a.ContextPath)
 	fmt.Printf("%s %s\n", color.CyanString("Started:"), a.StartedAt.Local().Format("2006-01-02 15:04:05"))
+
 	if !a.ExitedAt.IsZero() {
 		fmt.Printf("%s %s\n", color.CyanString("Exited:"), a.ExitedAt.Local().Format("2006-01-02 15:04:05"))
 	}
+
 	if a.Error != "" {
 		fmt.Printf("%s %s\n", color.RedString("Error:"), a.Error)
 	}
+
 	return nil
 }
 
@@ -355,12 +376,15 @@ func runAgentStop(_ *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	_ = agent.RefreshStatus(a)
 
 	if !agentStopYes && a.Status == agent.StatusRunning {
 		fmt.Printf("Stop agent %s (%s, pid %d, task %s)? [y/N] ",
 			color.CyanString(a.ShortID()), a.Persona, a.PID, a.TaskID)
+
 		var answer string
+
 		_, _ = fmt.Scanln(&answer)
 		if !strings.HasPrefix(strings.ToLower(strings.TrimSpace(answer)), "y") {
 			fmt.Println("Cancelled.")
@@ -371,16 +395,20 @@ func runAgentStop(_ *cobra.Command, args []string) error {
 	if err := agent.Stop(a, agentStopForce); err != nil {
 		return err
 	}
+
 	fmt.Printf("Stopped %s — worktree removed.\n", color.CyanString(a.ShortID()))
+
 	return nil
 }
 
 func runAgentProvisionStub(_ *cobra.Command, args []string) error {
 	name := args[0]
+
 	roles := agentProvisionRoles
 	if len(roles) == 0 {
 		roles = []string{"(none — pass --roles)"}
 	}
+
 	fmt.Println(color.YellowString("STUB — Phase A. Would atomically:"))
 	fmt.Printf("  1. Create user record %s in lightwave-platform\n", color.CyanString(name))
 	fmt.Printf("  2. Mint API token, store in SSM at /lightwave/agents/%s/token\n", name)
@@ -389,6 +417,7 @@ func runAgentProvisionStub(_ *cobra.Command, args []string) error {
 	fmt.Println()
 	fmt.Println("Implementation lands with EB-005 (Phase B storage). See:")
 	fmt.Println("  lightwave-media/docs/software/epic-briefs/EB-001-v-core-resident-orchestrator.md §3.2")
+
 	return nil
 }
 
@@ -401,5 +430,6 @@ func colorAgentStatus(s agent.Status) string {
 	case agent.StatusError:
 		return color.RedString(string(s))
 	}
+
 	return string(s)
 }

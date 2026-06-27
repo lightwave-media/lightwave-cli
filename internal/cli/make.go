@@ -47,10 +47,13 @@ Examples:
 func showMakeHelp() error {
 	fmt.Println(color.CyanString("Available scopes:"))
 	fmt.Println()
+
 	for scope, rel := range makeScopes {
 		fmt.Printf("  %-12s %s\n", color.GreenString(scope), rel)
 	}
+
 	fmt.Println()
 	fmt.Println("Usage: lw make <scope> [target]")
+
 	return nil
 }

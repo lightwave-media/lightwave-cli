@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -49,6 +50,7 @@ func composeGenerateHandler(ctx context.Context, _ []string, flags map[string]an
 	if err != nil {
 		return err
 	}
+
 	root, err := composeWorkspaceRoot()
 	if err != nil {
 		return err
@@ -62,17 +64,21 @@ func composeGenerateHandler(ctx context.Context, _ []string, flags map[string]an
 			return fmt.Errorf("mktemp: %w", err)
 		}
 		defer os.RemoveAll(tmp)
+
 		if err := runBoilerplate(ctx, root, env, tmp); err != nil {
 			return err
 		}
+
 		return printComposeDiff(filepath.Join(root, composeOutputName), filepath.Join(tmp, composeOutputName))
 	}
 
 	if err := runBoilerplate(ctx, root, env, root); err != nil {
 		return err
 	}
+
 	fmt.Printf("%s docker-compose.yml regenerated for %s\n",
 		color.GreenString("✓"), color.CyanString(env))
+
 	return nil
 }
 
@@ -81,6 +87,7 @@ func composeVerifyHandler(ctx context.Context, _ []string, flags map[string]any)
 	if err != nil {
 		return err
 	}
+
 	root, err := composeWorkspaceRoot()
 	if err != nil {
 		return err
@@ -107,6 +114,7 @@ func composeVerifyHandler(ctx context.Context, _ []string, flags map[string]any)
 
 	fmt.Printf("%s docker-compose.yml in sync with SST (%s)\n",
 		color.GreenString("✓"), color.CyanString(env))
+
 	return nil
 }
 
@@ -117,6 +125,7 @@ func composeEnv(flags map[string]any) (string, error) {
 	if !validComposeEnvs[env] {
 		return "", fmt.Errorf("invalid --env %q (valid: local, staging, production)", env)
 	}
+
 	return env, nil
 }
 
@@ -126,15 +135,18 @@ func composeEnv(flags map[string]any) (string, error) {
 func composeWorkspaceRoot() (string, error) {
 	cfg := config.Get()
 	if cfg == nil {
-		return "", fmt.Errorf("config not loaded")
+		return "", errors.New("config not loaded")
 	}
+
 	root := cfg.Paths.LightwaveRoot
 	if root == "" {
-		return "", fmt.Errorf("paths.lightwave_root not configured")
+		return "", errors.New("paths.lightwave_root not configured")
 	}
+
 	if _, err := os.Stat(root); err != nil {
 		return "", fmt.Errorf("workspace root %s: %w", root, err)
 	}
+
 	return root, nil
 }
 
@@ -143,13 +155,14 @@ func composeWorkspaceRoot() (string, error) {
 func runBoilerplate(ctx context.Context, root, env, outDir string) error {
 	bp, err := exec.LookPath("boilerplate")
 	if err != nil {
-		return fmt.Errorf("boilerplate binary not on PATH (install: https://github.com/gruntwork-io/boilerplate)")
+		return errors.New("boilerplate binary not on PATH (install: https://github.com/gruntwork-io/boilerplate)")
 	}
 
 	tmpl := filepath.Join(root, composeBlueprintRel)
 	if _, err := os.Stat(tmpl); err != nil {
 		return fmt.Errorf("compose blueprint not found at %s — has the workspace PR landed?", tmpl)
 	}
+
 	varFile := filepath.Join(tmpl, "vars", env+".yml")
 	if _, err := os.Stat(varFile); err != nil {
 		return fmt.Errorf("var file not found at %s", varFile)
@@ -165,13 +178,16 @@ func runBoilerplate(ctx context.Context, root, env, outDir string) error {
 		"--non-interactive",
 	)
 	c.Dir = root
+
 	out, err := c.CombinedOutput()
 	if err != nil {
 		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			return fmt.Errorf("boilerplate: timeout after %s", composeRenderTimeout)
 		}
+
 		return fmt.Errorf("boilerplate: %w\n%s", err, strings.TrimSpace(string(out)))
 	}
+
 	return nil
 }
 
@@ -183,13 +199,16 @@ func composeFilesEqual(a, b string) error {
 	if err != nil {
 		return fmt.Errorf("read %s: %w", a, err)
 	}
+
 	bb, err := os.ReadFile(b)
 	if err != nil {
 		return fmt.Errorf("read %s: %w", b, err)
 	}
-	if string(ab) != string(bb) {
+
+	if !bytes.Equal(ab, bb) {
 		return errComposeDrift
 	}
+
 	return nil
 }
 
@@ -204,5 +223,6 @@ func printComposeDiff(a, b string) error {
 	c.Stderr = os.Stderr
 	// diff exits 1 on differences — that's the expected case here, not an error.
 	_ = c.Run()
+
 	return nil
 }

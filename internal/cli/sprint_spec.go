@@ -55,30 +55,37 @@ func FindSprintSpec(sprintShortID string) (string, *SprintSpec, error) {
 	if cfg == nil {
 		return "", nil, errors.New("no configuration found; run `lw config init` to initialize")
 	}
+
 	queueRoot := filepath.Join(cfg.Paths.LightwaveRoot, ".claude", "queue")
 
 	type match struct {
 		path string
 		spec *SprintSpec
 	}
+
 	var matches []match
 
 	// Search draft, pending, active directories
 	for _, dir := range []string{"draft", "pending", "active"} {
 		dirPath := filepath.Join(queueRoot, dir)
+
 		entries, err := os.ReadDir(dirPath)
 		if err != nil {
 			continue
 		}
+
 		for _, entry := range entries {
 			if !strings.HasSuffix(entry.Name(), ".yaml") {
 				continue
 			}
+
 			path := filepath.Join(dirPath, entry.Name())
+
 			spec, err := parseSprintSpec(path)
 			if err != nil {
 				continue
 			}
+
 			if strings.HasPrefix(spec.Sprint.ID, sprintShortID) {
 				matches = append(matches, match{path, spec})
 			}
@@ -88,9 +95,11 @@ func FindSprintSpec(sprintShortID string) (string, *SprintSpec, error) {
 	if len(matches) == 0 {
 		return "", nil, fmt.Errorf("no sprint spec found for ID %s in .claude/queue/{draft,pending,active}/", sprintShortID)
 	}
+
 	if len(matches) > 1 {
 		return "", nil, fmt.Errorf("ambiguous sprint ID '%s' matches %d spec files — use more characters", sprintShortID, len(matches))
 	}
+
 	return matches[0].path, matches[0].spec, nil
 }
 
@@ -99,10 +108,12 @@ func parseSprintSpec(path string) (*SprintSpec, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	var spec SprintSpec
 	if err := yaml.Unmarshal(data, &spec); err != nil {
 		return nil, err
 	}
+
 	return &spec, nil
 }
 
@@ -112,6 +123,7 @@ func MoveSpec(srcPath, destDir string) (string, error) {
 	if cfg == nil {
 		return "", errors.New("no configuration found; run `lw config init` to initialize")
 	}
+
 	destDirPath := filepath.Join(cfg.Paths.LightwaveRoot, ".claude", "queue", destDir)
 
 	if err := os.MkdirAll(destDirPath, 0o755); err != nil {
@@ -122,6 +134,7 @@ func MoveSpec(srcPath, destDir string) (string, error) {
 	if err := os.Rename(srcPath, destPath); err != nil {
 		return "", fmt.Errorf("failed to move spec: %w", err)
 	}
+
 	return destPath, nil
 }
 
@@ -140,9 +153,11 @@ func GeneratePrompt(spec *SprintSpec) string {
 	// Stories
 	if len(spec.Stories) > 0 {
 		b.WriteString("## Stories\n\n")
+
 		for _, s := range spec.Stories {
 			b.WriteString(fmt.Sprintf("- %s (`%s`)\n", s.Name, s.ID))
 		}
+
 		b.WriteString("\n")
 	}
 
@@ -150,54 +165,67 @@ func GeneratePrompt(spec *SprintSpec) string {
 	b.WriteString("## Tasks\n\n")
 	b.WriteString("| # | Task | Type | Priority | AC |\n")
 	b.WriteString("|---|------|------|----------|----|\n")
+
 	for i, t := range spec.Tasks {
 		if t.Status == "done" {
 			continue // Skip completed tasks
 		}
+
 		b.WriteString(fmt.Sprintf("| %d | %s (`%s`) | %s | %s | %s |\n",
 			i+1, t.Name, t.ID, t.Type, t.Priority, t.AC))
 	}
+
 	b.WriteString("\n")
 
 	// Files to research
 	allFiles := map[string]bool{}
+
 	for _, t := range spec.Tasks {
 		for _, f := range t.Files {
 			allFiles[f] = true
 		}
 	}
+
 	if len(allFiles) > 0 {
 		b.WriteString("## Key Files\n\n")
+
 		for f := range allFiles {
 			b.WriteString(fmt.Sprintf("- `%s`\n", f))
 		}
+
 		b.WriteString("\n")
 	}
 
 	// Acceptance Criteria
 	if len(spec.AcceptanceCriteria) > 0 {
 		b.WriteString("## Acceptance Criteria\n\n")
+
 		for _, ac := range spec.AcceptanceCriteria {
 			b.WriteString(fmt.Sprintf("- [ ] %s\n", ac))
 		}
+
 		b.WriteString("\n")
 	}
 
 	// Anti-slop
 	if len(spec.AntiSlop) > 0 {
 		b.WriteString("## Anti-Slop Rules\n\n")
+
 		for _, rule := range spec.AntiSlop {
 			b.WriteString(fmt.Sprintf("- %s\n", rule))
 		}
+
 		b.WriteString("\n")
 	}
 
 	// Research hints
 	if len(spec.ResearchHints) > 0 {
 		b.WriteString("## Codebase Research Hints\n\n")
+
 		for _, hint := range spec.ResearchHints {
 			b.WriteString(fmt.Sprintf("- %s\n", hint))
 		}
+
 		b.WriteString("\n")
 	}
 

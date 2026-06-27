@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"slices"
@@ -29,9 +30,11 @@ func init() {
 // the gap that motivated lightwave-media/lightwave-cli#11.
 func localExecHandler(ctx context.Context, args []string, _ map[string]any) error {
 	if len(args) < 1 {
-		return fmt.Errorf("usage: lw local exec <service> [cmd...]")
+		return errors.New("usage: lw local exec <service> [cmd...]")
 	}
+
 	service := args[0]
+
 	cmdArgs := args[1:]
 	if len(cmdArgs) == 0 {
 		cmdArgs = []string{"bash"}
@@ -41,6 +44,7 @@ func localExecHandler(ctx context.Context, args []string, _ map[string]any) erro
 	if err != nil {
 		return err
 	}
+
 	if !slices.Contains(services, service) {
 		return fmt.Errorf("unknown service %q (available: %s)", service, strings.Join(services, ", "))
 	}
@@ -57,6 +61,7 @@ func localExecHandler(ctx context.Context, args []string, _ map[string]any) erro
 		// chose to run a specific command.
 		composeArgs = []string{"run", "--rm", service}
 	}
+
 	return runCompose(ctx, append(composeArgs, cmdArgs...)...)
 }
 
@@ -80,16 +85,20 @@ func localInstallFrontendHandler(ctx context.Context, _ []string, flags map[stri
 		if err != nil {
 			return err
 		}
+
 		fmt.Printf("Will remove docker volume: %s\n", color.YellowString(volume))
+
 		if !yes {
 			if !promptYesNo("Proceed?") {
 				fmt.Println("aborted")
 				return nil
 			}
 		}
+
 		if err := stopAndRemoveVolume(ctx, "frontend", volume); err != nil {
 			return err
 		}
+
 		fmt.Println(color.GreenString("✓ removed %s", volume))
 	}
 
@@ -107,10 +116,12 @@ func localInstallFrontendHandler(ctx context.Context, _ []string, flags map[stri
 // COMPOSE_FILE chains the caller has set.
 func composeServices(ctx context.Context) ([]string, error) {
 	c := composeCmd(ctx, "config", "--services")
+
 	out, err := c.Output()
 	if err != nil {
 		return nil, fmt.Errorf("docker compose config --services: %w", err)
 	}
+
 	var services []string
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		line = strings.TrimSpace(line)
@@ -118,7 +129,9 @@ func composeServices(ctx context.Context) ([]string, error) {
 			services = append(services, line)
 		}
 	}
+
 	sort.Strings(services)
+
 	return services, nil
 }
 
@@ -130,6 +143,7 @@ func isComposeServiceRunning(ctx context.Context, service string) (bool, error) 
 	if err != nil {
 		return false, err
 	}
+
 	for _, r := range rows {
 		// composePS returns container Name (often `<project>-<service>-N`)
 		// and ID. The Service field on the JSON row is the canonical
@@ -142,6 +156,7 @@ func isComposeServiceRunning(ctx context.Context, service string) (bool, error) 
 			}
 		}
 	}
+
 	return false, nil
 }
 
@@ -150,10 +165,12 @@ func isComposeServiceRunning(ctx context.Context, service string) (bool, error) 
 // docker chose at first `up`; we don't try to second-guess it.
 func resolveFrontendVolumeName(ctx context.Context) (string, error) {
 	c := exec.CommandContext(ctx, "docker", "volume", "ls", "--format", "{{.Name}}")
+
 	out, err := c.Output()
 	if err != nil {
 		return "", fmt.Errorf("docker volume ls: %w", err)
 	}
+
 	var matches []string
 	for line := range strings.SplitSeq(strings.TrimSpace(string(out)), "\n") {
 		line = strings.TrimSpace(line)
@@ -161,12 +178,15 @@ func resolveFrontendVolumeName(ctx context.Context) (string, error) {
 			matches = append(matches, line)
 		}
 	}
+
 	if len(matches) == 0 {
-		return "", fmt.Errorf("no docker volume matching *_frontend_node_modules — has the stack ever been brought up?")
+		return "", errors.New("no docker volume matching *_frontend_node_modules — has the stack ever been brought up?")
 	}
+
 	if len(matches) > 1 {
 		return "", fmt.Errorf("multiple frontend_node_modules volumes found (%v) — refusing to guess; remove the stale one manually", matches)
 	}
+
 	return matches[0], nil
 }
 
@@ -178,12 +198,15 @@ func stopAndRemoveVolume(ctx context.Context, service, volume string) error {
 	if err := runCompose(ctx, "stop", service); err != nil {
 		return fmt.Errorf("stop %s: %w", service, err)
 	}
+
 	if err := runCompose(ctx, "rm", "-f", service); err != nil {
 		return fmt.Errorf("rm %s: %w", service, err)
 	}
+
 	c := exec.CommandContext(ctx, "docker", "volume", "rm", volume)
 	if out, err := c.CombinedOutput(); err != nil {
 		return fmt.Errorf("docker volume rm %s: %w (output: %s)", volume, err, strings.TrimSpace(string(out)))
 	}
+
 	return nil
 }
