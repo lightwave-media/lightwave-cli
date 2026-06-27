@@ -143,7 +143,7 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 	hardViolations := 0
 
 	for _, v := range report.Violations {
-		if v.Severity != "warn" {
+		if v.Severity != gitSeverityWarn {
 			hardViolations++
 		}
 	}
@@ -296,7 +296,7 @@ func checkCINodeConformance(repoPath, name string) []repoInfraViolation {
 		Missing:  ".github/workflows/ci.yml",
 		Detail: "Node/TS repo does not delegate to " + sharedWorkflow +
 			" — replace inline steps. Fix hint: jobs.ci.uses: " + sharedWorkflow + "@<sha>",
-		Severity: "warn",
+		Severity: gitSeverityWarn,
 	}}
 }
 
@@ -473,7 +473,7 @@ func printRepoInfraReport(r *repoInfraReport) {
 	var hardViols, warnViols []repoInfraViolation
 
 	for _, v := range r.Violations {
-		if v.Severity == "warn" {
+		if v.Severity == gitSeverityWarn {
 			warnViols = append(warnViols, v)
 		} else {
 			hardViols = append(hardViols, v)
