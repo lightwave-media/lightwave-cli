@@ -18,14 +18,19 @@ import (
 // instance's props list. The same shape serves both because the SST uses one
 // field-declaration grammar everywhere.
 type FieldDecl struct {
-	Default     any      `yaml:"default,omitempty"`
-	Name        string   `yaml:"name"`
-	Type        string   `yaml:"type"`
-	Description string   `yaml:"description,omitempty"`
-	ValuesRef   string   `yaml:"values_ref,omitempty"`
-	Options     []string `yaml:"options,omitempty"`
-	Nullable    bool     `yaml:"nullable,omitempty"`
-	Required    bool     `yaml:"required,omitempty"`
+	Default     any    `yaml:"default,omitempty"`
+	Name        string `yaml:"name"`
+	Type        string `yaml:"type"`
+	Description string `yaml:"description,omitempty"`
+	ValuesRef   string `yaml:"values_ref,omitempty"`
+	// EnumTSName is set during values_ref resolution to the referenced enum
+	// stamp's TypeScript const name (e.g. "AppShellKind"), when that stamp
+	// declares a typescript: target. Contract emission references the const
+	// instead of inlining z.enum([...]) (lightwave-cli#86). Empty → inline.
+	EnumTSName string   `yaml:"-"`
+	Options    []string `yaml:"options,omitempty"`
+	Nullable   bool     `yaml:"nullable,omitempty"`
+	Required   bool     `yaml:"required,omitempty"`
 }
 
 // SubField is one field inside a sub_schemas block (keyed by field name).
@@ -34,6 +39,7 @@ type SubField struct {
 	Type        string   `yaml:"type"`
 	Description string   `yaml:"description,omitempty"`
 	ValuesRef   string   `yaml:"values_ref,omitempty"`
+	EnumTSName  string   `yaml:"-"` // see FieldDecl.EnumTSName (lightwave-cli#86)
 	Options     []string `yaml:"options,omitempty"`
 	Nullable    bool     `yaml:"nullable,omitempty"`
 }
