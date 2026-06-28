@@ -210,6 +210,7 @@ func buildUseString(cmd sst.CLICommand) string {
 var booleanFlags = map[string]bool{
 	"dry-run": true,
 	"json":    true,
+	"top":     true,
 	"pretty":  true,
 	"verbose": true,
 	"quiet":   true,
