@@ -33,6 +33,20 @@ func TestParsePsOutput(t *testing.T) {
 	assert.Equal(t, "my helper proc", got[2].Name, "command name with spaces is preserved")
 }
 
+func TestTopByCPU(t *testing.T) {
+	t.Parallel()
+
+	// CPU order on input (0.5, 9.9, 3.3) is neither sorted nor reverse-sorted.
+	procs := cli.ParsePsOutput("1 0.5 1.0 alpha\n2 9.9 1.0 bravo\n3 3.3 1.0 charlie\n")
+
+	got := cli.TopByCPU(procs, 2)
+
+	require.Len(t, got, 2, "capped to limit")
+	assert.Equal(t, "bravo", got[0].Name, "highest CPU first")
+	assert.Equal(t, "charlie", got[1].Name, "second-highest CPU next")
+	assert.GreaterOrEqual(t, got[0].CPU, got[1].CPU, "sorted CPU-descending")
+}
+
 //nolint:paralleltest // serial — RunHandler swaps process-global os.Stdout
 func TestProcessListHandler_JSONSmoke(t *testing.T) {
 	// End-to-end: registration + real `ps` on the host + --json output. Any

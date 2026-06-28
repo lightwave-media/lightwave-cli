@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"sort"
 	"strconv"
@@ -64,13 +65,33 @@ func parsePsOutput(raw string) []procInfo {
 	return procs
 }
 
+// topByCPU returns procs sorted by CPU descending, capped to limit. The sort is
+// stable so equal-CPU rows keep their ps order (deterministic output).
+func topByCPU(procs []procInfo, limit int) []procInfo {
+	sort.SliceStable(procs, func(i, j int) bool { return procs[i].CPU > procs[j].CPU })
+
+	if len(procs) > limit {
+		procs = procs[:limit]
+	}
+
+	return procs
+}
+
 // processListHandler implements `lw process list` — a read-only host process
 // inventory (pid/cpu/mem/name) for v_core host-monitoring. --top sorts by CPU
 // descending and caps the output; --json emits machine-readable output.
 func processListHandler(ctx context.Context, _ []string, flags map[string]any) error {
 	start := time.Now()
 
-	raw, err := exec.CommandContext(ctx, "ps", "-axo", "pid=,pcpu=,pmem=,comm=").Output()
+	// LC_ALL=C forces a '.' decimal separator so pcpu/pmem parse regardless of
+	// host locale. Note: comm differs by platform (macOS reports the full path,
+	// Linux procps a basename truncated to ~15 chars) — fine for a read-only
+	// inventory, but consumers shouldn't assume identical names across OSes.
+	cmd := exec.CommandContext(ctx, "ps", "-axo", "pid=,pcpu=,pmem=,comm=")
+
+	cmd.Env = append(os.Environ(), "LC_ALL=C")
+
+	raw, err := cmd.Output()
 	if err != nil {
 		emitOperatorCLI("process.list", "fail", err.Error(), 1, start, nil)
 
@@ -80,11 +101,7 @@ func processListHandler(ctx context.Context, _ []string, flags map[string]any) e
 	procs := parsePsOutput(string(raw))
 
 	if flagBool(flags, "top") {
-		sort.Slice(procs, func(i, j int) bool { return procs[i].CPU > procs[j].CPU })
-
-		if len(procs) > processTopLimit {
-			procs = procs[:processTopLimit]
-		}
+		procs = topByCPU(procs, processTopLimit)
 	}
 
 	if flagBool(flags, "json") {

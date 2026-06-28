@@ -8,4 +8,5 @@ var (
 	ReverseDomain = reverseDomain
 	TitleFirst    = titleFirst
 	ParsePsOutput = parsePsOutput
+	TopByCPU      = topByCPU
 )
