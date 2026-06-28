@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 )
@@ -102,6 +103,30 @@ func FindEntities(dir string) ([]string, error) {
 	return out, nil
 }
 
+// referencedTables returns the distinct table names this entity's fields
+// reference via fk_ref (resolved through TableFromFKRef), for FK-topological
+// ordering of the migration.
+func referencedTables(e *EntitySchema) []string {
+	seen := map[string]bool{}
+
+	var out []string
+
+	for _, f := range append(e.RequiredFields, e.OptionalFields...) {
+		if f.FKRef == "" {
+			continue
+		}
+
+		t := TableFromFKRef(f.FKRef)
+		if !seen[t] {
+			seen[t] = true
+
+			out = append(out, t)
+		}
+	}
+
+	return out
+}
+
 // GoType maps an SST type string to a Go type string.
 func GoType(sstType string) string {
 	if strings.HasPrefix(sstType, "list[") {
@@ -175,15 +200,17 @@ func TableFromFKRef(fkRef string) string {
 	return name + "s"
 }
 
-// CamelCase converts snake_case to CamelCase.
+// CamelCase converts a snake_case / space- / hyphen-separated label into a Go
+// identifier. It splits on any run of non-alphanumeric runes so multi-word
+// _meta.title values ("API Specification", "Non-Functional Requirements")
+// yield a valid identifier (APISpecification, NonFunctionalRequirements), not
+// a string with embedded spaces that fails to compile (lightwave-cli#227).
 func CamelCase(s string) string {
 	var b strings.Builder
 
-	for part := range strings.SplitSeq(s, "_") {
-		if len(part) == 0 {
-			continue
-		}
-
+	for _, part := range strings.FieldsFunc(s, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	}) {
 		b.WriteString(strings.ToUpper(part[:1]) + part[1:])
 	}
 
