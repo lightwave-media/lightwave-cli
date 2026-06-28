@@ -136,6 +136,13 @@ func EmitMigration(entities []*EntitySchema) (string, error) {
 
 	for _, e := range ordered {
 		t := e.Meta.TableName
+		// CREATE POLICY has no IF NOT EXISTS in Postgres, and the platform's
+		// db.Migrate re-Execs every migration on each boot (no tracking table),
+		// so a bare CREATE POLICY fails the second apply with 42710 ("policy
+		// already exists") and crashes startup. Guard with DROP POLICY IF EXISTS
+		// so re-applying schema.sql is idempotent. FORCE RLS with no policy is
+		// default-deny, so the drop/recreate window is fail-safe (lightwave-cli#245).
+		fmt.Fprintf(&b, "DROP POLICY IF EXISTS %s_tenant_isolation ON %s;\n", t, t)
 		fmt.Fprintf(&b, "CREATE POLICY %s_tenant_isolation ON %s\n    USING (tenant_id::text = current_setting('app.current_org', true));\n", t, t)
 	}
 
