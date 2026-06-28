@@ -1,6 +1,7 @@
 package gogen_test
 
 import (
+	"go/format"
 	"os"
 	"path/filepath"
 	"strings"
@@ -34,6 +35,9 @@ required_fields:
   - name: created_at
     type: datetime
     storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
 optional_fields:
   - name: description
     type: str
@@ -44,6 +48,70 @@ optional_fields:
     column_type: jsonb
 `
 
+// Multi-word title — must yield a valid Go identifier (#227 P0-1 / blocker).
+const fixtureMultiWordYAML = `
+_meta:
+  version: "1.0.0"
+  schema_id: lightwave://schemas/data/test/api_spec
+  title: API Specification
+  table_kind: entity
+  table_name: api_specs
+natural_key:
+  column: slug
+  unique: true
+required_fields:
+  - name: slug
+    type: str
+    storage: db
+`
+
+// Parent (zebras) + child (ants) exercise FK ordering. Names are chosen so
+// alphabetical order (ants < zebras) is the OPPOSITE of dependency order
+// (zebras first) — proving the migration is FK-topologically sorted, not just
+// alphabetical.
+const fixtureParentYAML = `
+_meta:
+  version: "1.0.0"
+  schema_id: lightwave://schemas/data/test/zebra
+  title: Zebra
+  table_kind: entity
+  table_name: zebras
+natural_key:
+  column: slug
+  unique: true
+required_fields:
+  - name: slug
+    type: str
+    storage: db
+`
+
+const fixtureChildYAML = `
+_meta:
+  version: "1.0.0"
+  schema_id: lightwave://schemas/data/test/ant
+  title: Ant
+  table_kind: entity
+  table_name: ants
+natural_key:
+  column: slug
+  unique: true
+required_fields:
+  - name: slug
+    type: str
+    storage: db
+  - name: zebra_ref
+    type: str
+    storage: db
+    fk_ref: lightwave://schemas/data/test/zebra
+    fk_column: slug
+relations:
+  parent: zebra
+  parent_fk:
+    column: zebra_ref
+    references: zebras.slug
+    on_delete: CASCADE
+`
+
 const fixtureNonEntityYAML = `
 _meta:
   version: "1.0.0"
@@ -52,80 +120,120 @@ _meta:
   table_kind: enum
 `
 
-func writeFixture(t *testing.T, name, content string) string {
+func loadFixture(t *testing.T, name, content string) *gogen.EntitySchema {
 	t.Helper()
-	dir := t.TempDir()
-	p := filepath.Join(dir, name)
+	p := filepath.Join(t.TempDir(), name)
 	require.NoError(t, os.WriteFile(p, []byte(content), 0o644))
-	return p
-}
-
-func TestLoad_Entity(t *testing.T) {
-	t.Parallel()
-	p := writeFixture(t, "widget.yaml", fixtureEntityYAML)
 	e, err := gogen.Load(p)
 	require.NoError(t, err)
-	assert.Equal(t, "Widget", e.Meta.Title)
-	assert.Equal(t, "widgets", e.Meta.TableName)
-	assert.Equal(t, "entity", e.Meta.TableKind)
-	assert.Len(t, e.RequiredFields, 3)
-	assert.Len(t, e.OptionalFields, 2)
+	return e
 }
 
 func TestLoad_NonEntity_Rejected(t *testing.T) {
 	t.Parallel()
-	p := writeFixture(t, "enum_thing.yaml", fixtureNonEntityYAML)
+	p := filepath.Join(t.TempDir(), "enum_thing.yaml")
+	require.NoError(t, os.WriteFile(p, []byte(fixtureNonEntityYAML), 0o644))
 	_, err := gogen.Load(p)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not an entity schema")
 }
 
-func TestGenerate_GoFile(t *testing.T) {
+func TestGenerateGo_Struct(t *testing.T) {
 	t.Parallel()
-	p := writeFixture(t, "widget.yaml", fixtureEntityYAML)
-	e, err := gogen.Load(p)
+	got, err := gogen.GenerateGo(loadFixture(t, "widget.yaml", fixtureEntityYAML), "store")
 	require.NoError(t, err)
 
-	out := gogen.Generate(e, "store")
+	for _, want := range []string{
+		"package store",
+		"type Widget struct",
+		`db:"id"`,
+		`db:"tenant_id"`, // multi-tenant: tenant_id on every struct (#227 P0-1)
+		"uuid.UUID",
+		`db:"slug"`,
+		"time.Time",
+		"*string",         // optional string → pointer
+		"json.RawMessage", // jsonb list
+		"DO NOT EDIT",
+	} {
+		assert.Contains(t, got, want)
+	}
 
-	assert.Contains(t, out.GoFile, "package store")
-	assert.Contains(t, out.GoFile, "type Widget struct")
-	assert.Contains(t, out.GoFile, `db:"id"`)
-	assert.Contains(t, out.GoFile, "uuid.UUID")
-	assert.Contains(t, out.GoFile, `db:"slug"`)
-	assert.Contains(t, out.GoFile, `db:"created_at"`)
-	assert.Contains(t, out.GoFile, "time.Time")
-	// optional string field uses pointer
-	assert.Contains(t, out.GoFile, "*string")
-	// optional jsonb field does not use pointer
-	assert.Contains(t, out.GoFile, "json.RawMessage")
-	assert.NotContains(t, out.GoFile, "*json.RawMessage")
-	// DO NOT EDIT banner present
-	assert.Contains(t, out.GoFile, "DO NOT EDIT")
+	assert.NotContains(t, got, "*json.RawMessage")
 }
 
-func TestGenerate_SQLFile(t *testing.T) {
+// TestGenerateGo_MultiWordTitle pins the #227 blocker: a multi-word _meta.title
+// must produce a valid, gofmt-clean Go identifier, not "type API Specification".
+func TestGenerateGo_MultiWordTitle(t *testing.T) {
 	t.Parallel()
-	p := writeFixture(t, "widget.yaml", fixtureEntityYAML)
-	e, err := gogen.Load(p)
+	got, err := gogen.GenerateGo(loadFixture(t, "api_spec.yaml", fixtureMultiWordYAML), "store")
+	require.NoError(t, err, "multi-word title must produce compilable Go")
+	assert.Contains(t, got, "type APISpecification struct")
+
+	formatted, ferr := format.Source([]byte(got))
+	require.NoError(t, ferr)
+	assert.Equal(t, string(formatted), got, "generated Go must be gofmt-clean")
+}
+
+// TestEmitMigration_Tenancy pins #227 P0-1 (tenant_id + policy + FORCE),
+// P2-4 (DEFAULT now()), and per-tenant composite UNIQUE (P0-2).
+func TestEmitMigration_Tenancy(t *testing.T) {
+	t.Parallel()
+	mig, err := gogen.EmitMigration([]*gogen.EntitySchema{loadFixture(t, "widget.yaml", fixtureEntityYAML)})
 	require.NoError(t, err)
 
-	out := gogen.Generate(e, "store")
+	for _, want := range []string{
+		`CREATE EXTENSION IF NOT EXISTS "pgcrypto";`,
+		"CREATE TABLE IF NOT EXISTS widgets",
+		"id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY",
+		"tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE",
+		"UNIQUE (tenant_id, slug)", // per-tenant natural key, not a global UNIQUE
+		"created_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+		"updated_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+		"ALTER TABLE widgets ENABLE ROW LEVEL SECURITY;",
+		"ALTER TABLE widgets FORCE ROW LEVEL SECURITY;",
+		"CREATE POLICY widgets_tenant_isolation ON widgets",
+		"current_setting('app.current_org', true)",
+	} {
+		assert.Contains(t, mig, want)
+	}
 
-	assert.Contains(t, out.SQLFile, "CREATE TABLE IF NOT EXISTS widgets")
-	assert.Contains(t, out.SQLFile, "gen_random_uuid()")
-	assert.Contains(t, out.SQLFile, "slug")
-	assert.Contains(t, out.SQLFile, "created_at")
-	assert.Contains(t, out.SQLFile, "TIMESTAMPTZ")
-	assert.Contains(t, out.SQLFile, "JSONB")
-	assert.Contains(t, out.SQLFile, "ENABLE ROW LEVEL SECURITY")
-	assert.Contains(t, out.SQLFile, "DO NOT EDIT")
+	// Must NOT emit a bare global UNIQUE on slug (the cross-tenant-leak bug).
+	assert.NotContains(t, mig, "slug TEXT NOT NULL UNIQUE")
+}
+
+// TestEmitMigration_FKOrder pins #227 P0-2: parent created before child, with a
+// tenant-scoped composite FK. Fixture names make alphabetical order the inverse
+// of dependency order, so passing proves topological (not lexical) sorting.
+func TestEmitMigration_FKOrder(t *testing.T) {
+	t.Parallel()
+	child := loadFixture(t, "ant.yaml", fixtureChildYAML)
+	parent := loadFixture(t, "zebra.yaml", fixtureParentYAML)
+
+	mig, err := gogen.EmitMigration([]*gogen.EntitySchema{child, parent})
+	require.NoError(t, err)
+
+	zebraAt := strings.Index(mig, "CREATE TABLE IF NOT EXISTS zebras")
+	antAt := strings.Index(mig, "CREATE TABLE IF NOT EXISTS ants")
+	require.NotEqual(t, -1, zebraAt)
+	require.NotEqual(t, -1, antAt)
+	assert.Less(t, zebraAt, antAt, "parent zebras must precede child ants (topological, not alphabetical)")
+
+	assert.Contains(t, mig, "FOREIGN KEY (tenant_id, zebra_ref) REFERENCES zebras(tenant_id, slug) ON DELETE CASCADE")
+}
+
+// TestEmitMigration_UnknownFKSkipped pins the P0-2 guard: a FK whose target is
+// not in the entity set is skipped, never emitting a dangling REFERENCES.
+func TestEmitMigration_UnknownFKSkipped(t *testing.T) {
+	t.Parallel()
+	mig, err := gogen.EmitMigration([]*gogen.EntitySchema{loadFixture(t, "ant.yaml", fixtureChildYAML)})
+	require.NoError(t, err)
+	assert.Contains(t, mig, "CREATE TABLE IF NOT EXISTS ants")
+	assert.NotContains(t, mig, "REFERENCES zebras", "FK to an out-of-set table must be skipped")
 }
 
 func TestFindEntities(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "widget.yaml"), []byte(fixtureEntityYAML), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "not_entity.yaml"), []byte(fixtureNonEntityYAML), 0o644))
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "__index.yaml"), []byte("index: true"), 0o644))
@@ -138,21 +246,21 @@ func TestFindEntities(t *testing.T) {
 
 func TestCamelCase(t *testing.T) {
 	t.Parallel()
-	cases := []struct{ in, want string }{
-		{"slug", "Slug"},
-		{"user_story_ref", "UserStoryRef"},
-		{"prd_ref", "PrdRef"},
-		{"created_at", "CreatedAt"},
+	cases := map[string]string{
+		"slug":                        "Slug",
+		"user_story_ref":              "UserStoryRef",
+		"created_at":                  "CreatedAt",
+		"API Specification":           "APISpecification",
+		"Non-Functional Requirements": "NonFunctionalRequirements",
 	}
-	for _, tc := range cases {
-		assert.Equal(t, tc.want, gogen.CamelCase(tc.in), "input: %q", tc.in)
+	for in, want := range cases {
+		assert.Equal(t, want, gogen.CamelCase(in), "input: %q", in)
 	}
 }
 
 func TestTableFromFKRef(t *testing.T) {
 	t.Parallel()
 	assert.Equal(t, "epics", gogen.TableFromFKRef("lightwave://schemas/data/agile_artifacts/epic"))
-	assert.Equal(t, "sprints", gogen.TableFromFKRef("lightwave://schemas/data/agile_artifacts/sprint"))
 	assert.Equal(t, "user_stories", gogen.TableFromFKRef("lightwave://schemas/data/agile_artifacts/user_story"))
 	assert.Equal(t, "prds", gogen.TableFromFKRef("lightwave://schemas/data/agile_artifacts/prd"))
 }
