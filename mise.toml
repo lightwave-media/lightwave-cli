@@ -49,6 +49,27 @@ run = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMO
 description = "Build lw"
 run = "go build ./cmd/lw"
 
+[tasks.codespell]
+description = "Spell-check (matches the CI Codespell job; reads .codespellrc)"
+# CI runs this as a SEPARATE GitHub job (.github/workflows/codespell.yml), not
+# via pre-commit — so without this task it never ran locally and a misspelling
+# only surfaced in cloud CI. codespell auto-reads .codespellrc in cwd.
+run = "codespell"
+
+[tasks.tidy]
+description = "Verify go mod tidy is a no-op (matches the CI Tidy Check job)"
+# Mirrors .github/workflows/go-mod-tidy-check.yml: fail if go mod tidy would
+# change go.mod/go.sum. Restore on completion so the check is non-mutating.
+run = '''
+cp go.mod go.mod.cibak && cp go.sum go.sum.cibak
+go mod tidy
+status=0
+diff -q go.mod go.mod.cibak >/dev/null || { echo "go.mod not tidy — run 'go mod tidy' and commit"; status=1; }
+diff -q go.sum go.sum.cibak >/dev/null || { echo "go.sum not tidy — run 'go mod tidy' and commit"; status=1; }
+mv go.mod.cibak go.mod && mv go.sum.cibak go.sum
+exit $status
+'''
+
 [tasks.test]
 description = "go test (race + shuffle, matches CI)"
 # Strip inherited git location vars before testing. When this task runs from the
@@ -60,8 +81,11 @@ description = "go test (race + shuffle, matches CI)"
 run = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS; go test -race -shuffle=on ./..."
 
 [tasks.ci]
-description = "Local CI: fmt-check + vet + lint + build + test"
-depends = ["fmt-check", "vet", "lint", "build", "test"]
+description = "Local CI: fmt-check + vet + lint + build + test + codespell + tidy"
+# Mirrors the cloud CI required-gate job set so a local-green push is cloud-green.
+# codespell + tidy were cloud-only jobs (separate GH workflows) absent here — a
+# misspelling or untidy go.mod could only fail in cloud CI (lightwave-cli#231).
+depends = ["fmt-check", "vet", "lint", "build", "test", "codespell", "tidy"]
 
 [tasks."release:gate"]
 description = "Dry-run lw release merge (autonomous gate)"
