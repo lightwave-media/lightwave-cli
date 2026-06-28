@@ -7,4 +7,5 @@ var (
 	DeriveTenet   = deriveTenet
 	ReverseDomain = reverseDomain
 	TitleFirst    = titleFirst
+	ParsePsOutput = parsePsOutput
 )
