@@ -1,6 +1,7 @@
 package gogen_test
 
 import (
+	"fmt"
 	"go/format"
 	"os"
 	"path/filepath"
@@ -191,6 +192,7 @@ func TestEmitMigration_Tenancy(t *testing.T) {
 		"updated_at TIMESTAMPTZ NOT NULL DEFAULT now()",
 		"ALTER TABLE widgets ENABLE ROW LEVEL SECURITY;",
 		"ALTER TABLE widgets FORCE ROW LEVEL SECURITY;",
+		"DROP POLICY IF EXISTS widgets_tenant_isolation ON widgets;", // idempotency guard (#245)
 		"CREATE POLICY widgets_tenant_isolation ON widgets",
 		"current_setting('app.current_org', true)",
 	} {
@@ -199,6 +201,38 @@ func TestEmitMigration_Tenancy(t *testing.T) {
 
 	// Must NOT emit a bare global UNIQUE on slug (the cross-tenant-leak bug).
 	assert.NotContains(t, mig, "slug TEXT NOT NULL UNIQUE")
+}
+
+// TestEmitMigration_IdempotentPolicy pins #245: CREATE POLICY has no IF NOT
+// EXISTS, and the platform re-applies migrations on every boot, so EACH policy
+// must be preceded by a matching DROP POLICY IF EXISTS or the second apply
+// crashes with 42710. Uses two entities so a single guard can't accidentally
+// satisfy the assertion for both tables.
+func TestEmitMigration_IdempotentPolicy(t *testing.T) {
+	t.Parallel()
+	child := loadFixture(t, "ant.yaml", fixtureChildYAML)
+	parent := loadFixture(t, "zebra.yaml", fixtureParentYAML)
+
+	mig, err := gogen.EmitMigration([]*gogen.EntitySchema{child, parent})
+	require.NoError(t, err)
+
+	for _, table := range []string{"ants", "zebras"} {
+		drop := fmt.Sprintf("DROP POLICY IF EXISTS %s_tenant_isolation ON %s;", table, table)
+		create := fmt.Sprintf("CREATE POLICY %s_tenant_isolation ON %s", table, table)
+
+		dropAt := strings.Index(mig, drop)
+		createAt := strings.Index(mig, create)
+
+		require.NotEqualf(t, -1, dropAt, "missing drop guard for %s", table)
+		require.NotEqualf(t, -1, createAt, "missing CREATE POLICY for %s", table)
+		assert.Lessf(t, dropAt, createAt, "DROP POLICY IF EXISTS must precede CREATE POLICY for %s", table)
+	}
+
+	// Universal invariant: EVERY CREATE POLICY has a matching DROP guard, so a
+	// future edit that emits an extra (e.g. write-side) policy without a guard
+	// can't pass while the generated schema.sql still 42710s on re-apply.
+	assert.Equal(t, strings.Count(mig, "CREATE POLICY "), strings.Count(mig, "DROP POLICY IF EXISTS "),
+		"every CREATE POLICY must have a matching DROP POLICY IF EXISTS guard")
 }
 
 // TestEmitMigration_FKOrder pins #227 P0-2: parent created before child, with a
