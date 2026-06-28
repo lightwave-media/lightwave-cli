@@ -9,6 +9,22 @@ from conventional commits (`feat:` / `fix:` / `chore:` / etc.). This
 file is the human-curated complement — what changed, why, and how it
 affects users — for releases that move the needle.
 
+## [3.10.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.9.0...v3.10.0) (2026-06-28)
+
+
+### Features
+
+* **codegen:** lw codegen go — SST entity → Go struct + SQL DDL ([#211](https://github.com/lightwave-media/lightwave-cli/issues/211)) ([7c9c8f0](https://github.com/lightwave-media/lightwave-cli/commit/7c9c8f0776de8800fdb66df03082e8c127d58e22))
+* **codegen:** reference enum consts + share PropField in types output ([#214](https://github.com/lightwave-media/lightwave-cli/issues/214)) ([fffe87b](https://github.com/lightwave-media/lightwave-cli/commit/fffe87b3d6f94005833dca844d14e8cd76753b46))
+* **create:** wire create.website/webapp/desktop-app handlers ([#222](https://github.com/lightwave-media/lightwave-cli/issues/222)) ([64eb119](https://github.com/lightwave-media/lightwave-cli/commit/64eb1191863056f8d203fa674777038181a530e0)), closes [#97](https://github.com/lightwave-media/lightwave-cli/issues/97)
+* **home:** lw home doctor — read-only slop scan handler ([#248](https://github.com/lightwave-media/lightwave-cli/issues/248)) ([d9a199f](https://github.com/lightwave-media/lightwave-cli/commit/d9a199f5c3e190a090c0d26c4e750d96ff50ce7c)), closes [#160](https://github.com/lightwave-media/lightwave-cli/issues/160)
+* **lineage:** wire lineage check/fix handlers ([#228](https://github.com/lightwave-media/lightwave-cli/issues/228)) ([9a95f1a](https://github.com/lightwave-media/lightwave-cli/commit/9a95f1ace617fae2b95b60bf2b8d5d38b775395a))
+
+
+### Bug Fixes
+
+* **codegen:** multi-tenant DDL + valid struct names in lw codegen go ([#231](https://github.com/lightwave-media/lightwave-cli/issues/231)) ([e825c18](https://github.com/lightwave-media/lightwave-cli/commit/e825c18abcff7ef4596625262a8d2a6d81ab7f49)), closes [#227](https://github.com/lightwave-media/lightwave-cli/issues/227)
+
 ## [3.9.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.8.0...v3.9.0) (2026-06-26)
 
 
