@@ -98,10 +98,10 @@ apply_milestones() {
 link_project() {
   local repo=$1
   local rid
-  rid=$(gh api graphql -f query="query{repository(owner:\"${ORG_LOGIN}\",name:\"${repo}\"){id}}" --jq '.data.repository.id')
+  rid=$(gh api graphql -f query="query{repository(owner:\"${ORG_LOGIN}\",name:\"${repo}\"){id}}" --jq '.data.repository.id' 2>/dev/null || true)
   if [[ -z "$rid" || "$rid" == "null" ]]; then
-    echo "  skip link (no repo): ${repo}"
-    return
+    echo "  skip link (no repo / no access): ${repo}"
+    return 0
   fi
   gh api graphql \
     -f query='mutation($pid:ID!,$rid:ID!){linkProjectV2ToRepository(input:{projectId:$pid,repositoryId:$rid}){repository{name}}}' \
