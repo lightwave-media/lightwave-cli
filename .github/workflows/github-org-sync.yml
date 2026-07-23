@@ -38,6 +38,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           go build -o /tmp/lw ./cmd/lw
+          SCHEMA="$HOME/dev/lightwave-core/src/schemas/interfaces/cli/commands.yaml"
+          if [[ ! -f "$SCHEMA" ]]; then
+            echo "warn: $SCHEMA missing on runner (GITHUB_TOKEN cannot checkout private lightwave-core)."
+            echo "warn: skipping lw scrum sync; bootstrap labels/milestones already ran."
+            exit 0
+          fi
           ARGS=(scrum sync --json)
           if [[ -n "${{ github.event.inputs.target_repo }}" ]]; then
             ARGS+=(--repo "${{ github.event.inputs.target_repo }}")
