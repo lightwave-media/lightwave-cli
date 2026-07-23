@@ -112,12 +112,18 @@ link_project() {
 ensure_agent_field() {
   local pid=$1
   local fields
-  fields=$(gh api graphql -f query='query($pid:ID!){node(id:$pid){... on ProjectV2{fields(first:30){nodes{... on ProjectV2SingleSelectField{name}}}}}}' -f pid="$pid" --jq '[.data.node.fields.nodes[].name] | join(",")')
+  if ! fields=$(gh api graphql -f query='query($pid:ID!){node(id:$pid){... on ProjectV2{fields(first:30){nodes{... on ProjectV2SingleSelectField{name}}}}}}' -f pid="$pid" --jq '[.data.node.fields.nodes[].name] | join(",")' 2>/dev/null); then
+    echo "warn: cannot read project fields (token lacks projects scope); skipping Agent field ensure"
+    return 0
+  fi
   if [[ "$fields" == *"Agent"* ]]; then
     echo "Agent field already exists"
-    return
+    return 0
   fi
-  gh api graphql -f query='mutation($pid:ID!){createProjectV2Field(input:{projectId:$pid,dataType:SINGLE_SELECT,name:"Agent",singleSelectOptions:[{name:"v_cli-developer",color:GRAY,description:"CLI developer"},{name:"v_core-package-developer",color:GRAY,description:"Core package developer"},{name:"v_platform-developer",color:GRAY,description:"Platform developer"},{name:"v_frontend-developer",color:GRAY,description:"Frontend developer"},{name:"v_sys-developer",color:GRAY,description:"Sys developer"},{name:"v_localapp-developer",color:GRAY,description:"Local app developer"},{name:"v_staff-engineer",color:GRAY,description:"Staff engineer"},{name:"v_lightwave-ai-engineer",color:GRAY,description:"Lightwave AI engineer"},{name:"unassigned",color:GRAY,description:"Not yet assigned"}]}){projectV2Field{... on ProjectV2SingleSelectField{name}}}}' -f pid="$pid"
+  if ! gh api graphql -f query='mutation($pid:ID!){createProjectV2Field(input:{projectId:$pid,dataType:SINGLE_SELECT,name:"Agent",singleSelectOptions:[{name:"v_cli-developer",color:GRAY,description:"CLI developer"},{name:"v_core-package-developer",color:GRAY,description:"Core package developer"},{name:"v_platform-developer",color:GRAY,description:"Platform developer"},{name:"v_frontend-developer",color:GRAY,description:"Frontend developer"},{name:"v_sys-developer",color:GRAY,description:"Sys developer"},{name:"v_localapp-developer",color:GRAY,description:"Local app developer"},{name:"v_staff-engineer",color:GRAY,description:"Staff engineer"},{name:"v_lightwave-ai-engineer",color:GRAY,description:"Lightwave AI engineer"},{name:"unassigned",color:GRAY,description:"Not yet assigned"}]}){projectV2Field{... on ProjectV2SingleSelectField{name}}}}' -f pid="$pid"; then
+    echo "warn: could not create Agent field; continuing"
+    return 0
+  fi
   echo "Created Agent field"
 }
 
