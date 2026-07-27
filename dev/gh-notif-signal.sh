@@ -11,7 +11,8 @@
 #
 # Environment:
 #   LW_GH_NOTIF_DRY_RUN=1   Print [DRY RUN]; skip POSTs and notification mutates
-#   LW_GH_NOTIF_ALLOWLIST   Comma-separated workflow name substrings (default: github-org-sync)
+#   LW_GH_NOTIF_ALLOWLIST   Comma-separated workflow name substrings
+#                           (default: github-org-sync,release-auto-merge)
 
 set -euo pipefail
 
@@ -27,7 +28,7 @@ STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/lightwave"
 STATE_FILE="${STATE_DIR}/gh-notif-fingerprints.json"
 EVENTS_FILE="/tmp/lw-gh-notif-events.json"
 INSTANCE="v_core-package-developer"
-ALLOWLIST="${LW_GH_NOTIF_ALLOWLIST:-github-org-sync}"
+ALLOWLIST="${LW_GH_NOTIF_ALLOWLIST:-github-org-sync,release-auto-merge}"
 DRY_RUN="${LW_GH_NOTIF_DRY_RUN:-}"
 
 log() {

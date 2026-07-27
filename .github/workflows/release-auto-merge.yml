@@ -21,16 +21,23 @@ jobs:
       - uses: jdx/mise-action@v2
 
       - name: Build lw
-        run: go build -o ./lw ./cmd/lw
+        run: |
+          go build -o ./lw ./cmd/lw
+          mkdir -p ./bin && cp ./lw ./bin/lw
 
       - name: QA release pass matrix
         env:
           LW_FEATURE_AUTONOMOUS_QA_RELEASE_PASS: "1"
           LW_AI_ROOT: ${{ github.workspace }}/../lightwave-ai
+          LW_BIN: ${{ github.workspace }}/lw
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          git clone --depth 1 https://github.com/lightwave-media/lightwave-ai.git ../lightwave-ai || true
-          ./dev/release_qa_pass.sh "${{ runner.temp }}/qa-release"
           mkdir -p "${{ runner.temp }}/qa-release"
+          # Private sibling; GITHUB_TOKEN often cannot clone — fixture paths then SKIP.
+          gh repo clone lightwave-media/lightwave-ai ../lightwave-ai -- --depth 1 2>/dev/null \
+            || git clone --depth 1 "https://x-access-token:${GH_TOKEN}@github.com/lightwave-media/lightwave-ai.git" ../lightwave-ai \
+            || true
+          ./dev/release_qa_pass.sh "${{ runner.temp }}/qa-release"
           printf '%s\n' '# stub verdict' 'QA-RELEASE-VERDICT: blockers=0 tests_proposed=0' > "${{ runner.temp }}/qa-release/06-qa-release-verdict.md"
         continue-on-error: false
 
