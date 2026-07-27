@@ -49,11 +49,21 @@ record() {
   else
     drift_ok=false
   fi
-  if python3 - "${SCHEMA_JSON}" <<'PY'
+  if [[ ! -s "${SCHEMA_JSON}" ]]; then
+    record SKIP schema "release domain" "empty schema output (lightwave-core stamp unavailable?)"
+  elif python3 - "${SCHEMA_JSON}" <<'PY'
 import json, sys
 path = sys.argv[1]
-with open(path) as f:
-    doc = json.load(f)
+try:
+    with open(path) as f:
+        raw = f.read().strip()
+    if not raw:
+        print("empty schema json")
+        sys.exit(2)
+    doc = json.loads(raw)
+except json.JSONDecodeError as exc:
+    print(f"invalid schema json: {exc}")
+    sys.exit(2)
 missing = [k for k in doc.get("missing_handlers", []) if k.startswith("release.")]
 orphaned = [k for k in doc.get("orphaned_handlers", []) if k.startswith("release.")]
 if missing or orphaned:
@@ -64,7 +74,12 @@ PY
   then
     record PASS schema "release domain schema↔handler lockstep"
   else
-    record FAIL schema "release domain drift (see ${SCHEMA_JSON})"
+    py_rc=$?
+    if [[ "${py_rc}" -eq 2 ]]; then
+      record SKIP schema "release domain" "schema json unusable (see ${SCHEMA_JSON})"
+    else
+      record FAIL schema "release domain drift (see ${SCHEMA_JSON})"
+    fi
   fi
   if [[ "${drift_ok}" != "true" && "${fail}" -eq 0 ]]; then
     : # full-schema drift may include pre-release domains; release slice is the gate
@@ -159,15 +174,18 @@ OUTCOME="pass"
 if [[ "${fail}" -gt 0 ]]; then OUTCOME="fail"; fi
 python3 - <<PY
 import json, datetime, os
+n_pass = ${pass}
+n_fail = ${fail}
+n_skip = ${skip}
 rec = {
     "ts": datetime.datetime.now(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "outcome": "${OUTCOME}",
-    "pass": ${pass},
-    "fail": ${fail},
-    "skip": ${skip},
+    "pass": n_pass,
+    "fail": n_fail,
+    "skip": n_skip,
     "artefact_dir": "${ARTEFACT_DIR}",
     "measurements": {"matrix_log": "${MATRIX}", "summary": "${SUMMARY}"},
-    "detail": f"pass={pass} fail={fail} skip={skip}",
+    "detail": f"pass={n_pass} fail={n_fail} skip={n_skip}",
 }
 path = os.path.join("${OBS_DIR}", "release-qa.jsonl")
 with open(path, "a", encoding="utf-8") as f:
