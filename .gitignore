@@ -1,7 +1,12 @@
 # Binaries
 /lw
 /lw-native
+bin/
 dist/
+
+# Linked git worktrees (sibling checkouts, never repo content)
+.worktrees/
+.claude/worktrees/
 
 # IDE
 .idea/
