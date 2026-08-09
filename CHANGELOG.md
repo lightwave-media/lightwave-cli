@@ -9,6 +9,21 @@ from conventional commits (`feat:` / `fix:` / `chore:` / etc.). This
 file is the human-curated complement — what changed, why, and how it
 affects users — for releases that move the needle.
 
+## [3.11.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.10.0...v3.11.0) (2026-08-09)
+
+
+### Features
+
+* **ci:** GitHub notif → nullhub loop + self-checkout org-sync ([#281](https://github.com/lightwave-media/lightwave-cli/issues/281)) ([7af70b2](https://github.com/lightwave-media/lightwave-cli/commit/7af70b255f783bf73bcdc2275a1d9e72321b3ddd))
+* **process:** lw process list — read-only host inventory ([#269](https://github.com/lightwave-media/lightwave-cli/issues/269)) ([208b3dc](https://github.com/lightwave-media/lightwave-cli/commit/208b3dca910e924de9f8b72560c6c63bfd85b3d6)), closes [#161](https://github.com/lightwave-media/lightwave-cli/issues/161)
+
+
+### Bug Fixes
+
+* **ci:** unblock release-auto-merge QA matrix on Actions ([#282](https://github.com/lightwave-media/lightwave-cli/issues/282)) ([456d03d](https://github.com/lightwave-media/lightwave-cli/commit/456d03d8e15c1dafa0e7c5748e1c9726e2553e55))
+* **codegen:** idempotent CREATE POLICY in lw codegen go (DROP guard) ([#258](https://github.com/lightwave-media/lightwave-cli/issues/258)) ([f7fd02c](https://github.com/lightwave-media/lightwave-cli/commit/f7fd02cd9565255dfdb967d118925658e23cb043)), closes [#245](https://github.com/lightwave-media/lightwave-cli/issues/245)
+* **process:** wire --top bool + locale-safe ps + stable sort ([#271](https://github.com/lightwave-media/lightwave-cli/issues/271)) ([cc5c03c](https://github.com/lightwave-media/lightwave-cli/commit/cc5c03c6c1fe28d1cfd09ddeeca84fa21a83e406))
+
 ## [3.10.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.9.0...v3.10.0) (2026-06-28)
 
 
