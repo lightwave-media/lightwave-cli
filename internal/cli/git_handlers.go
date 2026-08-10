@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -29,7 +30,16 @@ const (
 	gitStatusFieldWidth = 2
 	gitDirPerm          = 0o755
 	gitFilePerm         = 0o644
+
+	// worktree_policy.yaml v1.1.0 (CORE-0047): repo_structure invariants.
+	worktreeMarkerFile  = ".lw-worktree.yaml"
+	worktreeMaxAge      = 72 * time.Hour
+	forbiddenHarnessDir = ".claude/worktrees"
 )
+
+// canonicalWorktreeNameRe pins worktree_policy.repo_structure.naming:
+// <YYYY-MM-DD>-<ticket-slug>.
+var canonicalWorktreeNameRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$`)
 
 func init() {
 	RegisterHandler("git.audit", gitAuditHandler)
@@ -314,7 +324,11 @@ func loadWorkspaceProfile() localSetupProfile {
 	def := localSetupProfile{
 		ID:             "default",
 		WorkspaceRoots: []string{filepath.Join(home, "dev")},
-		WorktreeRoot:   filepath.Join(home, ".lightwave", "worktrees"),
+		// Repo-relative per worktree_home_policy.canonical_root: resolved
+		// against each discovered repo, not one global directory. The old
+		// default (~/.lightwave/worktrees) is a forbidden_root and was empty,
+		// which left the audit blind to the real fleet.
+		WorktreeRoot: ".worktrees",
 		CursorWorktreeRoots: []string{
 			filepath.Join(home, ".cursor", "worktrees"),
 		},
@@ -363,6 +377,23 @@ func expandHome(p string) string {
 	return p
 }
 
+// canonicalWorktreeRoot resolves the profile's worktree_root for one repo.
+// Relative values (the stamped default ".worktrees") resolve against the
+// repo's main checkout; absolute values are honored as a single legacy
+// global root so pre-v1.1.0 prints keep working.
+func canonicalWorktreeRoot(profile *localSetupProfile, mainCheckout string) string {
+	root := profile.WorktreeRoot
+	if root == "" {
+		root = ".worktrees"
+	}
+
+	if filepath.IsAbs(root) {
+		return root
+	}
+
+	return filepath.Join(mainCheckout, root)
+}
+
 func buildGitAuditReport(ctx context.Context, profile *localSetupProfile) (*gitAuditReport, error) { //nolint:unparam // error reserved for future walk failures
 	roots := append([]string{}, profile.WorkspaceRoots...)
 	roots = append(roots, profile.CursorWorktreeRoots...)
@@ -397,6 +428,13 @@ func buildGitAuditReport(ctx context.Context, profile *localSetupProfile) (*gitA
 			}
 
 			commonDir, _ = filepath.Abs(commonDir)
+			// Resolve symlinks for the dedup key: git reports resolved paths
+			// (e.g. /private/var on macOS) while WalkDir sees the alias, and a
+			// mismatched key double-counts every repo reachable both ways.
+			if resolved, rerr := filepath.EvalSymlinks(commonDir); rerr == nil {
+				commonDir = resolved
+			}
+
 			if seenCommon[commonDir] {
 				return filepath.SkipDir
 			}
@@ -404,19 +442,44 @@ func buildGitAuditReport(ctx context.Context, profile *localSetupProfile) (*gitA
 			seenCommon[commonDir] = true
 
 			wtOut, _ := gitOutput(ctx, checkout, "worktree", "list", "--porcelain")
+			registered := map[string]bool{}
+
+			var (
+				wtPaths  []string
+				prunable []string
+			)
+
 			for _, line := range strings.Split(wtOut, "\n") {
-				if !strings.HasPrefix(line, "worktree ") {
-					continue
+				switch {
+				case strings.HasPrefix(line, "worktree "):
+					p := strings.TrimPrefix(line, "worktree ")
+					wtPaths = append(wtPaths, p)
+					registered[p] = true
+				case strings.HasPrefix(line, "prunable"):
+					if len(wtPaths) > 0 {
+						prunable = append(prunable, wtPaths[len(wtPaths)-1])
+					}
 				}
+			}
 
-				wtPath := strings.TrimPrefix(line, "worktree ")
+			mainNodeIdx := -1
 
+			for _, wtPath := range wtPaths {
 				node, nerr := inspectGitCheckout(ctx, wtPath, profile)
 				if nerr != nil {
-					continue
+					continue // prunable entries have no directory to inspect
 				}
 
 				nodes = append(nodes, node)
+				if !node.IsWorktree && mainNodeIdx == -1 {
+					mainNodeIdx = len(nodes) - 1
+				}
+			}
+
+			if mainNodeIdx >= 0 {
+				main := &nodes[mainNodeIdx]
+				main.Violations = append(main.Violations,
+					repoLevelWorktreeViolations(main.Path, registered, prunable, profile)...)
 			}
 
 			return filepath.SkipDir
@@ -498,18 +561,12 @@ func inspectGitCheckout(ctx context.Context, checkout string, profile *localSetu
 		})
 	}
 
-	wtRoot := profile.WorktreeRoot
-	if wtRoot != "" && strings.HasPrefix(checkout, wtRoot) {
-		if branch != "main" && !strings.HasPrefix(branch, "feat/") {
-			violations = append(violations, gitViolation{
-				Code:     "branch_policy",
-				Severity: "info",
-				Message:  fmt.Sprintf("%s: task worktree on branch %q", checkout, branch),
-			})
-		}
-	}
-
 	isWT := commonDir != gitDir && !strings.HasSuffix(gitDir, string(filepath.Separator)+".git")
+
+	if isWT {
+		mainCheckout := filepath.Dir(commonDir)
+		violations = append(violations, worktreePolicyViolations(checkout, mainCheckout, branch, profile)...)
+	}
 
 	node := gitTopologyNode{
 		Path:           checkout,
@@ -532,6 +589,103 @@ func inspectGitCheckout(ctx context.Context, checkout string, profile *localSetu
 	}
 
 	return node, nil
+}
+
+// worktreePolicyViolations checks one linked worktree against
+// worktree_policy.yaml v1.1.0 + worktree_home_policy.yaml v1.1.0 (CORE-0047):
+// canonical root, <YYYY-MM-DD>-<slug> naming, the .lw-worktree.yaml marker,
+// and the 72h expiry.
+func worktreePolicyViolations(checkout, mainCheckout, branch string, profile *localSetupProfile) []gitViolation {
+	var violations []gitViolation
+
+	canonicalRoot := canonicalWorktreeRoot(profile, mainCheckout)
+	inCanonicalRoot := strings.HasPrefix(checkout, canonicalRoot+string(filepath.Separator))
+	forbiddenRoot := filepath.Join(mainCheckout, forbiddenHarnessDir)
+
+	switch {
+	case strings.HasPrefix(checkout, forbiddenRoot+string(filepath.Separator)):
+		violations = append(violations, gitViolation{
+			Code:     "forbidden_worktree_root",
+			Severity: gitSeverityWarn,
+			Message: fmt.Sprintf("%s: worktree under forbidden root %s — canonical root is %s (CORE-0047; drains via WorktreeCreate redirect)",
+				checkout, forbiddenHarnessDir, profile.WorktreeRoot),
+		})
+	case !inCanonicalRoot:
+		violations = append(violations, gitViolation{
+			Code:     "legacy_worktree_layout",
+			Severity: gitSeverityWarn,
+			Message:  fmt.Sprintf("%s: worktree outside canonical root %s", checkout, canonicalRoot),
+		})
+	case !canonicalWorktreeNameRe.MatchString(filepath.Base(checkout)):
+		violations = append(violations, gitViolation{
+			Code:     "naming_violation",
+			Severity: gitSeverityWarn,
+			Message:  fmt.Sprintf("%s: name %q does not match <YYYY-MM-DD>-<ticket-slug>", checkout, filepath.Base(checkout)),
+		})
+	}
+
+	if _, err := os.Stat(filepath.Join(checkout, worktreeMarkerFile)); err != nil {
+		violations = append(violations, gitViolation{
+			Code:     "missing_marker",
+			Severity: gitSeverityWarn,
+			Message:  fmt.Sprintf("%s: missing %s claim marker — run lw git worktree migrate", checkout, worktreeMarkerFile),
+		})
+	}
+
+	if info, err := os.Stat(checkout); err == nil {
+		if age := time.Since(info.ModTime()); age > worktreeMaxAge {
+			violations = append(violations, gitViolation{
+				Code:     "expired_worktree",
+				Severity: gitSeverityWarn,
+				Message: fmt.Sprintf("%s: age %s exceeds max_age_hours=72 (branch %q) — reap via save_gate, never plain remove",
+					checkout, age.Round(time.Hour), branch),
+			})
+		}
+	}
+
+	return violations
+}
+
+// repoLevelWorktreeViolations reports problems visible only at the repo level:
+// registry entries whose directory is gone (prunable) and directories under
+// the canonical root that git does not recognize as worktrees (orphan gitdir —
+// e.g. a cloud-session .git file pointing at a sandbox path).
+func repoLevelWorktreeViolations(mainCheckout string, registered map[string]bool, prunable []string, profile *localSetupProfile) []gitViolation {
+	violations := make([]gitViolation, 0, len(prunable))
+
+	for _, p := range prunable {
+		violations = append(violations, gitViolation{
+			Code:     "prunable_registry_entry",
+			Severity: gitSeverityWarn,
+			Message:  fmt.Sprintf("%s: registered worktree %s no longer exists — run git worktree prune from main", mainCheckout, p),
+		})
+	}
+
+	canonicalRoot := canonicalWorktreeRoot(profile, mainCheckout)
+
+	entries, err := os.ReadDir(canonicalRoot)
+	if err != nil {
+		return violations
+	}
+
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+
+		p := filepath.Join(canonicalRoot, e.Name())
+		if registered[p] {
+			continue
+		}
+
+		violations = append(violations, gitViolation{
+			Code:     "orphan_gitdir",
+			Severity: gitSeverityWarn,
+			Message:  fmt.Sprintf("%s: directory under %s is not a registered worktree — unresolvable gitdir? archive contents, then remove", p, canonicalRoot),
+		})
+	}
+
+	return violations
 }
 
 func summarizeNodes(nodes []gitTopologyNode) gitAuditSummary {
@@ -576,16 +730,17 @@ func applyGitFixes(ctx context.Context, report *gitAuditReport, profile *localSe
 		main := commonDirs[common]
 		fmt.Printf("→ git worktree prune in %s\n", main)
 		_ = exec.CommandContext(ctx, "git", "-C", main, "worktree", "prune").Run()
-	}
-	// Remove empty orphan dirs under worktree root
-	if profile.WorktreeRoot != "" {
-		entries, _ := os.ReadDir(profile.WorktreeRoot)
+
+		// Remove empty orphan dirs under this repo's canonical worktree root
+		root := canonicalWorktreeRoot(profile, main)
+
+		entries, _ := os.ReadDir(root)
 		for _, e := range entries {
 			if !e.IsDir() {
 				continue
 			}
 
-			p := filepath.Join(profile.WorktreeRoot, e.Name())
+			p := filepath.Join(root, e.Name())
 
 			entries2, _ := os.ReadDir(p)
 			if len(entries2) == 0 {
