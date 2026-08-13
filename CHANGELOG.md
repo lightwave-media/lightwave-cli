@@ -9,6 +9,13 @@ from conventional commits (`feat:` / `fix:` / `chore:` / etc.). This
 file is the human-curated complement — what changed, why, and how it
 affects users — for releases that move the needle.
 
+## [3.12.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.11.0...v3.12.0) (2026-08-13)
+
+
+### Features
+
+* **git:** repo-relative worktree roots + policy findings in fleet audit ([#293](https://github.com/lightwave-media/lightwave-cli/issues/293)) ([7ff7fcf](https://github.com/lightwave-media/lightwave-cli/commit/7ff7fcfe50c743ba9daad21dec74e0ee9b7d216f))
+
 ## [3.11.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.10.0...v3.11.0) (2026-08-09)
 
 
