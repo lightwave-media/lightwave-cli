@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
+	"github.com/lightwave-media/lightwave-cli/internal/config"
 )
 
 // Schema-driven hooks handlers. Manages pre-commit / pre-push gates across
@@ -27,19 +28,37 @@ func init() {
 
 // hooksSearchRoots are the directories scanned for LightWave repos. Each
 // root is checked itself + its immediate children (depth 1). Roots that
-// don't exist on this machine are silently skipped — single-developer
-// laptops won't have all three.
-func hooksSearchRoots() []string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return nil
+// don't exist on this machine are silently skipped.
+//
+// The first root is the workspace root (paths.lightwave_root, default ~/dev,
+// overridable via LW_LIGHTWAVE_ROOT) — the flat layout every other `lw`
+// command resolves against. It used to be ~/dev/lightwave-media, the umbrella
+// workspace that was dismantled when the repos went flat. That directory no
+// longer exists, so doctor scanned nothing that mattered and reported a clean
+// fleet while every repo under ~/dev was invisible to it (lightwave-cli#307).
+func hooksSearchRoots(workspaceRoot string) []string {
+	roots := []string{workspaceRoot}
+
+	if home, err := os.UserHomeDir(); err == nil {
+		roots = append(roots, filepath.Join(home, ".brain"))
 	}
 
-	return []string{
-		filepath.Join(home, "dev", "lightwave-media"),
-		filepath.Join(home, "dev", "lightwave-sys"),
-		filepath.Join(home, ".brain"),
+	return roots
+}
+
+// hooksWorkspaceRoot resolves paths.lightwave_root (default ~/dev, overridable
+// via LW_LIGHTWAVE_ROOT) — the same root every other `lw` command uses.
+func hooksWorkspaceRoot() string {
+	if cfg := config.Get(); cfg != nil && cfg.Paths.LightwaveRoot != "" {
+		return cfg.Paths.LightwaveRoot
 	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	return filepath.Join(home, "dev")
 }
 
 // repoStatus is the per-repo result reported by `lw hooks doctor`.
@@ -76,7 +95,8 @@ func hooksInstallHandler(_ context.Context, _ []string, flags map[string]any) er
 }
 
 func hooksDoctorHandler(_ context.Context, _ []string, flags map[string]any) error {
-	repos := discoverRepos()
+	root := hooksWorkspaceRoot()
+	repos := discoverRepos(root)
 
 	statuses := make([]repoStatus, 0, len(repos))
 	for _, r := range repos {
@@ -93,7 +113,22 @@ func hooksDoctorHandler(_ context.Context, _ []string, flags map[string]any) err
 	}
 
 	if len(statuses) == 0 {
+		// Name the roots that were scanned. A bare "found nothing" reads as a
+		// clean fleet and is unfalsifiable — the operator cannot tell a healthy
+		// estate from a doctor pointed at the wrong directory, which is exactly
+		// how #307 hid every repo under ~/dev behind a green result.
 		fmt.Println(color.YellowString("no LightWave repos with .pre-commit-config.yaml found"))
+		fmt.Println("scanned (each root + its immediate children):")
+
+		for _, scanned := range hooksSearchRoots(root) {
+			marker := color.RedString("missing")
+			if info, err := os.Stat(scanned); err == nil && info.IsDir() {
+				marker = "present"
+			}
+
+			fmt.Printf("  - %s (%s)\n", scanned, marker)
+		}
+
 		return nil
 	}
 
@@ -120,7 +155,7 @@ func hooksDoctorHandler(_ context.Context, _ []string, flags map[string]any) err
 }
 
 func hooksSyncHandler(_ context.Context, _ []string, flags map[string]any) error {
-	repos := discoverRepos()
+	repos := discoverRepos(hooksWorkspaceRoot())
 	if len(repos) == 0 {
 		fmt.Println(color.YellowString("no LightWave repos with .pre-commit-config.yaml found"))
 		return nil
@@ -149,7 +184,7 @@ func hooksSyncHandler(_ context.Context, _ []string, flags map[string]any) error
 // discoverRepos walks each search root + its immediate children and returns
 // every directory that is a git repo AND has a .pre-commit-config.yaml.
 // Depth-1 walk keeps the cost ~O(top-level dirs) on a typical laptop.
-func discoverRepos() []string {
+func discoverRepos(workspaceRoot string) []string {
 	seen := map[string]bool{}
 
 	var out []string
@@ -165,7 +200,7 @@ func discoverRepos() []string {
 		}
 	}
 
-	for _, root := range hooksSearchRoots() {
+	for _, root := range hooksSearchRoots(workspaceRoot) {
 		info, err := os.Stat(root)
 		if err != nil || !info.IsDir() {
 			continue

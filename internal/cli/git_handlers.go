@@ -889,13 +889,28 @@ func gitConfig(ctx context.Context, dir, key string) string {
 	return v
 }
 
-func listInstalledHooks(checkout, hooksPath string) []string {
-	var base string
-	if hooksPath != "" {
-		base = filepath.Join(checkout, hooksPath)
-	} else {
-		base = filepath.Join(checkout, ".git", "hooks")
+// resolveHooksDir resolves core.hooksPath against a checkout the way git does.
+//
+// git honours an ABSOLUTE core.hooksPath as-is. Joining it onto the checkout
+// (as this used to do unconditionally) yields a nonsense path like
+// <worktree>/Users/joel/dev/<repo>/dev/hooks, so every hook stats as missing.
+// That is why `lw git doctor` reported "missing hook" for every worktree whose
+// repo sets an absolute hooksPath, even though the hooks demonstrably ran —
+// and why worktree sessions were pushed toward a blanket LW_SKIP_GIT_DOCTOR=1
+// bypass instead of a real fix (lightwave-cli#300).
+func resolveHooksDir(checkout, hooksPath string) string {
+	switch {
+	case hooksPath == "":
+		return filepath.Join(checkout, ".git", "hooks")
+	case filepath.IsAbs(hooksPath):
+		return hooksPath
+	default:
+		return filepath.Join(checkout, hooksPath)
 	}
+}
+
+func listInstalledHooks(checkout, hooksPath string) []string {
+	base := resolveHooksDir(checkout, hooksPath)
 
 	var names []string
 	for _, h := range []string{"pre-commit", "pre-push", "commit-msg"} {
