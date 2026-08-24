@@ -7,6 +7,11 @@ ORG_LOGIN="${ORG_LOGIN:-lightwave-media}"
 PROJECT_TITLE="${PROJECT_TITLE:-Lightwave Swarm}"
 PROJECT_ID="${PROJECT_ID:-PVT_kwDODlnoUM4BbDql}"
 
+# The six null* standalones (nullclaw, nullhub, nullbuilder, nulltickets,
+# nullwatch, nullboiler) are NOT listed: they were folded into
+# lightwave-ai/src/<module>/ and archived read-only (lightwave-ai#44). Archived
+# repos reject label/milestone writes, so bootstrapping them fails noisily.
+# lightwave-ai carries their issues under package:<module> labels.
 SWARM_REPOS=(
   lightwave-core
   lightwave-cli
@@ -17,12 +22,6 @@ SWARM_REPOS=(
   lightwave-infrastructure-catalog
   lightwave-infrastructure-live
   createOS
-  nullclaw
-  nullhub
-  nullbuilder
-  nulltickets
-  nullwatch
-  nullboiler
   joelschaeffer-site
   homebrew-tap
 )
@@ -151,7 +150,7 @@ for repo in "${SWARM_REPOS[@]}"; do
 done
 
 echo "==> Apply milestones (swarm repos)"
-for repo in lightwave-core lightwave-cli lightwave-ai lightwave-platform lightwave-sys createOS nullclaw nullhub; do
+for repo in lightwave-core lightwave-cli lightwave-ai lightwave-platform lightwave-sys createOS; do
   apply_milestones "$repo"
 done
 

@@ -1,8 +1,8 @@
 ---
-generated_at: "2026-06-27T23:57:56Z"
+generated_at: "2026-08-24T19:32:30Z"
 generator_version: dev
 kind: command-status
-source_commit: 9a95f1a
+source_commit: f018ed9
 ---
 ## Generated overview
 

@@ -16,8 +16,11 @@ import (
 func init() {
 	RegisterHandler("docs.render", docsRenderHandler)
 	RegisterHandler("docs.serve", docsServeHandler)
+	// `--strict` is a FLAG on `docs check` (commands.yaml docs.check), not a
+	// subcommand — docsCheckStrictHandler reads flagBool("strict"). Registering
+	// a "docs.check.strict" key too made an orphaned handler that the schema
+	// has no entry for, which `lw check schema` reports as drift.
 	RegisterHandler("docs.check", docsCheckStrictHandler)
-	RegisterHandler("docs.check.strict", docsCheckStrictHandler)
 }
 
 func resolveDocsRepoFromFlags(flags map[string]any) string {

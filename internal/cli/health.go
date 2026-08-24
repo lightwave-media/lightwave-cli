@@ -115,8 +115,10 @@ func runHealth(asJSON bool) error {
 	// ── Paperclip API ────────────────────────────────────────────────────────
 	checks = append(checks, checkHTTP("Paperclip API", cfg.GetPaperclipURL()+"/api/health", true))
 
-	// ── Orchestrator ─────────────────────────────────────────────────────────
-	checks = append(checks, checkHTTP("Orchestrator", cfg.GetOrchestratorURL()+"/health", true))
+	// ── nullboiler (orchestrator) ────────────────────────────────────────────
+	// Labelled by module name per SAD-0002; the URL is still orchestrator.url
+	// so LW_ORCHESTRATOR_URL keeps overriding it.
+	checks = append(checks, checkHTTP("nullboiler", cfg.GetOrchestratorURL()+"/health", true))
 
 	// ── Determine overall ────────────────────────────────────────────────────
 	overall := "ok"

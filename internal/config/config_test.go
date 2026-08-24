@@ -4,6 +4,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/spf13/viper"
 )
 
 func TestDatabaseConfig_Validate_Empty(t *testing.T) {
@@ -148,5 +150,42 @@ func TestSet_RejectsUnknownKey(t *testing.T) {
 	Reset()
 	if err := Set("not.a.real.key", "x"); err == nil {
 		t.Fatal("expected error for unknown key")
+	}
+}
+
+// TestSetDefaults_OrchestratorPort pins the nullboiler port (lightwave-cli#287).
+//
+// The default was http://localhost:4000 — a retired Elixir Phoenix service that
+// matches no null* port (nullclaw 3000, nulltickets 7700, nullboiler 8080,
+// nullhub 19800), so the `lw health` orchestrator probe could never pass.
+//
+// Not parallel: setDefaults writes to the process-global viper registry.
+func TestSetDefaults_OrchestratorPort(t *testing.T) { //nolint:paralleltest // global viper state
+	// setDefaults binds LW_ORCHESTRATOR_URL, so an operator shell that exports it
+	// (e.g. after `source <(mise run env)`) would otherwise fail this pin even
+	// though the default is correct. viper.AllowEmptyEnv defaults to false, so an
+	// empty value reads as unset and the default wins.
+	t.Setenv("LW_ORCHESTRATOR_URL", "")
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	setDefaults()
+
+	const want = "http://localhost:8080"
+	if got := viper.GetString("orchestrator.url"); got != want {
+		t.Errorf("orchestrator.url default\n got: %q\nwant: %q (nullboiler)", got, want)
+	}
+}
+
+// TestSetDefaults_OrchestratorURLEnvOverride pins that LW_ORCHESTRATOR_URL still
+// wins over the default, so the port stays overridable per machine.
+func TestSetDefaults_OrchestratorURLEnvOverride(t *testing.T) { //nolint:paralleltest // global viper state
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("LW_ORCHESTRATOR_URL", "http://localhost:19800")
+	setDefaults()
+
+	const want = "http://localhost:19800"
+	if got := viper.GetString("orchestrator.url"); got != want {
+		t.Errorf("LW_ORCHESTRATOR_URL should override the default\n got: %q\nwant: %q", got, want)
 	}
 }
