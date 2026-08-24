@@ -163,6 +163,7 @@ func TestSet_RejectsUnknownKey(t *testing.T) {
 func TestSetDefaults_OrchestratorPort(t *testing.T) { //nolint:paralleltest // global viper state
 	viper.Reset()
 	t.Cleanup(viper.Reset)
+	t.Setenv("LW_ORCHESTRATOR_URL", "")
 	setDefaults()
 
 	const want = "http://localhost:8080"
