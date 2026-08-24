@@ -12,7 +12,20 @@ Two invariants are checked by `lw check schema`:
 - **No schema entry without a registered Go handler** — adding a `name: foo` line under a domain in `commands.yaml` without also calling `RegisterHandler("<domain>.foo", …)` from `init()` leaves the subcommand wired to `lw <domain> foo --help` but unimplemented.
 - **No registered handler without a schema entry** — registering a handler the schema doesn't know about means the command is unreachable from the dispatcher's cobra tree.
 
-CI runs `LW_CHECK_SCHEMA_STRICT=1 ./bin/lw check schema` as a blocking gate (`.github/workflows/schema-drift-check.yml`). Local devs see the report informationally (exit 0, drift listed in stdout); the strict flag is the CI-only failure switch.
+**The schema-drift gate is currently DORMANT — do not rely on CI to catch drift.**
+`.github/workflows/schema-drift-check.yml` is written and works, but it is
+`workflow_call`-only and the job that would call it is commented out in
+`ci.yml` (it needs a token that can check out the private `lightwave-core`).
+Nothing has invoked it since 2026-05-22. Until it is re-armed, drift is caught
+only by running the gate yourself:
+
+```bash
+LW_CHECK_SCHEMA_STRICT=1 ./bin/lw check schema
+```
+
+Exit 1 on drift; without the env var the same report prints and exits 0. Run it
+before pushing any change that adds, renames, or removes a handler or a
+`commands.yaml` entry. Tracking issue for re-arming the gate: #301.
 
 ### Test Conventions
 
