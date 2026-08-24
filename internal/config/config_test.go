@@ -168,7 +168,6 @@ func TestSetDefaults_OrchestratorPort(t *testing.T) { //nolint:paralleltest // g
 	t.Setenv("LW_ORCHESTRATOR_URL", "")
 	viper.Reset()
 	t.Cleanup(viper.Reset)
-	t.Setenv("LW_ORCHESTRATOR_URL", "")
 	setDefaults()
 
 	const want = "http://localhost:8080"
