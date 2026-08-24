@@ -165,8 +165,11 @@ func setDefaults() {
 	viper.SetDefault("api.staging", "https://api.staging.lightwave-media.ltd/api/createos")
 	viper.SetDefault("api.production", "https://api.lightwave-media.ltd/api/createos")
 
-	// Orchestrator defaults (Elixir Phoenix)
-	viper.SetDefault("orchestrator.url", "http://localhost:4000")
+	// Orchestrator defaults — nullboiler (lightwave-ai src/nullboiler), which
+	// serves :8080. The previous :4000 default pointed at a retired Elixir
+	// Phoenix service and matched no null* port (nullclaw 3000, nulltickets
+	// 7700, nullboiler 8080, nullhub 19800), so `lw health` could never pass.
+	viper.SetDefault("orchestrator.url", "http://localhost:8080")
 	_ = viper.BindEnv("orchestrator.url", "LW_ORCHESTRATOR_URL")
 
 	// Paperclip defaults
