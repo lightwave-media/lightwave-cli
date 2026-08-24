@@ -161,6 +161,11 @@ func TestSet_RejectsUnknownKey(t *testing.T) {
 //
 // Not parallel: setDefaults writes to the process-global viper registry.
 func TestSetDefaults_OrchestratorPort(t *testing.T) { //nolint:paralleltest // global viper state
+	// setDefaults binds LW_ORCHESTRATOR_URL, so an operator shell that exports it
+	// (e.g. after `source <(mise run env)`) would otherwise fail this pin even
+	// though the default is correct. viper.AllowEmptyEnv defaults to false, so an
+	// empty value reads as unset and the default wins.
+	t.Setenv("LW_ORCHESTRATOR_URL", "")
 	viper.Reset()
 	t.Cleanup(viper.Reset)
 	t.Setenv("LW_ORCHESTRATOR_URL", "")
