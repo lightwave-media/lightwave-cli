@@ -43,6 +43,12 @@ Every new test file uses these defaults (enforced informally — golangci-lint v
 
 Existing tests predating this convention are not auto-migrated; touch-as-you-go.
 
+Shape claims about SST-shaped data (`stamp_bound` + `print_census` in
+lightwave-core `test_patterns`) load the stamp or generated types and walk
+every current print. Do not copy `commands.yaml` into a handwritten list in
+the test; `lw check schema` is that census. Fixtures stay legal for
+handler behaviour.
+
 ### Git Discipline (READ FIRST)
 
 Before any commit, branch op, stash, cherry-pick, rebase, merge, or worktree, **load the `lightwave-git` skill** and follow it. The defaults are non-negotiable; deviating produces messes that cost full days to clean up. Critical rules at a glance:

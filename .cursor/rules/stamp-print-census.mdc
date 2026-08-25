@@ -1,0 +1,13 @@
+---
+description: Shape tests census every current print against the SST. Never name an instance.
+alwaysApply: true
+---
+
+# Stamp/print tests
+
+Shape claims load the stamp (`commands.yaml`, enums) or generated types and
+walk every current print. `lw check schema` is the census of handlers vs
+stamp. Do not copy the command list into a test array.
+
+Behaviour claims (handler tables, httptest) may use fixtures. Stamp:
+`lightwave://schemas/policy/testing/test_contract` (`stamp_bound`, `print_census`).
