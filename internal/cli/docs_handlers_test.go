@@ -27,3 +27,36 @@ func TestDocsCheckStrictIsFlagNotSubcommand(t *testing.T) {
 		"docs.check.strict must not be registered: --strict is a flag on docs check, "+
 			"and the extra key shows up as orphaned-handler drift in `lw check schema`")
 }
+
+// TestDocsSchemaVerbsAreRegistered pins the false positives found while auditing
+// lightwave-cli#301.
+//
+// Every verb commands.yaml declares under `docs` must resolve in the handler
+// registry, because that registry is what `lw check schema` counts. docs.sync
+// and docs.spec-lint worked all along — but only through the hardcoded cobra
+// tree in docs.go — so the drift gate reported them as unimplemented. Re-arming
+// the gate would have failed CI for two commands that were fine.
+//
+// system-overview.md documents both as the way docs/ and spec/ work, so a drift
+// report calling them missing actively misleads.
+func TestDocsSchemaVerbsAreRegistered(t *testing.T) {
+	t.Parallel()
+
+	for _, key := range []string{
+		"docs.check",
+		"docs.render",
+		"docs.serve",
+		"docs.spec-lint",
+		"docs.sync",
+	} {
+		t.Run(key, func(t *testing.T) {
+			t.Parallel()
+
+			_, ok := cli.LookupHandler(key)
+			assert.True(t, ok,
+				"%s is declared in commands.yaml; without a registry entry "+
+					"`lw check schema` reports it as a missing handler even when the "+
+					"cobra command works", key)
+		})
+	}
+}

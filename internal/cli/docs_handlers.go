@@ -11,6 +11,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/docsfactory"
 	"github.com/lightwave-media/lightwave-cli/internal/docsgate"
+	"github.com/lightwave-media/lightwave-cli/internal/version"
 )
 
 func init() {
@@ -21,6 +22,57 @@ func init() {
 	// a "docs.check.strict" key too made an orphaned handler that the schema
 	// has no entry for, which `lw check schema` reports as drift.
 	RegisterHandler("docs.check", docsCheckStrictHandler)
+	// docs.sync and docs.spec-lint have worked since they were written, but only
+	// via the hardcoded cobra tree in docs.go. `lw check schema` reads the
+	// handler registry, so it reported both as unimplemented — two false
+	// positives in the drift report that would fail CI once the gate is re-armed
+	// (lightwave-cli#301). Registering them makes the report match reality; the
+	// cobra commands stay as the interactive entry points.
+	RegisterHandler("docs.sync", docsSyncHandler)
+	RegisterHandler("docs.spec-lint", docsSpecLintHandler)
+}
+
+// docsSyncHandler is the dispatcher entry point for `lw docs sync`. It mirrors
+// docsSyncCmd's RunE, reading --repo/--dry-run from the flags map rather than
+// the package-level cobra flag vars.
+func docsSyncHandler(_ context.Context, _ []string, flags map[string]any) error {
+	repo := resolveDocsRepoFromFlags(flags)
+
+	schemas, err := loadDocsSchemas()
+	if err != nil {
+		return toolError(err)
+	}
+
+	dryRun := flagBool(flags, "dry-run")
+
+	res, err := docsfactory.SyncDocs(repo, schemas, docsfactory.SyncOptions{
+		GeneratorVersion: version.Version,
+		DryRun:           dryRun,
+		RegenerateBodies: true,
+	})
+	if err != nil {
+		return toolError(err)
+	}
+
+	return reportDocsSync(repo, res, dryRun)
+}
+
+// docsSpecLintHandler is the dispatcher entry point for `lw docs spec-lint`,
+// mirroring docsSpecLintCmd's RunE.
+func docsSpecLintHandler(_ context.Context, _ []string, flags map[string]any) error {
+	repo := resolveDocsRepoFromFlags(flags)
+
+	schemas, err := loadDocsSchemas()
+	if err != nil {
+		return toolError(err)
+	}
+
+	res, err := docsfactory.LintSpec(repo, schemas)
+	if err != nil {
+		return toolError(err)
+	}
+
+	return reportSpecLint(repo, res)
 }
 
 func resolveDocsRepoFromFlags(flags map[string]any) string {
