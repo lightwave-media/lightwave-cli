@@ -66,6 +66,7 @@ type RenderOptions struct {
 	VarFiles      []string // repeatable --var-file FILE
 	NoHooks       bool     // --no-hooks
 	Force         bool     // overwrite existing files (default: refuse on collision)
+	DryRun        bool     // stage + list files, do not write to OutputFolder
 }
 
 // Args builds the boilerplate argument vector. Always non-interactive:
@@ -164,7 +165,38 @@ func Render(ctx context.Context, o *RenderOptions) error {
 		}
 	}
 
+	if o.DryRun {
+		files, listErr := relFiles(staging)
+		if listErr != nil {
+			return listErr
+		}
+		fmt.Fprintf(os.Stdout, "dry-run: would write %d file(s) to %s:\n  %s\n",
+			len(files), o.OutputFolder, strings.Join(files, "\n  "))
+		return nil
+	}
+
 	return copyTree(staging, o.OutputFolder)
+}
+
+// relFiles returns staged file paths relative to src, sorted.
+func relFiles(src string) ([]string, error) {
+	var files []string
+	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		rel, relErr := filepath.Rel(src, path)
+		if relErr != nil {
+			return relErr
+		}
+		files = append(files, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(files)
+	return files, nil
 }
 
 // collisions returns the paths (relative to src) of staged files whose

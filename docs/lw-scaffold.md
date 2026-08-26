@@ -8,7 +8,9 @@ template anything itself — it wraps the engine.
 
 ```
 lw scaffold <blueprint> -o <dir> [--var k=v]... [--var-file f]... [--no-hooks]
-lw ui component <category>/<Name> [-o <dir>]      # sugar over scaffold react-component
+lw ui catalog [--json]                                # list existing lightwave-ui variants
+lw ui search <need> [--json]                          # search by need phrases, not folder names
+lw ui component <category>/<Name> [-o <dir>] [--dry-run] [--force]
 ```
 
 - `lw scaffold` always runs the engine `--non-interactive`; every variable
@@ -16,7 +18,7 @@ lw ui component <category>/<Name> [-o <dir>]      # sugar over scaffold react-co
   prompts — safe for CI/agents.
 - `lw ui component application/DataTable` ⇒
   `lw scaffold react-component --var category=application --var component_name=DataTable`,
-  defaulting output to `<lightwave_root>/packages/lightwave-ui/src/components`.
+  defaulting output to `<lightwave_root>/lightwave-ui/src/components`.
 
 ## Blueprint discovery (in order)
 

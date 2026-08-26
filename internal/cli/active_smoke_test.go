@@ -47,3 +47,25 @@ func TestUIComponent_RejectsBadSpec(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "<category>/<Name>")
 }
+
+func TestDefaultUIComponentsDir_FlatRepo(t *testing.T) {
+	t.Parallel()
+	got := defaultUIComponentsDir("/Users/dev")
+	assert.Equal(t, filepath.Join("/Users/dev", "lightwave-ui", "src", "components"), got)
+	assert.NotContains(t, got, "packages")
+}
+
+func TestRefuseAppLocalDuplicate(t *testing.T) {
+	t.Parallel()
+	ui := t.TempDir()
+	comp := filepath.Join(ui, "src", "components", "base", "buttons")
+	require.NoError(t, os.MkdirAll(comp, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(comp, "button.tsx"), []byte("export const Button = () => null\n"), 0o644))
+
+	appOut := filepath.Join(t.TempDir(), "src", "components")
+	err := refuseAppLocalDuplicate(ui, appOut, "Button")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "app-local duplicate")
+
+	require.NoError(t, refuseAppLocalDuplicate(ui, filepath.Join(ui, "src", "components"), "Button"))
+}
