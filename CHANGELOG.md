@@ -9,6 +9,21 @@ from conventional commits (`feat:` / `fix:` / `chore:` / etc.). This
 file is the human-curated complement — what changed, why, and how it
 affects users — for releases that move the needle.
 
+## [3.13.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.12.0...v3.13.0) (2026-08-26)
+
+
+### Features
+
+* **assurance:** preserve failing audit signals ([#322](https://github.com/lightwave-media/lightwave-cli/issues/322)) ([a7a1ba3](https://github.com/lightwave-media/lightwave-cli/commit/a7a1ba3219e0873d09d9d05ca2b2f075c867f41b))
+* **release:** lw release tag — the plane's front door ([#314](https://github.com/lightwave-media/lightwave-cli/issues/314)) ([e6c7316](https://github.com/lightwave-media/lightwave-cli/commit/e6c731681bd4bfb79bab04bf66e8ae8e700d74c9)), closes [#311](https://github.com/lightwave-media/lightwave-cli/issues/311)
+
+
+### Bug Fixes
+
+* **docs:** register docs sync + spec-lint so the drift gate stops lying ([#312](https://github.com/lightwave-media/lightwave-cli/issues/312)) ([bb8719f](https://github.com/lightwave-media/lightwave-cli/commit/bb8719f278af7eef9d40dc6013930b423b5d2e21))
+* **hooks:** make git doctor and hooks doctor report the truth ([#309](https://github.com/lightwave-media/lightwave-cli/issues/309)) ([5452f4a](https://github.com/lightwave-media/lightwave-cli/commit/5452f4a895d65be82c2a828e980142dc71240d5d)), closes [#300](https://github.com/lightwave-media/lightwave-cli/issues/300) [#307](https://github.com/lightwave-media/lightwave-cli/issues/307)
+* scrum triage — dead health probe, archived-repo bootstrap, schema drift orphan ([#305](https://github.com/lightwave-media/lightwave-cli/issues/305)) ([6817928](https://github.com/lightwave-media/lightwave-cli/commit/68179281a01ce4340152903a6dcb60f2a4a607dd))
+
 ## [3.12.0](https://github.com/lightwave-media/lightwave-cli/compare/v3.11.0...v3.12.0) (2026-08-13)
 
 
