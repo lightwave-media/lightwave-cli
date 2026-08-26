@@ -80,6 +80,14 @@ description = "go test (race + shuffle, matches CI)"
 # through the internal/git wrapper. Same pattern as scripts/precommit/hooks_test.sh.
 run = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS; go test -race -shuffle=on ./..."
 
+[tasks.mutation]
+description = "Changed-code mutation evidence (observe/warn/block ratchet)"
+run = "bash dev/mutation_gate.sh"
+
+[tasks."mutation:block"]
+description = "Enforce changed-code mutation thresholds after ratchet promotion"
+run = "LW_MUTATION_ENFORCEMENT=block bash dev/mutation_gate.sh"
+
 [tasks.ci]
 description = "Local CI: fmt-check + vet + lint + build + test + codespell + tidy"
 # Mirrors the cloud CI required-gate job set so a local-green push is cloud-green.

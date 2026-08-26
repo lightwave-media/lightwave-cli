@@ -50,8 +50,8 @@ type repoInfraViolation struct {
 	Kind     string `json:"kind"`
 	Missing  string `json:"missing"`
 	Detail   string `json:"detail,omitempty"`
+	Severity string `json:"severity,omitempty"`
 	Fixable  bool   `json:"fixable"`
-	Severity string `json:"severity,omitempty"` // "" or "error" = hard; "warn" = advisory
 }
 
 type repoInfraDrift struct {
@@ -67,6 +67,7 @@ type repoInfraReport struct {
 	Exempt     []string             `json:"exempt"`
 	Violations []repoInfraViolation `json:"violations"`
 	Drift      []repoInfraDrift     `json:"drift,omitempty"`
+	HardCount  int                  `json:"hard_violations"`
 	LearnCount int                  `json:"learn_count,omitempty"`
 }
 
@@ -131,28 +132,47 @@ func checkRepoInfraHandler(_ context.Context, args []string, flags map[string]an
 		return applyRepoInfraFixes(report.Violations)
 	}
 
+	report.HardCount = countHardRepoInfraViolations(report.Violations)
+
 	if asJSON(flags) {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 
-		return enc.Encode(report)
+		if err := enc.Encode(report); err != nil {
+			return err
+		}
+
+		return repoInfraResultError(report.HardCount, len(report.Checked))
 	}
 
 	printRepoInfraReport(&report)
 
+	return repoInfraResultError(report.HardCount, len(report.Checked))
+}
+
+func countHardRepoInfraViolations(violations []repoInfraViolation) int {
 	hardViolations := 0
 
-	for _, v := range report.Violations {
+	for _, v := range violations {
 		if v.Severity != gitSeverityWarn {
 			hardViolations++
 		}
 	}
 
-	if hardViolations > 0 {
-		return fmt.Errorf("%d violation(s) found in %d repo(s)", hardViolations, len(report.Checked))
+	return hardViolations
+}
+
+func repoInfraResultError(hardViolations, checked int) error {
+	if hardViolations == 0 {
+		return nil
 	}
 
-	return nil
+	return fmt.Errorf(
+		"%d violation(s) found in %d repo(s); restore the stamped structure and rerun "+
+			"`lw check repo-infra`; do not remove, weaken, or bypass the check",
+		hardViolations,
+		checked,
+	)
 }
 
 func checkOneRepo(repoPath, name string, infraCfg *sst.RepoInfraConfig) []repoInfraViolation {
@@ -252,8 +272,67 @@ func checkOneRepo(repoPath, name string, infraCfg *sst.RepoInfraConfig) []repoIn
 
 	// ci-node conformance: warn if a Node/TS repo doesn't delegate to the shared workflow
 	viols = append(viols, checkCINodeConformance(repoPath, name)...)
+	viols = append(viols, checkCIParity(repoPath, name)...)
 
 	return viols
+}
+
+func checkCIParity(repoPath, name string) []repoInfraViolation {
+	workflowDir := filepath.Join(repoPath, ".github", "workflows")
+
+	entries, err := os.ReadDir(workflowDir)
+	if err != nil {
+		return []repoInfraViolation{{
+			Repo:     name,
+			RepoPath: repoPath,
+			Kind:     "ci-parity",
+			Missing:  ".github/workflows/",
+			Detail: "No cloud workflow proves the local `mise run ci` contract. " +
+				"Add an aggregate workflow that invokes it; do not bypass local CI.",
+			Severity: gitSeverityWarn,
+		}}
+	}
+
+	workflowNames := make([]string, 0, len(entries))
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		extension := filepath.Ext(entry.Name())
+		if extension != ".yml" && extension != ".yaml" {
+			continue
+		}
+
+		workflowNames = append(workflowNames, entry.Name())
+
+		body, readErr := os.ReadFile(filepath.Join(workflowDir, entry.Name()))
+		if readErr != nil {
+			continue
+		}
+
+		text := string(body)
+		if strings.Contains(text, "mise run ci") ||
+			strings.Contains(text, "lightwave-media/.github/.github/workflows/ci-") {
+			return nil
+		}
+	}
+
+	evidence := "No workflow invokes the canonical `mise run ci` graph"
+	if len(workflowNames) > 0 {
+		evidence += "; inspected " + strings.Join(workflowNames, ", ")
+	}
+
+	return []repoInfraViolation{{
+		Repo:     name,
+		RepoPath: repoPath,
+		Kind:     "ci-parity",
+		Missing:  ".github/workflows/ci.yml",
+		Detail: evidence + ". Delegate to the local graph or document a runner-only exception; " +
+			"do not duplicate and silently drift the checks.",
+		Severity: gitSeverityWarn,
+	}}
 }
 
 // checkCINodeConformance warns when a Node/TS repo hand-crafts inline CI steps

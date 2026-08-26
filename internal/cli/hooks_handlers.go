@@ -3,12 +3,12 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
@@ -16,9 +16,9 @@ import (
 
 // Schema-driven hooks handlers. Manages pre-commit / pre-push gates across
 // the LightWave repo set without a hardcoded list: doctor + sync discover
-// repos by walking the search roots below for any directory that is BOTH a
-// git repo (has a .git dir) AND has a .pre-commit-config.yaml at its top.
-// Add a repo by giving it a config; nothing else needs to change.
+// repos by walking the search roots below for commissioned git repos. A
+// missing .pre-commit-config.yaml is evidence, not a reason to hide the repo:
+// tracked raw hooks and completely missing hook setup must both be visible.
 
 func init() {
 	RegisterHandler("hooks.install", hooksInstallHandler)
@@ -64,14 +64,15 @@ func hooksWorkspaceRoot() string {
 // repoStatus is the per-repo result reported by `lw hooks doctor`.
 type repoStatus struct {
 	Path        string `json:"path"`
+	HooksPath   string `json:"hooks_path"`
 	PreCommit   bool   `json:"pre_commit_installed"`
 	PrePush     bool   `json:"pre_push_installed"`
 	ConfigFound bool   `json:"config_found"`
 }
 
-func (s repoStatus) ok() bool { return s.ConfigFound && s.PreCommit && s.PrePush }
+func (s repoStatus) ok() bool { return s.PreCommit && s.PrePush }
 
-func hooksInstallHandler(_ context.Context, _ []string, flags map[string]any) error {
+func hooksInstallHandler(ctx context.Context, _ []string, flags map[string]any) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getwd: %w", err)
@@ -91,25 +92,37 @@ func hooksInstallHandler(_ context.Context, _ []string, flags map[string]any) er
 		return nil
 	}
 
-	return installHooks(repo)
+	return installHooks(ctx, repo)
 }
 
-func hooksDoctorHandler(_ context.Context, _ []string, flags map[string]any) error {
+func hooksDoctorHandler(ctx context.Context, _ []string, flags map[string]any) error {
 	root := hooksWorkspaceRoot()
 	repos := discoverRepos(root)
 
 	statuses := make([]repoStatus, 0, len(repos))
 	for _, r := range repos {
-		statuses = append(statuses, repoStatusFor(r))
+		statuses = append(statuses, repoStatusFor(ctx, r))
 	}
 
 	sort.Slice(statuses, func(i, j int) bool { return statuses[i].Path < statuses[j].Path })
+
+	bad := 0
+
+	for _, status := range statuses {
+		if !status.ok() {
+			bad++
+		}
+	}
 
 	if asJSON(flags) {
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 
-		return enc.Encode(statuses)
+		if err := enc.Encode(statuses); err != nil {
+			return err
+		}
+
+		return hooksDoctorResultError(len(statuses), bad)
 	}
 
 	if len(statuses) == 0 {
@@ -117,7 +130,7 @@ func hooksDoctorHandler(_ context.Context, _ []string, flags map[string]any) err
 		// clean fleet and is unfalsifiable — the operator cannot tell a healthy
 		// estate from a doctor pointed at the wrong directory, which is exactly
 		// how #307 hid every repo under ~/dev behind a green result.
-		fmt.Println(color.YellowString("no LightWave repos with .pre-commit-config.yaml found"))
+		fmt.Println(color.RedString("no commissioned LightWave git repos found"))
 		fmt.Println("scanned (each root + its immediate children):")
 
 		for _, scanned := range hooksSearchRoots(root) {
@@ -129,32 +142,43 @@ func hooksDoctorHandler(_ context.Context, _ []string, flags map[string]any) err
 			fmt.Printf("  - %s (%s)\n", scanned, marker)
 		}
 
-		return nil
+		return hooksDoctorResultError(0, 0)
 	}
-
-	bad := 0
 
 	for _, s := range statuses {
 		mark := color.GreenString("✓")
 		if !s.ok() {
 			mark = color.RedString("✗")
-			bad++
 		}
 
-		fmt.Printf("  %s %s  (pre-commit=%v pre-push=%v)\n",
-			mark, s.Path, s.PreCommit, s.PrePush)
+		fmt.Printf("  %s %s  (hooksPath=%s pre-commit=%v pre-push=%v config=%v)\n",
+			mark, s.Path, s.HooksPath, s.PreCommit, s.PrePush, s.ConfigFound)
 	}
 
 	fmt.Printf("\n%d repo(s) checked, %d need attention\n", len(statuses), bad)
 
-	if bad > 0 {
-		return fmt.Errorf("%d repo(s) missing hooks — run `lw hooks sync`", bad)
-	}
-
-	return nil
+	return hooksDoctorResultError(len(statuses), bad)
 }
 
-func hooksSyncHandler(_ context.Context, _ []string, flags map[string]any) error {
+func hooksDoctorResultError(checked, bad int) error {
+	switch {
+	case checked == 0:
+		return errors.New(
+			"hook census found no commissioned repos; verify paths.lightwave_root — " +
+				"do not treat an empty audit as healthy",
+		)
+	case bad > 0:
+		return fmt.Errorf(
+			"%d repo(s) missing hooks; install the tracked hooks or run `lw hooks sync`; "+
+				"do not bypass or disable the gate",
+			bad,
+		)
+	default:
+		return nil
+	}
+}
+
+func hooksSyncHandler(ctx context.Context, _ []string, flags map[string]any) error {
 	repos := discoverRepos(hooksWorkspaceRoot())
 	if len(repos) == 0 {
 		fmt.Println(color.YellowString("no LightWave repos with .pre-commit-config.yaml found"))
@@ -162,7 +186,25 @@ func hooksSyncHandler(_ context.Context, _ []string, flags map[string]any) error
 	}
 
 	dry := flagBool(flags, "dry-run")
+	failed := 0
+
 	for _, r := range repos {
+		status := repoStatusFor(ctx, r)
+		if status.ok() {
+			fmt.Printf("  %s %s hooks already healthy\n", color.GreenString("✓"), r)
+
+			continue
+		}
+
+		if !status.ConfigFound {
+			fmt.Printf("  %s %s has no .pre-commit-config.yaml; install its tracked raw hooks\n",
+				color.RedString("✗"), r)
+
+			failed++
+
+			continue
+		}
+
 		if dry {
 			fmt.Printf("would install hooks at %s\n", r)
 			continue
@@ -170,19 +212,31 @@ func hooksSyncHandler(_ context.Context, _ []string, flags map[string]any) error
 
 		fmt.Printf("→ %s\n", r)
 
-		if err := installHooks(r); err != nil {
+		if err := installHooks(ctx, r); err != nil {
 			fmt.Printf("  %s %v\n", color.RedString("✗"), err)
+
+			failed++
+
 			continue
 		}
 
 		fmt.Printf("  %s installed\n", color.GreenString("✓"))
 	}
 
+	if failed > 0 {
+		return fmt.Errorf(
+			"%d repo(s) could not be synchronized; install their tracked hooks and rerun; "+
+				"do not bypass the doctor",
+			failed,
+		)
+	}
+
 	return nil
 }
 
 // discoverRepos walks each search root + its immediate children and returns
-// every directory that is a git repo AND has a .pre-commit-config.yaml.
+// every commissioned Lightwave git repo. mise.toml is the fleet marker; the
+// pre-commit config remains a compatibility marker for older commissioned repos.
 // Depth-1 walk keeps the cost ~O(top-level dirs) on a typical laptop.
 func discoverRepos(workspaceRoot string) []string {
 	seen := map[string]bool{}
@@ -195,7 +249,7 @@ func discoverRepos(workspaceRoot string) []string {
 		}
 
 		seen[p] = true
-		if isGitRepo(p) && hasPreCommitConfig(p) {
+		if isGitRepo(p) && isCommissionedRepo(p) {
 			out = append(out, p)
 		}
 	}
@@ -237,6 +291,16 @@ func hasPreCommitConfig(dir string) bool {
 	return err == nil
 }
 
+func isCommissionedRepo(dir string) bool {
+	if hasPreCommitConfig(dir) {
+		return true
+	}
+
+	_, err := os.Stat(filepath.Join(dir, "mise.toml"))
+
+	return err == nil
+}
+
 // nearestRepoRoot walks up from start until it finds a .git dir. Mirrors
 // `git rev-parse --show-toplevel` without the shell-out.
 func nearestRepoRoot(start string) (string, error) {
@@ -255,50 +319,27 @@ func nearestRepoRoot(start string) (string, error) {
 	}
 }
 
-func repoStatusFor(repo string) repoStatus {
+func repoStatusFor(ctx context.Context, repo string) repoStatus {
+	hooksPath, _ := gitOutput(ctx, repo, "config", "core.hooksPath")
+	installed := listInstalledHooks(repo, hooksPath)
+
 	return repoStatus{
 		Path:        repo,
+		HooksPath:   resolveHooksDir(repo, hooksPath),
 		ConfigFound: hasPreCommitConfig(repo),
-		PreCommit:   hookInstalled(repo, "pre-commit"),
-		PrePush:     hookInstalled(repo, "pre-push"),
+		PreCommit:   containsString(installed, "pre-commit"),
+		PrePush:     containsString(installed, "pre-push"),
 	}
-}
-
-// hookInstalled treats a hook as installed iff the file exists, is regular
-// (not a directory or symlink-to-nowhere), and contains the pre-commit
-// framework marker. Bare files left behind by `git init` don't count.
-func hookInstalled(repo, name string) bool {
-	path := filepath.Join(repo, ".git", "hooks", name)
-
-	info, err := os.Stat(path)
-	if err != nil || !info.Mode().IsRegular() {
-		return false
-	}
-
-	body, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-
-	return containsPreCommitMarker(body)
-}
-
-// containsPreCommitMarker looks for a sentinel that pre-commit writes into
-// the generated hook script. Either marker is sufficient — matching both
-// would falsely reject older pre-commit versions.
-func containsPreCommitMarker(body []byte) bool {
-	s := string(body)
-	return strings.Contains(s, "pre-commit") || strings.Contains(s, "PRE_COMMIT")
 }
 
 // installHooks runs `pre-commit install` and `pre-commit install -t pre-push`
 // in repo. Streams output so the user sees pre-commit's own progress.
-func installHooks(repo string) error {
+func installHooks(ctx context.Context, repo string) error {
 	for _, args := range [][]string{
 		{"install"},
 		{"install", "-t", "pre-push"},
 	} {
-		c := exec.Command("pre-commit", args...)
+		c := exec.CommandContext(ctx, "pre-commit", args...)
 		c.Dir = repo
 		c.Stdout = os.Stdout
 

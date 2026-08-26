@@ -118,8 +118,29 @@ type gitAuditReport struct {
 	FixMode            string                 `json:"fix_mode,omitempty"`
 	ScannedRoots       []string               `json:"scanned_roots"`
 	Repos              []gitTopologyNode      `json:"repos"`
+	RemoteProtection   []branchProtectionDiff `json:"remote_protection,omitempty"`
 	RecommendedActions []gitRecommendedAction `json:"recommended_actions"`
 	Summary            gitAuditSummary        `json:"summary"`
+}
+
+type branchProtectionDiff struct {
+	Repo       string   `json:"repo"`
+	Status     string   `json:"status"`
+	Detail     string   `json:"detail,omitempty"`
+	Expected   []string `json:"expected"`
+	Actual     []string `json:"actual"`
+	Missing    []string `json:"missing,omitempty"`
+	Unexpected []string `json:"unexpected,omitempty"`
+}
+
+type branchProtectionStamp struct {
+	Example struct {
+		Organization string `yaml:"organization"`
+		Repos        []struct {
+			Repo           string   `yaml:"repo"`
+			RequiredChecks []string `yaml:"required_checks"`
+		} `yaml:"repos"`
+	} `yaml:"example"`
 }
 
 type localSetupProfile struct {
@@ -137,6 +158,19 @@ func gitAuditHandler(ctx context.Context, _ []string, flags map[string]any) erro
 	report, err := buildGitAuditReport(ctx, &profile)
 	if err != nil {
 		return err
+	}
+
+	if flagBool(flags, "remote") {
+		report.RemoteProtection, err = auditRemoteBranchProtection(ctx, hooksWorkspaceRoot())
+		if err != nil {
+			return err
+		}
+
+		for index := range report.RemoteProtection {
+			if report.RemoteProtection[index].Status != "match" {
+				report.Summary.Warnings++
+			}
+		}
 	}
 
 	fix := flagBool(flags, "fix")
@@ -171,16 +205,165 @@ func gitAuditHandler(ctx context.Context, _ []string, flags map[string]any) erro
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 
-		return enc.Encode(report)
+		if err := enc.Encode(report); err != nil {
+			return err
+		}
+
+		return gitAuditResultError(report.Summary.Errors)
 	}
 
 	printGitAuditTTY(report)
 
-	if report.Summary.Errors > 0 {
-		return fmt.Errorf("%d error-level git violation(s) — see report above", report.Summary.Errors)
+	return gitAuditResultError(report.Summary.Errors)
+}
+
+func gitAuditResultError(errorCount int) error {
+	if errorCount == 0 {
+		return nil
 	}
 
-	return nil
+	return fmt.Errorf(
+		"%d error-level git violation(s); restore the declared topology and rerun "+
+			"`lw git audit`; do not bypass or weaken the audit",
+		errorCount,
+	)
+}
+
+func auditRemoteBranchProtection(ctx context.Context, workspaceRoot string) ([]branchProtectionDiff, error) {
+	path := filepath.Join(
+		workspaceRoot,
+		"lightwave-core",
+		"src",
+		"schemas",
+		"policy",
+		"governance",
+		"branch_protection.yaml",
+	)
+
+	body, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("read branch-protection stamp: %w", err)
+	}
+
+	var stamp branchProtectionStamp
+	if err := yaml.Unmarshal(body, &stamp); err != nil {
+		return nil, fmt.Errorf("parse branch-protection stamp: %w", err)
+	}
+
+	if stamp.Example.Organization == "" {
+		return nil, errors.New("branch-protection stamp has no example.organization")
+	}
+
+	results := make([]branchProtectionDiff, 0, len(stamp.Example.Repos))
+	for _, repo := range stamp.Example.Repos {
+		actual, fetchErr := fetchRequiredChecks(ctx, stamp.Example.Organization, repo.Repo)
+		if fetchErr != nil {
+			results = append(results, branchProtectionDiff{
+				Repo:     repo.Repo,
+				Expected: sortedUnique(repo.RequiredChecks),
+				Status:   "unverified",
+				Detail: "Could not verify live required checks: " + fetchErr.Error() +
+					". Restore authentication and rerun; do not assume an unverified boundary is healthy.",
+			})
+
+			continue
+		}
+
+		results = append(results, compareRequiredChecks(repo.Repo, repo.RequiredChecks, actual))
+	}
+
+	sort.Slice(results, func(i, j int) bool { return results[i].Repo < results[j].Repo })
+
+	return results, nil
+}
+
+func fetchRequiredChecks(ctx context.Context, organization, repo string) ([]string, error) {
+	endpoint := fmt.Sprintf(
+		"repos/%s/%s/branches/main/protection/required_status_checks",
+		organization,
+		repo,
+	)
+	command := exec.CommandContext(ctx, "gh", "api", endpoint)
+
+	output, err := command.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("gh api %s: %s", endpoint, strings.TrimSpace(string(output)))
+	}
+
+	var response struct {
+		Contexts []string `json:"contexts"`
+		Checks   []struct {
+			Context string `json:"context"`
+		} `json:"checks"`
+	}
+	if err := json.Unmarshal(output, &response); err != nil {
+		return nil, fmt.Errorf("decode required checks for %s: %w", repo, err)
+	}
+
+	actual := append([]string(nil), response.Contexts...)
+	for _, check := range response.Checks {
+		actual = append(actual, check.Context)
+	}
+
+	return sortedUnique(actual), nil
+}
+
+func compareRequiredChecks(repo string, expected, actual []string) branchProtectionDiff {
+	expected = sortedUnique(expected)
+	actual = sortedUnique(actual)
+
+	result := branchProtectionDiff{
+		Repo:     repo,
+		Expected: expected,
+		Actual:   actual,
+		Status:   "match",
+	}
+
+	if len(expected) == 0 && len(actual) == 0 {
+		result.Status = "gap"
+		result.Detail = "Protection has no required checks, so CI can report and block nothing. " +
+			"Add one always-reporting aggregate check; do not treat empty agreement as healthy."
+
+		return result
+	}
+
+	expectedSet := make(map[string]bool, len(expected))
+	for _, check := range expected {
+		expectedSet[check] = true
+		if !containsString(actual, check) {
+			result.Missing = append(result.Missing, check)
+		}
+	}
+
+	for _, check := range actual {
+		if !expectedSet[check] {
+			result.Unexpected = append(result.Unexpected, check)
+		}
+	}
+
+	if len(result.Missing) > 0 || len(result.Unexpected) > 0 {
+		result.Status = "drift"
+		result.Detail = "Live required checks differ from the stamp. Repair branch protection or " +
+			"the always-reporting aggregate workflow; do not remove the requirement to make the audit green."
+	}
+
+	return result
+}
+
+func sortedUnique(values []string) []string {
+	seen := make(map[string]bool, len(values))
+	for _, value := range values {
+		seen[value] = true
+	}
+
+	result := make([]string, 0, len(seen))
+	for value := range seen {
+		result = append(result, value)
+	}
+
+	sort.Strings(result)
+
+	return result
 }
 
 func gitMapHandler(ctx context.Context, _ []string, flags map[string]any) error {
@@ -254,7 +437,11 @@ func gitDoctorHandler(ctx context.Context, _ []string, flags map[string]any) err
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 
-		return enc.Encode(node)
+		if err := enc.Encode(node); err != nil {
+			return err
+		}
+
+		return gitDoctorResultError(repo, len(doctorViols))
 	}
 
 	if len(doctorViols) == 0 {
@@ -266,7 +453,20 @@ func gitDoctorHandler(ctx context.Context, _ []string, flags map[string]any) err
 		fmt.Printf("  %s %s\n", severityColor(v.Severity), v.Message)
 	}
 
-	return fmt.Errorf("git doctor: %d issue(s) in %s", len(doctorViols), repo)
+	return gitDoctorResultError(repo, len(doctorViols))
+}
+
+func gitDoctorResultError(repo string, issueCount int) error {
+	if issueCount == 0 {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"git doctor: %d issue(s) in %s; repair hooks/profile drift, then rerun; "+
+			"do not set a blanket bypass",
+		issueCount,
+		repo,
+	)
 }
 
 func gitWorktreeHandler(ctx context.Context, args []string, flags map[string]any) error {
@@ -816,6 +1016,26 @@ func printGitAuditTTY(report *gitAuditReport) {
 
 		for _, v := range n.Violations {
 			fmt.Printf("  %s [%s] %s\n", severityColor(v.Severity), v.Code, v.Message)
+		}
+	}
+
+	if len(report.RemoteProtection) > 0 {
+		fmt.Println("\nremote branch protection (advisory):")
+
+		for index := range report.RemoteProtection {
+			result := &report.RemoteProtection[index]
+
+			marker := color.GreenString("✓")
+			if result.Status != "match" {
+				marker = color.YellowString("⚠")
+			}
+
+			fmt.Printf("  %s %s status=%s missing=%v unexpected=%v\n",
+				marker, result.Repo, result.Status, result.Missing, result.Unexpected)
+
+			if result.Detail != "" {
+				fmt.Printf("      %s\n", result.Detail)
+			}
 		}
 	}
 }

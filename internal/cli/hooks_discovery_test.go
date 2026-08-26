@@ -2,6 +2,8 @@
 package cli
 
 import (
+	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -115,6 +117,51 @@ func TestHooksDoctorAndInstallAgreeOnRepos(t *testing.T) {
 	assert.Contains(t, discoverRepos(workspace), installTarget,
 		"doctor must discover the repo install would act on; when the two disagree "+
 			"doctor reports a false all-clear (#307)")
+}
+
+func TestHooksDiscoveryIncludesRepoWithoutPreCommitConfig(t *testing.T) {
+	t.Parallel()
+
+	workspace := filepath.Join(t.TempDir(), "dev")
+	repo := filepath.Join(workspace, "lightwave-raw-hooks")
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(repo, "mise.toml"), []byte("[tasks.ci]\nrun = 'true'\n"), 0o644))
+
+	assert.Contains(t, discoverRepos(workspace), repo,
+		"a missing pre-commit config is a hook finding, not a discovery filter")
+}
+
+func TestHooksDoctorJSONPreservesFailureStatus(t *testing.T) { //nolint:paralleltest // stdout + config cache
+	workspace := filepath.Join(t.TempDir(), "dev")
+	repo := filepath.Join(workspace, "lightwave-broken-hooks")
+	require.NoError(t, os.MkdirAll(filepath.Join(repo, ".git"), 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(repo, "mise.toml"), []byte("[tasks.ci]\nrun = 'true'\n"), 0o644))
+
+	t.Setenv("LW_LIGHTWAVE_ROOT", workspace)
+	config.Reset()
+	t.Cleanup(config.Reset)
+
+	readPipe, writePipe, err := os.Pipe()
+	require.NoError(t, err)
+	originalStdout := os.Stdout
+	os.Stdout = writePipe
+	t.Cleanup(func() { os.Stdout = originalStdout })
+
+	handlerErr := hooksDoctorHandler(context.Background(), nil, map[string]any{"json": true})
+	require.NoError(t, writePipe.Close())
+	output, readErr := io.ReadAll(readPipe)
+	require.NoError(t, readErr)
+
+	require.ErrorContains(t, handlerErr, "missing hooks")
+	assert.JSONEq(t, `[{
+		"path":"`+repo+`",
+		"hooks_path":"`+filepath.Join(repo, ".git", "hooks")+`",
+		"pre_commit_installed":false,
+		"pre_push_installed":false,
+		"config_found":false
+	}]`, string(output), "JSON must remain parseable while the command exits nonzero")
 }
 
 // TestHooksWorkspaceRootHonoursEnvOverride pins that the resolver follows

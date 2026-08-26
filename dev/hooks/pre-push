@@ -2,17 +2,56 @@
 # Canonical pre-push gate (managed by conform.sh — safe to regenerate).
 # Phase 0 framework pre-push (preserved) · 1 mise run ci (REQUIRED) ·
 # 2 act (LW_PREPUSH_ACT=1) · 3 review (LW_PREPUSH_REVIEW=1).
-# Bypass: LW_SKIP_PRE_PUSH=1 git push
-[ "${LW_SKIP_PRE_PUSH:-0}" = "1" ] && { echo "pre-push: skipped (LW_SKIP_PRE_PUSH=1)" >&2; exit 0; }
-ROOT=$(git rev-parse --show-toplevel) || exit 0; cd "$ROOT"
+# Emergency bypass:
+#   LW_SKIP_PRE_PUSH=1 LW_SKIP_PRE_PUSH_REASON="<incident or operator reason>" git push
+ROOT=$(git rev-parse --show-toplevel) || exit 0
+if [ "${LW_SKIP_PRE_PUSH:-0}" = "1" ]; then
+  [ -n "${LW_SKIP_PRE_PUSH_REASON:-}" ] || {
+    echo "❌ pre-push: bypass denied — LW_SKIP_PRE_PUSH_REASON is required." >&2
+    echo "   Fix the failing code. For a detector defect, add a known-good fixture; do not disable the gate." >&2
+    exit 1
+  }
+  command -v jq >/dev/null 2>&1 || {
+    echo "❌ pre-push: bypass denied — jq is required to record structured evidence." >&2
+    exit 1
+  }
+  BYPASS_LOG="${HOME}/.lightwave/observability/bypass-events.jsonl"
+  mkdir -p "$(dirname "$BYPASS_LOG")"
+  jq -nc \
+    --arg detected_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg repo "$(basename "$ROOT")" \
+    --arg source "pre-push" \
+    --arg reason "$LW_SKIP_PRE_PUSH_REASON" \
+    '{detected_at:$detected_at,repo:$repo,source:$source,bypass:"LW_SKIP_PRE_PUSH",reason:$reason}' \
+    >> "$BYPASS_LOG" || {
+      echo "❌ pre-push: bypass denied — could not append telemetry." >&2
+      exit 1
+    }
+  echo "⚠️  pre-push: emergency bypass recorded; required server checks still apply." >&2
+  exit 0
+fi
+cd "$ROOT"
 if [ -f .pre-commit-config.yaml ] && command -v pre-commit >/dev/null 2>&1; then
   echo "▶ pre-push 0: framework pre-push hooks"
-  pre-commit run --hook-stage pre-push --all-files || { echo "❌ framework pre-push failed"; exit 1; }
+  pre-commit run --hook-stage pre-push --all-files || {
+    echo "❌ framework pre-push failed — fix the reported production/configuration cause." >&2
+    echo "   Do not skip, disable, weaken, or bypass the hook; rerun the failing command." >&2
+    exit 1
+  }
 fi
-command -v mise >/dev/null 2>&1 || { echo "❌ pre-push: mise not found"; exit 1; }
+command -v mise >/dev/null 2>&1 || {
+  echo "❌ pre-push: mise not found — restore the declared toolchain, then run mise run ci." >&2
+  echo "   Do not remove or bypass the canonical gate." >&2
+  exit 1
+}
 echo "▶ pre-push 1: mise run ci"
 GATE="$HOME/.lightwave/lib/gate/run.sh"
-if [ -x "$GATE" ]; then sh "$GATE" "$ROOT"; else mise run ci; fi || { echo "❌ mise run ci failed (bypass: LW_SKIP_PRE_PUSH=1)"; exit 1; }
+if [ -x "$GATE" ]; then sh "$GATE" "$ROOT"; else mise run ci; fi || {
+  echo "❌ mise run ci failed — this is a development signal." >&2
+  echo "   Fix the reported invariant in production code/configuration; preserve the test." >&2
+  echo "   Do not skip, delete, weaken, or bypass the gate. Re-run mise run ci." >&2
+  exit 1
+}
 if [ "${LW_PREPUSH_ACT:-0}" = "1" ] && command -v act >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
   echo "▶ pre-push 2: act"; act --container-architecture linux/amd64 || echo "  ℹ️ act advisory"; fi
 if [ "${LW_PREPUSH_REVIEW:-0}" = "1" ] && [ -x dev/cli.sh ] && command -v claude >/dev/null 2>&1; then
