@@ -57,7 +57,7 @@ func TestPrePushBypassRequiresReasonAndRecordsEvidence(t *testing.T) {
 	require.True(t, scanner.Scan())
 	var event map[string]string
 	require.NoError(t, json.Unmarshal(scanner.Bytes(), &event))
-	assert.Equal(t, "lightwave-cli", event["repo"])
+	assert.Equal(t, filepath.Base(root), event["repo"])
 	assert.Equal(t, "pre-push", event["source"])
 	assert.Contains(t, event["reason"], "CLI-TEST")
 }
