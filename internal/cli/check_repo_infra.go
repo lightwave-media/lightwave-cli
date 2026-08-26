@@ -497,6 +497,10 @@ func applyRepoInfraFixes(viols []repoInfraViolation) error {
 	var fixed, skipped int
 
 	for _, v := range viols {
+		if v.Severity == gitSeverityWarn {
+			continue
+		}
+
 		if !v.Fixable {
 			fmt.Printf("%s %s/%s — manual fix required\n",
 				color.YellowString("SKIP"), v.Repo, v.Missing)
