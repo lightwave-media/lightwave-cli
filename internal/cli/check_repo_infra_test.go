@@ -103,7 +103,7 @@ func TestCheckRepoInfra_SchemaVersionPrinted(t *testing.T) {
 
 	out, err := testutil.RunHandler(t, "check.repo-infra", nil, map[string]any{"repo": dir})
 	require.NoError(t, err)
-	assert.Contains(t, out, "v1.4.0")
+	assert.Regexp(t, `schema v\d+\.\d+\.\d+`, out)
 }
 
 //nolint:paralleltest
