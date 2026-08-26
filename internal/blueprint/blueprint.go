@@ -170,8 +170,12 @@ func Render(ctx context.Context, o *RenderOptions) error {
 		if listErr != nil {
 			return listErr
 		}
-		fmt.Fprintf(os.Stdout, "dry-run: would write %d file(s) to %s:\n  %s\n",
-			len(files), o.OutputFolder, strings.Join(files, "\n  "))
+
+		if _, err := fmt.Fprintf(os.Stdout, "dry-run: would write %d file(s) to %s:\n  %s\n",
+			len(files), o.OutputFolder, strings.Join(files, "\n  ")); err != nil {
+			return err
+		}
+
 		return nil
 	}
 
@@ -181,21 +185,27 @@ func Render(ctx context.Context, o *RenderOptions) error {
 // relFiles returns staged file paths relative to src, sorted.
 func relFiles(src string) ([]string, error) {
 	var files []string
+
 	err := filepath.WalkDir(src, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return err
 		}
+
 		rel, relErr := filepath.Rel(src, path)
 		if relErr != nil {
 			return relErr
 		}
+
 		files = append(files, filepath.ToSlash(rel))
+
 		return nil
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	sort.Strings(files)
+
 	return files, nil
 }
 

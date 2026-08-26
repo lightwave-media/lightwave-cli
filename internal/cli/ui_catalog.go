@@ -50,6 +50,7 @@ func runUICatalog(cmd *cobra.Command, _ []string) error {
 	if err != nil {
 		return err
 	}
+
 	return printUIEntries(cmd, entries, uiCatalogJSON)
 }
 
@@ -58,13 +59,18 @@ func runUISearch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	hits := uicatalog.Search(entries, args[0])
 	if len(hits) == 0 {
-		fmt.Fprintf(cmd.OutOrStdout(),
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(),
 			"no match for %q — register a new variant in lightwave-ui, do not invent an app-local copy\n",
-			args[0])
+			args[0]); err != nil {
+			return err
+		}
+
 		return nil
 	}
+
 	return printUIEntries(cmd, hits, uiSearchJSON)
 }
 
@@ -73,13 +79,16 @@ func loadUICatalog() ([]uicatalog.Entry, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	if _, err := os.Stat(uiRepo); err != nil {
 		return nil, fmt.Errorf("catalog unreachable at %s: %w", uiRepo, err)
 	}
+
 	entries, err := uicatalog.List(uiRepo)
 	if err != nil {
 		return nil, fmt.Errorf("catalog unreachable at %s: %w", uiRepo, err)
 	}
+
 	return entries, nil
 }
 
@@ -87,19 +96,26 @@ func printUIEntries(cmd *cobra.Command, entries []uicatalog.Entry, asJSON bool) 
 	if asJSON {
 		enc := json.NewEncoder(cmd.OutOrStdout())
 		enc.SetIndent("", "  ")
+
 		return enc.Encode(entries)
 	}
+
 	for _, entry := range entries {
 		covers := strings.Join(entry.Covers, ", ")
 		if covers == "" {
 			covers = "(no covers print)"
 		}
+
 		gap := strings.Join(entry.DoesNotCover, ", ")
 		if gap == "" {
 			gap = "-"
 		}
-		fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tcovers: %s\tgap: %s\n",
-			entry.Path, entry.Name, covers, gap)
+
+		if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\tcovers: %s\tgap: %s\n",
+			entry.Path, entry.Name, covers, gap); err != nil {
+			return err
+		}
 	}
+
 	return nil
 }

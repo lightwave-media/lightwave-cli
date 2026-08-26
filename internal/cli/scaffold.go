@@ -197,6 +197,7 @@ func runUIComponent(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+
 	if _, err := os.Stat(uiRepo); err != nil {
 		return fmt.Errorf("lightwave-ui unreachable at %s: %w", uiRepo, err)
 	}
@@ -229,24 +230,30 @@ func refuseAppLocalDuplicate(uiRepo, out, name string) error {
 	if err != nil {
 		return err
 	}
+
 	outAbs, err := filepath.Abs(out)
 	if err != nil {
 		return err
 	}
+
 	sep := string(os.PathSeparator)
+
 	inUI := outAbs == uiAbs || strings.HasPrefix(outAbs, uiAbs+sep)
 	if inUI {
 		return nil
 	}
+
 	entries, err := uicatalog.List(uiRepo)
 	if err != nil {
 		return fmt.Errorf("catalog unreachable at %s: %w", uiRepo, err)
 	}
+
 	if dup := uicatalog.Duplicate(entries, name); dup != nil {
 		return fmt.Errorf(
 			"refusing app-local duplicate of %s (%s); reuse that variant or register a new one in lightwave-ui",
 			dup.Name, dup.Path,
 		)
 	}
+
 	return nil
 }
