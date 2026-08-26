@@ -182,7 +182,7 @@ func hooksSyncHandler(ctx context.Context, _ []string, flags map[string]any) err
 	repos := discoverRepos(hooksWorkspaceRoot())
 	if len(repos) == 0 {
 		fmt.Println(color.YellowString("no LightWave repos with .pre-commit-config.yaml found"))
-		return nil
+		return hooksDoctorResultError(0, 0)
 	}
 
 	dry := flagBool(flags, "dry-run")

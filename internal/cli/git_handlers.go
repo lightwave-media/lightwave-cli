@@ -258,13 +258,17 @@ func auditRemoteBranchProtection(ctx context.Context, workspaceRoot string) ([]b
 	for _, repo := range stamp.Example.Repos {
 		actual, fetchErr := fetchRequiredChecks(ctx, stamp.Example.Organization, repo.Repo)
 		if fetchErr != nil {
-			results = append(results, branchProtectionDiff{
-				Repo:     repo.Repo,
-				Expected: sortedUnique(repo.RequiredChecks),
-				Status:   "unverified",
-				Detail: "Could not verify live required checks: " + fetchErr.Error() +
-					". Restore authentication and rerun; do not assume an unverified boundary is healthy.",
-			})
+			if strings.Contains(fetchErr.Error(), "HTTP 404") {
+				results = append(results, compareRequiredChecks(repo.Repo, repo.RequiredChecks, nil))
+			} else {
+				results = append(results, branchProtectionDiff{
+					Repo:     repo.Repo,
+					Expected: sortedUnique(repo.RequiredChecks),
+					Status:   "unverified",
+					Detail: "Could not verify live required checks: " + fetchErr.Error() +
+						". Restore authentication and rerun; do not assume an unverified boundary is healthy.",
+				})
+			}
 
 			continue
 		}
