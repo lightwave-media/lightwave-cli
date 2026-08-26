@@ -1,153 +1,50 @@
+# Release — lightwave-cli
+# Thin caller for the org release plane (policy/governance/release_pipeline.yaml
+# in lightwave-core). The tag IS the version. Everything after the trigger
+# happens in the plane; anything added to this file beyond the caller is drift
+# against the contract.
+#
+# Release: git tag vX.Y.Z && git push origin vX.Y.Z
+# (or `lw release tag` once #315 ships it)
+#
+# The plane's go-binary type runs GoReleaser against this repo's
+# .goreleaser.yaml (release.mode keep-existing — release-core creates the
+# Release with git-cliff notes, GoReleaser attaches artifacts), mints the
+# homebrew-tap push token from the TAP_APP_* secrets, and uploads darwin
+# binaries for sign-macos.yml (dormant until the MACOS_* secrets are
+# provisioned — see docs/release-notarization.md).
+
 name: release
 
-# Canonical Lightwave release workflow — one .github/workflows/release.yml per repo.
-#
-# Nightly release train (Phase 5E):
-#   - Day: feature PRs merge to main; CI runs; the Release PR does NOT refresh.
-#   - Night (07:00 UTC): scheduled release-please opens/updates the Release PR
-#     accumulating the day's conventional commits.
-#   - v_release-engineer + v_cto review and merge the Release PR.
-#   - On Release PR merge (squash → chore(main): release X.Y.Z): release-please
-#     tags vX.Y.Z, cuts a GitHub Release, and the `release` job publishes via
-#     GoReleaser (.goreleaser.yaml sets `release.mode: keep-existing`).
-#
-# Migrated from continuous release-please (every push to main). Developers no
-# longer `git tag` by hand — merge the Release PR instead. GITHUB_TOKEN-created
-# tags do not re-trigger workflows, so GoReleaser runs in-line on release_created.
 on:
-  schedule:
-    # 07:00 UTC ≈ 11pm PT / 2am ET — nightly Release PR prep
-    - cron: "0 7 * * *"
   push:
-    branches: [main]
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
-      mode:
-        description: "prepare = refresh Release PR; publish = GoReleaser for an existing tag"
-        required: true
-        type: choice
-        options:
-          - prepare
-          - publish
-      tag:
-        description: "Tag for publish mode (e.g. v3.4.0)"
-        required: false
+      dry_run:
+        description: "Run the full pipeline for the current ref but skip publish"
+        type: boolean
+        default: true
 
-# Serialize back-to-back runs; don't cancel a release mid-publish.
+# One release at a time; never cancel a publish mid-flight.
 concurrency:
-  group: release
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
-# Least privilege: deny by default at the workflow level; each job opts in.
 permissions: {}
 
 jobs:
-  release-please:
-    # Intraday feature merges must NOT refresh the Release PR. Only:
-    #   - nightly cron / workflow_dispatch prepare
-    #   - Release PR squash-merge (chore(main): release …)
-    if: |
-      github.event_name == 'schedule' ||
-      (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'prepare') ||
-      (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore(main): release'))
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-    outputs:
-      release_created: ${{ steps.rp.outputs.release_created }}
-      tag_name: ${{ steps.rp.outputs.tag_name }}
-    steps:
-      - uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
-        id: rp
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          manifest-file: .release-manifest.json
-
   release:
-    needs: release-please
-    if: |
-      always() && (
-        (github.event_name == 'workflow_dispatch' && github.event.inputs.mode == 'publish') ||
-        (needs.release-please.result == 'success' && github.event_name == 'push' && needs.release-please.outputs.release_created == 'true')
-      )
-    runs-on: ubuntu-latest
+    # Pinned by SHA — determinism requires the same tag re-run the same
+    # pipeline bytes. Bump SHA + comment together when adopting a new plane
+    # release.
+    uses: lightwave-media/pipelines-workflows/.github/workflows/release-go-binary.yml@0e10d20b6964383fc5507d9d0d3ea6f778e9939a # v1.2.2
     permissions:
       contents: write
-    steps:
-      - name: Resolve tag
-        id: tag
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -z "${{ github.event.inputs.tag }}" ]; then
-              echo "tag input required for publish mode" >&2
-              exit 1
-            fi
-            echo "name=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "name=${{ needs.release-please.outputs.tag_name }}" >> "$GITHUB_OUTPUT"
-          fi
-
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        with:
-          fetch-depth: 0
-          ref: ${{ steps.tag.outputs.name }}
-
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
-        with:
-          go-version-file: go.mod
-
-      # Mint a short-lived installation token for the lightwave-tap-publisher
-      # GitHub App, scoped to just homebrew-tap. Token auto-rotates per run —
-      # nothing to renew. Provision TAP_APP_ID + TAP_APP_PRIVATE_KEY once:
-      #   mise run release-setup-tap-app
-      - name: Mint tap-push token
-        id: tap-token
-        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
-        with:
-          app-id: ${{ secrets.TAP_APP_ID }}
-          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
-          owner: lightwave-media
-          repositories: homebrew-tap
-
-      - uses: goreleaser/goreleaser-action@5daf1e915a5f0af01ddbcd89a43b8061ff4f1a89 # v7
-        with:
-          version: "v2.14.3"
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          HOMEBREW_TAP_TOKEN: ${{ steps.tap-token.outputs.token }}
-
-      - name: Upload darwin binaries for notarization
-        # Required input for the sign-macos workflow (when activated).
-        # Leaving the upload active even when notarization is disabled
-        # is harmless — the artifacts expire in 7 days.
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: lw_darwin_amd64
-          path: dist/lw_darwin_amd64_v1/lw
-          retention-days: 7
-          if-no-files-found: warn
-
-      - name: Upload darwin/arm64 binary for notarization
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: lw_darwin_arm64
-          path: dist/lw_darwin_arm64_v8.0/lw
-          retention-days: 7
-          if-no-files-found: warn
-
-  # ---------------------------------------------------------------------
-  # macOS notarization (dormant — activate per docs/release-notarization.md)
-  #
-  # Uncomment the block below + provision the five MACOS_* repo secrets,
-  # and releases will publish notarized darwin binaries that don't trigger
-  # the syspolicyd reputation-check hang documented in CLAUDE.md (the one
-  # that breaks `lw` invocations from project hooks on fresh macOS installs).
-  # ---------------------------------------------------------------------
-  # sign-macos:
-  #   needs: [release]
-  #   uses: ./.github/workflows/sign-macos.yml
-  #   secrets: inherit
-  #   with:
-  #     tag: ${{ needs.release-please.outputs.tag_name }}
+      # shipped-in notifications (feedback_loop, release_pipeline.yaml):
+      # the plane comments "shipped in <tag>" on the release range's PRs.
+      issues: write
+      pull-requests: write
+    with:
+      dry_run: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run || false }}
+    secrets: inherit
