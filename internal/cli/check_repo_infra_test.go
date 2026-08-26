@@ -1,6 +1,7 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -102,7 +103,27 @@ func TestCheckRepoInfra_SchemaVersionPrinted(t *testing.T) {
 
 	out, err := testutil.RunHandler(t, "check.repo-infra", nil, map[string]any{"repo": dir})
 	require.NoError(t, err)
-	assert.Contains(t, out, "v1.3.0")
+	assert.Regexp(t, `schema v\d+\.\d+\.\d+`, out)
+}
+
+//nolint:paralleltest
+func TestCheckRepoInfra_JSONPreservesFailureStatus(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+	require.NoError(t, os.Remove(filepath.Join(dir, "CLAUDE.md")))
+
+	out, err := testutil.RunHandler(t, "check.repo-infra", nil, map[string]any{"repo": dir, "json": true})
+	require.ErrorContains(t, err, "restore the stamped structure")
+
+	var report struct {
+		Violations []struct {
+			Missing string `json:"missing"`
+		} `json:"violations"`
+		HardViolations int `json:"hard_violations"`
+	}
+	require.NoError(t, json.Unmarshal([]byte(out), &report), "failing JSON must remain parseable")
+	assert.Equal(t, 1, report.HardViolations)
+	assert.Equal(t, "CLAUDE.md", report.Violations[0].Missing)
 }
 
 //nolint:paralleltest
@@ -138,6 +159,21 @@ func TestCheckRepoInfra_CINodeCleanWhenDelegates(t *testing.T) {
 	assert.NotContains(t, out, "ci-node")
 }
 
+//nolint:paralleltest
+func TestCheckRepoInfra_WarnsWhenCloudCIDoesNotInvokeLocalGraph(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+	ciPath := filepath.Join(dir, ".github", "workflows", "ci.yml")
+	require.NoError(t, os.WriteFile(ciPath, []byte(
+		"jobs:\n  ci:\n    steps:\n      - run: echo duplicated-checks\n",
+	), 0o644))
+
+	out, err := testutil.RunHandler(t, "check.repo-infra", nil, map[string]any{"repo": dir})
+	require.NoError(t, err, "parity starts advisory under the ratchet policy")
+	assert.Contains(t, out, "ci-parity")
+	assert.Contains(t, out, "mise run ci")
+}
+
 // scaffoldConformantRepo writes the minimum required files/dirs per repo-infra.yaml.
 func scaffoldConformantRepo(t *testing.T, dir string) {
 	t.Helper()
@@ -154,4 +190,11 @@ func scaffoldConformantRepo(t *testing.T, dir string) {
 	for _, d := range []string{".github", "dev", "docs", "src", "tests"} {
 		require.NoError(t, os.MkdirAll(filepath.Join(dir, d), 0o755))
 	}
+	workflowDir := filepath.Join(dir, ".github", "workflows")
+	require.NoError(t, os.MkdirAll(workflowDir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(workflowDir, "ci.yml"),
+		[]byte("jobs:\n  ci:\n    steps:\n      - run: mise run ci\n"),
+		0o644,
+	))
 }

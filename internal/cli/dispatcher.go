@@ -258,6 +258,7 @@ var booleanFlags = map[string]bool{
 	"off":             true,
 	"list":            true,
 	"release-pr":      true,
+	"remote":          true,
 }
 
 func isBooleanFlag(name string) bool {
@@ -268,13 +269,14 @@ func isBooleanFlag(name string) bool {
 // (StringSliceVar) rather than scalar strings. Same shape as booleanFlags —
 // table-driven because the YAML schema does not encode flag types yet.
 var stringArrayFlags = map[string]bool{
-	"doc":        true,
-	"attach":     true,
-	"label":      true,
-	"blocks":     true,
-	"blocked-by": true,
-	"refs":       true,
-	"closes":     true,
+	"doc":           true,
+	"attach":        true,
+	"label":         true,
+	"affected-path": true,
+	"blocks":        true,
+	"blocked-by":    true,
+	"refs":          true,
+	"closes":        true,
 }
 
 func isStringArrayFlag(name string) bool {

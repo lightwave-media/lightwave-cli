@@ -63,6 +63,64 @@ func hasViolationCode(vs []gitViolation, code string) bool {
 	return false
 }
 
+func TestCompareRequiredChecksDetectsDrift(t *testing.T) {
+	t.Parallel()
+
+	result := compareRequiredChecks(
+		"lightwave-example",
+		[]string{"ci / CI (mise)", "review"},
+		[]string{"ci / CI (mise)", "legacy"},
+	)
+
+	if result.Status != "drift" {
+		t.Fatalf("expected drift, got %+v", result)
+	}
+	if !containsString(result.Missing, "review") {
+		t.Fatalf("expected missing review check, got %+v", result)
+	}
+	if !containsString(result.Unexpected, "legacy") {
+		t.Fatalf("expected unexpected legacy check, got %+v", result)
+	}
+	if !strings.Contains(result.Detail, "do not remove") {
+		t.Fatalf("drift guidance must reject circumvention, got %q", result.Detail)
+	}
+}
+
+func TestCompareRequiredChecksRejectsEmptyAgreementAsHealthy(t *testing.T) {
+	t.Parallel()
+
+	result := compareRequiredChecks("lightwave-platform", nil, nil)
+
+	if result.Status != "gap" {
+		t.Fatalf("empty required checks must be an assurance gap, got %+v", result)
+	}
+	if !strings.Contains(result.Detail, "report and block nothing") {
+		t.Fatalf("gap guidance must explain the merge-boundary risk, got %q", result.Detail)
+	}
+}
+
+func TestMachineReadableAuditErrorsRemainBlocking(t *testing.T) {
+	t.Parallel()
+
+	if err := gitAuditResultError(1); err == nil || !strings.Contains(err.Error(), "do not bypass") {
+		t.Fatalf("git audit error must be blocking and actionable, got %v", err)
+	}
+	if err := gitDoctorResultError("/repo", 1); err == nil || !strings.Contains(err.Error(), "blanket bypass") {
+		t.Fatalf("git doctor error must be blocking and actionable, got %v", err)
+	}
+}
+
+func TestAssuranceFlagShapes(t *testing.T) {
+	t.Parallel()
+
+	if !isBooleanFlag("remote") {
+		t.Fatal("--remote must be boolean or the live audit silently stays disabled")
+	}
+	if !isStringArrayFlag("affected-path") {
+		t.Fatal("--affected-path must preserve repeated failure evidence")
+	}
+}
+
 //nolint:paralleltest // shared fixture mutation via os.Chtimes
 func TestWorktreePolicyViolations(t *testing.T) {
 	tmp := t.TempDir()
