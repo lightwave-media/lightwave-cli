@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "lightwave": {
+      "type": "stdio",
+      "command": "lw",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
