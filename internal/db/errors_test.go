@@ -34,8 +34,8 @@ func TestWrapConnectError_NetOpErrFormatted(t *testing.T) {
 	msg := got.Error()
 	for _, want := range []string{
 		"cannot connect to platform database at 127.0.0.1:5433",
-		"Run `lw dev start`",
-		"brew services start postgresql@14",
+		"brew services start postgresql@17",
+		"run `lw dev start`",
 		"set LW_DB_URL",
 		"Original error:",
 	} {

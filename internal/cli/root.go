@@ -213,7 +213,7 @@ var configSetCmd = &cobra.Command{
 Settable keys: %v
 
 Examples:
-  lw config set database.url postgres://lw@localhost:5433/lightwave_platform
+  lw config set database.url postgres://lw@localhost:5432/lightwave_platform
   lw config set database.host 127.0.0.1
   lw config set tenant lwm_core`, config.SettableKeys()),
 	Args: cobra.ExactArgs(2),

@@ -28,8 +28,8 @@ func WrapConnectError(err error, host string, port int) error {
 	return fmt.Errorf(`%w: cannot connect to platform database at %s:%d.
 
 Likely fix:
-  1. Run `+"`lw dev start`"+` to bring up the Docker stack
-  2. OR start the local mirror: `+"`brew services start postgresql@14`"+`
+  1. Start local Postgres 17: `+"`brew services start postgresql@17`"+` (CORE-0049 §5)
+  2. OR run `+"`lw dev start`"+` to bring up the Docker stack
   3. OR set LW_DB_URL to point at a different DSN
 
 Original error: %w`, ErrDBUnavailable, host, port, err)
