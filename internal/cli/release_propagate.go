@@ -126,12 +126,43 @@ func releasePropagateHandler(ctx context.Context, _ []string, flags map[string]a
 	return nil
 }
 
+// worktreeIsDirty reports whether the checkout has staged, unstaged, or
+// untracked changes. Untracked counts: uncommitted work is uncommitted work
+// regardless of whether git is tracking it yet, and it is the untracked case
+// (a whole new package sitting in a worktree) that is easiest to destroy.
+func worktreeIsDirty(ctx context.Context, dir string) (bool, error) {
+	out, err := gitIn(ctx, dir, "status", "--porcelain")
+	if err != nil {
+		return false, err
+	}
+
+	return strings.TrimSpace(out) != "", nil
+}
+
 func propagateWorktree(ctx context.Context, dir, branch, mainSHA string, apply bool) propagateWorktreeResult {
 	res := propagateWorktreeResult{
 		Path:      dir,
 		Branch:    branch,
 		SessionID: detectSessionID(dir),
 		Detail:    "already current",
+	}
+
+	// A dirty worktree is skipped, never rebased. git would refuse anyway, but
+	// the refusal surfaced here as "rebase conflict — resolve manually", sending
+	// whoever read it hunting for conflicts that do not exist. The lightwave-git
+	// doctrine is also explicit: never switch or rebase a dirty tree. Checked
+	// before the dry-run exit so a preview reports the skip it would take —
+	// there is a worktree in this repo carrying ~3.2k uncommitted lines today.
+	if dirty, err := worktreeIsDirty(ctx, dir); err != nil {
+		res.Blocked = true
+		res.Detail = "could not read worktree status: " + err.Error()
+
+		return res
+	} else if dirty {
+		res.Blocked = true
+		res.Detail = "skipped — uncommitted changes; commit or stash, then re-run"
+
+		return res
 	}
 
 	if !apply {
