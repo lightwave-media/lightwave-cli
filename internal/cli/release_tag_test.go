@@ -138,3 +138,77 @@ func TestTagExists(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, missing, "a prefix match must not count as the tag existing")
 }
+
+// newClonedRepo builds a repo with a real `origin` remote, so the tag-on-main
+// guard runs against actual `git ls-remote` output rather than a stub. Returns
+// the working clone and the upstream path.
+func newClonedRepo(t *testing.T, ctx context.Context) (clone, upstream string) { //nolint:revive // ctx after t is the testing idiom here
+	t.Helper()
+
+	upstream = t.TempDir()
+	gitInRepo(t, ctx, upstream, "init", "-q", "-b", "main")
+	require.NoError(t, os.WriteFile(filepath.Join(upstream, "seed.txt"), []byte("seed"), 0o644))
+	gitInRepo(t, ctx, upstream, "add", "-A")
+	gitInRepo(t, ctx, upstream, "commit", "-qm", "chore: seed")
+
+	parent := t.TempDir()
+	clone = filepath.Join(parent, "clone")
+	gitInRepo(t, ctx, parent, "clone", "-q", upstream, clone)
+
+	return clone, upstream
+}
+
+// TestVerifyHeadIsOriginMainAcceptsMatchingHead pins that the guard compares
+// SHAs, not branch names: a branch sitting exactly on origin/main's tip releases
+// identical content, so refusing it would be noise.
+func TestVerifyHeadIsOriginMainAcceptsMatchingHead(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	repo, _ := newClonedRepo(t, ctx)
+
+	require.NoError(t, verifyHeadIsOriginMain(ctx, repo),
+		"HEAD equals origin/main, so tagging here is safe")
+
+	gitInRepo(t, ctx, repo, "checkout", "-q", "-b", "some-branch")
+	assert.NoError(t, verifyHeadIsOriginMain(ctx, repo),
+		"a branch whose tip IS origin/main must be accepted — the guard is about "+
+			"the commit being released, not the branch name it is reached by")
+}
+
+// TestVerifyHeadIsOriginMainRefusesAheadOfOrigin pins the case the plane rejects
+// server-side. Without the guard the tag is created and pushed, the pipeline
+// then refuses it, and a published tag with no release is left behind for
+// someone to delete by hand.
+func TestVerifyHeadIsOriginMainRefusesAheadOfOrigin(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	repo, _ := newClonedRepo(t, ctx)
+
+	require.NoError(t, os.WriteFile(filepath.Join(repo, "local.txt"), []byte("local"), 0o644))
+	gitInRepo(t, ctx, repo, "add", "-A")
+	gitInRepo(t, ctx, repo, "commit", "-qm", "feat: unpushed work")
+
+	err := verifyHeadIsOriginMain(ctx, repo)
+	require.Error(t, err, "an unpushed commit must not be taggable")
+	assert.Contains(t, err.Error(), "is not origin/main")
+}
+
+// TestVerifyHeadIsOriginMainRefusesBehindOrigin pins the quieter mistake:
+// tagging a stale checkout releases older code under a newer version.
+func TestVerifyHeadIsOriginMainRefusesBehindOrigin(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	repo, upstream := newClonedRepo(t, ctx)
+
+	// Move origin/main forward, leaving the clone's HEAD behind.
+	require.NoError(t, os.WriteFile(filepath.Join(upstream, "newer.txt"), []byte("newer"), 0o644))
+	gitInRepo(t, ctx, upstream, "add", "-A")
+	gitInRepo(t, ctx, upstream, "commit", "-qm", "feat: newer upstream work")
+
+	err := verifyHeadIsOriginMain(ctx, repo)
+	require.Error(t, err, "a stale checkout must not be taggable")
+	assert.Contains(t, err.Error(), "is not origin/main")
+}

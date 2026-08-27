@@ -61,9 +61,22 @@ func releaseTagHandler(ctx context.Context, _ []string, flags map[string]any) er
 
 	printTagPlan(tag, last, next, bump, module)
 
+	// Checked before the dry-run exit on purpose: a dry run whose only job is to
+	// tell you what a real run would do must report the thing that would stop it.
+	guardErr := verifyHeadIsOriginMain(ctx, repo)
+
 	if flagBool(flags, "dry-run") {
+		if guardErr != nil {
+			fmt.Printf("%s %v\n", color.RedString("would refuse:"), guardErr)
+		}
+
 		fmt.Println(color.YellowString("dry-run: no tag created, nothing pushed"))
+
 		return nil
+	}
+
+	if guardErr != nil {
+		return guardErr
 	}
 
 	if !flagBool(flags, "yes") && !promptYesNo(fmt.Sprintf("Create and push %s?", tag)) {
@@ -72,6 +85,53 @@ func releaseTagHandler(ctx context.Context, _ []string, flags map[string]any) er
 	}
 
 	return createAndPushTag(ctx, repo, tag, next)
+}
+
+// verifyHeadIsOriginMain refuses to tag anything that is not exactly
+// origin/main's tip.
+//
+// The plane enforces tag-on-main server-side (release-core.yml), so without this
+// the local command happily creates and pushes a tag that the pipeline then
+// rejects — leaving a published tag behind with no release, which someone has to
+// delete by hand. Failing here costs a second; failing there costs a cleanup.
+//
+// It also catches the quieter mistake: tagging a stale local main that is behind
+// origin, which would release older code under a newer version.
+func verifyHeadIsOriginMain(ctx context.Context, repo string) error {
+	head, err := gitOutput(ctx, repo, "rev-parse", "HEAD")
+	if err != nil {
+		return fmt.Errorf("git rev-parse HEAD: %w", err)
+	}
+
+	// Ask the remote rather than trusting the local ref, which may be stale.
+	lsRemote, err := gitOutput(ctx, repo, "ls-remote", "origin", "refs/heads/main")
+	if err != nil {
+		return fmt.Errorf("git ls-remote origin refs/heads/main: %w", err)
+	}
+
+	originMain, _, _ := strings.Cut(strings.TrimSpace(lsRemote), "\t")
+	if originMain == "" {
+		return errors.New("could not resolve origin/main — is the remote reachable?")
+	}
+
+	if head != originMain {
+		return fmt.Errorf(
+			"HEAD (%s) is not origin/main (%s) — the release plane only accepts tags on main; "+
+				"push or fast-forward first",
+			shortSHA(head), shortSHA(originMain),
+		)
+	}
+
+	return nil
+}
+
+func shortSHA(sha string) string {
+	const n = 7
+	if len(sha) <= n {
+		return sha
+	}
+
+	return sha[:n]
 }
 
 // resolveNextTagVersion returns the version to tag, the bump that produced it,
