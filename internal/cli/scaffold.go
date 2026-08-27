@@ -10,6 +10,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/blueprint"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/lightwave-media/lightwave-cli/internal/uicatalog"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 )
@@ -138,7 +139,11 @@ func runScaffoldList() error {
 
 // --- `lw ui component <category>/<Name>` — sugar over scaffold react-component.
 
-var uiComponentOutput string
+var (
+	uiComponentOutput string
+	uiComponentDryRun bool
+	uiComponentForce  bool
+)
 
 var uiCmd = &cobra.Command{
 	Use:   "ui",
@@ -161,8 +166,14 @@ Example:
 }
 
 func init() {
-	uiComponentCmd.Flags().StringVarP(&uiComponentOutput, "output-folder", "o", "", "Output directory (default: lightwave-ui components dir)")
+	uiComponentCmd.Flags().StringVarP(&uiComponentOutput, "output-folder", "o", "", "Output directory (default: <lightwave_root>/lightwave-ui/src/components)")
+	uiComponentCmd.Flags().BoolVar(&uiComponentDryRun, "dry-run", false, "Preview files that would be written; do not write")
+	uiComponentCmd.Flags().BoolVar(&uiComponentForce, "force", false, "Overwrite existing files (default: refuse on collision)")
 	uiCmd.AddCommand(uiComponentCmd)
+}
+
+func defaultUIComponentsDir(root string) string {
+	return filepath.Join(root, "lightwave-ui", "src", "components")
 }
 
 func runUIComponent(cmd *cobra.Command, args []string) error {
@@ -182,6 +193,15 @@ func runUIComponent(cmd *cobra.Command, args []string) error {
 
 	root := cfg.Paths.LightwaveRoot
 
+	uiRepo, err := uiRepoPath()
+	if err != nil {
+		return err
+	}
+
+	if _, err := os.Stat(uiRepo); err != nil {
+		return fmt.Errorf("lightwave-ui unreachable at %s: %w", uiRepo, err)
+	}
+
 	path, err := blueprint.Resolve(blueprint.BlueprintsDir(root), "react-component")
 	if err != nil {
 		return err
@@ -189,12 +209,51 @@ func runUIComponent(cmd *cobra.Command, args []string) error {
 
 	out := uiComponentOutput
 	if out == "" {
-		out = filepath.Join(root, "packages", "lightwave-ui", "src", "components")
+		out = defaultUIComponentsDir(root)
+	}
+
+	if err := refuseAppLocalDuplicate(uiRepo, out, name); err != nil {
+		return err
 	}
 
 	return blueprint.Render(cmd.Context(), &blueprint.RenderOptions{
 		BlueprintPath: path,
 		OutputFolder:  out,
 		Vars:          []string{"category=" + category, "component_name=" + name},
+		Force:         uiComponentForce,
+		DryRun:        uiComponentDryRun,
 	})
+}
+
+func refuseAppLocalDuplicate(uiRepo, out, name string) error {
+	uiAbs, err := filepath.Abs(uiRepo)
+	if err != nil {
+		return err
+	}
+
+	outAbs, err := filepath.Abs(out)
+	if err != nil {
+		return err
+	}
+
+	sep := string(os.PathSeparator)
+
+	inUI := outAbs == uiAbs || strings.HasPrefix(outAbs, uiAbs+sep)
+	if inUI {
+		return nil
+	}
+
+	entries, err := uicatalog.List(uiRepo)
+	if err != nil {
+		return fmt.Errorf("catalog unreachable at %s: %w", uiRepo, err)
+	}
+
+	if dup := uicatalog.Duplicate(entries, name); dup != nil {
+		return fmt.Errorf(
+			"refusing app-local duplicate of %s (%s); reuse that variant or register a new one in lightwave-ui",
+			dup.Name, dup.Path,
+		)
+	}
+
+	return nil
 }

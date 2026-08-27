@@ -72,6 +72,10 @@ type PathsConfig struct {
 	Platform      string `mapstructure:"platform"`
 }
 
+// defaultPostgresPort is PostgreSQL's standard port. Local brew postgresql@17
+// and the compose stack (5432:5432) both serve it (CORE-0049 §5).
+const defaultPostgresPort = 5432
+
 var cfg *Config
 
 // Load reads configuration from file and environment
@@ -153,9 +157,14 @@ func setDefaults() {
 	viper.SetDefault("environment", "local")
 	viper.SetDefault("tenant", "lwm_core")
 
-	// Database defaults (local Docker)
+	// Database defaults — local Postgres 17 on the standard port (CORE-0049
+	// §5: one PG major across local, compose and RDS). The old 5433 default
+	// pointed at a compose mapping that no longer exists; nothing listened
+	// there, which surfaced as "platform database unavailable" on every data
+	// verb. The compose stack maps 5432:5432; a nonstandard local port is
+	// opt-in via LW_DB_PORT.
 	viper.SetDefault("database.host", "localhost")
-	viper.SetDefault("database.port", 5433)
+	viper.SetDefault("database.port", defaultPostgresPort)
 	viper.SetDefault("database.name", "lightwave_platform")
 	viper.SetDefault("database.user", "postgres")
 	viper.SetDefault("database.password", "postgres")
