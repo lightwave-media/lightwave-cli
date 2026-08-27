@@ -36,15 +36,15 @@ changelog:
       - "^chore\\(deps\\):"
 
 release:
-  # release-please creates the GitHub Release (with conventional-commit notes);
-  # GoReleaser only uploads build artifacts to it. keep-existing => GoReleaser
-  # won't recreate or overwrite the release-please release body.
+  # release-core (the release plane) creates the GitHub Release with git-cliff
+  # notes; GoReleaser only uploads build artifacts to it. keep-existing =>
+  # GoReleaser won't recreate or overwrite the plane's release body.
   mode: keep-existing
   # GitHub release body header — applies only when GoReleaser itself creates the
-  # release (e.g. a manual `goreleaser release` run), not the release-please path.
+  # release (e.g. a manual `goreleaser release` run), not the plane path.
   header: |
-    See [`CHANGELOG.md`](https://github.com/{{ .Env.GITHUB_REPOSITORY }}/blob/{{ .Tag }}/CHANGELOG.md)
-    for the human-curated release notes. The commit log below is
+    See the [Releases page](https://github.com/{{ .Env.GITHUB_REPOSITORY }}/releases)
+    for the canonical release notes. The commit log below is
     auto-generated from conventional commits.
 
 brews:

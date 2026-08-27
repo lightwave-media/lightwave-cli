@@ -17,9 +17,16 @@ if [ "${LW_SKIP_PRE_PUSH:-0}" = "1" ]; then
   }
   BYPASS_LOG="${HOME}/.lightwave/observability/bypass-events.jsonl"
   mkdir -p "$(dirname "$BYPASS_LOG")"
+  # Repo name from the origin remote — worktree directory names are arbitrary.
+  REPO_NAME=$(git remote get-url origin 2>/dev/null || true)
+  REPO_NAME=${REPO_NAME%/}
+  REPO_NAME=${REPO_NAME%.git}
+  REPO_NAME=${REPO_NAME##*/}
+  REPO_NAME=${REPO_NAME##*:}
+  [ -n "$REPO_NAME" ] || REPO_NAME=$(basename "$ROOT")
   jq -nc \
     --arg detected_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-    --arg repo "$(basename "$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")")" \
+    --arg repo "$REPO_NAME" \
     --arg source "pre-push" \
     --arg reason "$LW_SKIP_PRE_PUSH_REASON" \
     '{detected_at:$detected_at,repo:$repo,source:$source,bypass:"LW_SKIP_PRE_PUSH",reason:$reason}' \
