@@ -124,6 +124,7 @@ func init() {
 	rootCmd.AddCommand(researchCmd)
 	rootCmd.AddCommand(scaffoldCmd)
 	rootCmd.AddCommand(uiCmd)
+	rootCmd.AddCommand(runbookCmd)
 }
 
 // versionCmd shows version info

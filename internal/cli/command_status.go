@@ -40,6 +40,7 @@ var VerifiedCommands = map[string]bool{
 	"issue":    true, // compliant GitHub issue filing — test backing in internal/github/issue_create_test.go
 	"self":     true, // dev lw rebuild — test backing in self_handlers_test.go
 	"mcp":      true, // stdio MCP server — test backing in internal/mcp/server_test.go + mcp_handlers_test.go
+	"runbook":  true, // agent runbook kernel — test backing in internal/runbook/*_test.go + runbook_test.go
 }
 
 // DecommissionedCommands are taken OFFLINE pending end-to-end verification.
