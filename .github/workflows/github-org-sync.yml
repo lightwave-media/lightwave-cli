@@ -22,10 +22,37 @@ jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
+      # lw dispatches `scrum` from lightwave-core's commands.yaml, so the schema
+      # has to be on the runner. The default GITHUB_TOKEN cannot read the private
+      # core, which is why this job used to skip the reconcile and still report
+      # success. Mint an installation token from the existing tap-publisher App
+      # instead — the same TAP_APP_* secrets release.yml and schema-drift-check
+      # already use. No new App, no new secret material.
+      - name: Mint lightwave-core read token
+        id: core-token
+        # Same SHA pinned by the release plane and the schema-drift gate — one
+        # App-token pin across the org, bumped together.
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.TAP_APP_ID }}
+          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
+          owner: lightwave-media
+          repositories: lightwave-core
+
       - name: Checkout lightwave-cli
         uses: actions/checkout@v4
+        with:
+          path: lightwave-cli
+
+      - name: Checkout lightwave-core (sibling for the CLI command schema)
+        uses: actions/checkout@v4
+        with:
+          repository: lightwave-media/lightwave-core
+          path: lightwave-core
+          token: ${{ steps.core-token.outputs.token }}
 
       - name: Bootstrap org GitHub assets
+        working-directory: lightwave-cli
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           ORG_LOGIN: lightwave-media
@@ -34,16 +61,24 @@ jobs:
           bash scripts/bootstrap-github-org.sh
 
       - name: Build lw and reconcile project board
+        working-directory: lightwave-cli
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # The variable is LW_LIGHTWAVE_ROOT — NOT the dotted-path derivation
+          # LW_PATHS_LIGHTWAVE_ROOT, which nothing binds. With the wrong name lw
+          # falls back to ~/dev, the schema fails to load, and `scrum` becomes an
+          # unknown command. See internal/config/config.go's BindEnv.
+          LW_LIGHTWAVE_ROOT: ${{ github.workspace }}
         run: |
+          set -euo pipefail
           go build -o /tmp/lw ./cmd/lw
-          SCHEMA="$HOME/dev/lightwave-core/src/schemas/interfaces/cli/commands.yaml"
+
+          SCHEMA="${LW_LIGHTWAVE_ROOT}/lightwave-core/src/schemas/interfaces/cli/commands.yaml"
           if [[ ! -f "$SCHEMA" ]]; then
-            echo "warn: $SCHEMA missing on runner (GITHUB_TOKEN cannot checkout private lightwave-core)."
-            echo "warn: skipping lw scrum sync; bootstrap labels/milestones already ran."
-            exit 0
+            echo "::error::CLI command schema missing at $SCHEMA — lw cannot dispatch 'scrum'."
+            exit 1
           fi
+
           ARGS=(scrum sync --json)
           if [[ -n "${{ github.event.inputs.target_repo }}" ]]; then
             ARGS+=(--repo "${{ github.event.inputs.target_repo }}")

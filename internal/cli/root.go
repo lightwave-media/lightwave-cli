@@ -62,6 +62,10 @@ func Execute() error {
 	// Trust policy: hide + disable any command not verified to work
 	// end-to-end (see command_status.go / docs/command-status.md).
 	applyDecommissions(rootCmd)
+	// Must run last: it walks the finished tree, so every command group
+	// attached above is covered, including ones added later.
+	RejectUnknownSubcommands(rootCmd)
+
 	return rootCmd.Execute()
 }
 
