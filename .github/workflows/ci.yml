@@ -38,33 +38,25 @@ jobs:
     uses: ./.github/workflows/go-mod-tidy-check.yml
     secrets: inherit
 
-  # ------------------------------------------------------------------
-  # Schema-drift gate — dormant until LIGHTWAVE_CORE_TOKEN is provisioned.
+  # Schema-drift gate — ARMED 2026-08-27 (#301).
   #
-  # The reusable workflow at .github/workflows/schema-drift-check.yml
-  # is fully written + tested; it checks out lightwave-cli + the
-  # sibling lightwave-core schema repo, builds `lw`, and runs
-  # `LW_CHECK_SCHEMA_STRICT=1 ./bin/lw check schema`. But
-  # lightwave-core is private, so the default GITHUB_TOKEN cannot
-  # check it out — the job fails with "Not Found" at the second
-  # checkout step.
+  # Fails the build when commands.yaml and the registered Go handlers
+  # disagree in either direction. It sat commented out from 2026-05-22,
+  # waiting on a LIGHTWAVE_CORE_TOKEN that was never needed: the
+  # lightwave-tap-publisher App (TAP_APP_* secrets, already used by
+  # release.yml) can read the private lightwave-core, so the reusable
+  # workflow mints an installation token itself.
   #
-  # To activate:
-  #   1. Generate a fine-grained PAT (or use a GitHub App) with
-  #      `Contents: Read` on lightwave-media/lightwave-core.
-  #   2. Add as repo secret `LIGHTWAVE_CORE_TOKEN`.
-  #   3. Edit schema-drift-check.yml to use that token in the
-  #      lightwave-core checkout step's `token:` input.
-  #   4. Uncomment the block below.
-  #
-  # Until then, schema-drift is enforced informally via the local
-  # `lw check schema` invocation and the `lw check schema --strict`
-  # behaviour added in this PR.
-  #
-  # schema-drift:
-  #   name: Schema Drift
-  #   uses: ./.github/workflows/schema-drift-check.yml
-  #   secrets: inherit
+  # Known blind spot (#337): the gate counts the handler REGISTRY, so
+  # commands wired through the legacy cobra tree are invisible to it. That
+  # is masked today because every such command lives in a domain marked
+  # `_status: in_development`, which the check excludes. It stops being
+  # masked the moment one of those domains goes active — see #337 before
+  # flipping one.
+  schema-drift:
+    name: Schema Drift
+    uses: ./.github/workflows/schema-drift-check.yml
+    secrets: inherit
 
   lint:
     name: Lint
@@ -106,7 +98,8 @@ jobs:
   gate:
     name: CI Required Gate
     if: always()
-    needs: [pre-commit, codespell, tidy-check, lint, base-test, build]
+    needs:
+      [pre-commit, codespell, tidy-check, lint, base-test, build, schema-drift]
     runs-on: ubuntu-latest
     steps:
       - name: Check upstream job results
