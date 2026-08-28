@@ -885,7 +885,7 @@ func syncSprintToGitHub(ctx context.Context, pool *pgxpool.Pool, sprint *db.Spri
 	}
 
 	results, err := github.SyncSprintTasks(
-		github.DefaultRepo,
+		github.PlatformRepo,
 		github.DefaultOrg,
 		sprintStartProject,
 		taskInfos,

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	DefaultOrg           = "lightwave-media"
+	DefaultOrg           = github.DefaultOrg
 	DefaultProjectNumber = 3
 	DefaultProjectNodeID = "PVT_kwDODlnoUM4BbDql"
 	DefaultStatusFieldID = "PVTSSF_lADODlnoUM4BbDqlzhV25Fs"
