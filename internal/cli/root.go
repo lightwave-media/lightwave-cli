@@ -128,7 +128,12 @@ func init() {
 	rootCmd.AddCommand(researchCmd)
 	rootCmd.AddCommand(scaffoldCmd)
 	rootCmd.AddCommand(uiCmd)
-	rootCmd.AddCommand(runbookCmd)
+	// runbookCmd is deliberately NOT attached here. #335 shipped the five verbs
+	// on this hardcoded tree as an interim; #338 registered their handlers, so
+	// the dispatcher now attaches the domain from the stamp — which publishes
+	// `runbook` with no `_status`. Attaching both listed the domain twice in
+	// `lw --help`. The runbook*Cmd vars stay: the handlers delegate through them
+	// for their output writers.
 }
 
 // versionCmd shows version info
