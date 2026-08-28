@@ -40,8 +40,13 @@ func TestNoDomainIsBothHandWiredAndDispatched(t *testing.T) {
 	// overlap below is measured against the full dispatcher surface rather
 	// than one already filtered by the exemption list under test.
 	dispatched := &cobra.Command{Use: "lw"}
-	if err := BuildDispatched(dispatched, map[string]bool{}); err != nil {
-		t.Skipf("dispatcher unavailable (schema not checked out?): %v", err)
+	require.NoError(t, BuildDispatched(dispatched, map[string]bool{}))
+
+	// BuildDispatched returns nil when commands.yaml is absent — it warns and
+	// attaches nothing. Without this guard the loop below would find zero
+	// domains, report no collisions, and pass green while checking nothing.
+	if len(dispatched.Commands()) == 0 {
+		t.Skip("stamp dispatched no domains (lightwave-core commands.yaml missing)")
 	}
 
 	exempt := legacyHardcodedDomains()
