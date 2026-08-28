@@ -1,6 +1,9 @@
 package git
 
-import "strings"
+import (
+	"path/filepath"
+	"strings"
+)
 
 // OriginSlug returns the "owner/repo" slug for the repository's origin remote,
 // or "" when there is no origin (or no repository at all).
@@ -21,6 +24,44 @@ func (g *Git) OriginSlug() string {
 	}
 
 	return OriginSlugFromURL(url)
+}
+
+// RepoRoot returns the absolute path of the current working tree's top level,
+// or "" when dir is not inside a repository. Inside a linked worktree this is
+// the worktree's own root, not the primary checkout's.
+func (g *Git) RepoRoot() string {
+	out, err := g.run("rev-parse", "--show-toplevel")
+	if err != nil {
+		return ""
+	}
+
+	return strings.TrimSpace(out)
+}
+
+// MainRepoRoot returns the primary checkout's top level, the same value from
+// anywhere in the repository — including from inside a linked worktree, where
+// RepoRoot would answer with the worktree instead.
+//
+// This is the one that resolves `<repo>/.worktrees` (ADR-0047 / CORE-0047):
+// worktrees hang off the primary checkout, so asking a worktree for its own root
+// yields `<worktree>/.worktrees`, which never exists. That is why
+// `lw worktree status --current` reported "not inside a worktree" from inside
+// every real worktree.
+//
+// --git-common-dir is shared by every worktree and points at the primary .git,
+// whose parent is the primary checkout.
+func (g *Git) MainRepoRoot() string {
+	out, err := g.run("rev-parse", "--path-format=absolute", "--git-common-dir")
+	if err != nil {
+		return ""
+	}
+
+	commonDir := strings.TrimSpace(out)
+	if commonDir == "" {
+		return ""
+	}
+
+	return filepath.Dir(commonDir)
 }
 
 // OriginSlugFromURL extracts "owner/repo" from a git remote URL. It is split

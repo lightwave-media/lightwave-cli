@@ -71,13 +71,54 @@ var branchPattern = regexp.MustCompile(`^(feature|fix)/[a-z0-9]+-[a-z0-9][a-z0-9
 // Helpers
 // =============================================================================
 
+const (
+	// canonicalWorktreeDir is the repo-relative mount from
+	// worktree_home_policy.yaml v1.1.0 (`canonical_root: ".worktrees"`).
+	canonicalWorktreeDir = ".worktrees"
+
+	// legacyWorktreeDir is ADR-0047's draining root: forbidden for new
+	// worktrees, still discovered so list/prune/gc can see the ones already
+	// there rather than stranding them.
+	legacyWorktreeDir = ".claude/worktrees"
+
+	hoursPerDay = 24
+)
+
+// worktreeRoot returns this repo's canonical worktree mount, <repo>/.worktrees.
+//
+// ADR-0047 (CORE-0047) settled one canonical root per repo, resolved relative to
+// the repo rather than to a fixed path under $HOME. This previously returned
+// <lightwave_root>/.worktrees — a path worktree_home_policy.yaml v1.1.0 lists in
+// `forbidden_roots`, and which the 2026-08-08 fleet audit measured at **zero**
+// adoption across 27 worktrees. The same policy names `lw worktree create` as an
+// enforcement surface, so the tool was breaking the rule it is meant to enforce.
+// See #339.
 func worktreeRoot() (string, error) {
-	cfg := config.Get()
-	if cfg == nil {
-		return "", errors.New("config not loaded")
+	repoRoot := git.NewGit("").MainRepoRoot()
+	if repoRoot == "" {
+		return "", errors.New("not inside a git repository: lw worktree is repo-scoped per ADR-0047")
 	}
 
-	return filepath.Join(cfg.Paths.LightwaveRoot, ".worktrees"), nil
+	return filepath.Join(repoRoot, canonicalWorktreeDir), nil
+}
+
+// managedWorktreeRoots are the roots lw worktree is responsible for: the
+// canonical mount, plus the legacy harness root while its worktrees drain.
+func managedWorktreeRoots(repoRoot string) []string {
+	return []string{
+		filepath.Join(repoRoot, canonicalWorktreeDir),
+		filepath.Join(repoRoot, legacyWorktreeDir),
+	}
+}
+
+func isManagedWorktree(repoRoot, path string) bool {
+	for _, root := range managedWorktreeRoots(repoRoot) {
+		if strings.HasPrefix(path, root+string(filepath.Separator)) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func worktreePath(issue string) (string, error) {
@@ -158,56 +199,71 @@ func buildBranch(issue, branchType, description string) (string, error) {
 	return branch, nil
 }
 
+// loadAllWorktrees returns every worktree this repo owns under a managed root.
+//
+// Enumeration is `git worktree list --porcelain`, not a directory scan: git is
+// authoritative about what a worktree is, and a scan cannot tell one from an
+// ordinary directory. The previous scan additionally required a
+// `.lw-worktree.yaml` marker and an `issue-` name prefix, so a worktree made by
+// plain `git worktree add` stayed invisible even at the right root. Measured
+// before this change: 14 worktrees across the estate, 0 reported, exit 0. See #339.
 func loadAllWorktrees() ([]worktreeInfo, error) {
-	root, err := worktreeRoot()
-	if err != nil {
-		return nil, err
+	repo := git.NewGit("")
+
+	repoRoot := repo.MainRepoRoot()
+	if repoRoot == "" {
+		return nil, nil
 	}
 
-	entries, err := os.ReadDir(root)
+	linked, err := repo.WorktreeList()
 	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-
 		return nil, err
 	}
 
 	var infos []worktreeInfo
 
-	for _, e := range entries {
-		if !e.IsDir() || !strings.HasPrefix(e.Name(), "issue-") {
+	for _, wt := range linked {
+		if !isManagedWorktree(repoRoot, wt.Path) {
 			continue
 		}
 
-		wpath := filepath.Join(root, e.Name())
-
-		meta, err := readMeta(wpath)
-		if err != nil {
-			continue
-		}
-
-		info, _ := e.Info()
-
-		var modTime time.Time
-		if info != nil {
-			modTime = info.ModTime()
-		}
-
-		idle := int(time.Since(modTime).Hours() / 24)
-		infos = append(infos, worktreeInfo{
-			Path:      wpath,
-			Issue:     meta.Issue,
-			Branch:    meta.Branch,
-			State:     meta.State,
-			CreatedAt: meta.CreatedAt,
-			ActStatus: readActStatus(wpath),
-			IdleDays:  idle,
-			modTime:   modTime,
-		})
+		infos = append(infos, describeWorktree(wt))
 	}
 
 	return infos, nil
+}
+
+// describeWorktree builds the display record for one worktree.
+//
+// The .lw-worktree.yaml marker is authoritative where it exists; where it does
+// not, the record falls back to what git reports, so an unmarked worktree is
+// listed rather than silently dropped.
+func describeWorktree(wt git.Worktree) worktreeInfo {
+	info := worktreeInfo{
+		Path:      wt.Path,
+		Branch:    wt.Branch,
+		ActStatus: readActStatus(wt.Path),
+	}
+
+	if meta, err := readMeta(wt.Path); err == nil {
+		info.Issue = meta.Issue
+		info.State = meta.State
+		info.CreatedAt = meta.CreatedAt
+
+		if meta.Branch != "" {
+			info.Branch = meta.Branch
+		}
+	}
+
+	stat, err := os.Stat(wt.Path)
+	if err != nil {
+		return info
+	}
+
+	info.modTime = stat.ModTime()
+	info.IdleDays = int(time.Since(stat.ModTime()).Hours() / hoursPerDay)
+
+	return info
 }
 
 // =============================================================================
