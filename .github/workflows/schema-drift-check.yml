@@ -29,6 +29,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # lightwave-core is private, and the default GITHUB_TOKEN is scoped to
+      # this repo alone. Mint an installation token from the existing
+      # lightwave-tap-publisher App — the same TAP_APP_* secrets release.yml
+      # already uses. No new App and no new secret material.
+      - name: Mint lightwave-core read token
+        id: core-token
+        # Same SHA the plane pins in release-go-binary.yml — one App-token
+        # pin across the org, bumped together.
+        uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        with:
+          app-id: ${{ secrets.TAP_APP_ID }}
+          private-key: ${{ secrets.TAP_APP_PRIVATE_KEY }}
+          owner: lightwave-media
+          repositories: lightwave-core
+
       - name: Checkout lightwave-cli
         uses: actions/checkout@v6
         with:
@@ -39,7 +54,7 @@ jobs:
         with:
           repository: lightwave-media/lightwave-core
           path: lightwave-core
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.core-token.outputs.token }}
 
       - name: Setup Go
         # No mise here on purpose: schema-drift only needs `go build`,
@@ -58,9 +73,17 @@ jobs:
       - name: Run schema drift gate
         env:
           # Point lw at the workspace root so its config resolves
-          # <root>/lightwave-core/... correctly. viper binds
-          # the field paths.lightwave_root from LW_PATHS_LIGHTWAVE_ROOT
-          # (LW_ prefix + dotted-path → underscored uppercase).
-          LW_PATHS_LIGHTWAVE_ROOT: ${{ github.workspace }}
+          # <root>/lightwave-core/... correctly.
+          #
+          # The variable is LW_LIGHTWAVE_ROOT. It is NOT the dotted-path
+          # derivation LW_PATHS_LIGHTWAVE_ROOT, which this file used before and
+          # which nothing binds — the binding is an explicit
+          # viper.BindEnv("paths.lightwave_root", "LW_LIGHTWAVE_ROOT",
+          # "LW_DEV_ROOT") in internal/config/config.go. With the wrong name the
+          # value is ignored and lw falls back to ~/dev, which does not exist on
+          # a runner: the schema fails to load, every command becomes unknown,
+          # and the job fails with `unknown command "check"` — a
+          # misconfiguration wearing a gate failure's clothes.
+          LW_LIGHTWAVE_ROOT: ${{ github.workspace }}
           LW_CHECK_SCHEMA_STRICT: "1"
         run: ./bin/lw check schema
