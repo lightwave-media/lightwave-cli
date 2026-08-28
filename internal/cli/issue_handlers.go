@@ -43,7 +43,10 @@ func issueCreateHandler(_ context.Context, args []string, flags map[string]any) 
 	}
 
 	opts := gh.IssueCreateOpts{
-		Repo:           flagStrOr(flags, "repo", gh.DefaultRepo),
+		// Left empty on purpose: CreateCompliantIssue resolves it to the repo
+		// the operator is stood in. Duplicating a fallback here is what let the
+		// two drift apart in the first place.
+		Repo:           flagStr(flags, "repo"),
 		Title:          args[0],
 		Kind:           kind,
 		Motivation:     flagStr(flags, "motivation"),
@@ -56,7 +59,7 @@ func issueCreateHandler(_ context.Context, args []string, flags map[string]any) 
 		Origin:         flagStr(flags, "origin"),
 		Milestone:      flagStr(flags, "milestone"),
 		ProjectNumber:  projectNum,
-		Org:            flagStrOr(flags, "org", gh.DefaultIssueOrg),
+		Org:            flagStrOr(flags, "org", gh.DefaultOrg),
 		DryRun:         flagBool(flags, "dry-run"),
 	}
 

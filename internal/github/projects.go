@@ -8,8 +8,19 @@ import (
 )
 
 const (
-	DefaultRepo = "lightwave-media/lightwave-platform"
-	DefaultOrg  = "lightwave-media"
+	// PlatformRepo is where agile artifacts live — epics, stories, sprints and
+	// tasks are Postgres records fronted by lightwave-platform, so the verbs
+	// that read and write them target this repo no matter where you invoke them.
+	//
+	// It is NOT a general-purpose default. It was named DefaultRepo until
+	// #339-adjacent triage found `lw issue create` filing lightwave-cli bugs
+	// into lightwave-platform: a command that should file where you are stood
+	// reached for "the default" and got the agile-artifact home. If you want
+	// "the repo I am standing in", call CurrentRepo.
+	PlatformRepo = "lightwave-media/lightwave-platform"
+
+	// DefaultOrg is the GitHub org every Lightwave repo lives under.
+	DefaultOrg = "lightwave-media"
 )
 
 // TaskInfo holds the minimal task data needed for issue creation.

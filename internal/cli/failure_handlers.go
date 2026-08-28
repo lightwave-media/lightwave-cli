@@ -165,7 +165,9 @@ func failureFileHandler(ctx context.Context, _ []string, flags map[string]any) e
 	}
 
 	opts := gh.IssueCreateOpts{
-		Repo:           flagStrOr(flags, "repo", gh.DefaultRepo),
+		// Empty resolves to the repo the failure happened in — see the note in
+		// issue_handlers.go. A triage issue belongs where the failure was.
+		Repo:           flagStr(flags, "repo"),
 		Title:          title,
 		Kind:           gh.KindToolGap,
 		Motivation:     summary,
@@ -174,7 +176,7 @@ func failureFileHandler(ctx context.Context, _ []string, flags map[string]any) e
 		Labels:         append(flagStrSlice(flags, "label"), "status:triage"),
 		Origin:         flagStrOr(flags, "origin", "failureloop"),
 		ProjectNumber:  gh.DefaultProjectNum,
-		Org:            flagStrOr(flags, "org", gh.DefaultIssueOrg),
+		Org:            flagStrOr(flags, "org", gh.DefaultOrg),
 		DryRun:         flagBool(flags, "dry-run"),
 	}
 

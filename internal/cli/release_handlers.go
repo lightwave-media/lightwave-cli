@@ -14,11 +14,12 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	gh "github.com/lightwave-media/lightwave-cli/internal/github"
 	"github.com/lightwave-media/lightwave-cli/internal/release"
 	"gopkg.in/yaml.v3"
 )
 
-const releaseGHOrg = "lightwave-media"
+const releaseGHOrg = gh.DefaultOrg
 
 func init() {
 	RegisterHandler("release.flag", releaseFlagHandler)

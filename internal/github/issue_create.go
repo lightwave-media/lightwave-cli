@@ -8,7 +8,6 @@ import (
 )
 
 const (
-	DefaultIssueOrg     = "lightwave-media"
 	DefaultProjectNum   = 3 // Lightwave Swarm
 	EnvIssueCreateGuard = "LW_ISSUE_CREATE"
 )
@@ -159,7 +158,7 @@ func normalizeIssueRef(ref, defaultRepo string) string {
 			return ""
 		}
 		if !strings.Contains(ownerRepo, "/") {
-			ownerRepo = DefaultIssueOrg + "/" + ownerRepo
+			ownerRepo = DefaultOrg + "/" + ownerRepo
 		}
 		return ownerRepo + "#" + num
 	}
@@ -169,10 +168,13 @@ func normalizeIssueRef(ref, defaultRepo string) string {
 // CreateCompliantIssue creates a GitHub issue via gh with template defaults.
 func CreateCompliantIssue(opts IssueCreateOpts) (IssueCreateResult, error) {
 	if opts.Repo == "" {
-		opts.Repo = DefaultRepo
+		// File where the operator is stood, not into the agile-artifact repo.
+		// The workspace SOP says "file a GitHub issue in the repo you were
+		// working in"; a hardcoded default silently made that impossible.
+		opts.Repo = CurrentRepo("")
 	}
 	if opts.Org == "" {
-		opts.Org = DefaultIssueOrg
+		opts.Org = DefaultOrg
 	}
 	if opts.ProjectNumber == 0 {
 		opts.ProjectNumber = DefaultProjectNum
