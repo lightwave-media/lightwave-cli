@@ -44,7 +44,14 @@ jobs:
       - name: golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.5.0
+          # Keep in step with the mise.toml pin. This action does not read
+          # mise, so the version lives in two places; when you bump one, bump
+          # the other. Bumped 2.5.0 -> 2.13.2 with the Go 1.26 move: 2.5.0 is
+          # built with go1.25 and panics outright on 1.26 sources
+          # ("package requires newer Go version"), so the lint job fails
+          # before it evaluates a single rule. 2.13.2 is still v2, so
+          # .golangci.yml needs no migration.
+          version: v2.13.2
           # Ratchet only — existing violations are tombstoned in
           # internal/audits/golangci-baseline.json. Regressions in touched
           # files re-surface via --new-from-merge-base.

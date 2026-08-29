@@ -23,7 +23,13 @@ type Step struct {
 	Kind        string
 	Description string
 	Command     string
-	HighBlast   bool
+	// Path and Target carry a Template step's payload: which blueprint
+	// directory to render (relative to the runbook's own dir) and where to
+	// render it. They were previously dropped by the attribute parser, so a
+	// Template step reached the engine with nothing to render.
+	Path      string
+	Target    string
+	HighBlast bool
 }
 
 // Edition is a published runbook.mdx plus its content hash.
@@ -37,7 +43,7 @@ type Edition struct {
 
 var (
 	blockRe = regexp.MustCompile(`(?s)<(Check|Command|Template)\s([^>]*?)\s*/>`)
-	attrRe  = regexp.MustCompile(`(?s)(id|description|command)\s*=\s*"([^"]*)"`)
+	attrRe  = regexp.MustCompile(`(?s)(id|description|command|path|target)\s*=\s*"([^"]*)"`)
 )
 
 // LoadEdition reads runbook.mdx for an index entry. Missing file is an
@@ -83,6 +89,8 @@ func ParseSteps(mdx string) []Step {
 			Kind:        kind,
 			Description: attrs["description"],
 			Command:     attrs["command"],
+			Path:        attrs["path"],
+			Target:      attrs["target"],
 			HighBlast:   kind == KindCommand || kind == KindTemplate,
 		})
 	}

@@ -229,3 +229,103 @@ func TestPhantomIndex_EditionMismatch(t *testing.T) {
 	_, err := runbook.Start(startOpts(core, cwd, "ghost"))
 	require.ErrorIs(t, err, runbook.ErrEditionMismatch)
 }
+
+// The whole point of a Template step: a signed-off runbook must actually
+// create structure. Before this, HighBlast short-circuited every Command and
+// Template step to "completed" with the output "operator signed off; command
+// not executed by this kernel" — so a runbook declaring a Template rendered
+// nothing and reported success.
+func TestApply_SignedTemplateStepRendersFiles(t *testing.T) {
+	t.Parallel()
+	core := t.TempDir()
+
+	// A blueprint payload living inside the runbook, exactly as the published
+	// runbooks express it: <Template path="templates/..." />
+	writeFile(t, core, "src/runbooks/test/tmpl/templates/mini/boilerplate.yml",
+		"variables:\n  - name: who\n    type: string\n    default: module\n")
+	writeFile(t, core, "src/runbooks/test/tmpl/templates/mini/greeting.txt",
+		"Hello {{ .who }}!\n")
+
+	mdx := `<Template id="scaffold" description="render it" path="templates/mini" target="worktree" />`
+	writeCatalog(t, core, map[string]string{"tmpl": "test/tmpl"}, map[string]string{"tmpl": mdx})
+	cwd := initWorktree(t, "feature/325-tmpl")
+
+	inst, err := runbook.Start(startOpts(core, cwd, "tmpl"))
+	require.NoError(t, err)
+
+	// First apply pauses: Template is high-blast and needs a signoff.
+	got, err := runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
+	require.NoError(t, err)
+	require.Equal(t, runbook.StatusWaitingApproval, got.Status)
+	_, statErr := os.Stat(filepath.Join(cwd, "greeting.txt"))
+	assert.True(t, os.IsNotExist(statErr), "nothing may render before signoff")
+
+	_, err = runbook.StepComplete(&runbook.ApplyOpts{
+		Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID, StepID: "scaffold", SignoffTier: "operator",
+	})
+	require.NoError(t, err)
+
+	got, err = runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
+	require.NoError(t, err)
+	assert.Equal(t, runbook.StatusCompleted, got.Status)
+
+	rendered, err := os.ReadFile(filepath.Join(cwd, "greeting.txt"))
+	require.NoError(t, err, "signed-off template step must have rendered into the worktree")
+	assert.Equal(t, "Hello module!\n", string(rendered))
+}
+
+// A step that cannot do its work must FAIL, never report completed. Reporting
+// success for work that did not happen is the bug this whole change fixes.
+func TestApply_TemplateStepWithMissingPathFails(t *testing.T) {
+	t.Parallel()
+	core := t.TempDir()
+
+	mdx := `<Template id="scaffold" description="broken" path="templates/does-not-exist" />`
+	writeCatalog(t, core, map[string]string{"bad": "test/bad"}, map[string]string{"bad": mdx})
+	cwd := initWorktree(t, "feature/325-bad")
+
+	inst, err := runbook.Start(startOpts(core, cwd, "bad"))
+	require.NoError(t, err)
+
+	_, err = runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
+	require.NoError(t, err)
+
+	_, err = runbook.StepComplete(&runbook.ApplyOpts{
+		Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID, StepID: "scaffold", SignoffTier: "operator",
+	})
+	require.NoError(t, err)
+
+	got, applyErr := runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
+	require.Error(t, applyErr, "a template step with no payload must fail, not pass")
+	assert.Equal(t, runbook.StatusFailed, got.Status)
+}
+
+// The sign-off gate applies to Command steps too: refused before signoff,
+// executed after.
+func TestApply_SignedCommandStepActuallyRuns(t *testing.T) {
+	t.Parallel()
+	core := t.TempDir()
+
+	mdx := `<Command id="nuke" description="high blast" command="touch command-ran" />`
+	writeCatalog(t, core, map[string]string{"cmd": "test/cmd"}, map[string]string{"cmd": mdx})
+	cwd := initWorktree(t, "feature/325-cmd")
+
+	inst, err := runbook.Start(startOpts(core, cwd, "cmd"))
+	require.NoError(t, err)
+
+	_, err = runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
+	require.NoError(t, err)
+	_, statErr := os.Stat(filepath.Join(cwd, "command-ran"))
+	require.True(t, os.IsNotExist(statErr), "must not run before signoff")
+
+	_, err = runbook.StepComplete(&runbook.ApplyOpts{
+		Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID, StepID: "nuke", SignoffTier: "operator",
+	})
+	require.NoError(t, err)
+
+	_, err = runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
+	require.NoError(t, err)
+
+	_, statErr = os.Stat(filepath.Join(cwd, "command-ran"))
+	assert.NoError(t, statErr, "signed-off command step must actually run")
+}

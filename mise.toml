@@ -11,13 +11,13 @@
 #   - goreleaser config schema versions matter for the release pipeline
 
 [tools]
-go = "1.24"
+go = "1.26.7"
 node = "24"
 python = "3.12"
 "pipx:pre-commit" = "4.2.0"
 # Pin via ubi: backend (direct from GitHub releases) — the default
 # aqua: backend has had intermittent 400s on the registry endpoint.
-"ubi:golangci/golangci-lint" = "v2.5.0"
+"ubi:golangci/golangci-lint" = "v2.13.2"
 "ubi:goreleaser/goreleaser" = "v2.15.4"
 "ubi:jstemmer/go-junit-report" = "v2.1.0"
 

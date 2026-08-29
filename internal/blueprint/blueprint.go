@@ -1,7 +1,13 @@
 // Package blueprint resolves a named blueprint from the canonical
-// lightwave-core blueprint library and renders it via the Gruntwork
-// `boilerplate` engine. lw does NOT implement templating itself — it
-// resolves a blueprint directory by name and shells out to boilerplate.
+// lightwave-core blueprint library and renders it with the Gruntwork
+// `boilerplate` engine, which is linked in as a library.
+//
+// lw does NOT implement templating itself. It used to shell out to a
+// `boilerplate` binary found on PATH (or ~/go/bin), which meant rendering
+// depended on whatever version happened to be installed on the machine, could
+// not be tested in-process, and failed differently per operator. The engine is
+// now a pinned module dependency: same version everywhere, no install step,
+// and generators are testable.
 package blueprint
 
 import (
@@ -11,10 +17,15 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/gruntwork-io/boilerplate/getterhelper"
+	"github.com/gruntwork-io/boilerplate/options"
+	"github.com/gruntwork-io/boilerplate/pkg/logging"
+	"github.com/gruntwork-io/boilerplate/templates"
+	"github.com/gruntwork-io/boilerplate/variables"
 )
 
 // EnvBlueprintsDir overrides the blueprint library location.
@@ -69,44 +80,37 @@ type RenderOptions struct {
 	DryRun        bool     // stage + list files, do not write to OutputFolder
 }
 
-// Args builds the boilerplate argument vector. Always non-interactive:
-// lw is agent/CI-first, so every variable must come from --var/--var-file
-// (blueprint defaults fill the rest). Pure function — golden-testable.
-func Args(o *RenderOptions) []string {
-	args := []string{
-		"--template-url", o.BlueprintPath,
-		"--output-folder", o.OutputFolder,
-		"--non-interactive",
-	}
-	for _, v := range o.Vars {
-		args = append(args, "--var", v)
-	}
-
-	for _, f := range o.VarFiles {
-		args = append(args, "--var-file", f)
+// engineOptions maps a RenderOptions onto the boilerplate library's options,
+// mirroring how upstream's own CLI assembles them (cli/parse_options.go) so
+// behaviour matches the binary this replaced.
+//
+// Always non-interactive: lw is agent/CI-first, so every variable comes from
+// Vars/VarFiles and blueprint defaults fill the rest. A prompt in an agent run
+// is a hang, not a question.
+func engineOptions(o *RenderOptions, outputFolder string) (*options.BoilerplateOptions, error) {
+	vars, err := variables.ParseVars(o.Vars, o.VarFiles)
+	if err != nil {
+		return nil, fmt.Errorf("blueprint: parse vars: %w", err)
 	}
 
-	if o.NoHooks {
-		args = append(args, "--no-hooks")
+	// DetermineTemplateConfig accepts a local directory or a remote ref and
+	// splits it into the URL/folder pair the engine expects.
+	templateURL, templateFolder, err := getterhelper.DetermineTemplateConfig(o.BlueprintPath)
+	if err != nil {
+		return nil, fmt.Errorf("blueprint: resolve template %q: %w", o.BlueprintPath, err)
 	}
 
-	return args
-}
-
-// EnginePath finds the boilerplate binary: PATH first, then ~/go/bin.
-func EnginePath() (string, error) {
-	if p, err := exec.LookPath("boilerplate"); err == nil {
-		return p, nil
-	}
-
-	if home, err := os.UserHomeDir(); err == nil {
-		fallback := filepath.Join(home, "go", "bin", "boilerplate")
-		if _, err := os.Stat(fallback); err == nil {
-			return fallback, nil
-		}
-	}
-
-	return "", errors.New("blueprint: boilerplate engine not found (install gruntwork-io/boilerplate; expected on PATH or ~/go/bin)")
+	return &options.BoilerplateOptions{
+		TemplateURL:         templateURL,
+		TemplateFolder:      templateFolder,
+		OutputFolder:        outputFolder,
+		Vars:                vars,
+		ShellCommandAnswers: make(map[string]bool),
+		OnMissingKey:        options.DefaultMissingKeyAction,
+		OnMissingConfig:     options.DefaultMissingConfigAction,
+		NonInteractive:      true,
+		NoHooks:             o.NoHooks,
+	}, nil
 }
 
 // Render runs the boilerplate engine with the given options, streaming the
@@ -123,11 +127,6 @@ func EnginePath() (string, error) {
 // use echo/format hooks, which is fine); a hook that depends on the final path
 // would see staging — revisit if such a blueprint is added.
 func Render(ctx context.Context, o *RenderOptions) error {
-	engine, err := EnginePath()
-	if err != nil {
-		return err
-	}
-
 	if o.OutputFolder == "" {
 		return errors.New("blueprint: --output-folder is required")
 	}
@@ -139,16 +138,19 @@ func Render(ctx context.Context, o *RenderOptions) error {
 
 	defer func() { _ = os.RemoveAll(staging) }()
 
-	staged := *o
-	staged.OutputFolder = staging
+	engineOpts, err := engineOptions(o, staging)
+	if err != nil {
+		return err
+	}
 
-	cmd := exec.CommandContext(ctx, engine, Args(&staged)...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = nil
+	// Warn-level: the engine's info chatter is noise in agent transcripts, but
+	// real problems still surface. Errors come back through the return value.
+	log := logging.New(os.Stderr, logging.LevelWarn)
 
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("blueprint: boilerplate failed: %w", err)
+	if _, err := templates.ProcessTemplateWithContext(
+		ctx, log, engineOpts, engineOpts, &variables.Dependency{},
+	); err != nil {
+		return fmt.Errorf("blueprint: render %q: %w", o.BlueprintPath, err)
 	}
 
 	if !o.Force {

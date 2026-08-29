@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/lightwave-media/lightwave-cli/internal/blueprint"
 	"github.com/lightwave-media/lightwave-cli/internal/git"
 )
 
@@ -120,9 +121,17 @@ func Status(opts *ApplyOpts) (*Instance, error) {
 	return inst, nil
 }
 
-// Apply runs Check steps against the published edition. Command/Template
-// steps pause for operator sign-off and do not continue. Does not execute
-// Command bodies (high blast); Check bodies run unless DryRun.
+// Apply runs the published edition's steps in order.
+//
+// Check steps run immediately. Command and Template steps are high-blast: the
+// run pauses at the first one without an operator signoff tier and returns
+// WaitingApproval. Once signed off (StepComplete), a subsequent Apply executes
+// them for real — Command runs its body, Template renders its blueprint into
+// the worktree. DryRun executes nothing.
+//
+// Sign-off is a gate on *authorisation*, not on execution: a signed step that
+// does not do its work, but reports completed, is the failure this design
+// exists to prevent.
 func Apply(opts *ApplyOpts) (*Instance, error) {
 	if err := refuseMainAndRequireWorktree(opts.Cwd); err != nil {
 		return nil, err
@@ -203,26 +212,38 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 			return inst, nil
 		}
 
-		if inst.DryRun || edStep.HighBlast {
+		if inst.DryRun {
 			st.Status = stepCompleted
-			st.Output = dryOrSignedOutput(inst.DryRun, edStep.HighBlast)
+			st.Output = "dry-run: not executed"
 
 			continue
 		}
 
-		if edStep.Kind == KindCheck && edStep.Command != "" {
-			out, runErr := runCheck(opts.Cwd, edStep.Command)
+		// HighBlast is a SIGN-OFF gate, not an execution gate. The check above
+		// already refused to proceed without a signoff tier; past that point a
+		// signed step must actually do its work.
+		//
+		// It used to short-circuit here for every HighBlast step and report
+		// "operator signed off; command not executed by this kernel" — status
+		// completed, nothing done. That made Command and Template steps inert
+		// while reporting success, so a runbook that declares
+		// `<Template path="templates/product-module" />` created no files and
+		// said it had. Apply() only runs inside a worktree
+		// (refuseMainAndRequireWorktree), which is what makes executing safe.
+		//
+		// edition.Dir is catalog-relative; edition.Path is the absolute
+		// runbook.mdx, so its parent is what a Template's `path` is relative to.
+		out, runErr := executeStep(opts.Cwd, filepath.Dir(edition.Path), &edStep)
 
-			st.Output = out
-			if runErr != nil {
-				st.Status = stepFailed
-				inst.Status = StatusFailed
-				inst.CurrentStepID = st.ID
-				_ = Save(opts.Cwd, inst)
-				_ = writeEvidence(opts.Cwd, inst)
+		st.Output = out
+		if runErr != nil {
+			st.Status = stepFailed
+			inst.Status = StatusFailed
+			inst.CurrentStepID = st.ID
+			_ = Save(opts.Cwd, inst)
+			_ = writeEvidence(opts.Cwd, inst)
 
-				return inst, fmt.Errorf("%w: %s: %w", ErrCheckFailed, st.ID, runErr)
-			}
+			return inst, fmt.Errorf("%w: %s: %w", ErrCheckFailed, st.ID, runErr)
 		}
 
 		st.Status = stepCompleted
@@ -383,24 +404,81 @@ func pendingSteps(steps []Step) []StepState {
 	return out
 }
 
-func runCheck(cwd, command string) (string, error) {
+// executeStep performs one step's actual work and returns its output.
+//
+// A step kind that has nothing to do is not an error — some steps are prose
+// with no command or path. A step that cannot do its work IS an error: it must
+// never report completed, which is the failure mode this replaced.
+func executeStep(cwd, runbookDir string, step *Step) (string, error) {
+	switch step.Kind {
+	case KindTemplate:
+		return renderTemplateStep(cwd, runbookDir, step)
+
+	case KindCheck, KindCommand:
+		if step.Command == "" {
+			return "", nil
+		}
+
+		return runShell(cwd, step.Command)
+
+	default:
+		return "", nil
+	}
+}
+
+// renderTemplateStep renders a Template step's blueprint into the worktree
+// through the linked boilerplate engine — no `boilerplate` binary, no shell.
+//
+// step.Path is relative to the runbook's own directory, which is how the
+// published runbooks express it:
+//
+//	<Template id="product" path="templates/product-module" target="worktree" />
+func renderTemplateStep(cwd, runbookDir string, step *Step) (string, error) {
+	if step.Path == "" {
+		return "", fmt.Errorf("template step %q has no path attribute", step.ID)
+	}
+
+	src := filepath.Join(runbookDir, step.Path)
+	if _, err := os.Stat(src); err != nil {
+		return "", fmt.Errorf("template step %q: %w", step.ID, err)
+	}
+
+	// "worktree" (or unset) renders at the instance's working tree root. Any
+	// other value is a path relative to it; absolute paths are refused so a
+	// runbook cannot write outside the worktree it was applied in.
+	dest := cwd
+
+	if step.Target != "" && step.Target != "worktree" {
+		if filepath.IsAbs(step.Target) {
+			return "", fmt.Errorf("template step %q: absolute target %q is not allowed", step.ID, step.Target)
+		}
+
+		dest = filepath.Join(cwd, step.Target)
+	}
+
+	if err := blueprint.Render(context.Background(), &blueprint.RenderOptions{
+		BlueprintPath: src,
+		OutputFolder:  dest,
+	}); err != nil {
+		return "", fmt.Errorf("template step %q: %w", step.ID, err)
+	}
+
+	return fmt.Sprintf("rendered %s -> %s", step.Path, dest), nil
+}
+
+// runShell executes a step's command string.
+//
+// This is a shell invocation (#348): runbook commands are authored as shell
+// one-liners in MDX, so they are not argv-decomposable without changing the
+// authoring format. It is bounded by Apply() refusing to run outside a
+// worktree, and Command steps additionally require an operator signoff tier
+// before reaching here. Check steps do not — that asymmetry is #348's subject.
+func runShell(cwd, command string) (string, error) {
 	cmd := exec.CommandContext(context.Background(), "sh", "-c", command)
 	cmd.Dir = cwd
 	out, err := cmd.CombinedOutput()
 
 	return strings.TrimSpace(string(out)), err
-}
-
-func dryOrSignedOutput(dry, highBlast bool) string {
-	if dry {
-		return "dry-run: not executed"
-	}
-
-	if highBlast {
-		return "operator signed off; command not executed by this kernel"
-	}
-
-	return ""
 }
 
 func firstNonEmpty(values ...string) string {
