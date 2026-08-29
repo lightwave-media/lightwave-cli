@@ -27,29 +27,6 @@ func TestBlueprintsDir_Default(t *testing.T) {
 		blueprint.BlueprintsDir("/root"))
 }
 
-func TestArgs(t *testing.T) {
-	t.Parallel()
-
-	got := blueprint.Args(&blueprint.RenderOptions{
-		BlueprintPath: "/lib/react-component",
-		OutputFolder:  "/out",
-		Vars:          []string{"category=marketing", "component_name=Hero"},
-		VarFiles:      []string{"vars.yml"},
-		NoHooks:       true,
-	})
-
-	want := []string{
-		"--template-url", "/lib/react-component",
-		"--output-folder", "/out",
-		"--non-interactive",
-		"--var", "category=marketing",
-		"--var", "component_name=Hero",
-		"--var-file", "vars.yml",
-		"--no-hooks",
-	}
-	assert.Equal(t, want, got)
-}
-
 func TestResolve(t *testing.T) {
 	t.Parallel()
 
@@ -91,14 +68,15 @@ func TestResolve(t *testing.T) {
 }
 
 // TestRender is the end-to-end smoke: a minimal blueprint through the real
-// boilerplate engine into a tmp dir. Skips when the engine isn't installed,
-// so the suite stays portable (CI runners without boilerplate).
+// boilerplate engine into a tmp dir.
+//
+// This used to skip when no `boilerplate` binary was installed — which is the
+// normal state on a CI runner, so the only end-to-end render test was skipping
+// exactly where it mattered, and a skip is indistinguishable from a pass. The
+// engine is now a linked library, so it is always present and the test always
+// runs. Do not reintroduce a skip here.
 func TestRender(t *testing.T) {
 	t.Parallel()
-
-	if _, err := blueprint.EnginePath(); err != nil {
-		t.Skip("boilerplate engine not installed; skipping integration smoke")
-	}
 
 	lib := t.TempDir()
 	bp := filepath.Join(lib, "mini")
