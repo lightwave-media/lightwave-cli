@@ -30,6 +30,7 @@ var VerifiedCommands = map[string]bool{
 	"memory":   true, // filesystem KV — CLI round trip in memory_test.go + internal/memory/memory_test.go
 	"worktree": true,
 	"audit":    true,
+	"scaffold": true, // blueprint renderer — test backing in scaffold_test.go (render, --var, collision guard)
 	"ui":       true,
 	"docs":     true, // spec/+docs/ factory — test backing in internal/docsfactory/*_test.go
 	"lint":     true, // template-kind linters (lw lint handoff) — test backing in internal/docsfactory/handoff_lint_test.go
@@ -82,17 +83,13 @@ var DecommissionedCommands = map[string]string{
 // nothing new joins this backlog silently. The list only shrinks: verify a
 // command end-to-end, add its test, move it to VerifiedCommands, delete the row.
 var UnreviewedCommands = map[string]string{
-	// Demoted from VerifiedCommands 2026-08-29. Both were listed as verified
-	// with no test exercising them — the list was asserting something untrue,
-	// which is worse than an honest backlog entry. Each names what would earn
-	// it back.
+	// Demoted from VerifiedCommands 2026-08-29: listed as verified with no test
+	// exercising it, which is worse than an honest backlog entry. The reason
+	// names what would earn it back. (`scaffold` was demoted alongside it and
+	// has since been verified — see VerifiedCommands.)
 	"research": "handler builds its Perplexity client inline at research.go:84; " +
 		"no seam to inject a test server, so any test would only assert flag parsing. " +
 		"Earns it back when the client is injectable",
-	"scaffold": "the working path is the hand-wired blueprint renderer, but it needs " +
-		"a loaded config singleton so it cannot be driven in-process yet; the four " +
-		"dispatched scaffold.* handlers are always-error stubs pointing at a " +
-		"non-existent internal/scaffold package. Earns it back with the config seam",
 
 	"check":   "umbrella check runner",
 	"compose": "docker-compose generation against SST",

@@ -118,11 +118,14 @@ func TestCommandSurface_EveryExposedCommandIsAccountedFor(t *testing.T) {
 // a false claim to an honest one, and `memory` moved the other way on the
 // strength of a real round-trip test. Net accounted-for commands is unchanged.
 //
-// It only counts down from 28.
+// It only counts down from 28. First decrement: 28 -> 27 on 2026-08-29,
+// `scaffold` verified end-to-end (scaffold_test.go) once the boilerplate
+// engine became a linked library and --blueprints-dir gave the render path a
+// config-free seam.
 //
 //nolint:paralleltest // reads package globals; trivial
 func TestCommandSurface_UnreviewedBacklogOnlyShrinks(t *testing.T) {
-	const backlogAtGateArming = 28
+	const backlogAtGateArming = 27
 
 	assert.LessOrEqualf(t, len(UnreviewedCommands), backlogAtGateArming,
 		"UnreviewedCommands grew to %d. It was %d when the gate was armed and is "+

@@ -16,12 +16,26 @@ import (
 )
 
 // `lw scaffold` — front door to the Gruntwork boilerplate engine over the
-// canonical lightwave-core blueprint library. lw resolves a blueprint by
-// name and shells out to boilerplate (it does NOT template anything itself).
+// canonical lightwave-core blueprint library. lw resolves a blueprint by name
+// and renders it through the engine, which is linked in as a library (#355);
+// lw does NOT template anything itself.
 //
 // Hardcoded in root.go and parked in legacyHardcodedDomains so the schema
-// dispatcher won't double-register `scaffold` once a commands.yaml stamp
-// lands.
+// dispatcher won't double-register `scaffold`.
+//
+// The stamp has not "not landed yet" — it landed wrong. commands.yaml declares
+// this domain as "Code generation (Django/Go skeleton templates)" with verbs
+// app/model/api/test, which is Django-era vocabulary that no longer matches
+// anything here. The Go handlers for those four verbs exist only to satisfy
+// `lw check schema` (it counts registered handlers, not working ones) and
+// every one of them returns "not yet wired", pointing at an internal/scaffold
+// package that does not exist. They are unreachable anyway, because this
+// domain is dispatcher-exempt.
+//
+// Deleting them requires fixing the stamp first, and fitting the real surface
+// (`lw scaffold <blueprint>`, a positional on the domain) to the schema's
+// domain→commands model means a UX change. Tracked separately; do not "fix"
+// the stubs by making them do something.
 
 var (
 	scaffoldVars       []string
@@ -69,6 +83,27 @@ func init() {
 	scaffoldCmd.Flags().BoolVar(&scaffoldList, "list", false, "List all available blueprints and templates")
 }
 
+// listCatalog resolves what `--list` should enumerate.
+//
+// --blueprints-dir is documented as overriding the library location, but the
+// list path ignored it and always read the config's lightwave root — so
+// `lw scaffold --list --blueprints-dir X` listed one library while
+// `lw scaffold <slug> --blueprints-dir X` rendered from another. The override
+// points at the blueprints/ directory; the catalog lives one level up,
+// alongside templates/.
+func listCatalog(override string) ([]blueprint.CatalogEntry, error) {
+	if override != "" {
+		return blueprint.ListFrom(filepath.Dir(override))
+	}
+
+	cfg := config.Get()
+	if cfg == nil {
+		return nil, errors.New("config not loaded")
+	}
+
+	return blueprint.List(cfg.Paths.LightwaveRoot)
+}
+
 // blueprintsDir resolves the library, honoring an explicit override first.
 func blueprintsDir(override string) (string, error) {
 	if override != "" {
@@ -109,12 +144,7 @@ func runScaffold(cmd *cobra.Command, args []string) error {
 }
 
 func runScaffoldList() error {
-	cfg := config.Get()
-	if cfg == nil {
-		return errors.New("config not loaded")
-	}
-
-	entries, err := blueprint.List(cfg.Paths.LightwaveRoot)
+	entries, err := listCatalog(scaffoldBlueprints)
 	if err != nil {
 		return err
 	}
