@@ -1,6 +1,6 @@
 module github.com/lightwave-media/lightwave-cli
 
-go 1.26
+go 1.26.7
 
 require (
 	github.com/aws/aws-sdk-go-v2 v1.42.0

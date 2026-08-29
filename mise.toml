@@ -11,7 +11,7 @@
 #   - goreleaser config schema versions matter for the release pipeline
 
 [tools]
-go = "1.26"
+go = "1.26.7"
 node = "24"
 python = "3.12"
 "pipx:pre-commit" = "4.2.0"
