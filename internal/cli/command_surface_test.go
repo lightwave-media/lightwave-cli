@@ -111,9 +111,18 @@ func TestCommandSurface_EveryExposedCommandIsAccountedFor(t *testing.T) {
 // command cannot be parked in it. Lowering this number is the point; raising it
 // should require saying so out loud in review.
 //
+// Saying it out loud: this went 26 → 28 on 2026-08-29, and the increase is the
+// gate working rather than failing. `research` and `scaffold` were demoted out
+// of VerifiedCommands because nothing tested them — the list was asserting
+// something untrue. No new command was parked here; two were reclassified from
+// a false claim to an honest one, and `memory` moved the other way on the
+// strength of a real round-trip test. Net accounted-for commands is unchanged.
+//
+// It only counts down from 28.
+//
 //nolint:paralleltest // reads package globals; trivial
 func TestCommandSurface_UnreviewedBacklogOnlyShrinks(t *testing.T) {
-	const backlogAtGateArming = 26
+	const backlogAtGateArming = 28
 
 	assert.LessOrEqualf(t, len(UnreviewedCommands), backlogAtGateArming,
 		"UnreviewedCommands grew to %d. It was %d when the gate was armed and is "+
