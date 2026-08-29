@@ -70,6 +70,20 @@ jobs:
       - name: Build lw
         run: go build -o bin/lw ./cmd/lw
 
+      # The surface trust gate needs the same thing this job already has: a
+      # lightwave-core checkout, so the schema-dispatched commands actually
+      # attach. The base-test matrix job has no core checkout, so running it
+      # there would skip — and a gate that skips in CI is indistinguishable
+      # from one that passes, which is the bug it exists to prevent (#350).
+      #
+      # LW_SURFACE_GATE_STRICT=1 turns that skip into a failure, so if the core
+      # checkout above ever breaks, this step reports it instead of going quiet.
+      - name: Run command surface trust gate
+        env:
+          LW_LIGHTWAVE_ROOT: ${{ github.workspace }}
+          LW_SURFACE_GATE_STRICT: "1"
+        run: go test ./internal/cli/ -run TestCommandSurface -v
+
       - name: Run schema drift gate
         env:
           # Point lw at the workspace root so its config resolves

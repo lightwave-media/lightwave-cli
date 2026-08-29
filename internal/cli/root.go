@@ -46,27 +46,48 @@ Built with Go for speed. Direct PostgreSQL access for instant reads.`,
 	},
 }
 
-// Execute runs the root command. Loads config, lets the schema-driven
-// dispatcher attach migrated domains, then hands off to cobra.
+// Execute runs the root command. Loads config, assembles the shipped surface,
+// then hands off to cobra.
 func Execute() error {
 	if _, err := config.Load(); err != nil {
 		return fmt.Errorf("load config: %w", err)
 	}
-	if err := BuildDispatched(rootCmd, legacyHardcodedDomains()); err != nil {
+
+	if err := AssembleSurface(rootCmd); err != nil {
+		return err
+	}
+
+	return rootCmd.Execute()
+}
+
+// AssembleSurface attaches everything a release exposes onto root, on top of
+// whatever init() already hand-wired there. This is the whole surface: what
+// `lw --help` prints is exactly what this function produced.
+//
+// It exists as a separate function so the trust gate can assemble the real
+// tree and check it. Before, the gate walked rootCmd alone — which holds only
+// the hand-wired commands — so every schema-dispatched command was invisible
+// to it and shipped unchecked (#350).
+//
+// NOT idempotent: BuildDispatched attaches unconditionally, so calling this
+// twice on one root lists every dispatched command twice. Callers that may run
+// more than once must guard it.
+func AssembleSurface(root *cobra.Command) error {
+	if err := BuildDispatched(root, legacyHardcodedDomains()); err != nil {
 		return err
 	}
 	// Attach handler-only commands that have not yet landed in the
 	// lightwave-core schema. Becomes a no-op once each command has a
 	// schema entry (see AttachOrphanTaskCommands for the cleanup path).
-	AttachOrphanTaskCommands(rootCmd)
+	AttachOrphanTaskCommands(root)
 	// Trust policy: hide + disable any command not verified to work
-	// end-to-end (see command_status.go / docs/command-status.md).
-	applyDecommissions(rootCmd)
+	// end-to-end (see command_status.go).
+	applyDecommissions(root)
 	// Must run last: it walks the finished tree, so every command group
 	// attached above is covered, including ones added later.
-	RejectUnknownSubcommands(rootCmd)
+	RejectUnknownSubcommands(root)
 
-	return rootCmd.Execute()
+	return nil
 }
 
 // legacyHardcodedDomains returns the set of schema domain names still

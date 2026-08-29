@@ -68,6 +68,50 @@ var DecommissionedCommands = map[string]string{
 	"sst":              "depends on ~/.brain corpus state",
 }
 
+// UnreviewedCommands is the backlog: commands that ship today but have never
+// been put through end-to-end verification. It is debt, not a third tier of
+// blessing.
+//
+// It exists because the trust gate was not actually enforcing anything. The
+// guard walked rootCmd, which holds only the hand-wired commands, and never
+// assembled the schema-dispatched ones — so 26 of the 45 commands a release
+// exposes sat outside the gate entirely, and CI stayed green the whole time
+// (#350). Rubber-stamping those 26 into VerifiedCommands would have made the
+// promise at the top of this file a lie; leaving the gate unable to see them
+// kept it meaningless. Enumerating them does neither.
+//
+// The gate now fails on any exposed command in NONE of the three lists, so
+// nothing new joins this backlog silently. The list only shrinks: verify a
+// command end-to-end, add its test, move it to VerifiedCommands, delete the row.
+var UnreviewedCommands = map[string]string{
+	"check":   "umbrella check runner",
+	"compose": "docker-compose generation against SST",
+	"context": "agent context assembly",
+	"create":  "project creation from a blueprint",
+	"db":      "Postgres operations and migrations",
+	"deploy":  "ECS deploy and rollback",
+	"epic":    "epic lifecycle",
+	"factory": "scaffold manifest execution",
+	"failure": "deterministic failure triage",
+	"git":     "fleet git audit",
+	"home":    "~/.lightwave operator home render",
+	"hooks":   "pre-commit / pre-push gate management",
+	"infra":   "Terragrunt operations",
+	"kickoff": "kickoff interview FSM",
+	"lineage": "R-P-I-V-R lineage integrity",
+	"local":   "local Docker environment",
+	"plan":    "plan sync and generation",
+	"process": "host process inventory",
+	"release": "release train and merge gate",
+	"schema":  "schema validation and codegen",
+	"scrum":   "scrum queue hygiene",
+	"session": "agent session lifecycle",
+	"sprint":  "sprint lifecycle",
+	"story":   "story lifecycle",
+	"task":    "task lifecycle",
+	"voice":   "tone and ceremony control plane",
+}
+
 // applyDecommissions hides and disables every decommissioned command and its
 // whole subtree on the assembled root. Space-separated keys ("codegen
 // journeys") target one subcommand while the parent stays live. Idempotent;
