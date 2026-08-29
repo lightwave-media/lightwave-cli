@@ -13,12 +13,26 @@ mediates between:
   shapes everything conforms to,
 - the **platform's PostgreSQL** and its API, where epics, stories,
   sprints and tasks actually live, and
-- **vendor APIs** — AWS, GitHub, Paperclip.
+- **vendor APIs** — AWS and GitHub.
 
-Every domain operation here is a tool an agent can call deterministically
+Every operation here is a tool an agent can call deterministically
 instead of hallucinating prose. Repo-quality discipline — ratcheted
 golangci-lint, hook gates, JUnit test reports, an OS+arch build matrix,
 and a schema-drift gate — keeps that surface honest across every consumer.
+
+## Why a CLI and not a prompt
+
+An agent fails a step only when the model gets it wrong **and** nothing
+catches it. Model capability lowers the first probability; `lw` lowers
+the second — compilers, schema validation, drift gates and tests are
+cheap, deterministic, and identical on every run.
+
+That is the whole argument for this repo. It is not competing with model
+capability; it is what makes a cheaper model a rational choice for a
+given step. The corollary is that a check which reports success without
+actually covering the surface is worse than no check: it lowers the
+apparent failure rate and not the real one. Gates here are expected to
+prove their own coverage.
 
 ## Install
 
@@ -49,12 +63,39 @@ lw task create "describe the change" --type=fix --prd=<path/to/prd.md>
 
 # Explore the surface
 lw --help
-lw <domain> --help
+lw <command> --help
 ```
 
-`lw --help` enumerates every domain; each exposes its own verbs
-(`lw task --help`, `lw db --help`, `lw check --help`). An unknown verb
-exits non-zero rather than printing help and reporting success.
+Each top-level command owns a group of verbs (`lw task --help`,
+`lw db --help`, `lw check --help`). An unknown verb exits non-zero
+rather than printing help and reporting success.
+
+> **Note on wording.** These groups are spelled `domains:` in the
+> `commands.yaml` stamp and in `internal/cli/dispatcher.go`. That is a
+> CLI-internal sense of the word and is unrelated to createOS **Life
+> Domains**. This README says *top-level command* to keep the two
+> apart; the schema key is tracked for rename separately.
+
+### Exposed today
+
+45 top-level commands ship in the current build:
+
+```
+audit      check      codegen    completion compose    config
+context    create     db         deploy     docs       epic
+factory    failure    git        health     help       home
+hooks      infra      issue      kickoff    lineage    lint
+local      mcp        memory     plan       process    release
+research   runbook    scaffold   schema     scrum      self
+session    site       sprint     story      task       ui
+version    voice      worktree
+```
+
+Not everything in the source tree is exposed. Commands whose backing
+stack is gone are decommissioned in `internal/cli/command_status.go` —
+hidden from `--help` and refusing to run — so a release tag never
+advertises a command that cannot work. Regenerate the list above with
+`lw --help`.
 
 ## The surface is schema-driven
 
@@ -78,7 +119,7 @@ LW_CHECK_SCHEMA_STRICT=1 ./bin/lw check schema
 
 Exit 1 on drift; without the env var the same report prints and exits 0.
 
-Domains still under construction carry `_status: in_development` in the
+Commands still under construction carry `_status: in_development` in the
 stamp: the dispatcher hides them and the drift gate excludes them, so a
 surface can be declared before its handlers exist without publishing a
 command nobody can invoke.
