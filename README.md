@@ -13,12 +13,26 @@ mediates between:
   shapes everything conforms to,
 - the **platform's PostgreSQL** and its API, where epics, stories,
   sprints and tasks actually live, and
-- **vendor APIs** — AWS, GitHub, Paperclip.
+- **vendor APIs** — AWS and GitHub.
 
 Every domain operation here is a tool an agent can call deterministically
 instead of hallucinating prose. Repo-quality discipline — ratcheted
 golangci-lint, hook gates, JUnit test reports, an OS+arch build matrix,
 and a schema-drift gate — keeps that surface honest across every consumer.
+
+## Why a CLI and not a prompt
+
+An agent fails a step only when the model gets it wrong **and** nothing
+catches it. Model capability lowers the first probability; `lw` lowers
+the second — compilers, schema validation, drift gates and tests are
+cheap, deterministic, and identical on every run.
+
+That is the whole argument for this repo. It is not competing with model
+capability; it is what makes a cheaper model a rational choice for a
+given step. The corollary is that a check which reports success without
+actually covering the surface is worse than no check: it lowers the
+apparent failure rate and not the real one. Gates here are expected to
+prove their own coverage.
 
 ## Install
 
@@ -52,9 +66,15 @@ lw --help
 lw <domain> --help
 ```
 
-`lw --help` enumerates every domain; each exposes its own verbs
-(`lw task --help`, `lw db --help`, `lw check --help`). An unknown verb
-exits non-zero rather than printing help and reporting success.
+`lw --help` lists the domains that are currently exposed; each has its
+own verbs (`lw task --help`, `lw db --help`, `lw check --help`). An
+unknown verb exits non-zero rather than printing help and reporting
+success.
+
+Not every domain in the source tree is exposed. Commands verified to
+work end-to-end ship; commands whose backing stack is gone are
+decommissioned in `internal/cli/command_status.go` and hidden, so a
+release tag never advertises a command that cannot run.
 
 ## The surface is schema-driven
 
