@@ -19,8 +19,14 @@ type CatalogEntry struct {
 // List returns all active entries from blueprints/__index.yaml and
 // templates/__index.yaml under lightwaveRoot.
 func List(lightwaveRoot string) ([]CatalogEntry, error) {
-	boilerplate := filepath.Join(lightwaveRoot, "lightwave-core", "src", "boilerplate")
+	return ListFrom(filepath.Join(lightwaveRoot, "lightwave-core", "src", "boilerplate"))
+}
 
+// ListFrom is List against an explicit boilerplate directory — the one holding
+// blueprints/ and templates/. Split out so callers with an overridden library
+// location (`lw scaffold --blueprints-dir`) can list what they will actually
+// render from, rather than what the config happens to point at.
+func ListFrom(boilerplate string) ([]CatalogEntry, error) {
 	entries := make([]CatalogEntry, 0)
 
 	// Blueprints: flat map slug → dir.
