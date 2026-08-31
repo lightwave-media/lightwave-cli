@@ -1,0 +1,126 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/validity/heartbeat_budget"
+  title: "Heartbeat / Autonomous-Decision Budget Cap"
+  description: |
+    Validity gate for heartbeat tasks. Caps prompt tokens, wall-clock time,
+    recursive delegation depth, and allowed tool subset. The
+    no-recursive-strategic-delegation invariant is the key constraint:
+    heartbeat tasks can NEVER spawn delegates to v_cto / v_research /
+    v_architect / strategic-class agents.
+
+    Forensic root cause captured 2026-05-25 in ZeroClaw operation: heartbeat
+    decided "let me ask v_cto to review the heartbeat architecture" and
+    queued a 35k-token recursive delegate. That occupied the local 26B slot
+    for 2 minutes during Joel's chat attempt. Heartbeat is a WATCHER, not a
+    strategic thinker — its budget must reflect that.
+
+    Per handoff 2026-05-25-zeroclaw-runtime-ergonomics R9 (should).
+    Depends on R1 (tool_filter_groups) + R7 (llm_concurrency), both landed
+    2026-05-25.
+  generates:
+    - "pydantic:HeartbeatBudgetContract"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/interfaces/agent_tools/tool_filter_groups"
+    - "lightwave://schemas/workflows/orchestration/llm_concurrency"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default')"
+  - name: per_heartbeat_task_budgets
+    type: "list[HeartbeatBudgetRef]"
+    description: |
+      Per-heartbeat-task budget caps. Sub-schema HeartbeatBudget:
+        heartbeat_task_slug (str — references a scheduled cron of job_class
+          'maintenance' or 'metric-aggregation'),
+        prompt_max_tokens (int, hard cap on inbound prompt size — refusal if
+          exceeded),
+        decision_wall_clock_secs (int, hard cap on per-decision wall time
+          — kill if exceeded),
+        max_delegation_depth (int, default 0 — no recursive delegates allowed),
+        allowed_tool_filter_group (str, references tool_filter_groups.groups
+          — default 'maintenance' — restricts the tool catalog),
+        allowed_agent_roles_for_delegation (list[str], default empty list —
+          if max_delegation_depth > 0, restricts WHICH agent roles can be
+          delegate targets; never includes strategic-class roles),
+        notes (str).
+  - name: invariants
+    type: "list[InvariantRef]"
+    description: |
+      Cross-cutting invariants. Sub-schema Invariant:
+        name (str, slug — e.g. 'no_recursive_strategic_delegation'),
+        rule (str, plain-language statement of the rule),
+        enforced_by (enum: pre_dispatch_check | runtime_kill | both),
+        violation_action (enum: skip_task | emit_alert | kill_process).
+
+optional_fields:
+  - name: budget_exceeded_behavior
+    type: "BudgetExceededBehaviorRef"
+    description: |
+      Sub-schema BudgetExceededBehavior:
+        log_to (str, path under ~/.lightwave/observability/),
+        skip_with_structured_log (bool, default true),
+        emit_alert (bool, default true),
+        alert_class (str, references alert_dedup classes).
+  - name: telemetry
+    type: "TelemetryRef"
+    description: |
+      Sub-schema Telemetry:
+        record_per_decision_tokens (bool),
+        record_per_decision_duration (bool),
+        record_delegation_attempts (bool).
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default"
+  per_heartbeat_task_budgets:
+    - heartbeat_task_slug: "dead_man_switch_check"
+      prompt_max_tokens: 2000
+      decision_wall_clock_secs: 30
+      max_delegation_depth: 0
+      allowed_tool_filter_group: "maintenance"
+      allowed_agent_roles_for_delegation: []
+      notes: "Dead-man-switch is the canonical watcher. Tiny prompt, no delegation."
+    - heartbeat_task_slug: "queue_depth_probe"
+      prompt_max_tokens: 4000
+      decision_wall_clock_secs: 60
+      max_delegation_depth: 0
+      allowed_tool_filter_group: "maintenance"
+      allowed_agent_roles_for_delegation: []
+      notes: "Queue probe checks llm_concurrency state. Slightly bigger prompt for queue context; still no delegation."
+    - heartbeat_task_slug: "metric_aggregation"
+      prompt_max_tokens: 8000
+      decision_wall_clock_secs: 120
+      max_delegation_depth: 1
+      allowed_tool_filter_group: "analyst"
+      allowed_agent_roles_for_delegation: ["v_metrics"]
+      notes: "Metric aggregation may delegate ONE level to v_metrics (a dedicated metrics persona, NOT strategic). Never to v_cto/v_research/v_architect."
+  invariants:
+    - name: "no_recursive_strategic_delegation"
+      rule: "Heartbeat tasks MUST NOT spawn delegates whose target agent role is in {v_cto, v_research, v_architect, v_dev, v_qa}. Heartbeat is a watcher, not a strategic thinker."
+      enforced_by: "pre_dispatch_check"
+      violation_action: "skip_task"
+    - name: "no_self_amplification"
+      rule: "A heartbeat decision MUST NOT propose enlarging its own budget (prompt_max_tokens, decision_wall_clock_secs, max_delegation_depth). Budget escalation is operator-only."
+      enforced_by: "pre_dispatch_check"
+      violation_action: "skip_task"
+    - name: "tool_group_compliance"
+      rule: "Heartbeat decisions MUST use the allowed_tool_filter_group only. Tool-set escalation requires operator intervention."
+      enforced_by: "both"
+      violation_action: "kill_process"
+  budget_exceeded_behavior:
+    log_to: "~/.lightwave/observability/heartbeat_budget.jsonl"
+    skip_with_structured_log: true
+    emit_alert: true
+    alert_class: "queue_saturation"
+  telemetry:
+    record_per_decision_tokens: true
+    record_per_decision_duration: true
+    record_delegation_attempts: true

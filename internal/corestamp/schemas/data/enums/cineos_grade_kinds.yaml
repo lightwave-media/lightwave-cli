@@ -1,0 +1,32 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_grade_kinds"
+  title: "CineOS Grade Kind Enum"
+  description: |
+    Payload format of a Grade (grade.kind). CLOSED — these are the
+    interchange formats the sync path implements; a new format is a stamp
+    change, not a runtime knob.
+  generates:
+    - "go:CineGradeKind"
+    - "typescript:CineGradeKind"
+    - "zig:CineGradeKind"
+    - "json_schema:cineos_grade_kinds"
+  depends_on: []
+
+name: cineos_grade_kinds
+description: "Grade payload formats"
+default: cdl
+closed: true
+options:
+  - value: blg
+    label: "BLG"
+    description: "Baselight Grade — full portable grade stack"
+  - value: cdl
+    label: "CDL"
+    description: "ASC CDL (slope/offset/power/saturation), file or inline"
+  - value: lut
+    label: "LUT"
+    description: "Baked look-up table (.cube etc.)"
+  - value: look
+    label: "Look"
+    description: "Named look preset reference"

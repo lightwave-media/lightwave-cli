@@ -1,0 +1,47 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/element_categories"
+  title: "Element Category"
+  description: |
+    A breakdown-category bucket under a ScriptElementsTag — the standard film
+    breakdown taxonomy (cast, props, vehicles, wardrobe, SFX, …) the tagged
+    elements group into (ER: SCRIPT_ELEMENTS_TAGS ||--o{ ELEMENT_CATEGORIES). Per
+    the source ER a category is owned by the scene's tag record; promoting it to a
+    shared, scene-independent taxonomy is a candidate for a later slice.
+  generates:
+    - "go:ElementCategory"
+    - "typescript:ElementCategory"
+    - "zig:ElementCategory"
+    - "json_schema:element_categories"
+  depends_on:
+    - "lightwave://schemas/data/cineos/script_elements_tags"
+
+required_fields:
+  - name: tag_ref
+    type: str
+    description: "Slug/id of the parent ScriptElementsTag"
+  - name: name
+    type: str
+    description: "Category name (e.g. 'Props', 'Cast', 'Vehicles')"
+
+optional_fields:
+  - name: category_type
+    type: str
+    description: "Standard breakdown category; values from the cineos_element_category_types enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_element_category_types"
+  - name: color
+    type: str
+    description: "UI color for the category on the breakdown board (a utility-color name, not a hex)"
+  - name: notes
+    type: str
+    description: "Category notes"
+
+relations:
+  parent: script_elements_tags
+  children: []
+
+example:
+  tag_ref: "wet-under-blue-sky-sc-27-heavy-bag"
+  name: "Props"
+  category_type: "props"
+  color: "amber"

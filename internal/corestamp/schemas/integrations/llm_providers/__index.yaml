@@ -1,0 +1,12 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/integrations/llm_providers/__index"
+  title: "LLM Provider Catalog Registry"
+  description: |
+    LLM provider definitions and model catalog. Provider entries are
+    stub configs; models/ contains per-model capability+cost entries
+    conforming to model_capabilities.yaml schema.
+    Referenced by policy/compliance/llm_budgets.yaml for downgrade_chain $ref.
+schemas:
+  providers: providers.yaml
+  models: models/__index.yaml

@@ -1,0 +1,63 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/hooks/issue_automation_event"
+  title: "Issue Automation Event"
+  description: |
+    CI-driven issue lifecycle. On ci.gate.failed: create a labeled issue with
+    the failure context. On ci.gate.passed (after a prior failure): close the
+    issue and link the fix commit. Consumed by dev/ci-signal.sh via lw issue
+    create/close or gh issue.
+
+required_fields:
+  - name: action
+    type: string
+    description: "create | close | comment"
+  - name: repo
+    type: string
+    description: "Target repository (e.g. lightwave-core)."
+  - name: title
+    type: string
+    description: "Issue title (for create action)."
+  - name: body
+    type: string
+    description: "Markdown body (for create action)."
+  - name: labels
+    type: list[string]
+    description: "Issue labels to apply."
+
+optional_fields:
+  - name: issue_number
+    type: int
+    description: "Required for close and comment actions."
+  - name: milestone
+    type: string
+    description: "Sprint milestone name."
+  - name: assignee
+    type: string
+    description: "Persona name (e.g. v_core-package-developer)."
+  - name: project
+    type: int
+    description: "GitHub project number (Lightwave Swarm = 3)."
+  - name: commit_ref
+    type: string
+    description: "Fix commit SHA (for close action)."
+  - name: ci_event_ref
+    type: string
+    description: "Reference to the triggering ci_gate_event."
+
+example:
+  action: create
+  repo: lightwave-core
+  title: "ci: typecheck failure — test_r23_declared_rules_exist.py:97"
+  body: |
+    ## CI Failure
+    - Gate: typecheck
+    - Signal: lsp_diagnostic
+    - File: tests/validation/test_r23_declared_rules_exist.py:97
+    - Code: reportMissingTypeArgument
+
+    Assigned to v_core-package-developer for autonomous fix.
+  labels: [ci-failure, automated, typecheck]
+  assignee: v_core-package-developer
+  project: 3
+  milestone: "Sprint Current"

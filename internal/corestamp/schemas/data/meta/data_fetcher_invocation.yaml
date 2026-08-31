@@ -1,0 +1,54 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/data_fetcher_invocation"
+  title: "Data Fetcher Invocation"
+  description: |
+    Element shape for items in user_prompt's <data_fetchers_invoked>
+    list. Each entry records that the composer dispatched a named
+    data-fetcher at session kickoff and where the resulting payload
+    is cached for the agent to read.
+
+    DISTINCT from a fetcher CATALOG schema (which would declare what
+    fetchers exist and how to invoke them — that's lightwave-sys
+    runtime concern, future stamp). This schema is only the
+    PER-INVOCATION receipt the agent sees.
+
+    Use cases:
+      - slack_threads — composer pre-fetches recent threads in named
+        channels relevant to the task
+      - gh_pr_diff — composer fetches diff for an in-flight PR
+        referenced by the task
+      - jira_ticket — composer fetches ticket metadata
+      - aws_logs — composer pulls last N lines of a CloudWatch log
+
+    Stamped 2026-05-28 as part of Phase B.
+  generates:
+    - "rust:DataFetcherInvocation"
+    - "pydantic:DataFetcherInvocation"
+  depends_on: []
+
+required_fields:
+  - name: name
+    type: str
+    description: "Fetcher name (slug). Free-form for now; future data_fetcher_catalog schema will close the enum."
+  - name: output_ref
+    type: str
+    description: "Where the fetched output was cached — typically a temp file path or an artefact slug. Agent reads this ref to get the payload."
+
+optional_fields:
+  - name: invoked_at_iso
+    type: str
+    description: "ISO-8601 datetime of the fetch. Lets the agent decide freshness if the cached payload might be stale."
+  - name: success
+    type: bool
+    description: "Whether the fetch succeeded. If false, the agent should not rely on output_ref's content (which may be missing or partial)."
+  - name: error_message
+    type: str
+    description: "Set when success=false. One-line failure summary the agent can surface to the operator."
+
+example:
+  name: gh_pr_diff
+  output_ref: "/tmp/lw-fetch-2026-05-28-pr93-diff.txt"
+  invoked_at_iso: "2026-05-28T14:32:20Z"
+  success: true
+  error_message: null

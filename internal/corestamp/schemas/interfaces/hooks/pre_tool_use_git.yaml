@@ -1,0 +1,49 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/hooks/pre_tool_use_git"
+  title: "Pre-Tool-Use Git Guard Hook Contract"
+  description: |
+    Hook interface for the git action guard that runs before every agent Bash
+    tool call. The implementation is a host print (~/.claude/hooks/
+    pre-tool-use-git); this stamp declares the invariants it enforces so the
+    protection is legible in the SST, not only in the hook source (#357,
+    ADR-0043 L2 guard layer). Declare, don't implement — the stamp is a thin
+    mirror of enforced behaviour.
+
+    Invariants declared here are non-negotiable for agent sessions; the
+    operator remains able to perform these actions by hand.
+  generates:
+    - "json_schema:pre_tool_use_git_hook"
+  depends_on: []
+
+required_fields:
+  - name: hook_event
+    type: str
+    description: "Enum: PreToolUse. Fires on every Bash tool invocation whose command parses as git."
+  - name: invariants
+    type: "list[GitInvariantRef]"
+    description: |
+      The git actions denied to agents. Sub-schema GitInvariant:
+        name (str, stable invariant slug),
+        denies (str, the git action pattern blocked),
+        rationale (str, why — cites the lightwave-git doctrine).
+      Declared set:
+        no_amend — `git commit --amend` rewrites shared history; agents
+          re-commit forward instead.
+        no_force_push — `git push --force` / `--force-with-lease` destroys
+          remote history; never available to an agent session.
+
+optional_fields:
+  - name: skip_env
+    type: str
+    description: "Env var that bypasses the hook for one command. None is declared: these invariants have no agent-side bypass by design."
+
+example:
+  hook_event: PreToolUse
+  invariants:
+    - name: no_amend
+      denies: "git commit --amend"
+      rationale: "Amend rewrites shared history; lightwave-git doctrine requires forward-only commits from agents (#357)."
+    - name: no_force_push
+      denies: "git push --force[-with-lease]"
+      rationale: "Force push destroys remote history; deny-listed for agents with no bypass env (#357)."

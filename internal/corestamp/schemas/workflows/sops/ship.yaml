@@ -1,0 +1,157 @@
+name: "ship"
+
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/workflows/sops/ship"
+  title: "Ship SOP — approve → merge → watch → prod-gate"
+  description: |
+    Fires on the operator's go-signal for an approved PR ("ship it"). Runs the
+    back half of the change lifecycle so the only human decision is "this PR is
+    good": squash-merge, fast-forward main, report stale local branches, watch
+    THIS merge's post-merge pipeline (CI + the repo's non-prod auto-apply) to
+    green, then STOP at the production gate. Decision + git-flow audit:
+    spec/adr/0017. Complements task_done.yaml (which fires on the resulting
+    merge for artefact cleanup).
+
+    Shell steps quote every parameter expansion ("${pr}", "${repo}") and set
+    `set -euo pipefail` so a failed sub-step aborts. Strict input validation (a
+    stamped parameter meta-schema with per-parameter constraints) is a named
+    follow-up; until then the consuming runner is responsible for validating
+    parameters before dispatch.
+
+    Scope: the production gate assumes a GitHub Environment approval on infra
+    repos (lightwave-infrastructure-live). For repos that do not deploy infra
+    (e.g. lightwave-core itself) the flow effectively ends at await_post_merge;
+    gate_prod is a no-op stop the operator acknowledges. Release tagging is out
+    of scope — it stays governed by the release-train doctrine (forward-only,
+    schema-change-triggered), invoked by the human at the gate.
+  generates:
+    - "go:ShipSOP"
+    - "json_schema:ship"
+  depends_on: []
+
+# SOP: ship
+#
+# execution_mode: supervised — the operator's go-signal starts it; the
+# production apply requires a second, explicit human approval at the
+# gate_prod escalate_to_human step. The pipeline never auto-approves prod.
+
+id: ship
+title: "Ship an approved PR through to the production gate"
+version: 1.1.0
+execution_mode: supervised
+
+trigger:
+  source: manual
+  event: human.ship_command
+
+parameters:
+  # No per-parameter format constraints yet (bare strings). A stamped parameter
+  # meta-schema with per-parameter constraints (e.g. pr as a positive integer,
+  # repo as owner/name) is a named follow-up; until it lands the consuming
+  # runner must validate parameters before dispatch — and must run the flow
+  # from a CLEAN CHECKOUT OF ${repo}: every git step (status, checkout, rev-parse)
+  # operates on cwd, while every gh call targets ${repo}; nothing asserts they
+  # are the same repo.
+  - name: pr
+    type: string
+  - name: repo
+    type: string
+
+steps:
+  # Refuse to start dirty, then require the PR be approved AND all required
+  # checks green. The guard uses `git status --porcelain` so it catches
+  # UNTRACKED WIP too — ADR-0017's motivating failure (symptom #3) was untracked
+  # files carried through, and `git checkout main` (run later in
+  # sync_and_report_stale) does not block on untracked files. The
+  # Both the working_tree and reviewDecision substitutions are assigned to a
+  # variable BEFORE the `[ ... ]` / `test` so a git/gh failure (not-a-repo,
+  # network/auth/missing PR) is itself fatal under set -e — running the
+  # substitution inside the `if`/`test` would suppress set -e and let an error
+  # read as "clean tree" / "not APPROVED" (fail-open). `gh pr checks --required`
+  # exits non-zero on pending/failure, so the step fails closed.
+  - id: precheck_review
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        working_tree="$(git status --porcelain)"
+        if [ -n "$working_tree" ]; then
+          echo "ERROR: working tree is dirty (tracked, staged, or untracked WIP). Commit or stash to its home branch before shipping." >&2
+          exit 1
+        fi
+        review_decision="$(gh pr view "${pr}" --repo "${repo}" --json reviewDecision -q .reviewDecision)"
+        test "${review_decision}" = "APPROVED"
+        gh pr checks "${pr}" --repo "${repo}" --required
+
+  - id: merge
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        gh pr merge "${pr}" --repo "${repo}" --squash --delete-branch
+
+  # Fetch --prune (always safe: prunes remote-tracking refs only) and REPORT
+  # local branches whose upstream is gone. Local deletion is deliberately NOT
+  # automated: in a squash-merge repo `git branch -d` always refuses (the merge
+  # is a new tree) and `-D` / `update-ref -d` are banned by the global
+  # git-safety rule. Resolving that conflict (a safe squash-aware prune, likely
+  # an `lw` verb) is a named follow-up in spec/adr/0017; here we surface
+  # candidates for the operator rather than guess.
+  - id: sync_and_report_stale
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        git checkout main && git pull --ff-only && git fetch origin --prune
+        git for-each-ref --format '%(refname:short) %(upstream:track)' refs/heads \
+          | awk '$2 == "[gone]" {print "PRUNE-CANDIDATE (gone upstream): " $1}'
+
+  # Watch THIS merge's pipeline, not "the latest run". After sync, main's HEAD
+  # IS the squash-merge commit, so resolve runs by that exact SHA. A push can
+  # trigger MORE than one workflow (CI + non-prod auto-apply), so watch every
+  # run for the SHA and fail if any is red — no failure suppression. Poll up to
+  # ~2.5min for GitHub to register the run(s).
+  - id: await_post_merge
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        sha="$(git rev-parse main)"
+        ids=""
+        for attempt in $(seq 1 30); do
+          ids="$(gh run list --repo "${repo}" --branch main --commit "$sha" --json databaseId -q '.[].databaseId')"
+          [ -n "$ids" ] && break
+          sleep 5
+        done
+        if [ -z "$ids" ]; then
+          echo "no workflow runs registered for $sha after $attempt attempts" >&2
+          exit 1
+        fi
+        # Watches are intentionally SERIAL: each `gh run watch --exit-status`
+        # blocks to completion before the next. Correctness over wall-clock —
+        # any red run fails the step. With multiple triggered workflows this
+        # adds latency but never suppresses a failure.
+        for id in $ids; do
+          gh run watch "$id" --repo "${repo}" --exit-status
+        done
+
+  # Production gate. The pipeline stops here and asks; it never clicks the
+  # GitHub Environment approval itself. args key is `message:` to match the
+  # escalate_to_human precedent in agile_pipeline.yaml.
+  - id: gate_prod
+    tool: escalate_to_human
+    args:
+      message: |
+        ${repo} PR #${pr} is merged and its non-prod pipeline is green.
+        If this repo deploys infrastructure, approve its GitHub Environment
+        production gate to apply; the ship flow will not auto-approve
+        production changes. If the repo does not deploy infra, acknowledge to
+        close out.
+
+  - id: log_done
+    tool: memory_store
+    args:
+      namespace: "sessions"
+      key: "ship-pr-${pr}"
+      value: "PR ${pr} on ${repo} merged + non-prod green; prod left at the human gate."

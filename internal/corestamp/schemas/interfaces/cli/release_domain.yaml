@@ -1,0 +1,48 @@
+name: "release_domain"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/cli/release_domain"
+  title: "lw release domain"
+  description: "Autonomous release train + feature-flag rollback (ADR-0035)."
+
+domain: release
+description: "Release train, merge gate, feature-flag rollback"
+commands:
+  - name: flag
+    flags: [--on, --off, --list]
+    description: "Flip or list feature flags (rollback primitive)"
+  - name: cut
+    flags: [--version, --flag, --note]
+    description: "Register release flags at cut time"
+  - name: sign-off
+    args: [repo]
+    flags: [--by, --sha, --note, --clear]
+    description: "Human exception brake (CTO hold/clear)"
+  - name: merge
+    args: [repo]
+    flags: [--pr, --yes, --release-pr]
+    description: "Autonomous merge when flags + CI green"
+  - name: prepare
+    flags: [--yes]
+    description: "Commit (hook-safe), rebase main, ci, release:qa"
+  - name: ship
+    flags: [--yes, --title, --supersedes]
+    description: "Push branch and open/update PR; note superseded PRs"
+  - name: propagate
+    flags: [--repo, --main-sha, --yes, --dry-run]
+    description: "Rebase open worktrees onto origin/main, run CI, interrupt on break (ADR-0036)"
+    # Declared per ADR-0036, no handler yet. Per-command marker because the
+    # rest of this domain is live — domain-level _status would hide working
+    # verbs. The loader ignores unknown keys, so this is inert until the
+    # strict gate learns to skip planned commands; until then it is the one
+    # acknowledged gap in `lw check schema --strict`.
+    status: planned
+    tracking: "ADR-0036 release-session propagation"
+  # The front door of the tag-driven release plane
+  # (policy/governance/release_pipeline.yaml front_door.target). Unlike the six
+  # verbs above — PR-flow tooling from the retired release-please train — this
+  # one produces the ONLY thing the plane reacts to: an annotated tag.
+  - name: tag
+    flags: [--version, --module, --dry-run, --yes]
+    description: "Compute next SemVer from conventional commits and push the release tag"

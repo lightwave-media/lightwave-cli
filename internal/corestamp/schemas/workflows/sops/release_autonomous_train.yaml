@@ -1,0 +1,65 @@
+name: "release_autonomous_train"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/release_autonomous_train"
+  title: "Autonomous release train SOP"
+  description: |
+    Flag-gated release train (ADR-0035). Rollback is always a flag flip.
+  depends_on:
+    - "lightwave://schemas/data/meta/feature_flag"
+
+id: release_autonomous_train
+title: "Autonomous release train"
+version: 1.0.0
+execution_mode: automated
+
+trigger:
+  source: scheduled
+  event: release_cycle_slot
+
+parameters:
+  - name: repo
+    type: string
+    default: lightwave-cli
+
+steps:
+  - id: home_sync
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw home sync
+
+  - id: merge_feature_prs
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw release merge "${repo}" --yes
+
+  - id: propagate_sessions
+    tool: sop
+    args:
+      sop_id: release_session_propagate
+      when_flag: autonomous_release_session_propagate
+      notes: |
+        ADR-0036 — rebase open worktrees onto new origin/main, run local CI,
+        interrupt agent sessions on break before next commit.
+
+  - id: qa_release_pass
+    tool: sop
+    args:
+      sop_id: qa_release_pass
+      when_flag: autonomous_qa_release_pass
+      panel: release-qa-panel
+      notes: |
+        v_qa-engineer judges intention vs execution; emits 06-qa-release-verdict.md.
+        On PASS, chain core-pre-push-panel (staff → cto) before Release PR merge.
+
+  - id: merge_release_pr
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw release merge "${repo}" --release-pr --yes

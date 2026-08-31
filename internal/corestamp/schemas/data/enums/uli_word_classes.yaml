@@ -1,0 +1,35 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/uli_word_classes"
+  title: "ULI Word Class Enum"
+  description: |
+    Word classes for CreateOS Ubiquitous Language Index and Agent Gate Reply
+    disambiguation (ADR-0038). Every canonical term in glossary/createos.yaml
+    MUST declare word_class.
+  generates:
+    - "pydantic:UliWordClass"
+  depends_on: []
+
+name: uli_word_classes
+description: "Semantic class for ULI terms — drives gate reply routing"
+default: noun
+closed: true
+options:
+  - value: noun
+    label: "Noun"
+    description: "Entity or artifact the user acts on — blueprint, runbook, invoice, gallery"
+  - value: verb
+    label: "Verb"
+    description: "Action intent — ship, capture, approve, spawn, invoice"
+  - value: adjective
+    label: "Adjective"
+    description: "Qualifier — professional, personal, ephemeral, client-facing"
+  - value: adverb
+    label: "Adverb"
+    description: "Manner or degree — quickly, fully, tentatively"
+  - value: proper_noun
+    label: "Proper noun"
+    description: "Named instance — client, project, persona, vendor"
+  - value: phrase
+    label: "Phrase"
+    description: "Multi-word canonical expression — ideal state, auth inbox"

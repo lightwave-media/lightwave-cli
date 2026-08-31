@@ -1,0 +1,115 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/runbooks/runbook_library"
+  title: "Runbook Library (The Gallery)"
+  description: |
+    The searchable collection of all runbook editions available for
+    discovery and execution — the GALLERY where prints are exhibited.
+    Agents query the library to find runbooks by domain, capability,
+    status, or classification.
+
+    The library is the publish surface: runbooks with status
+    exhibition_ready appear in library listings. Drafts and proofs
+    are visible only to their authors (or agents with write access).
+
+    Maps to SWEBOK v4 Ch 8 §2 (Software Configuration Identification):
+    the library is the software configuration item registry for runbooks.
+    Each entry identifies a unique runbook + edition pair with its
+    attributes, status, and relationship chain.
+  generates:
+    - "pydantic:RunbookLibrary"
+  depends_on:
+    - "lightwave://schemas/data/runbooks/runbook_definition"
+    - "lightwave://schemas/data/runbooks/runbook_edition"
+
+required_fields:
+  - name: entries
+    type: "list[LibraryEntry]"
+    description: "All runbook editions visible in the library"
+
+optional_fields:
+  - name: search_index
+    type: "object[SearchIndex] | null"
+    description: "Optimized search index fields for fast library queries"
+
+sub_schemas:
+  LibraryEntry:
+    runbook_slug: "str"
+    name: "str"
+    summary: "str"
+    domain: "str"
+    status: "str"           # exhibition_ready | archived | deprecated
+    latest_edition: "int"
+    latest_semver: "str"
+    total_executions: "int"
+    tags: "list[str]"
+    classification: "list[str]"
+    available_editions: "list[EditionSummary]"
+    contact_sheet_ref: "str | null"
+    parent_prd: "str | null"
+
+  EditionSummary:
+    edition_number: "int"
+    semver: "str"
+    status: "str"
+    signed_by: "str | null"
+    signed_at: "str | null"
+    execution_count: "int"
+
+  SearchIndex:
+    by_domain: "dict[str, list[str]]"       # domain → [runbook_slug, ...]
+    by_tag: "dict[str, list[str]]"          # tag → [runbook_slug, ...]
+    by_capability: "dict[str, list[str]]"   # agent function → [runbook_slug, ...]
+    by_classification: "dict[str, list[str]]" # classification → [runbook_slug, ...]
+
+relations:
+  parent: null
+  children:
+    - runbook_definition
+    - runbook_edition
+    - runbook_contact_sheet
+
+example:
+  entries:
+    - runbook_slug: "deploy-fargate-service"
+      name: "Deploy Fargate Service"
+      summary: "Deploy a containerized service to AWS ECS Fargate"
+      domain: "infrastructure"
+      status: "exhibition_ready"
+      latest_edition: 2
+      latest_semver: "2.1.0"
+      total_executions: 47
+      tags: ["stable", "validated", "production-ready", "aws", "fargate"]
+      classification: ["infrastructure", "deploy"]
+      parent_prd: "lightwave-platform-deployment"
+      available_editions:
+        - edition_number: 2
+          semver: "2.1.0"
+          status: "exhibition_ready"
+          signed_by: "v_printer"
+          signed_at: "2026-06-20T14:30:00Z"
+          execution_count: 47
+        - edition_number: 1
+          semver: "2.0.0"
+          status: "archived"
+          signed_by: "v_printer"
+          signed_at: "2026-06-01T10:00:00Z"
+          execution_count: 23
+    - runbook_slug: "kickoff-initiative"
+      name: "Kickoff — Generic Initiative"
+      summary: "Structured interview before factory apply"
+      domain: "process"
+      status: "exhibition_ready"
+      latest_edition: 3
+      latest_semver: "1.2.0"
+      total_executions: 128
+      tags: ["interview", "kickoff", "initiative", "process"]
+      classification: ["process", "kickoff", "interview"]
+      parent_prd: "lightwave-session-lifecycle"
+      available_editions:
+        - edition_number: 3
+          semver: "1.2.0"
+          status: "exhibition_ready"
+          signed_by: "v_curator"
+          signed_at: "2026-06-15T09:00:00Z"
+          execution_count: 128

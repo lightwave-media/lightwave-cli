@@ -1,0 +1,39 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/epic_priorities
+  title: Epic Priority Enum
+  description: 'P-tier priority levels for Epic entities (p0/p1/p2/p3). Closed enum.
+
+    Distinct shape from task_priorities (which uses critical/high/medium/low/backlog)
+
+    — Epics use the P-tier convention to align with how Joel triages multi-week
+
+    initiatives vs. day-level tasks.
+
+    Extracted 2026-05-25 from legacy products/createos/config.yaml.
+
+    '
+  generates:
+  - pydantic:EpicPriority
+  depends_on: []
+name: epic_priorities
+description: P-tier priority levels for Epic entities
+default: p2
+closed: true
+options:
+- value: p0
+  label: P0 - Critical
+  numeric_value: 0
+  description: P0 - Critical option.
+- value: p1
+  label: P1 - High
+  numeric_value: 1
+  description: P1 - High option.
+- value: p2
+  label: P2 - Medium
+  numeric_value: 2
+  description: P2 - Medium option.
+- value: p3
+  label: P3 - Low
+  numeric_value: 3
+  description: P3 - Low option.

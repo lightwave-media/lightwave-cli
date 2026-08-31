@@ -1,0 +1,58 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/agent_action
+  title: Agent Action — Attribution Record
+  description: 'Every agent decision, structured and queryable. This is the compliance
+
+    record: who did what, when, in which runbook phase, with what outcome,
+
+    at what token cost. Audit trails are SQL queries, not log dumps.
+
+    '
+required_fields:
+- name: agent_id
+  type: str
+  description: Unique identifier of the agent performing the action.
+- name: session_id
+  type: str
+  description: Session context in which the action occurred.
+- name: action
+  type: str
+  description: tool_call, decision, phase_transition, review, escalate
+- name: timestamp
+  type: str
+  description: ISO 8601 timestamp of when the action occurred.
+optional_fields:
+- name: runbook_slug
+  type: str
+  description: Slug of the runbook that orchestrated this action.
+- name: phase
+  type: str
+  description: Named phase within the runbook when this action occurred.
+- name: target
+  type: str
+  description: File, URL, agent_id, or resource acted upon
+- name: decision
+  type: str
+  description: Decision label recorded by the agent for this action.
+- name: tokens_used
+  type: int
+  description: Number of tokens consumed by this action.
+- name: outcome
+  type: enum
+  options:
+  - passed
+  - failed
+  - pending
+  - skipped
+  description: Outcome label for this action (success, failure, skipped).
+example:
+  agent_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  session_id: sess_abc123
+  action: phase_transition
+  timestamp: '2026-06-23T10:45:00Z'
+  runbook_slug: ci-gate
+  phase: complete
+  decision: approved_ponytail_audit
+  tokens_used: 5000
+  outcome: passed

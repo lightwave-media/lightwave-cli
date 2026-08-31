@@ -1,0 +1,83 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/task_intelligence_profile"
+  title: "Task Intelligence Profile"
+  description: |
+    Per-task intelligence requirements and cost estimates. Companion to
+    task.yaml — extends a task with the fields needed for model selection
+    and sprint budget planning. The profile is generated at sprint planning
+    time (by v_scrum-manager or v_data-engineer) and consumed at task
+    dispatch (by session-start.ts for model assignment) and during execution
+    (by the pre-tool-use cost-track hook).
+
+    Every profile carries _schema_version for evolutionary compatibility.
+    estimator_version tracks which estimation algorithm produced the
+    token estimates — critical for variance analysis across algorithm
+    iterations.
+  generates:
+    - "pydantic:TaskIntelligenceProfile"
+  depends_on:
+    - "lightwave://schemas/data/enums/model_tiers"
+    - "lightwave://schemas/data/agile_artifacts/task"
+
+required_fields:
+  - name: task_ref
+    type: str
+    description: "Slug of the parent task from task.yaml. Links profile to its agile artifact."
+  - name: required_intelligence_tier
+    type: str
+    description: "Minimum model tier this task can be completed with. Validated against model_tiers enum."
+  - name: model_policy
+    type: str
+    description: "Model selection strategy slug from workflows/strategies/model_selection.yaml"
+  - name: estimated_input_tokens
+    type: int
+    description: "Pre-execution estimate of input tokens (codebase + spec context). Estimation method depends on estimator_version."
+  - name: estimated_output_tokens
+    type: int
+    description: "Pre-execution estimate of output tokens. Ceiling = llm.max_tokens from agent_definition. Actual output is in cost_record."
+  - name: _schema_version
+    type: int
+    description: "Schema version for evolutionary compatibility. Locked at 1 for initial release."
+  - name: estimator_version
+    type: str
+    description: "Semver of the estimation algorithm that produced the token estimates. Enables variance analysis across estimator iterations."
+
+optional_fields:
+  - name: waste_risk_level
+    type: str
+    description: "low | medium | high — cost of using a model above the required tier. low for simple docs, high for multi-file refactors."
+  - name: confidence
+    type: float
+    description: "Estimator's confidence in its token estimates (0.0-1.0). 0.5 for heuristic, 0.9 for countTokens() API."
+  - name: session_id
+    type: "str | null"
+    description: "The session that was dispatched for this task. Null until dispatch. Set by session-start.ts."
+  - name: override_reason
+    type: "str | null"
+    description: "Why the actual assigned model differs from the policy recommendation. Set by the dispatcher when deviating."
+  - name: local_eligible
+    type: bool
+    description: "True if this task can use a local model. Default: false for tasks above standard tier."
+  - name: estimated_duration_minutes
+    type: int
+    description: "Expected duration in minutes. Used for sprint capacity planning alongside token budget."
+  - name: task_category_hint
+    type: str
+    description: "Hint for the token estimator: code_gen | docs_write | review | analysis | debug | boilerplate. Helps estimator choose the right heuristic."
+
+example:
+  task_ref: "task-fix-auth-flow"
+  required_intelligence_tier: standard
+  model_policy: cheapest_adequate
+  estimated_input_tokens: 75000
+  estimated_output_tokens: 8192
+  _schema_version: 1
+  estimator_version: "1.0.0"
+  waste_risk_level: medium
+  confidence: 0.5
+  session_id: null
+  override_reason: null
+  local_eligible: false
+  estimated_duration_minutes: 120
+  task_category_hint: code_gen

@@ -1,0 +1,39 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_doc_types"
+  title: "CineOS Doc Type Enum"
+  description: |
+    Kind of production document a CineDoc holds (doc.doc_type). Closed.
+  generates:
+    - "go:CineDocType"
+    - "typescript:CineDocType"
+    - "zig:CineDocType"
+    - "json_schema:cineos_doc_types"
+  depends_on: []
+
+name: cineos_doc_types
+description: "Kind of production document"
+default: other
+closed: true
+options:
+  - value: call_sheet
+    label: "Call Sheet"
+    description: "Daily call sheet"
+  - value: treatment
+    label: "Treatment"
+    description: "Story treatment"
+  - value: contract
+    label: "Contract"
+    description: "Contract / agreement"
+  - value: breakdown
+    label: "Breakdown"
+    description: "Scene breakdown sheet"
+  - value: shot_list
+    label: "Shot List"
+    description: "Shot list"
+  - value: release
+    label: "Release"
+    description: "Location or talent release"
+  - value: other
+    label: "Other"
+    description: "Other document"

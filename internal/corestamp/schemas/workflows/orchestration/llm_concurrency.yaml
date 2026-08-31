@@ -1,0 +1,137 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/orchestration/llm_concurrency"
+  title: "LLM Concurrency & Preemption Contract"
+  description: |
+    Per-job-class concurrency caps + preemption priority for LLM calls.
+    Forensic root cause captured 2026-05-25 in ZeroClaw operation: heartbeat
+    queued a 35k-token v_cto strategic-review call that occupied the local
+    26B slot for 2 minutes, blocking Joel's chat. Chat had to fall over to
+    cloud (Haiku) instead — failover worked but at cost.
+
+    The fix is concurrency design, not more compute: chat must preempt
+    strategic-review. Heartbeat doesn't get to spawn 35k-token recursive
+    delegations (that's R9 territory). Per-tier caps differ (cloud is
+    rate-limit-bound; local is GPU-slot-bound).
+
+    Per handoff 2026-05-25-zeroclaw-runtime-ergonomics R7 (must).
+  generates:
+    - "pydantic:LLMConcurrencyContract"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default')"
+  - name: job_classes
+    type: "list[JobClassRef]"
+    description: |
+      Per-class concurrency + preemption rules. Sub-schema JobClass:
+        name (str, slug — chat | tool-heavy | strategic | maintenance | dream-capture | metric-aggregation),
+        max_in_flight (int, cap on concurrent calls of this class system-wide),
+        preemption_priority (int, higher = wins preemption fights; chat=1000),
+        preemptable (bool, can this class be preempted by higher-priority?),
+        wall_clock_budget_secs (int|null, soft cap on per-call duration; null = unbounded),
+        notes (str).
+  - name: per_tier_caps
+    type: "dict[str, TierCapRef]"
+    description: |
+      Per-tier concurrency caps (tiers from lightwave://schemas/integrations/llm_providers).
+      Sub-schema TierCap:
+        max_in_flight (int),
+        reason (enum: gpu_slot_bound | rate_limit_bound | cost_bound),
+        notes (str).
+      Different tiers have different bottlenecks (local = GPU slots; cloud = RPM/RPD).
+  - name: queue_policy
+    type: str
+    description: |
+      Enum: reject | wait | preempt_lower_class.
+      - reject: when at cap, reject new requests (operator must retry)
+      - wait: queue with timeout
+      - preempt_lower_class: kill lower-priority in-flight to make room
+
+optional_fields:
+  - name: preemption_ordering
+    type: "list[str]"
+    description: "Explicit priority ordering of job_class slugs (highest to lowest). Authoritative when preemption_priority values tie."
+  - name: rejection_behavior
+    type: "RejectionBehaviorRef"
+    description: |
+      Sub-schema RejectionBehavior:
+        log_to (str, observability path),
+        alert_class (str, alert class slug if applicable),
+        retry_after_hint_seconds (int, hint emitted to caller).
+  - name: per_provider_overrides
+    type: "list[ProviderOverrideRef]"
+    description: |
+      Sub-schema ProviderOverride: provider_id (str, $ref), max_in_flight (int), notes (str).
+      For when a specific provider needs tighter or looser caps than its tier default.
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default"
+  job_classes:
+    - name: "chat"
+      max_in_flight: 1
+      preemption_priority: 1000
+      preemptable: false
+      wall_clock_budget_secs: 60
+      notes: "Joel's direct chat. ALWAYS wins. Preempts strategic-review if necessary."
+    - name: "tool-heavy"
+      max_in_flight: 2
+      preemption_priority: 500
+      preemptable: true
+      wall_clock_budget_secs: 300
+      notes: "Tool-execution-heavy agent runs (v_dev edit/write workflows)."
+    - name: "strategic"
+      max_in_flight: 1
+      preemption_priority: 200
+      preemptable: true
+      wall_clock_budget_secs: 600
+      notes: "v_cto / v_architect strategic reviews. Preemptable by chat."
+    - name: "maintenance"
+      max_in_flight: 2
+      preemption_priority: 100
+      preemptable: true
+      wall_clock_budget_secs: 120
+      notes: "Heartbeat checks, dead-man-switch probes. Lowest priority."
+    - name: "dream-capture"
+      max_in_flight: 1
+      preemption_priority: 50
+      preemptable: true
+      wall_clock_budget_secs: 300
+      notes: "Idle-time summarization / brain-cortex updates. Fully preemptable."
+  per_tier_caps:
+    local:
+      max_in_flight: 1
+      reason: gpu_slot_bound
+      notes: "Single GPU slot (Apple Silicon 64GB unified memory). Cloud failover available for chat at cap."
+    local-heavy:
+      max_in_flight: 1
+      reason: gpu_slot_bound
+      notes: "Same physical GPU as local; different model loaded."
+    tools-specialist:
+      max_in_flight: 10
+      reason: rate_limit_bound
+      notes: "Haiku 4.5 via OpenRouter, ~50 RPM. Cap at 10 in flight to avoid 429s."
+    frontier-free:
+      max_in_flight: 5
+      reason: rate_limit_bound
+      notes: "deepseek-v4-flash:free — strict rate limits."
+    frontier-paid:
+      max_in_flight: 3
+      reason: cost_bound
+      notes: "Last resort; cost dominates."
+  queue_policy: "preempt_lower_class"
+  preemption_ordering:
+    ["chat", "tool-heavy", "strategic", "maintenance", "dream-capture"]
+  rejection_behavior:
+    log_to: "~/.lightwave/observability/dispatch.jsonl"
+    alert_class: "queue_saturation"
+    retry_after_hint_seconds: 30

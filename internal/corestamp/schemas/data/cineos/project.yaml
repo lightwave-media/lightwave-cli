@@ -1,0 +1,80 @@
+_meta:
+  version: 0.3.0
+  schema_id: lightwave://schemas/data/cineos/project
+  title: Project (Film)
+  description: 'A film/production project — the top of the CineOS domain tree
+
+    (Project → Script → Scene → Shot, and Project → Schedule). Distinct from the
+
+    agile-spine project (work-grouping): a film project MAY later anchor an agile
+
+    project. Generates the CineProject type symbol (per ADR-0017: go / typescript
+
+    / zig / json_schema) to pre-empt a codegen collision with the generic Project
+
+    symbol the agile-spine goal/project schemas introduce in PR #293.
+
+    '
+  generates:
+  - go:CineProject
+  - typescript:CineProject
+  - zig:CineProject
+  - json_schema:project
+  depends_on: []
+required_fields:
+- name: title
+  type: str
+  description: Film title (e.g. 'Wet under blue sky')
+optional_fields:
+- name: agile_project_ref
+  type: str
+  description: Slug of the agile-spine Project anchoring this film's work (the single
+    sanctioned edge between the production spine and the work spine — no other
+    field-level entanglement; added by epic cineos-slice3-stamp)
+- name: logline
+  type: str
+  description: One-sentence pitch (e.g. 'A boxer prepares for the greatest fight of his life, outside of the ring.')
+- name: description
+  type: str
+  description: Longer synopsis / treatment
+- name: genre
+  type: str
+  description: Genre tag(s) (e.g. 'Neo-Noir')
+- name: format
+  type: str
+  description: Production format (e.g. 'Feature film', 'Short', 'Series')
+- name: start_date
+  type: date
+  description: ISO 8601 date when this cineos project begins.
+- name: end_date
+  type: date
+  description: ISO 8601 date when this cineos project ends.
+- name: owner_ref
+  type: str
+  description: User identifier of the project owner
+- name: team_ref
+  type: str
+  description: Slug of the associated Team
+- name: publish
+  type: list[str]
+  values_ref: "lightwave://schemas/data/enums/cineos_publish_surfaces"
+  description: |
+    Surfaces this project is published to. `website` means the public site
+    and any in-app portfolio view read THIS row — poster, title, format, and
+    media live here. There is no second website-projects catalog.
+relations:
+  parent: null
+  children:
+  - script
+  - schedule
+  - scene
+  - team
+  - production_company
+example:
+  title: Wet under blue sky
+  logline: A boxer prepares for the greatest fight of his life, outside of the ring.
+  genre: Neo-Noir
+  format: Feature film
+  owner_ref: joel
+  publish:
+  - website

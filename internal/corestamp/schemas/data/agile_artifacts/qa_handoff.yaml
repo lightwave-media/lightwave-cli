@@ -1,0 +1,178 @@
+_meta:
+  version: "1.2.2"
+  schema_id: "lightwave://schemas/data/agile_artifacts/qa_handoff"
+  title: "QA Handoff"
+  description: |
+    Structured handoff payload from code-review session to v_qa-engineer.
+    Emitted by the reviewer (v_staff-engineer / v_cto) every time the
+    mandatory FIRST self-question ("could a test have caught this?")
+    returns YES. Routes the finding to v_qa-engineer per the hybrid
+    sync/async classification.
+
+    Authored 2026-05-29 per ADR-0005 (lightwave://specs/adr/ADR-0005).
+    Distinct from agent_handoff (cross-persona work transfer): qa_handoff
+    is specifically the review→qa pipeline payload; it does NOT replace
+    agent_handoff which targets the general inter-persona handoff
+    contract.
+  generates:
+    - "pydantic:QAHandoff"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/data/enums/flaw_classes"
+    - "lightwave://schemas/data/enums/proposed_test_kinds"
+  table_kind: entity
+  table_name: qa_handoffs
+
+status_enum: "document_statuses"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: slug
+  unique: true
+
+required_fields:
+  - name: slug
+    type: str
+    description: "URL-safe unique identifier; lowercase, hyphen-separated"
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+    storage: db
+  - name: review_pr
+    type: int
+    description: "Source PR number on the repo the review was performed against (e.g. 99 for lightwave-media/lightwave-core#99)."
+    storage: db
+  - name: review_finding_id
+    type: str
+    description: |
+      Stable handle into the review comment for traceability. Reviewer's
+      §6 output assigns each finding a numbered marker (e.g. 'blocker-2',
+      'concern-1'). This field carries that marker so the qa_handoff can
+      be cross-referenced back to the originating review comment.
+    storage: db
+  - name: flaw_class
+    type: str
+    values_ref: "lightwave://schemas/data/enums/flaw_classes"
+    description: |
+      Classification driving sync vs async routing. Closed enum — values
+      and sync_required mapping defined in flaw_classes.yaml. The first
+      three values (security / correctness / contract) set
+      sync_required=true; the last three (performance / style / coverage)
+      set sync_required=false. Future R-rule (qa_handoff_classification)
+      will assert sync_required matches the flaw_class default.
+    storage: db
+  - name: sync_required
+    type: bool
+    description: |
+      Derived from flaw_class but explicit on the payload so downstream
+      consumers (PR-J v2 fail-handler, qa-followup queue) don't have to
+      re-classify. True blocks the PR until v_qa-engineer authors the
+      failing test AND the developer's fix makes it pass. False files a
+      `gh issue create --label qa-followup` and continues.
+    storage: db
+  - name: proposed_test_kind
+    type: str
+    values_ref: "lightwave://schemas/data/enums/proposed_test_kinds"
+    description: |
+      SWEBOK Ch5 test technique that should answer this finding. Each
+      option in proposed_test_kinds.yaml carries its swebok_ref so the
+      reviewer's `swebok_ref` field can be cross-validated against the
+      enum's declared mapping.
+    storage: db
+  - name: proposed_r_rule_id
+    type: str
+    description: |
+      R-rule identifier the failing test will land under. Format: 'R-N'
+      where N >= 26 (existing rules R-1..R-25 are locked). Reviewer
+      suggests the next available number; v_qa-engineer confirms or
+      assigns the canonical id during authoring.
+    storage: db
+  - name: failing_test_sketch
+    type: str
+    description: |
+      One-paragraph sketch of the failing test v_qa-engineer should
+      author. MUST cite a SWEBOK Ch5 subsection (e.g. '§3.1.11 Forcing
+      Exception Conditions') in the prose. MUST name the test file path,
+      the test function name, the fixture pattern (tmp_path + monkeypatch
+      per R-28), and the assertion shape. Sketch is the spec; v_qa
+      expands to the implementation.
+    storage: db
+  - name: swebok_ref
+    type: str
+    description: |
+      Exact SWEBOK Ch5 subsection reference for the proposed test kind.
+      Format: 'Ch5 §X.Y.Z <Section Title>' (e.g. 'Ch5 §2.2.8 Security
+      Testing'). Cross-validated against governance/testing.md §2 in
+      the R-rule that polices qa_handoff conformance.
+    storage: db
+  - name: created_at
+    type: datetime
+    description: "ISO 8601 timestamp of record creation; auto-populated"
+    storage: db
+  - name: updated_at
+    type: datetime
+    description: "ISO 8601 timestamp of last modification; auto-updated"
+    storage: db
+
+optional_fields:
+  - name: status
+    type: str
+    description: "Lifecycle state; validated against document_statuses."
+    storage: db
+    indexed: true
+  - name: reviewer_persona
+    type: str
+    description: "v_<slug> identifier of the reviewer that emitted the handoff (e.g. v_staff-engineer, v_cto). Useful for tracking handoff frequency per reviewer over time."
+    storage: db
+  - name: blocks_pr
+    type: bool
+    description: "Convenience flag echoing sync_required for downstream consumers that gate on a different field name. Defaults to value of sync_required if omitted. If present, MUST equal sync_required — the planned R-29 (qa_handoff_classification) rule will assert this; until then, divergence is silently accepted, so producers are expected to set both consistently."
+    storage: db
+  - name: notes
+    type: str
+    description: "Free-form notes from the reviewer that don't fit failing_test_sketch — context, suggested alternative test approaches, ambiguity flags. v_qa-engineer reads but is not bound to act."
+    storage: db
+  - name: filed_at
+    type: str
+    description: "ISO 8601 timestamp when the handoff was emitted. Set by the reviewer at emit time."
+    storage: db
+  - name: resolved_at
+    type: str
+    description: "ISO 8601 timestamp when v_qa-engineer landed the R-rule. Set when the matching commit lands on main."
+    storage: db
+
+relations:
+  parent: null # qa_handoff is a leaf artifact; emitted, drained, archived
+  children: []
+
+example:
+  slug: "pr-99-blocker-2-security-handoff"
+  review_pr: 99
+  review_finding_id: "blocker-2"
+  flaw_class: "security"
+  sync_required: true
+  proposed_test_kind: "fault_injection"
+  # planned R-26
+  proposed_r_rule_id: "R-26"
+  failing_test_sketch: |
+    tests/validation/test_r26_no_yaml_unsafe_load.py::test_yaml_load_rejected:
+      Per SWEBOK Ch5 §3.1.11 Forcing Exception Conditions, write a fixture
+      that uses yaml.load (unsafe) instead of yaml.safe_load. monkeypatch
+      schema_files() to return only the fixture. Run the unsafe-load
+      detector. Assert pytest.raises(AssertionError, match='yaml.load')
+      with the offending filename in the failure message. Pair with R-28
+      negative-fixture floor (tmp_path + pytest.raises in same file).
+  swebok_ref: "Ch5 §3.1.11 Forcing Exception Conditions + §2.2.8 Security Testing"
+  status: "draft"
+  reviewer_persona: "v_staff-engineer"
+  blocks_pr: true
+  notes: |
+    Reviewer noticed `yaml.load(path.read_text())` at
+    tests/validation/test_r3_yaml_validates.py:42. The R-3 detector
+    accepted it without flagging. Recommend v_qa-engineer also check
+    bindings/python/ for any yaml.load() use as a follow-up async
+    handoff once planned R-26 lands without surfacing one there.
+  filed_at: "2026-05-29T11:45:00-04:00"
+  created_at: "2026-06-24T12:00:00Z"
+  updated_at: "2026-06-24T12:00:00Z"

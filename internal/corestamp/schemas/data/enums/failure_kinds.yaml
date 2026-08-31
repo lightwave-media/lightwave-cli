@@ -1,0 +1,27 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/failure_kinds
+  title: Failure Kinds
+  description: Closed enum for failure_record.kind and failure loop routing
+  closed: true
+  generates:
+  - pydantic:FailureKind
+  depends_on: []
+name: failure_kinds
+default: tool-gap
+options:
+- value: tool-gap
+  description: Tool Gap option.
+  label: Tool Gap
+- value: docs-drift
+  description: Docs Drift option.
+  label: Docs Drift
+- value: harness-gap
+  description: Harness Gap option.
+  label: Harness Gap
+- value: ci-failure
+  description: Ci Failure option.
+  label: Ci Failure
+- value: spec-gap
+  description: Spec Gap option.
+  label: Spec Gap

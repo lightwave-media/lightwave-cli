@@ -1,0 +1,50 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/http/codegen_targets"
+  title: "Codegen Target Mapping"
+  description: |
+    Declares the supported codegen targets, their SST-to-language type mappings,
+    and file emission patterns. The MCP `schema_fields` tool produces a
+    language-agnostic field spec; this schema maps it to concrete types for
+    each target language.
+
+    Read by the `codegen-sst-to-go-model` runbook and the `lw codegen` CLI.
+
+  generates:
+    - "go:CodegenTargets"
+  depends_on:
+    - "lightwave://schemas/interfaces/http/crud_routes"
+
+required_fields:
+  - name: targets
+    type: "list[TargetDef]"
+    description: "Supported language/framework targets"
+
+sub_schemas:
+  TargetDef:
+    language: str
+    framework: str
+    type_map: "dict[str, str]"
+    output_files: "list[str]"
+
+example:
+  targets:
+    - language: go
+      framework: huma
+      type_map:
+        str: string
+        int: int64
+        float: float64
+        bool: bool
+        date: time.Time
+        datetime: time.Time
+        uuid: uuid.UUID
+        enum: string
+        list: json.RawMessage
+        object: json.RawMessage
+      output_files:
+        - "{table}.go"
+        - "{table}_test.go"
+        - "{table}.sql"
+
+status: active

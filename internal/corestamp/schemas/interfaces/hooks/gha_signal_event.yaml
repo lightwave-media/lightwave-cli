@@ -1,0 +1,74 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/hooks/gha_signal_event"
+  title: "GitHub Actions Signal Event"
+  description: |
+    Signal emitted when a GitHub Actions workflow completes. Consumed by the CI
+    feedback loop as an additional signal source alongside mise run ci. Fetched
+    via gh run list --json or the GitHub REST API.
+
+required_fields:
+  - name: workflow_name
+    type: string
+    description: 'e.g. "CI" or "rebuild-ci.yml".'
+  - name: conclusion
+    type: string
+    description: "success | failure | cancelled | skipped"
+  - name: repo
+    type: string
+    description: "Repository name (e.g. lightwave-core)."
+  - name: branch
+    type: string
+    description: "Git branch name."
+  - name: commit
+    type: string
+    description: "Short git SHA (7 chars) of HEAD."
+  - name: run_id
+    type: int
+    description: "GitHub Actions run ID."
+  - name: run_url
+    type: string
+    description: "URL to the workflow run."
+
+optional_fields:
+  - name: failures
+    type: list
+    description: "Array of CiFailure objects describing individual failures (see sub_schemas)."
+
+sub_schemas:
+  CiFailure:
+    fields:
+      - name: task
+        type: string
+        description: "Mise task name that produced the failure."
+      - name: file
+        type: "string | null"
+        description: "Repo-relative file path associated with the failure, or null."
+      - name: line
+        type: "int | null"
+        description: "Line number within the file, or null if not applicable."
+      - name: code
+        type: "string | null"
+        description: "Diagnostic code (e.g. reportMissingTypeArgument), or null."
+      - name: message
+        type: string
+        description: "Human-readable failure line from the tool's output."
+      - name: severity
+        type: string
+        description: "error | warning | info"
+
+example:
+  workflow_name: "CI"
+  conclusion: failure
+  repo: lightwave-core
+  branch: main
+  commit: a00df94
+  run_id: 9876543210
+  run_url: "https://github.com/lightwave-media/lightwave-core/actions/runs/9876543210"
+  failures:
+    - task: typecheck
+      file: tests/validation/test_r23_declared_rules_exist.py
+      line: 97
+      code: reportMissingTypeArgument
+      message: Expected type arguments for generic class "Match"
+      severity: warning

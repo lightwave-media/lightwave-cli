@@ -1,0 +1,47 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/testing_harnesses"
+  title: "Testing Harnesses"
+  description: |
+    Closed enum of test-execution harnesses supported across the
+    Lightwave repo set. Consumed by `testing_strategy_plan.yaml#/required_fields/harness`
+    and surfaced in the user_prompt `<testing>` block so the agent
+    knows which harness to invoke.
+
+    One harness per language/runtime. Mixing harnesses within a single
+    test-strategy plan is a smell — split into multiple plans, one per
+    harness, if a sprint touches multiple runtimes.
+
+    Wire encoding lowercase with hyphen (matches CLI verb conventions).
+    Stamped 2026-05-28 as part of Phase B.
+  generates:
+    - "rust:TestingHarness"
+    - "pydantic:TestingHarness"
+  depends_on: []
+
+name: testing_harnesses
+description: "Test-execution harness — pytest | cargo-test | go-test | bun-test | playwright | pact | k6"
+default: "pytest"
+closed: true
+options:
+  - value: pytest
+    label: "pytest"
+    description: "Python test runner. Default for lightwave-core (R-rule tests), lightwave-platform (Go/Huma backend)."
+  - value: cargo-test
+    label: "cargo test"
+    description: "Rust built-in test runner. Default for lightwave-sys, any Rust binding."
+  - value: go-test
+    label: "go test"
+    description: "Go built-in test runner. Default for lightwave-cli (Go implementation)."
+  - value: bun-test
+    label: "bun test"
+    description: "Bun's Jest-compatible test runner. Default for TypeScript code in lightwave-ui, hooks, shared libs."
+  - value: playwright
+    label: "Playwright"
+    description: "Browser E2E test runner. Used for UI integration tests in lightwave-ui."
+  - value: pact
+    label: "Pact"
+    description: "Consumer-driven contract testing. Used for cross-repo API contract verification."
+  - value: k6
+    label: "k6"
+    description: "Load + performance testing. Used for backend performance verification."

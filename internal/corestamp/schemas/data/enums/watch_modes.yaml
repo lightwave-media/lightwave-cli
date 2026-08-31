@@ -1,0 +1,17 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/watch_modes"
+  title: "Watch Mode Enum"
+  description: "Mode of an agent watch session — what type of target the watcher is observing."
+  depends_on: []
+name: watch_modes
+description: "Target type for agent_watch_session.watch_mode"
+default: "agent"
+closed: true
+options:
+  - value: "agent"
+    label: "Agent"
+    description: "Watcher is supervising another agent persona — monitors agent session state (blocked, completed, stale heartbeat)."
+  - value: "interview"
+    label: "Interview"
+    description: "Watcher is observing a human interaction — reloads context when the user provides new answers or the interview reaches a ready state."

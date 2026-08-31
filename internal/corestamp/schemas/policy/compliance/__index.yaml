@@ -1,0 +1,11 @@
+fitness_gate: fitness_gate.yaml
+llm_budgets: llm_budgets.yaml
+lsp_control_plane: lsp_control_plane.yaml
+session_retention: session_retention.yaml
+token_budget: token_budget.yaml
+schemas:
+  fitness_gate: fitness_gate.yaml
+  llm_budgets: llm_budgets.yaml
+  lsp_control_plane: lsp_control_plane.yaml
+  session_retention: session_retention.yaml
+  token_budget: token_budget.yaml

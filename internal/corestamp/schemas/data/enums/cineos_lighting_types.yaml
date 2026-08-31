@@ -1,0 +1,41 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_lighting_types"
+  title: "CineOS Lighting Type Enum"
+  description: |
+    Lighting setup of a Shot (shot.lighting_type). OPEN (closed: false) — common
+    sources are suggested; mixed/bespoke setups are allowed (R-41 resolves the ref
+    but does not enforce membership).
+  generates:
+    - "go:CineLightingType"
+    - "typescript:CineLightingType"
+    - "zig:CineLightingType"
+    - "json_schema:cineos_lighting_types"
+  depends_on: []
+
+name: cineos_lighting_types
+description: "Lighting setup (suggested)"
+default: available
+closed: false
+options:
+  - value: available
+    label: "Available"
+    description: "Available / natural light"
+  - value: tungsten
+    label: "Tungsten"
+    description: "Tungsten units"
+  - value: hmi
+    label: "HMI"
+    description: "HMI units"
+  - value: led
+    label: "LED"
+    description: "LED units"
+  - value: fluorescent
+    label: "Fluorescent"
+    description: "Fluorescent units"
+  - value: practical
+    label: "Practical"
+    description: "In-frame practical sources"
+  - value: mixed
+    label: "Mixed"
+    description: "Mixed sources"

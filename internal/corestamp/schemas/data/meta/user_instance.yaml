@@ -1,0 +1,101 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/user_instance
+  title: CreateOS User Instance
+  description: 'Alive operator configuration materialized from interview exports.
+
+    Each approved interview patches this instance — apps, APIs, integrations,
+
+    vendor registry, agile_roots, voice profile (ADR-0041).
+
+    '
+  generates:
+  - pydantic:UserInstance
+  depends_on:
+  - lightwave://schemas/data/enums/life_domains
+required_fields:
+- name: operator_handle
+  type: str
+  description: Unique handle identifying the human operator.
+- name: schema_version
+  type: int
+  description: SemVer version of the user_instance schema in use.
+- name: enabled_domains
+  type: list[str]
+  description: life_domains slugs active for this operator
+- name: voice_first
+  type: bool
+  description: Default input is speech; Joel dogfood true
+optional_fields:
+- name: integrations
+  type: object<Integrations>
+  description: Map of external integration configurations for this user.
+- name: vendor_registry
+  type: list[VendorNodeRef]
+  description: Registry of vendor credentials and service bindings.
+- name: professional_advisors
+  type: list[VendorNodeRef]
+  description: List of professional advisor contacts for this operator.
+- name: rigor_defaults
+  type: map[str, str]
+  description: Default rigor tier settings applied to this user's sessions.
+- name: agile_roots
+  type: list[str]
+  description: Active epic slugs across life domains
+- name: site_config_ref
+  type: str
+  description: Path to the site configuration file for this user's instance.
+- name: interview_export_ref
+  type: str
+  description: Path to the most recent interview export for this user.
+sub_schemas:
+  Integrations:
+    stripe:
+      type: str
+      description: local | platform
+    quickbooks:
+      type: str
+    chase:
+      type: str
+    google_workspace:
+      type: str
+    apple:
+      type: str
+  VendorNodeRef:
+    slug:
+      type: str
+    kind:
+      type: str
+      description: production_vendor | professional_advisor
+    name:
+      type: str
+    contact_ref:
+      type: str
+example:
+  operator_handle: joel
+  schema_version: 1
+  voice_first: true
+  enabled_domains:
+  - photography
+  - content-creation
+  - creative-strategy
+  - legal
+  - finance
+  - software-development
+  - personal-admin
+  integrations:
+    stripe: local
+    quickbooks: connected
+    chase: connected
+    google_workspace: admin
+    apple: macos_xcode
+  professional_advisors:
+  - slug: bookkeeper
+    kind: professional_advisor
+    name: Bookkeeper
+  - slug: angie-immigration
+    kind: professional_advisor
+    name: Angie Immigration Law
+  agile_roots:
+  - cineos-v1
+  - client-deliverable-pack

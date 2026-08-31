@@ -1,0 +1,119 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/clip"
+  title: "Clip"
+  description: |
+    A captured media unit — one recorded take of (usually) a planned Shot
+    (ADR-0001: the entity is clip; take is a field on it). Carries the media
+    reference (SequenceDescriptor-shaped) and promoted capture metadata under
+    verbatim ALE/FilmLight keys so the Baselight handshake and ALE/EDL import
+    need no mapping layer. The slate triple (scene_number via scene_ref,
+    shot_number via shot_ref, take) joins a clip to its planned coverage and
+    to a Baselight strip. Unslated clips (docs, wilds) may omit shot_ref.
+    Additional per-clip metadata beyond the promoted columns lives in
+    `metadata` keyed per metadata_definition.
+  generates:
+    - "go:Clip"
+    - "typescript:Clip"
+    - "zig:Clip"
+    - "json_schema:clip"
+  depends_on:
+    - "lightwave://schemas/data/cineos/project"
+
+required_fields:
+  - name: project_ref
+    type: str
+    description: "Slug/id of the owning Project (denormalized, like scene.project_ref)"
+  - name: media_path
+    type: str
+    description: "Path to the media — movie file, or frame-sequence pattern with %d/#### frame field"
+
+optional_fields:
+  - name: shot_ref
+    type: str
+    nullable: true
+    description: "Slug/id of the planned Shot this clip covers (null for unslated material)"
+  - name: scene_ref
+    type: str
+    description: "Slug/id of the Scene (derivable from shot_ref when slated; direct for unslated)"
+  - name: name
+    type: str
+    description: "Clip display name (ALE key: clip)"
+  - name: take
+    type: int
+    description: "Slate take number (ALE key: take)"
+  - name: circletake
+    type: bool
+    description: "Circled take on the camera report (ALE key: circletake)"
+  - name: tape
+    type: str
+    description: "Tape / source id (ALE key: tape)"
+  - name: cameraroll
+    type: str
+    description: "Camera roll (ALE key: cameraroll)"
+  - name: labroll
+    type: str
+    description: "Lab roll (ALE key: labroll)"
+  - name: camera
+    type: str
+    description: "Camera id/letter (ALE key: camera)"
+  - name: srctc
+    type: str
+    description: "Source timecode pair 'IN/OUT' as HH:MM:SS:FF/HH:MM:SS:FF (ALE key: srctc; str pending first-class timecode_pair scalar)"
+  - name: rectc
+    type: str
+    description: "Record timecode pair 'IN/OUT' (ALE key: rectc; str pending first-class timecode_pair scalar)"
+  - name: start_frame
+    type: int
+    description: "First frame of the media"
+  - name: end_frame
+    type: int
+    description: "Last frame of the media (inclusive)"
+  - name: codec
+    type: str
+    description: "Media codec (ALE key: codec)"
+  - name: sourcefps
+    type: float
+    description: "Source frame rate (ALE key: sourcefps)"
+  - name: width
+    type: int
+    description: "Pixel width (ALE key: width)"
+  - name: height
+    type: int
+    description: "Pixel height (ALE key: height)"
+  - name: pixel_aspect
+    type: float
+    description: "Pixel aspect ratio (1.0 spherical; 2.0 full anamorphic)"
+  - name: input_space
+    type: str
+    description: "Input colour space (ALE key: input_space); suggested values from the cineos_colour_spaces enum (open)."
+    values_ref: "lightwave://schemas/data/enums/cineos_colour_spaces"
+  - name: camera_format_ref
+    type: str
+    description: "Name/id of the CameraFormat print describing this clip's capture format"
+  - name: metadata
+    type: object
+    description: "Further capture metadata as {key: value}; keys per metadata_definition (verbatim ALE keys)"
+
+relations:
+  parent: null # soft-ref by design: slated clips point at a Shot via nullable shot_ref, unslated clips have no fixed parent (mirrors the image polymorphic pattern)
+  children:
+    - grade
+
+example:
+  project_ref: "wet-under-blue-sky"
+  shot_ref: "wet-under-blue-sky-sc-27-27a"
+  scene_ref: "wet-under-blue-sky-sc-27"
+  media_path: "/Volumes/raid/wubs/A046/A046C028_251219_R1JS.mov"
+  name: "A046C028_251219_R1JS"
+  take: 3
+  circletake: true
+  tape: "A046"
+  cameraroll: "A046"
+  camera: "A"
+  srctc: "11:52:44:12/11:53:01:08"
+  codec: "ProRes 4444"
+  sourcefps: 24.0
+  width: 2880
+  height: 2160
+  input_space: "ARRI_LogC_WG_full"

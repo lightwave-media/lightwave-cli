@@ -1,0 +1,114 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/org_team"
+  title: "Forgejo Team — 1:1 SST Mirror"
+  description: |
+    1:1 mirror of Forgejo's Team struct and team-scoped API endpoints.
+    Source: swagger.v1.json #/definitions/Team, #/paths/~1teams
+
+    Teams are the RBAC grouping primitive. In Lightwave, agent personas are
+    organized into teams (engineering, review, ops) with granular repo-level
+    permissions. The permission model (none/read/write/admin/owner) maps
+    directly to OpenFGA roles per ADR-0013.
+
+  source_ref: "forgejo://swagger.v1.json#/definitions/Team"
+  table_kind: entity
+  table_name: teams
+  generates:
+    - "go:ForgejoTeam"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: name
+  unique: false  # team names are unique within an org, not globally
+
+required_fields:
+  - name: name
+    type: str
+    description: "Team name — unique within the parent organization"
+    storage: db
+  - name: org_ref
+    type: str
+    description: "Slug of parent organization"
+    storage: db
+    fk_ref: "lightwave://schemas/integrations/forgejo/organization"
+    fk_column: username
+    indexed: true
+  - name: permission
+    type: str
+    description: "none | read | write | admin | owner"
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: description
+    type: str
+    storage: db
+  - name: can_create_org_repo
+    type: bool
+    storage: db
+  - name: includes_all_repositories
+    type: bool
+    description: "If true, team has access to all repos in the org"
+    storage: db
+  - name: units
+    type: "list[str]"
+    description: "Repository unit permissions (repo.code, repo.issues, repo.pulls, etc.)"
+    storage: db
+    column_type: jsonb
+  - name: units_map
+    type: dict
+    description: "Per-unit permission mapping (e.g. repo.code: read, repo.pulls: write)"
+    storage: db
+    column_type: jsonb
+
+relations:
+  parent: organization
+  parent_fk:
+    column: org_ref
+    references: organizations.username
+    on_delete: CASCADE
+
+sub_schemas:
+  CreateTeamOption:
+    name: str
+    description: str
+    can_create_org_repo: bool
+    includes_all_repositories: bool
+    permission: str
+    units: "list[str]"
+    units_map: dict
+
+  EditTeamOption:
+    name: str
+    description: str
+    can_create_org_repo: bool
+    includes_all_repositories: bool
+    permission: str
+    units: "list[str]"
+    units_map: dict
+
+example:
+  name: "engineering"
+  org_ref: "lightwave-media"
+  description: "Core engineering team"
+  permission: "write"
+  can_create_org_repo: true
+  includes_all_repositories: false
+  units: ["repo.code", "repo.issues", "repo.pulls", "repo.releases"]
+  units_map:
+    "repo.code": "write"
+    "repo.issues": "write"
+    "repo.pulls": "write"
+    "repo.releases": "admin"
+  created_at: "2026-06-25T00:00:00Z"
+  updated_at: "2026-06-25T00:00:00Z"

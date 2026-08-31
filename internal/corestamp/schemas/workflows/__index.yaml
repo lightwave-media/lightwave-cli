@@ -1,0 +1,33 @@
+# =============================================================================
+# WORKFLOWS SCHEMA REGISTRY (Category C — Process shape)
+# =============================================================================
+# Actions, blueprints, SOPs, strategies, skills, celery tasks, AWS tasks.
+# The procedural side of the SST. Argo Workflows / GitHub Actions pattern.
+#
+# Sub-categories:
+#   actions/      — atomic parameterized primitives (Go/Rust functions)
+#   blueprints/   — ordered compositions of actions (declarative YAML)
+#   sops/         — procedural Standard Operating Procedures
+#   strategies/   — CI/CD observability + conformance contracts
+#   skills/       — agent-specific capabilities (skill manifests)
+#   celery_tasks/ — legacy Celery task definitions (retired with the Django
+#                   stack; kept for historical reference, not an active family)
+#   aws_tasks/    — AWS-side task definitions (Lambda, Step Functions, etc.)
+#
+# Active families: orchestration, scheduled_jobs, sops, strategies, validation.
+# Pending: actions, blueprints, skills, celery_tasks, aws_tasks.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/workflows/__index"
+  title: "Workflows Schema Registry"
+  description: "Sub-registry for process-shape schemas. lw cli reads blueprints/ at execution time; blueprint → action ref integrity enforced by R-10."
+
+schemas:
+  orchestration: orchestration/__index.yaml
+  scheduled_jobs: scheduled_jobs/__index.yaml
+  sops: sops/__index.yaml
+  strategies: strategies/__index.yaml
+  validation: validation/__index.yaml
+  skills: skills/__index.yaml

@@ -1,0 +1,88 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/workflows/strategies/ci-node"
+  title: "CI Strategy — Node.js / TypeScript Repos"
+  description: |
+    Observability and conformance contract for Node.js / TypeScript CI in
+    LightWave. Defines WHAT every Node repo's CI MUST emit (the observable
+    outputs), not HOW the workflow is implemented.
+
+    The implementation lives in the reusable workflow at
+    lightwave-media/.github/.github/workflows/ci-node.yml — that file is
+    the source of truth for inputs, step implementation, and artifact paths.
+    This schema owns the observability contract (what must be emitted) and
+    the conformance policy (how repos are checked for compliance).
+
+    v1.0.0 — initial definition. Status: aspirational. The print
+    (ci-node.yml) exists; enforcement via `lw check repo-infra` is a
+    named follow-up.
+
+    v1.1.0 — reconcile with the corrected print contract (#433,
+    lightwave-media/.github#1): the job summary must be producible with
+    zero runner-installed dependencies, and lint failures must fail the
+    job independently of typecheck.
+  generates: []
+
+  depends_on:
+    - "lightwave://schemas/policy/governance/repo-infra"
+
+# =============================================================================
+# ci-node — CI observability + conformance contract for Node/TypeScript repos
+# =============================================================================
+
+required_fields:
+  - name: id
+    type: str
+    description: "ci-node configuration identifier"
+
+example:
+  id: "ci-node-example"
+
+name: "ci-node"
+
+id: ci-node
+
+# -----------------------------------------------------------------------------
+# observability contract — what the materialised print MUST emit
+# -----------------------------------------------------------------------------
+observability:
+  test_artifact:
+    required: true
+    description: |
+      Structured JUnit XML per test suite uploaded as a named artifact keyed
+      to the commit SHA. Every PR must link to structured test output.
+  job_summary:
+    required: true
+    description: |
+      Human-readable pass/fail summary written to GITHUB_STEP_SUMMARY,
+      visible on the PR Checks tab. Must include artifact link.
+
+      Dependency-free by contract: the summary is derived from the JUnit
+      root-tag attributes with a regex parse — never by require()ing a
+      node module (xml2js) that github-script does not ship. The first
+      print crashed on exactly that for every caller (#433).
+  lint_signal:
+    required: true
+    description: |
+      Lint and typecheck are INDEPENDENT failure signals. Chaining them
+      (`lint || tsc --noEmit`) masks every lint failure whenever tsc
+      passes — the print did this until 2026-08-12 (#433). A conforming
+      workflow runs each as its own step so either alone fails the job.
+
+# -----------------------------------------------------------------------------
+# conformance — how lw check repo-infra enforces this contract
+# -----------------------------------------------------------------------------
+conformance:
+  check_id: "ci-node"
+  description: |
+    `lw check repo-infra --check ci-node` (named follow-up) verifies that a
+    repo's .github/workflows/ci.yml delegates to the shared reusable workflow
+    rather than hand-crafting equivalent steps inline.
+  severity: "warn"
+  fix_hint: |
+    Replace inline build/test steps in .github/workflows/ci.yml with:
+      jobs:
+        ci:
+          uses: lightwave-media/.github/.github/workflows/ci-node.yml@main
+          with:
+            browser_tests: true   # or false

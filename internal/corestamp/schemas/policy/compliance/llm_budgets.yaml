@@ -1,0 +1,95 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/policy/compliance/llm_budgets"
+  title: "LLM Cost Budgets"
+  description: "Org-wide and per-environment LLM cost budget policy. Declares daily / monthly caps, escalation behavior (warn → throttle → block), per-model cost references (linked to the model catalog), and reporting cadence. Enforced at runtime by the LLM provider router in v_core; surfaced to the operator via Telegram alerts and the lw cli. Migrated 2026-05-25 from governance/cost/llm_budgets.yaml (Phase 4 follow-up to handoff #1)."
+  generates:
+    - "pydantic:LLMBudgetPolicy"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'org-default', 'dev-environment', 'joel-personal')"
+  - name: scope
+    type: str
+    description: "Where this policy applies: enum: org | environment | operator | role"
+  - name: scope_target
+    type: str
+    description: "The specific scope target (e.g. 'lightwave-media' for org, 'prod' for environment, 'joel' for operator, 'v_dev' for role)"
+  - name: daily_cap_usd
+    type: float
+    description: "Hard daily spending cap in USD. 0 = no LLM calls permitted (kill-switch); -1 = unlimited (rare; requires explicit op approval)."
+  - name: monthly_cap_usd
+    type: float
+    description: "Hard monthly spending cap in USD. Tracks cumulative monthly spend."
+  - name: escalation_policy
+    type: "list[EscalationRuleRef]"
+    description: "Ordered list of escalation rules as cap is approached. Sub-schema EscalationRule: threshold_pct (int, 0-100 — percent of cap), action (enum: warn|throttle|downgrade|block), channel (enum: log|telegram|email|all), notes (str, what the operator should do)"
+
+optional_fields:
+  - name: sprint_budget_ref
+    type: str
+    description: "Slug of the associated sprint_budget from data/meta/sprint_budget.yaml. Links org-level budget policy to per-sprint allocation. Null for org-wide policies without sprint granularity."
+  - name: model_tier_escalation
+    type: "list[TierEscalationRule]"
+    description: "Ordered escalation rules by model tier. Sub-schema TierEscalationRule: tier (str, from model_tiers enum — frontier|powerful|standard|local|economic), threshold_pct (int, 0-100 — percent of sprint budget for this tier), action (enum: warn|throttle|downgrade_tier|block), downgrade_target_tier (str|null, next tier to downgrade to)."
+  - name: per_model_caps
+    type: "list[ModelCapRef]"
+    description: "Per-model override caps. Sub-schema ModelCap: model_id (str, $ref to model catalog), daily_cap_usd (float|null, null = inherit org), monthly_cap_usd (float|null), rationale (str)"
+  - name: reporting_cadence
+    type: str
+    description: "How often spend reports fire (enum: realtime|hourly|daily|weekly|on-threshold)"
+  - name: alert_thresholds_pct
+    type: "list[int]"
+    description: "Percentages of cap at which to alert (e.g., [50, 80, 95, 100])"
+  - name: downgrade_chain
+    type: "list[str]"
+    description: "Ordered fallback chain when downgrade triggers — $refs to model catalog entries"
+  - name: cost_per_million_tokens_table
+    type: "list[CostRowRef]"
+    description: "Canonical cost reference for org-wide accounting. Sub-schema CostRow: model_id, input_per_million_usd, output_per_million_usd, last_updated (date). Pulls from model catalog; carried here for org-level rollup."
+  - name: status
+    type: str
+    description: "Lifecycle: validated against document_statuses"
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "org-default"
+  scope: "org"
+  scope_target: "lightwave-media"
+  daily_cap_usd: 5.0
+  monthly_cap_usd: 100.0
+  escalation_policy:
+    - threshold_pct: 50
+      action: warn
+      channel: log
+      notes: "Halfway to daily cap — recorded but operator not paged."
+    - threshold_pct: 80
+      action: warn
+      channel: telegram
+      notes: "Operator paged via Telegram with spend rundown."
+    - threshold_pct: 95
+      action: downgrade
+      channel: telegram
+      notes: "Downgrade chain activates — Sonnet→Haiku, Haiku→local, etc. Per per-model rules."
+    - threshold_pct: 100
+      action: block
+      channel: all
+      notes: "Hard stop. New LLM calls refused. Manual operator unblock required (lw budgets reset)."
+  per_model_caps: []
+  reporting_cadence: "daily"
+  alert_thresholds_pct: [50, 80, 95, 100]
+  downgrade_chain:
+    - "lightwave://schemas/integrations/llm_providers/models/claude_sonnet_4_6"
+    - "lightwave://schemas/integrations/llm_providers/models/claude_haiku_4_5"
+    - "lightwave://schemas/integrations/llm_providers/models/gemma_4_26b_a4b"
+    - "lightwave://schemas/integrations/llm_providers/models/gemma_4_e4b"
+  cost_per_million_tokens_table: []
+  status: "draft"

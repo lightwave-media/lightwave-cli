@@ -1,0 +1,91 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/data/reference_documents/ubiquitous_language"
+  title: "Ubiquitous-Language Glossary"
+  description: "Defines the shared language inside a bounded context (DDD ubiquitous-language). Parents to a Domain Charter for domain-level glossaries, or to a Package/Epic for narrower scope. Each term carries definition, aliases, anti-terms (words to AVOID), and examples. Migrated 2026-05-25 from governance/reference/ubiquitous_language.yaml (Phase 4 file #18)."
+  generates:
+    - "pydantic:UbiquitousLanguageGlossary"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/data/reference_documents/domain_charter"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: slug
+    type: str
+    description: "Kebab-case identifier; typically matches the parent scope (e.g., 'lightwave-core' if parent is the lightwave-core package)."
+  - name: scope
+    type: str
+    description: "One paragraph: what bounded context this glossary covers. Inherits broader language from its parent if applicable."
+  - name: parent_kind
+    type: str
+    description: "What kind of artifact owns this glossary; one of: domain_charter | package | epic | sprint."
+  - name: parent_ref
+    type: str
+    description: "$ref to the parent (e.g., domain_charter/software-development, package/lightwave-core, epic/<slug>)."
+  - name: terms
+    type: "list[TermSpecRef]"
+    description: "Glossary terms; sub-schema: term (str, canonical name), definition (str, one or two sentences), aliases (list[str], synonyms used elsewhere), anti_terms (list[str], words to AVOID for this concept with optional reason), examples (list[str], usage examples). At least one term is required."
+
+optional_fields:
+  - name: related_glossaries
+    type: "list[str]"
+    description: "$refs to glossaries that overlap, extend, or contrast with this one."
+  - name: last_reviewed_at
+    type: date
+    description: "ISO date this glossary was last reviewed for accuracy."
+  - name: status
+    type: str
+    description: "Lifecycle status; validated against document_statuses."
+
+relations:
+  parent: domain_charter # or package/epic per parent_kind
+  children: []
+
+example:
+  slug: lightwave-core
+  scope: "Terms used within the lightwave-core package — the constitution package for the LightWave Media codebase. Inherits broader software-development language from its parent domain charter."
+  parent_kind: "package"
+  parent_ref: "package/lightwave-core"
+  terms:
+    - term: "Stamp"
+      definition: "The declarative source of truth — lightwave-core itself. Holds shape; never holds content."
+      aliases: ["SST", "schema package"]
+      anti_terms: ["spec library (too narrow)", "type system (too narrow)"]
+      examples:
+        - "lightwave-core/src/schemas/data/agile_artifacts/epic.yaml defines the stamp for Epic entities"
+    - term: "Print"
+      definition: "Runtime artifacts and filled instances produced by code reading the stamp. Lives at ~/.lightwave/*."
+      aliases: ["runtime data", "instance"]
+      anti_terms: ["output (too vague)", "render (overloaded)"]
+      examples:
+        - "~/.lightwave/specs/epic/<slug>.md is a print of the Epic stamp"
+    - term: "Action"
+      definition: "Atomic parameterized primitive that does one thing in a blueprint. Implemented in lw cli (or lightwave-sys for runtime actions)."
+      aliases: ["primitive", "step"]
+      anti_terms: ["task (overloaded with R-P-I-V-R Task entity)"]
+      examples:
+        - "gen-yaml-stub, register-index, format-lint, trigger-local-ci"
+    - term: "Blueprint"
+      definition: "Ordered composition of actions executed by lw cli. Declared as YAML in lightwave-core."
+      aliases: ["workflow", "recipe"]
+      anti_terms: ["script (implies imperative)", "automation (too vague)"]
+      examples:
+        - "scaffold-schema blueprint orchestrates gen-yaml-stub → register-index → ... → trigger-local-ci"
+    - term: "Binding"
+      definition: "Thin per-language loader package that reads YAML schemas and returns language-native typed objects. Zero business logic."
+      aliases: ["loader", "adapter"]
+      anti_terms: ["SDK (implies fat library)"]
+      examples:
+        - "bindings/python/, bindings/typescript/, bindings/go/, bindings/rust/"
+    - term: "Conformance test"
+      definition: "Cross-binding test that verifies every language binding loads every schema and returns equivalent shape."
+      aliases: ["cross-binding test"]
+      anti_terms: ["unit test (too narrow)", "integration test (overloaded)"]
+      examples:
+        - "tests/conformance/test_all_bindings_load_epic.py"
+  related_glossaries:
+    - "lightwave://specs/glossary/software-development"
+  last_reviewed_at: "2026-05-25"
+  status: "draft"

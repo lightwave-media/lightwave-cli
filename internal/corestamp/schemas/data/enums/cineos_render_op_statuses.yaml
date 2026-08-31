@@ -1,0 +1,38 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_render_op_statuses"
+  title: "CineOS Render Operation Status Enum"
+  description: |
+    Lifecycle of a render_op (render_op.status). CLOSED — mirrors the queue
+    operation lifecycle observed in Baselight's flop so render records map
+    1:1 onto queue operations when the data/queue family lands.
+  generates:
+    - "go:CineRenderOpStatus"
+    - "typescript:CineRenderOpStatus"
+    - "zig:CineRenderOpStatus"
+    - "json_schema:cineos_render_op_statuses"
+  depends_on: []
+
+name: cineos_render_op_statuses
+description: "Render operation lifecycle states"
+default: pending
+closed: true
+options:
+  - value: pending
+    label: "Pending"
+    description: "Defined but not yet submitted"
+  - value: queued
+    label: "Queued"
+    description: "Submitted, waiting for a worker"
+  - value: rendering
+    label: "Rendering"
+    description: "Executing; progress advancing"
+  - value: done
+    label: "Done"
+    description: "Completed successfully"
+  - value: failed
+    label: "Failed"
+    description: "Completed with errors"
+  - value: cancelled
+    label: "Cancelled"
+    description: "Deleted/aborted before completion"

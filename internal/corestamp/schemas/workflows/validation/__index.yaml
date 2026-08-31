@@ -1,0 +1,17 @@
+# =============================================================================
+# VALIDATION SCHEMA REGISTRY (Category C / kind family: validation)
+# =============================================================================
+# Schemas governing the output shape of validation scripts and swarm
+# validators. Downstream consumers: Layers 2-4 of the routine-validation
+# pipeline (validate-routines.sh produces findings; these schemas contract
+# the shape those findings must conform to).
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/workflows/validation/__index"
+  title: "Validation Schema Registry"
+  description: "Sub-registry for validation output schemas. Consumed by swarm validators (Layers 2-4) and CI observability."
+
+schemas:
+  routine_finding: routine_finding.yaml

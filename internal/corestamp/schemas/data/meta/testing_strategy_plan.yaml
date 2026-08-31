@@ -1,0 +1,70 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/testing_strategy_plan"
+  title: "Testing Strategy Plan"
+  description: |
+    The DATA shape that the `testing-strategy` skill (at
+    ~/.lightwave/skills/testing-strategy/) produces and that
+    `compose_user_prompt` renders into the user_prompt's <testing>
+    block at session kickoff.
+
+    Output of v_qa-engineer (the test-strategy designer, post-2026-05-28
+    role refactor). Consumed by the implementing persona (typically a
+    v_<repo>-developer) so the agent knows which harness, which test
+    levels, which techniques, and what coverage target the work must
+    satisfy.
+
+    SWEBOK v4 Ch. 5 (Software Testing) grounded:
+      - levels  → §5.2 Test Levels (unit / integration / system / acceptance)
+      - techniques → §5.3 Test Techniques (specification-based,
+                     code-based, fault-based, usage-based)
+
+    Stamped 2026-05-28 as part of Phase B.
+  generates:
+    - "rust:TestingStrategyPlan"
+    - "pydantic:TestingStrategyPlan"
+  depends_on:
+    - "lightwave://schemas/data/enums/testing_harnesses"
+
+required_fields:
+  - name: strategy_ref
+    type: str
+    description: "Slug of the strategy doc this plan derives from. Allows multiple per-task plans to inherit from one team-level strategy."
+  - name: harness
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/testing_harnesses"
+    description: "Which test runner to use (pytest | cargo-test | go-test | bun-test | playwright | pact | k6). One harness per plan — split plans if multiple runtimes."
+  - name: levels
+    type: "list[str]"
+    description: "SWEBOK §5.2 test levels — unit | integration | system | acceptance. Non-empty list; order matters (deepest first)."
+    min_length: 1
+  - name: techniques
+    type: "list[str]"
+    description: "SWEBOK §5.3 techniques — table-driven | property | snapshot | fuzz | mutation | contract | etc. Open-ended; document new techniques as they're adopted."
+    min_length: 1
+
+optional_fields:
+  - name: coverage_target
+    type: str
+    description: "Target line/branch coverage as a percentage string (e.g. '85%' or '0.85'). Omit when coverage isn't a relevant gate (e.g. pure refactor)."
+  - name: fixtures_ref
+    type: str
+    description: "Slug or path to fixtures the plan depends on. Composer surfaces in <testing>.fixtures_ref so the agent knows what's pre-staged."
+  - name: out_of_scope
+    type: "list[str]"
+    description: "Test categories explicitly OUT of scope for this plan (e.g. 'load testing', 'cross-browser'). Prevents scope creep + sets reviewer expectations."
+
+example:
+  strategy_ref: "team-default-go-table-driven"
+  harness: go-test
+  levels:
+    - unit
+    - integration
+  techniques:
+    - table-driven
+    - property
+  coverage_target: "85%"
+  fixtures_ref: "lightwave-cli/testdata/fixtures.json"
+  out_of_scope:
+    - "load testing"
+    - "cross-platform (Windows)"

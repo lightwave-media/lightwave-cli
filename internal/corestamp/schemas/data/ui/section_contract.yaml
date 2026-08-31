@@ -1,0 +1,115 @@
+_meta:
+  version: 0.1.0
+  schema_id: lightwave://schemas/data/ui/section_contract
+  title: Section Contract — marketing section prop declaration
+  description: 'The contract a marketing section variant declares. Sections are keyed
+
+    "<family>/<variant>" and auto-registered by the consuming site''s glob
+
+    loader; props are validated at the RenderSections boundary. This stamp
+
+    replaces hand-written Zod registries (joelschaeffer-site
+
+    src/data/sections.ts is the migration target): the typescript binding
+
+    emits one Zod object schema per section contract, keyed identically, so
+
+    a generated registry is a drop-in replacement (ADR-0006). The example
+
+    below mirrors the site''s content-section-split-image-02 contract
+
+    verbatim — it is the Run 1 round-trip fixture.
+
+    '
+  generates:
+  - typescript:SectionContract
+  - json_schema:section_contract
+  depends_on:
+  - lightwave://schemas/data/ui/component_contract
+required_fields:
+- name: key
+  type: str
+  description: Registry key '<family>/<variant>', matching the component path under src/components/marketing/
+- name: family
+  type: enum
+  values_ref: lightwave://schemas/data/enums/ui_section_families
+  description: Section family folder; one variant file per family/variant
+- name: variant
+  type: str
+  description: Variant name, kebab-case; semantic, no -NN suffixes for new sections
+- name: title
+  type: str
+  description: Human-readable title of the UI section contract.
+- name: props
+  type: list[PropField]
+  description: Section prop contract; emitted as the Zod schema registered under key
+optional_fields:
+- name: description
+  type: str
+  nullable: true
+  description: Human-readable description of this section contract.
+- name: prop_types
+  type: dict[str, list[PropField]]
+  description: Named nested shapes referenced from props by PascalCase type name
+- name: data_notes
+  type: str
+  nullable: true
+  description: Where the props are fed from (pages.ts entry, collection, CMS) — data drives, components serve
+sub_schemas:
+  PropField:
+    name:
+      type: str
+      description: Prop name, camelCase
+    type:
+      type: str
+      description: 'SST type expression: str|int|float|bool|enum|list[X]|dict[str, X]|PascalCase ref into prop_types'
+    required:
+      type: bool
+    description:
+      type: str
+      nullable: true
+    options:
+      type: list[str]
+      nullable: true
+      description: Enum values when type is enum
+example:
+  key: content/content-section-split-image-02
+  family: content
+  variant: content-section-split-image-02
+  title: Content Section — Split Image 02
+  description: 'Split layout: eyebrow/title/paragraph stack beside a captioned image.'
+  props:
+  - name: eyebrow
+    type: str
+    required: false
+  - name: title
+    type: str
+    required: true
+  - name: paragraphs
+    type: list[str]
+    required: false
+  prop_types:
+    Action:
+    - name: label
+      type: str
+      required: true
+    - name: href
+      type: str
+      required: true
+    - name: color
+      type: enum
+      options:
+      - primary
+      - secondary
+      required: false
+    ImageCaption:
+    - name: title
+      type: str
+      required: true
+    - name: role
+      type: str
+      required: false
+    - name: subrole
+      type: str
+      required: false
+  data_notes: 'Fed from src/data/pages.ts as { section: ''content/content-section-split-image-02'', ...props }.'

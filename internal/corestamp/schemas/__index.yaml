@@ -1,0 +1,23 @@
+# =============================================================================
+# MASTER SCHEMAS INDEX — lightwave-core (new structure)
+# =============================================================================
+# This is the top-level registry for the new src/schemas/ tree.
+# Points to sub-registries under each category (data, interfaces, workflows,
+# policy). Templates + blueprints have their own master at src/boilerplate/{templates,blueprints}/__index.yaml.
+#
+# Currently empty pending Phase 4 (migration from lightwave/schema/definitions/).
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/__index"
+  title: "Schemas Master Registry"
+  description: "Maps category names to their sub-index files. The new structure replaces the legacy lightwave/schema/definitions/__index.yaml after Phase 5 (purge)."
+
+categories:
+  data: data/__index.yaml
+  interfaces: interfaces/__index.yaml
+  workflows: workflows/__index.yaml
+  policy: policy/__index.yaml
+  integrations: integrations/__index.yaml
+  servers: servers/__index.yaml

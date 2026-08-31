@@ -1,0 +1,93 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/integrations/llm_providers/models/model_capabilities"
+  title: "Model Capabilities Catalog"
+  description: |
+    Runtime reference data: per-model capability, cost, and availability.
+    This is DATA (price sheet), not shape (allowed values). Model IDs
+    themselves are referenced as $ref targets from llm_budgets.yaml and
+    workflow strategies. Prices change when providers publish new rates;
+    entries carry effective_date and deprecated_date for versioning.
+
+    INTEGRATION concern — lives in integrations/llm_providers/models/,
+    not data/enums/. The cost_per_1m values are BASE PRICES before
+    discounts. Actual cost = base * input_caching_discount (if cached)
+    * batch_discount (if batch). Populated by v_data-engineer from
+    published provider pricing.
+  generates:
+    - "pydantic:ModelCapability"
+  depends_on:
+    - "lightwave://schemas/data/enums/model_tiers"
+    - "lightwave://schemas/integrations/llm_providers/models/__index"
+
+required_fields:
+  - name: model_id
+    type: str
+    description: "Canonical model identifier (e.g. claude_sonnet_4_6, deepseek_v4_pro)"
+  - name: tier
+    type: str
+    description: "Intelligence tier; validated against model_tiers enum"
+  - name: provider
+    type: str
+    description: "Provider slug: anthropic | openai | openrouter | local"
+  - name: intelligence_score
+    type: int
+    description: "Capability score 1-10. 10 = frontier max. Used for finer-grained routing within a tier."
+  - name: context_window
+    type: int
+    description: "Maximum context window in tokens"
+  - name: cost_per_1m_input
+    type: float
+    description: "Base cost in USD per 1M input tokens (before caching/batch discounts)"
+  - name: cost_per_1m_output
+    type: float
+    description: "Base cost in USD per 1M output tokens"
+  - name: local_available
+    type: bool
+    description: "True if this model can run locally via Ollama/LMStudio (may be quantized)"
+  - name: free_tier_available
+    type: bool
+    description: "True if this model has a free/zero-cost access path"
+  - name: effective_date
+    type: date
+    description: "When this price entry took effect"
+
+optional_fields:
+  - name: deprecated_date
+    type: "date | null"
+    description: "When this model entry was superseded. Null = current. Never delete — old cost records refer to deprecated entries."
+  - name: subscription_eligible
+    type: bool
+    description: "Free under Claude Max / Enterprise subscription?"
+  - name: input_caching_discount
+    type: float
+    description: "Multiplier for cached input (0.0-1.0). Anthropic prompt caching reduces input cost to 0.10 (90% off). 1.0 = no discount."
+  - name: batch_discount
+    type: float
+    description: "Multiplier for batch API (0.0-1.0). 0.50 = 50% off. 1.0 = no discount."
+  - name: output_context_window
+    type: int
+    description: "Maximum output tokens (may differ from context_window). Defaults to context_window."
+  - name: free_tier_quota
+    type: "object | null"
+    description: "Free tier limits: { tokens_per_minute: int, requests_per_day: int, max_context: int }"
+  - name: notes
+    type: str
+    description: "Human-readable notes about this model's capabilities, best-fit task types, known limitations"
+
+example:
+  model_id: claude_sonnet_4_6
+  tier: powerful
+  provider: anthropic
+  intelligence_score: 8
+  context_window: 200000
+  cost_per_1m_input: 3.00
+  cost_per_1m_output: 15.00
+  local_available: false
+  free_tier_available: false
+  effective_date: "2026-06-01"
+  subscription_eligible: true
+  input_caching_discount: 0.10
+  batch_discount: 0.50
+  output_context_window: 8192
+  notes: "Default for engineer-tier personas. Good balance of capability and cost."

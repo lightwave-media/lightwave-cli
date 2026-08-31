@@ -1,0 +1,21 @@
+# =============================================================================
+# ORCHESTRATION SCHEMA REGISTRY (Category C / kind family: orchestration)
+# =============================================================================
+# Schemas governing how the agent runtime ORCHESTRATES work — concurrency,
+# preemption, queuing, dispatch priorities. Distinct from blueprints/ (which
+# defines composable workflow steps); orchestration/ defines the runtime
+# scheduling shape.
+#
+# First schema lands 2026-05-25 (handoff R7 — llm_concurrency).
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/workflows/orchestration/__index"
+  title: "Orchestration Schema Registry"
+  description: "Sub-registry for runtime orchestration schemas (concurrency, preemption, queuing). Consumed by v_core and other agent runtimes."
+
+schemas:
+  llm_concurrency: llm_concurrency.yaml
+  review_panel: review_panel.yaml
+  release_qa_panel: release_qa_panel.yaml

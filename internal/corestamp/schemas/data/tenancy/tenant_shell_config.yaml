@@ -1,0 +1,93 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/tenancy/tenant_shell_config
+  title: Tenant Shell Config
+  description: Per-tenant configuration injected into the React SPA shell before bootstrap.
+  generates:
+  - go:TenantShellConfig
+  - ts:TenantShellConfig
+  table_kind: entity
+  table_name: tenant_shell_configs
+primary_key:
+  column: id
+  type: uuid
+required_fields:
+- name: tenant_id
+  type: uuid
+  storage: db
+  description: UUID identifying the tenant this shell config belongs to.
+- name: domain
+  type: str
+  storage: db
+  indexed: true
+  description: Primary domain of the tenant (e.g. acme.lightwave.app).
+- name: name
+  type: str
+  storage: db
+  description: Human-readable display name of the tenant.
+- name: theme
+  type: str
+  storage: db
+  description: Theme configuration applied to the tenant shell.
+optional_fields:
+- name: features
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Feature flags enabled for this tenant's shell.
+- name: seo_title
+  type: str
+  storage: db
+  description: SEO title override for this tenant's site.
+- name: seo_description
+  type: str
+  storage: db
+  description: SEO meta description override for this tenant's site.
+- name: seo_image
+  type: str
+  storage: db
+  description: URL of the OpenGraph image for this tenant's site.
+- name: nav_items
+  type: list[NavItem]
+  storage: db
+  column_type: jsonb
+  description: Ordered list of navigation items for the tenant shell.
+- name: footer_html
+  type: str
+  storage: db
+  sanitization: required
+  description: 'Raw HTML for the page shell footer. Fields marked sanitization: required MUST be sanitized with an allowlist
+    HTML sanitizer before rendering as markup. See lightwave-platform docs for the sanitization contract.'
+- name: custom_css
+  type: str
+  storage: db
+  sanitization: required
+  description: Per-tenant CSS overrides. MUST be sanitized with a CSS allowlist before injection. @import and url() directives
+    must be blocked to prevent data exfiltration. See lightwave-platform docs for the sanitization contract.
+- name: allowed_domains
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Allowlist of domains permitted to host this tenant shell.
+- name: created_at
+  type: datetime
+  storage: db
+  description: ISO 8601 timestamp when this tenant config was created.
+- name: updated_at
+  type: datetime
+  storage: db
+  description: ISO 8601 timestamp of the most recent config update.
+sub_schemas:
+  NavItem:
+    label: str
+    href: str
+    children: list[NavItem]
+example:
+  tenant_id: 550e8400-e29b-41d4-a716-446655440000
+  domain: joelschaeffer.com
+  name: Joel Schaeffer
+  theme: dark
+  features:
+  - portfolio
+  - blog
+  - shop

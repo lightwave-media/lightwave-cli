@@ -1,0 +1,246 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/repository"
+  title: "Forgejo Repository — 1:1 SST Mirror"
+  description: |
+    1:1 mirror of Forgejo's Repository struct and repo-scoped API endpoints.
+    Source: swagger.v1.json #/definitions/Repository, #/paths/~1repos
+
+    Repositories are the primary resource container. In Lightwave, each platform
+    project is a repository. Issues track tasks; pull requests track code reviews.
+
+  source_ref: "forgejo://swagger.v1.json#/definitions/Repository"
+  table_kind: entity
+  table_name: repositories
+  generates:
+    - "go:ForgejoRepository"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: full_name
+  unique: true
+
+required_fields:
+  - name: name
+    type: str
+    storage: db
+  - name: full_name
+    type: str
+    description: "{owner}/{repo}"
+    storage: db
+  - name: owner
+    type: str
+    description: "Username of the owner (user or org)"
+    storage: db
+    indexed: true
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: description
+    type: str
+    storage: db
+  - name: website
+    type: str
+    storage: db
+  - name: default_branch
+    type: str
+    storage: db
+  - name: private
+    type: bool
+    storage: db
+  - name: fork
+    type: bool
+    storage: db
+  - name: mirror
+    type: bool
+    storage: db
+  - name: template
+    type: bool
+    storage: db
+  - name: empty
+    type: bool
+    storage: db
+  - name: archived
+    type: bool
+    storage: db
+  - name: size
+    type: int
+    storage: db
+  - name: language
+    type: str
+    storage: db
+  - name: has_issues
+    type: bool
+    storage: db
+  - name: has_pull_requests
+    type: bool
+    storage: db
+  - name: has_wiki
+    type: bool
+    storage: db
+  - name: has_actions
+    type: bool
+    storage: db
+  - name: has_packages
+    type: bool
+    storage: db
+  - name: has_projects
+    type: bool
+    storage: db
+  - name: has_releases
+    type: bool
+    storage: db
+  - name: default_merge_style
+    type: str
+    storage: db
+  - name: allow_merge_commits
+    type: bool
+    storage: db
+  - name: allow_rebase
+    type: bool
+    storage: db
+  - name: allow_rebase_explicit
+    type: bool
+    storage: db
+  - name: allow_squash_merge
+    type: bool
+    storage: db
+  - name: allow_fast_forward_only
+    type: bool
+    storage: db
+  - name: avatar_url
+    type: str
+    storage: db
+  - name: clone_url
+    type: str
+    storage: db
+  - name: ssh_url
+    type: str
+    storage: db
+  - name: html_url
+    type: str
+    storage: db
+  - name: stars_count
+    type: int
+    storage: db
+  - name: forks_count
+    type: int
+    storage: db
+  - name: watchers_count
+    type: int
+    storage: db
+  - name: open_issues_count
+    type: int
+    storage: db
+  - name: open_pr_counter
+    type: int
+    storage: db
+  - name: release_counter
+    type: int
+    storage: db
+  - name: object_format_name
+    type: str
+    description: "sha1 | sha256"
+    storage: db
+
+relations:
+  parent: organization
+  parent_fk:
+    column: owner
+    references: organizations.username
+    on_delete: CASCADE
+
+sub_schemas:
+  CreateRepoOption:
+    name: str
+    description: str
+    private: bool
+    template: bool
+    auto_init: bool
+    default_branch: str
+    gitignores: str
+    issue_labels: str
+    license: str
+    readme: str
+    trust_model: str
+    object_format_name: str
+
+  EditRepoOption:
+    name: str
+    description: str
+    website: str
+    private: bool
+    template: bool
+    archived: bool
+    default_branch: str
+    has_issues: bool
+    has_pull_requests: bool
+    has_wiki: bool
+    has_actions: bool
+    has_packages: bool
+    has_projects: bool
+    has_releases: bool
+    allow_merge_commits: bool
+    allow_rebase: bool
+    allow_rebase_explicit: bool
+    allow_squash_merge: bool
+    allow_fast_forward_only: bool
+    default_merge_style: str
+
+  MigrateRepoOptions:
+    clone_addr: str
+    repo_name: str
+    repo_owner: str
+    service: str
+    auth_username: str
+    auth_password:
+      type: str
+      secret: true
+      description: "Migration source password — must not appear in logs or API responses"
+    auth_token:
+      type: str
+      secret: true
+      description: "Migration source auth token — must not appear in logs or API responses"
+    mirror: bool
+    private: bool
+    description: str
+    wiki: bool
+    issues: bool
+    pull_requests: bool
+    releases: bool
+    milestones: bool
+    labels: bool
+    lfs: bool
+
+  TransferRepoOption:
+    new_owner: str
+    team_ids: "list[int]"
+
+  AddCollaboratorOption:
+    permission: str
+
+  ReplaceFlagsOption:
+    flags: "list[str]"
+
+example:
+  name: "lightwave-platform"
+  full_name: "lightwave-media/lightwave-platform"
+  owner: "lightwave-media"
+  description: "Multi-tenant Go monolith platform"
+  private: true
+  has_issues: true
+  has_pull_requests: true
+  has_actions: true
+  default_branch: "main"
+  language: "Go"
+  created_at: "2026-06-25T00:00:00Z"
+  updated_at: "2026-06-25T00:00:00Z"

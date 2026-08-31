@@ -1,0 +1,33 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/user_story_priorities
+  title: User Story Priority Enum
+  description: 'MoSCoW priority levels for UserStory entities. Closed enum.
+
+    Extracted 2026-05-25 from legacy products/createos/config.yaml.
+
+    '
+  generates:
+  - pydantic:UserStoryPriority
+  depends_on: []
+name: user_story_priorities
+description: MoSCoW priority levels for UserStory entities
+default: should_have
+closed: true
+options:
+- value: must_have
+  label: Must Have
+  moscow: M
+  description: Must Have option.
+- value: should_have
+  label: Should Have
+  moscow: S
+  description: Should Have option.
+- value: could_have
+  label: Could Have
+  moscow: C
+  description: Could Have option.
+- value: wont_have
+  label: Won't Have
+  moscow: W
+  description: Won't Have option.

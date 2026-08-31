@@ -1,0 +1,60 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/flaw_classes"
+  title: "QA Handoff Flaw Class Enum"
+  description: |
+    Closed set of flaw classes that a code-review session may report via the
+    qa_handoff payload (lightwave://schemas/data/agile_artifacts/qa_handoff).
+    Drives the sync vs async routing rule documented in ADR-0005 §3 and
+    ~/.lightwave/config/governance/testing.md §1.3:
+
+      - security / correctness / contract → sync_required: true  (block PR)
+      - performance / style / coverage    → sync_required: false (queue)
+
+    Authored 2026-05-29 per ADR-0005. Extraction from inline prose in
+    qa_handoff.yaml v1.0 → values_ref per R-5 (no hardcoded enums in field
+    type declarations).
+  generates:
+    - "pydantic:FlawClass"
+  depends_on: []
+
+name: flaw_classes
+description: "Flaw classes a code-review qa_handoff payload may declare"
+default: correctness
+closed: true
+options:
+  - value: security
+    label: "Security"
+    description: "Auth bypass, injection, secret leak, supply-chain compromise, insecure deserialization"
+    sync_required: true
+  - value: correctness
+    label: "Correctness"
+    description: "Wrong output, data loss, off-by-one in load-bearing logic, race condition, contract underclaim"
+    sync_required: true
+  - value: contract
+    label: "Contract violation"
+    description: "R-rule violation, schema-vs-binding drift, API shape mismatch, declared-but-unenforced gate"
+    sync_required: true
+  - value: performance
+    label: "Performance"
+    description: "N+1 query, perf-SLO regression, unbounded loop, missing index — async queue follow-up"
+    sync_required: false
+  - value: style
+    label: "Style"
+    description: "Naming, formatting, prose — async queue; v_qa lands as a follow-up"
+    sync_required: false
+  - value: coverage
+    label: "Coverage gap"
+    description: "Non-correctness path with no test — async queue; v_qa adds the missing test"
+    sync_required: false
+
+example:
+  name: flaw_classes
+  description: "Flaw classes a code-review qa_handoff payload may declare"
+  default: correctness
+  closed: true
+  options:
+    - value: security
+      label: "Security"
+      description: "Auth bypass, injection, secret leak, supply-chain compromise, insecure deserialization"
+      sync_required: true

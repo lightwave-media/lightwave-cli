@@ -1,0 +1,84 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/emails/simple_welcome_01"
+  title: "Simple Welcome 01 — email template props"
+  description: "Clean text-focused welcome email for new user signups. Production-shaped (fully parameterized)."
+  generates:
+    - "go:SimpleWelcome01Props"          # lightwave-platform email renderer
+    - "typescript:SimpleWelcome01Props"  # lightwave-ui React component props
+    - "json_schema:simple_welcome_01"    # universal IR (runtime validation, docs)
+  depends_on: []
+
+# Linkage to the rendering layer (lightwave-ui owns the JSX; we own the contract)
+template_kind: "email_template"
+react_component: "lightwave-ui/src/emails/simple-welcome-01.tsx"
+react_export: "SimpleWelcome01"
+
+required_fields:
+  - name: recipientName
+    type: str
+    description: "Recipient's display name for greeting"
+  - name: messageBody
+    type: str
+    description: "Main email body content; supports line breaks (\\n → <br/>)"
+  - name: ctaHref
+    type: str
+    description: "Call-to-action button link"
+    validations: [required, url]
+
+optional_fields:
+  - name: previewText
+    type: str
+    description: "Preview text shown in email clients"
+    default: "Welcome to LightWave"
+  - name: greeting
+    type: str
+    nullable: true
+    description: "Custom greeting override; falls back to 'Hi {recipientName},'"
+  - name: headline
+    type: str
+    nullable: true
+    description: "Optional headline above the message body"
+  - name: signOff
+    type: str
+    default: "Thanks,\nThe team"
+    description: "Sign-off text at end of message; supports line breaks"
+  - name: ctaText
+    type: str
+    default: "Log in"
+    description: "Call-to-action button text"
+  - name: theme
+    type: enum
+    options: ["light", "dark"]
+    default: "light"
+    description: "Email color theme"
+  - name: brandLogoUrl
+    type: str
+    nullable: true
+    description: "Brand logo URL (from SiteConfigResponse.brand.logoUrl)"
+  - name: brandName
+    type: str
+    nullable: true
+    description: "Brand name for logo alt text"
+  - name: logoContext
+    type: enum
+    options: ["product", "system"]
+    default: "product"
+    description: "Logo context for system vs product emails"
+
+example:
+  recipientName: "Joel"
+  messageBody: |
+    Welcome to LightWave. You're set up for the operator-builder-user
+    triplet — the same person who builds the system uses the system.
+    Log in below to see your first task queue.
+  ctaHref: "https://app.lightwave-media.ltd/login"
+  previewText: "Welcome to LightWave"
+  greeting: "Hi Joel,"
+  headline: "Your CreateOS workspace is ready"
+  signOff: "Thanks,\nThe LightWave team"
+  ctaText: "Log in"
+  theme: "light"
+  brandLogoUrl: "https://cdn.lightwave-media.ltd/brand/logo.png"
+  brandName: "LightWave Media"
+  logoContext: "product"

@@ -1,0 +1,49 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/agent_statuses
+  title: Agent Status Enum
+  description: 'Status values for the Task.agent_status field — tracks the lifecycle
+    of
+
+    an agent-dispatched task. Distinct from task_statuses (which tracks the
+
+    human workflow lifecycle). Closed enum.
+
+
+    The empty-string ("") option encodes "no agent assigned yet" — preserved
+
+    from legacy semantics. Future refactor may replace with explicit
+
+    ''unassigned'' value.
+
+
+    Extracted 2026-05-25 from legacy products/createos/config.yaml.
+
+    '
+  generates:
+  - pydantic:AgentStatus
+  depends_on: []
+name: agent_statuses
+description: Status values for Task.agent_status — lifecycle of an agent-dispatched
+  task
+default: ''
+closed: true
+options:
+- value: ''
+  label: Not Assigned
+  description: Not Assigned option.
+- value: pending
+  label: Pending
+  description: Pending option.
+- value: running
+  label: Running
+  description: Running option.
+- value: completed
+  label: Completed
+  description: Completed option.
+- value: failed
+  label: Failed
+  description: Failed option.
+- value: cancelled
+  label: Cancelled
+  description: Cancelled option.

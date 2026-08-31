@@ -1,0 +1,41 @@
+_meta:
+  version: "2.0.0"
+  schema_id: "lightwave://schemas/data/enums/plan_statuses"
+  title: "Implementation Plan Status Enum"
+  description: |
+    Lifecycle statuses for ImplementationPlan entities. Closed enum.
+
+    v2.0: values merged from print back into stamp per revised R-15.
+    Originally extracted from legacy products/createos/config.yaml.
+    Source-of-truth note: PlanStatus TextChoices in lightwave-platform/apps/
+    platform/createos/specs/models.py mirrors these.
+  generates:
+    - "pydantic:PlanStatus"
+  depends_on: []
+
+name: plan_statuses
+description: "Lifecycle statuses for ImplementationPlan entities"
+default: draft
+closed: true
+options:
+  - value: draft
+    label: "Draft"
+    description: "Initial draft of the implementation plan"
+    is_active: false
+  - value: approved
+    label: "Approved"
+    description: "Plan reviewed and ready for execution"
+    is_active: false
+  - value: in_progress
+    label: "In Progress"
+    description: "Plan currently being executed"
+    is_active: true
+  - value: completed
+    label: "Completed"
+    description: "All planned work shipped"
+    is_active: false
+    is_completed: true
+  - value: superseded
+    label: "Superseded"
+    description: "Replaced by a newer plan"
+    is_active: false

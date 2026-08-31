@@ -1,0 +1,58 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_element_category_types"
+  title: "CineOS Element Category Type Enum"
+  description: |
+    The standard film script-breakdown category taxonomy (element_categories.category_type)
+    — the buckets a 1st AD tags scene elements into. Closed.
+  generates:
+    - "go:CineElementCategoryType"
+    - "typescript:CineElementCategoryType"
+    - "zig:CineElementCategoryType"
+    - "json_schema:cineos_element_category_types"
+  depends_on: []
+
+name: cineos_element_category_types
+description: "Standard script-breakdown category"
+default: props
+closed: true
+options:
+  - value: cast
+    label: "Cast"
+    description: "Speaking cast"
+  - value: background
+    label: "Background"
+    description: "Background / atmosphere"
+  - value: stunts
+    label: "Stunts"
+    description: "Stunts"
+  - value: vehicles
+    label: "Vehicles"
+    description: "Picture vehicles"
+  - value: props
+    label: "Props"
+    description: "Hand props"
+  - value: set_dressing
+    label: "Set Dressing"
+    description: "Set dressing"
+  - value: wardrobe
+    label: "Wardrobe"
+    description: "Wardrobe / costume"
+  - value: makeup_hair
+    label: "Makeup & Hair"
+    description: "Makeup and hair"
+  - value: sfx
+    label: "SFX"
+    description: "Special (practical) effects"
+  - value: vfx
+    label: "VFX"
+    description: "Visual effects"
+  - value: sound
+    label: "Sound"
+    description: "Sound / playback"
+  - value: animals
+    label: "Animals"
+    description: "Animals / wranglers"
+  - value: special_equipment
+    label: "Special Equipment"
+    description: "Special equipment (cranes, underwater, etc.)"

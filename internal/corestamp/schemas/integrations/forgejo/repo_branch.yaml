@@ -1,0 +1,34 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/repo_branch"
+  title: "Forgejo Repository Branch — 1:1 SST Mirror"
+  source_ref: "forgejo://swagger.v1.json#/definitions/Branch"
+  description: "Git branch in a Forgejo repository."
+  table_kind: entity
+  table_name: repo_branches
+  generates: ["go:ForgejoBranch"]
+primary_key: { column: id, type: uuid }
+required_fields:
+  - { name: name, type: str, storage: db }
+  - { name: repo_ref, type: str, storage: db, indexed: true }
+  - { name: commit_sha, type: str, storage: db }
+optional_fields:
+  - { name: protected, type: bool, storage: db }
+  - { name: user_can_push, type: bool, storage: db }
+  - { name: user_can_merge, type: bool, storage: db }
+  - { name: enable_status_check, type: bool, storage: db }
+  - { name: required_approvals, type: int, storage: db }
+  - {
+      name: status_check_contexts,
+      type: "list[str]",
+      storage: db,
+      column_type: jsonb,
+    }
+  - { name: effective_branch_protection_name, type: str, storage: db }
+example:
+  name: "main"
+  repo_ref: "lightwave-media/lightwave-platform"
+  commit_sha: "abc123def456"
+  protected: true
+  required_approvals: 1

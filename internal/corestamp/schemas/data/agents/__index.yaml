@@ -1,0 +1,11 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/agents/__index"
+  title: "Agent Schemas Registry"
+  description: |
+    Agent-related SST schemas. Agents are first-class principals (ADR-0012/ADR-0013)
+    with their own identity, registration, and lifecycle management. Schemas here
+    define the shape for agent runners, task assignment, and capability routing.
+
+schemas:
+  agent_runner: agent_runner.yaml

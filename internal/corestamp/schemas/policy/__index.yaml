@@ -1,0 +1,56 @@
+# =============================================================================
+# POLICY SCHEMA REGISTRY (Category D + F — Enforcement + Governance shape)
+# =============================================================================
+# Policy-as-Code: governance (RBAC), compliance, security, validity (fidelity
+# contracts), testing (test contracts). D and F co-located per the locked
+# taxonomy (industry-aligned: OPA covers both).
+#
+# Sub-categories:
+#   governance/ — RBAC, agent-roles, role-tool-permissions
+#   compliance/ — audit rules, retention, regulatory
+#   security/   — secret-handling, encryption, access-logging shapes
+#   validity/   — fidelity contracts (CLAUDE.md §6 style); includes core-self.yaml
+#   testing/    — test contracts (what tests must exist for what)
+#
+# Currently empty — core-self.yaml (the 13 self-validity rules) lands in
+# validity/ during Phase 3. RBAC + role-tool-permissions migrate from
+# legacy governance/access/ during Phase 4.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/policy/__index"
+  title: "Policy Schema Registry"
+  description: "Sub-registry for enforcement + governance shape. Hosts validity contracts (D), authorization rules (F), test contracts, security and compliance schemas. core-self.yaml — lightwave-core's recursive self-validity contract — lands at validity/core-self.yaml in Phase 3."
+
+schemas:
+  core-self: validity/core-self.yaml
+  core-self-continued: validity/core-self-continued.yaml
+  core-self-continued-2: validity/core-self-continued-2.yaml
+  provider_identity_invariant: security/provider_identity_invariant.yaml
+  channel_bindings: governance/channel_bindings.yaml
+  daemon_secrets: security/daemon_secrets.yaml
+  session_retention: compliance/session_retention.yaml
+  heartbeat_budget: validity/heartbeat_budget.yaml
+  spawn_gate: validity/spawn_gate.yaml
+  validity_contract: validity/validity_contract.yaml
+  llm_budgets: compliance/llm_budgets.yaml
+  fitness_gate: compliance/fitness_gate.yaml
+  config_cli_contract: governance/config_cli_contract.yaml
+  skill_policy: security/skill_policy.yaml
+  shell_tool: security/shell_tool.yaml
+  git_conduct: security/git_conduct.yaml
+  context_budget: validity/context_budget.yaml
+  self-scaffolding-stance: validity/self-scaffolding-stance.yaml
+  repo_infra: governance/repo-infra.yaml
+  template_kinds: governance/template_kinds.yaml
+  factory_floor: governance/factory_floor.yaml
+  spec_artifact_kinds: governance/spec_artifact_kinds.yaml
+  doc_artifact_kinds: governance/doc_artifact_kinds.yaml
+  repo_doc_manifest: governance/repo_doc_manifest.yaml
+  doc_render_targets: governance/doc_render_targets.yaml
+  harness_configuration_plane: governance/harness_configuration_plane.yaml
+  harness_change_request: governance/harness_change_request.yaml
+  token_budget: compliance/token_budget.yaml
+  lsp_control_plane: compliance/lsp_control_plane.yaml
+  test_contract: testing/test_contract.yaml

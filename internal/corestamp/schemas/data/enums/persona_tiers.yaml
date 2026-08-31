@@ -1,0 +1,51 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/persona_tiers"
+  title: "Persona Tier Enum"
+  description: |
+    Tier classification for every Lightwave persona (v_*.yaml). Three-level
+    taxonomy formalised 2026-05-28 in
+    ~/.lightwave/brain/memory/lessons/2026-05-28-persona-framework-engineer-developer-split.md
+    and rooted in SWEBOK v4 Ch. 4 (Construction) + Ch. 7 (Maintenance) +
+    Ch. 9 (Management) distinctions between wide cross-cutting work and
+    deep per-codebase work.
+
+    Closed enum. Wire encoding is lowercase. Consumed by
+    `agent_definition.yaml#/required_fields/tier` and by
+    `compose_system_prompt` (per ADR-0004) which branches on tier to
+    elide developer-only blocks for engineer/singular personas.
+
+    Semantics:
+      - engineer  — WIDE tier: cross-cutting design, no repo binding, no
+                    write_boundary to source. Produces specs, ADRs, test
+                    plans, architectural decisions. baseDir == null.
+                    Suffix convention: `v_<role>-engineer` (with documented
+                    industry-term exceptions like v_architect, v_cto).
+      - developer — DEEP tier: bound to ONE repo, owns its implementation.
+                    write_boundary == ["${baseDir}/**"]. Implements per
+                    engineer designs; questions in conversation, not silent
+                    reinterpretation. Suffix `-developer` (or industry
+                    exception). Language follows the repo, not the persona.
+      - singular  — EXECUTIVE / ORCHESTRATOR / OBSERVER tier: unique role,
+                    not a class. v_core (dispatcher), v_cto (final review),
+                    v_scrum-manager (queue daemon), v_operator-mirror (Joel's
+                    proxy). No suffix.
+  generates:
+    - "rust:PersonaTier"
+    - "pydantic:PersonaTier"
+  depends_on: []
+
+name: persona_tiers
+description: "Persona tier — engineer (wide) | developer (deep) | singular (executive/orchestrator)"
+default: "developer"
+closed: true
+options:
+  - value: engineer
+    label: "Engineer"
+    description: "Wide cross-cutting tier. Designs specs, ADRs, test plans, architecture. No repo binding; no source-tree write_boundary."
+  - value: developer
+    label: "Developer"
+    description: "Deep per-repo tier. Owns one codebase's implementation. write_boundary scoped to that repo. Implements per engineer designs."
+  - value: singular
+    label: "Singular"
+    description: "Executive / orchestrator / observer. Unique role, not a class — e.g. v_core (dispatcher), v_cto (final review), v_scrum-manager (queue daemon)."

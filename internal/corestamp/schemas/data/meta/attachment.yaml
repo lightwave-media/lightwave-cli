@@ -1,0 +1,51 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/attachment"
+  title: "Attachment"
+  description: |
+    Element shape for items in user_prompt's <attachments> list. Each
+    attachment is something the operator brought INTO the session
+    (file path, URL, spec reference, screenshot, log dump) for the
+    agent to consume alongside the instructions_verbatim text.
+
+    DISTINCT from related_spec_ref — related_specs are agile artifacts
+    the composer auto-fetches by following task.user_story_ref /
+    epic_ref chains. Attachments are operator-attached, not composer-
+    discovered.
+
+    `kind` is intentionally a free-form string rather than a closed
+    enum — attachment kinds evolve faster than the enum-churn cost is
+    worth (e.g. when slack-thread-export, figma-frame, jira-ticket
+    kinds emerge, the schema shouldn't gate them).
+
+    Stamped 2026-05-28 as part of Phase B.
+  generates:
+    - "rust:Attachment"
+    - "pydantic:Attachment"
+  depends_on: []
+
+required_fields:
+  - name: kind
+    type: str
+    description: "Free-form classifier — 'file' | 'url' | 'spec_ref' | 'screenshot' | 'log_dump' | 'slack_thread' | 'figma_frame' | etc. Document new kinds as adopted."
+  - name: ref
+    type: str
+    description: "The actual reference — path for files, URL for web links, slug for spec references. Composer surfaces verbatim in <attachments>.ref."
+  - name: description
+    type: str
+    description: "One-line description of what this attachment IS and why it was attached. Agent reads this before deciding whether to consume the ref."
+
+optional_fields:
+  - name: mime_type
+    type: str
+    description: "Optional MIME type when kind='file' (image/png, application/pdf, text/plain). Helps the agent decide how to render or process."
+  - name: content_preview
+    type: str
+    description: "Optional inline preview (first N bytes / lines) for attachments where fetching the full ref is expensive or out-of-scope for the agent."
+
+example:
+  kind: screenshot
+  ref: "/tmp/lw-screenshot-2026-05-28-1542.png"
+  description: "The pre-push hook output showing v_staff-engineer's blocker finding on the previous push attempt."
+  mime_type: "image/png"
+  content_preview: null

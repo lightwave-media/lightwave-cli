@@ -1,0 +1,137 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/interfaces/hooks/ci_gate_event"
+  title: "CI Gate Event"
+  description: |
+    Structured event emitted by dev/ci_to_event.py after each mise run ci
+    invocation. Consumed by dev/ci-signal.sh to dispatch to nullhub agent
+    personas and post telemetry spans to nullwatch. Forms the contract between
+    the CI signal layer and the autonomous agile pipeline.
+
+    Failure entries are development signals. A consumer must be able to tell
+    the producing agent what invariant failed, what correct structure looks
+    like, how to repair it, what not to bypass, and how to re-verify.
+
+required_fields:
+  - name: event_type
+    type: string
+    description: "ci.gate.failed | ci.gate.passed | ci.gate.warning"
+  - name: gate
+    type: string
+    description: "Mise task name that failed, or 'all' if the full suite passed."
+  - name: timestamp
+    type: string
+    description: "ISO-8601 datetime at which the event was emitted."
+  - name: repo
+    type: string
+    description: "Repository name (e.g. lightwave-core)."
+  - name: branch
+    type: string
+    description: "Git branch name at the time ci_to_event.py was invoked."
+  - name: commit
+    type: string
+    description: "Short git SHA (7 chars) of HEAD at invocation time."
+  - name: signal
+    type: string
+    description: "lsp_diagnostic | test_failure | lint | shellcheck | boilerplate | go_binding | docs | runbook | none"
+  - name: run_id
+    type: string
+    description: Unique invocation identifier shared by all phases of one gate run.
+  - name: source
+    type: string
+    description: "pre-commit | pre-push | local-ci | github-actions | scheduled"
+  - name: phase
+    type: string
+    description: Named gate phase, or all for the aggregate result.
+  - name: duration_ms
+    type: int
+    description: Wall-clock duration of the emitted phase in milliseconds.
+  - name: bypassed
+    type: bool
+    description: Whether the result records an explicit emergency bypass.
+
+optional_fields:
+  - name: failures
+    type: list
+    description: "Array of CiFailure objects describing individual failures (see sub_schemas)."
+  - name: message
+    type: string
+    description: "Human-readable summary of the gate result."
+  - name: gate_version
+    type: string
+    description: Version or content hash of the detector graph.
+  - name: failure_fingerprint
+    type: string
+    description: Stable key for deduplicating the same invariant failure.
+  - name: bypass_reason
+    type: string
+    description: Required operator reason when bypassed is true.
+  - name: harness
+    type: string
+    description: Actor surface such as git, cursor, claude, codex, pi, or human.
+  - name: canonical_repo
+    type: string
+    description: Origin-derived owner/name identity when repo is a worktree basename.
+
+sub_schemas:
+  CiFailure:
+    fields:
+      - name: task
+        type: string
+        description: "Mise task name that produced the failure."
+      - name: file
+        type: "string | null"
+        description: "Repo-relative file path associated with the failure, or null."
+      - name: line
+        type: "int | null"
+        description: "Line number within the file, or null if not applicable."
+      - name: code
+        type: "string | null"
+        description: "Diagnostic code (e.g. reportMissingTypeArgument), or null."
+      - name: message
+        type: string
+        description: "Human-readable failure line from the tool's output."
+      - name: severity
+        type: string
+        description: "error | warning | info"
+      - name: violated_invariant
+        type: string
+        description: Specific contract the failure proves was violated.
+      - name: expected_structure
+        type: string
+        description: Correct implementation shape the agent should produce.
+      - name: cure_command
+        type: string
+        description: Ordered repair steps or deterministic cure command.
+      - name: do_not
+        type: string
+        description: Circumvention techniques the agent must not use.
+      - name: next_verification
+        type: string
+        description: Exact command that proves the repair.
+
+example:
+  event_type: ci.gate.failed
+  gate: typecheck
+  timestamp: "2026-06-22T19:30:00Z"
+  repo: lightwave-core
+  branch: main
+  commit: a00df94
+  run_id: 44e17268-bdd1-45a8-98bb-d3ef8c15c80d
+  source: local-ci
+  phase: typecheck
+  duration_ms: 912
+  bypassed: false
+  signal: lsp_diagnostic
+  failures:
+    - task: typecheck
+      file: tests/validation/test_r23_declared_rules_exist.py
+      line: 97
+      code: reportMissingTypeArgument
+      message: Expected type arguments for generic class "Match"
+      severity: warning
+      violated_invariant: Every generic Match annotation declares its type arguments.
+      expected_structure: Use Match[str] or the domain-specific captured type.
+      cure_command: Add the missing type parameter at the reported line.
+      do_not: Do not suppress the diagnostic or weaken the type checker.
+      next_verification: mise run typecheck

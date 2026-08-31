@@ -1,0 +1,29 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/governance/doc_render_targets"
+  title: "Doc Render Targets"
+  description: |
+    Maps canonical docs/ kinds to derived docs/site/ outputs for `lw docs render`.
+  generates:
+    - "go:DocRenderTargets"
+  depends_on:
+    - "lightwave://schemas/policy/governance/doc_artifact_kinds"
+
+name: doc_render_targets
+
+targets:
+  - kind: architecture
+    outputs: ["docs/site/architecture.html"]
+    template: architecture.html.tpl
+  - kind: contract
+    outputs: ["docs/site/contract.html"]
+    template: contract.html.tpl
+  - kind: data-flow
+    outputs: ["docs/site/data-flow.html"]
+    template: data-flow.html.tpl
+  - kind: dependency-graph
+    outputs: ["docs/site/dependency-graph.html"]
+    template: dependency-graph.html.tpl
+  - kind: auth-graph
+    outputs: ["docs/site/auth-graph.html"]
+    template: auth-graph.html.tpl

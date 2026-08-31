@@ -1,0 +1,148 @@
+_meta:
+  version: 1.3.2
+  schema_id: lightwave://schemas/data/agile_artifacts/implementation_plan
+  title: Implementation Plan
+  description: 'Pre-implementation roadmap for a UserStory (and optionally a specific Task). Captures technical_approach,
+    milestones, critical files, risks. Required FK to UserStory. Migrated 2026-05-25 from governance/agile/implementation_plan.yaml
+    (Phase 4 file #14, last R-P-I-V-R artifact) — Augusta example fully rewritten for v_core + local SQLite per ADR-0002,
+    createos/config dep dropped.'
+  generates:
+  - pydantic:ImplementationPlan
+  depends_on:
+  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/agile_artifacts/user_story
+  table_kind: entity
+  table_name: implementation_plans
+status_enum: plan_statuses
+sub_schema_imports:
+- 'lightwave-platform: apps.platform.createos.specs.schemas.RoadmapMilestoneSchema'
+- 'lightwave-platform: apps.platform.createos.specs.schemas.PastAchievementSchema'
+- 'lightwave-platform: apps.platform.createos.specs.schemas.CriticalFileSchema'
+- 'lightwave-platform: apps.platform.createos.specs.schemas.DependencySchema'
+- 'lightwave-platform: apps.platform.createos.specs.schemas.ImplementationPlanRiskSchema'
+primary_key:
+  column: id
+  type: uuid
+natural_key:
+  column: slug
+  unique: true
+required_fields:
+- name: slug
+  type: str
+  description: URL-safe unique identifier; lowercase, hyphen-separated
+  pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+  storage: db
+- name: title
+  type: str
+  description: Plan title
+  storage: db
+- name: user_story_ref
+  type: str
+  description: Slug of parent UserStory (CASCADE-required FK)
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/user_story
+  fk_column: slug
+  indexed: true
+- name: technical_approach
+  type: str
+  description: How we'll implement this — narrative paragraph
+  storage: db
+- name: test_strategy
+  type: str
+  description: Test approach (unit/integration/e2e split, fixtures, gold-path scenarios)
+  storage: db
+- name: status
+  type: str
+  description: Lifecycle state; validated against plan_statuses
+  storage: db
+  indexed: true
+- name: created_at
+  type: datetime
+  description: ISO 8601 timestamp of record creation; auto-populated
+  storage: db
+- name: updated_at
+  type: datetime
+  description: ISO 8601 timestamp of last modification; auto-updated
+  storage: db
+optional_fields:
+- name: task_ref
+  type: str
+  description: Slug of associated Task (plans can attach at story OR task level)
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/task
+  fk_column: slug
+  indexed: true
+- name: roadmap_milestones
+  type: list[RoadmapMilestone]
+  storage: db
+  column_type: jsonb
+  description: Ordered list of high-level milestones on the implementation roadmap.
+- name: past_achievements
+  type: list[PastAchievement]
+  storage: db
+  column_type: jsonb
+  description: Prior completed work relevant to this plan's context.
+- name: critical_files
+  type: list[CriticalFile]
+  storage: db
+  column_type: jsonb
+  description: File paths that are central to this implementation.
+- name: dependencies
+  type: list[Dependency]
+  storage: db
+  column_type: jsonb
+  description: External schemas, services, or artifacts this plan depends on.
+- name: risks
+  type: list[ImplementationPlanRisk]
+  storage: db
+  column_type: jsonb
+  description: Known risks and mitigations identified for this plan.
+- name: acceptance_criteria_mapping
+  type: dict[str, list[str]]
+  description: Maps AcceptanceCriterion IDs to the test_spec or task IDs that satisfy them
+  storage: db
+  column_type: jsonb
+- name: version
+  type: int
+  description: Monotonic version counter for plan revisions
+  storage: db
+- name: local_file_path
+  type: str
+  description: Path under .claude/plans/ if the plan was authored on disk
+  storage: db
+relations:
+  parent: user_story
+  parent_fk:
+    column: user_story_ref
+    references: user_stories.slug
+    on_delete: CASCADE
+  task: task
+  task_fk: ImplementationPlan.task (SET_NULL, optional)
+  children: []
+example:
+  slug: v-core-poll-loop-plan
+  title: v_core poll-loop implementation plan
+  user_story_ref: v-core-polls-ready-tasks
+  technical_approach: sqlx async pool against ~/.lightwave/index/lightwave.db (local SQLite); SELECT Ready candidates; filter
+    via Rust-native is_ready() implementation (no FFI bridge needed since v_core is Rust-native, not Python-bridged like the
+    legacy Augusta-Postgres design).
+  test_strategy: Integration test against a fixture SQLite DB in CI; mock v_core dispatch sink; assert dispatch latency <
+    100ms p95. Property tests on is_ready() predicate via proptest crate.
+  status: draft
+  roadmap_milestones:
+  - name: Connection pool + schema migration application
+    target_date: '2026-06-08'
+  - name: Ready filter via Rust-native is_ready()
+    target_date: '2026-06-15'
+  critical_files:
+  - path: lightwave-sys/crates/daemon/src/poll.rs
+    reason: New file — v_core main poll loop
+  - path: lightwave-sys/crates/core-lib/src/is_ready.rs
+    reason: Rust-native is_ready() predicate (replaces legacy Python implementation)
+  risks:
+  - risk: SQLite write contention if v_core polls while lw spec import writes
+    likelihood: low
+    impact: medium
+    mitigation: WAL mode + sqlx connection pool with appropriate timeout; observability/dispatch.jsonl records any retry attempts
+  created_at: '2026-06-24T12:00:00Z'
+  updated_at: '2026-06-24T12:00:00Z'

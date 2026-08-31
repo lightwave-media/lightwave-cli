@@ -14,7 +14,6 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/gruntwork-io/boilerplate v0.16.0
 	github.com/jackc/pgx/v5 v5.5.5
-	github.com/lightwave-media/lightwave-core/bindings/go v0.5.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/pelletier/go-toml/v2 v2.1.0
 	github.com/spf13/cobra v1.8.0
@@ -160,4 +159,3 @@ require (
 //
 // Unblock: cut a core release so release.yml emits the companion binding tag,
 // then replace this with a normal require on bindings/go v0.6.4.
-replace github.com/lightwave-media/lightwave-core/bindings/go => /Users/joelschaeffer/dev/lightwave-core/bindings/go

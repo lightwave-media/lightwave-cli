@@ -1,0 +1,94 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/integrations/github/milestone"
+  title: "GitHub Milestone — projection shape"
+  description: |
+    Repo milestone as projected from local sprint/epic planning. Local is
+    authoritative; GitHub is the engineering tracking surface (CORE-0048).
+  generates:
+    - "pydantic:GitHubMilestone"
+    - "postgres:DDL"
+  table_kind: entity
+  table_name: github_milestones
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: composite_key
+  unique: true
+
+required_fields:
+  - name: composite_key
+    type: str
+    description: "repo_full_name#milestone_number (e.g. lightwave-media/lightwave-core#12)"
+    storage: db
+  - name: repo_full_name
+    type: str
+    description: "owner/repo"
+    storage: db
+    indexed: true
+  - name: number
+    type: int
+    description: "Milestone number within the repo"
+    storage: db
+  - name: title
+    type: str
+    description: "Milestone title"
+    storage: db
+  - name: state
+    type: str
+    description: "open | closed"
+    storage: db
+  - name: sync_status
+    type: str
+    description: "pending | synced | drift | error"
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: description
+    type: str
+    description: "Milestone description body"
+    storage: db
+  - name: due_on
+    type: datetime
+    description: "Due date if set on GitHub"
+    storage: db
+  - name: html_url
+    type: str
+    description: "Browser URL"
+    storage: db
+  - name: local_sprint_ref
+    type: str
+    description: "Local sprint slug this milestone projects"
+    storage: db
+  - name: local_epic_ref
+    type: str
+    description: "Local epic slug when the milestone tracks an epic"
+    storage: db
+  - name: github_node_id
+    type: str
+    description: "GraphQL node ID"
+    storage: db
+
+example:
+  composite_key: "lightwave-media/lightwave-core#12"
+  repo_full_name: lightwave-media/lightwave-core
+  number: 12
+  title: "Sprint Current"
+  state: open
+  sync_status: synced
+  description: "Active sprint milestone"
+  due_on: "2026-08-31T00:00:00Z"
+  html_url: "https://github.com/lightwave-media/lightwave-core/milestone/12"
+  local_sprint_ref: sprint-2026-08
+  github_node_id: "MDk6TWlsZXN0b25lMTI="
+  created_at: "2026-08-01T12:00:00Z"
+  updated_at: "2026-08-12T12:00:00Z"

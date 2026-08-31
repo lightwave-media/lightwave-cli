@@ -1,0 +1,20 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/runner_statuses"
+  title: "Runner Status Enum"
+  description: "Lifecycle states for a registered agent runner. Mirrors Forgejo ActionRunner states (offline → idle → active). Distinct from agent_statuses which tracks task-dispatch lifecycle."
+  depends_on: []
+name: runner_statuses
+description: "Lifecycle states for registered agent runners (POST /v1/agents/runners)"
+default: "idle"
+closed: true
+options:
+  - value: "offline"
+    label: "Offline"
+    description: "Runner is not connected or heartbeat has expired."
+  - value: "idle"
+    label: "Idle"
+    description: "Runner is connected and available to accept a task assignment."
+  - value: "active"
+    label: "Active"
+    description: "Runner has an assigned task and is actively processing it."

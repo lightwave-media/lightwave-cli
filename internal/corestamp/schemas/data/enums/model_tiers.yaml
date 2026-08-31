@@ -1,0 +1,43 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/model_tiers"
+  title: "Model Tier Enum"
+  description: |
+    Intelligence tier classification for every model in the LightWave
+    ecosystem. Five-tier taxonomy: frontier (maximum capability, highest cost)
+    through economic (lowest-cost remote). A task's required_intelligence_tier
+    selects the minimum tier whose models can complete it.
+
+    Closed enum. Wire encoding lowercase. Consumed by:
+      - task_intelligence_profile.yaml#/required_fields/required_intelligence_tier
+      - model_capabilities.yaml#/options[].tier
+      - sprint_budget.yaml#/allocation keys
+      - cost_record.yaml intelligence_tier_used / intelligence_tier_required
+
+    Intelligence score is per-model in model_capabilities, not per-tier.
+    Tier defines capability class; specific models within a tier vary.
+  generates:
+    - "rust:ModelTier"
+    - "pydantic:ModelTier"
+  depends_on: []
+
+name: model_tiers
+description: "Model intelligence tier — frontier | powerful | standard | local | economic"
+default: "standard"
+closed: true
+options:
+  - value: frontier
+    label: "Frontier"
+    description: "Maximum capability. Architectural decisions, complex design, security audits, multi-repo coordination. Cost: highest per-token."
+  - value: powerful
+    label: "Powerful"
+    description: "Heavy implementation, multi-file refactors, code review. Default for engineer/singular personas. Cost: moderate per-token."
+  - value: standard
+    label: "Standard"
+    description: "Day-to-day coding, single-file edits, test writing, bug fixes. Default for developer personas. Cost: low per-token."
+  - value: local
+    label: "Local"
+    description: "On-device inference via Ollama/LMStudio. Read-only analysis, grep-assisted search, summarization, boilerplate. Cost: $0 per-token (hardware sunk)."
+  - value: economic
+    label: "Economic"
+    description: "Hosted inference at lowest available cost. Batch processing, formatting, simple transformations. Cost: lowest remote tier."

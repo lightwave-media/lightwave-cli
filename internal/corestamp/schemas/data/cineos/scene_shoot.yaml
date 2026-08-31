@@ -1,0 +1,59 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/scene_shoot"
+  title: "Scene Shoot"
+  description: |
+    The scene↔shoot-day assignment — the junction that schedules a Scene onto a
+    ShootDay with planned times and order. The Schedule Builder creates these when
+    dragging scenes onto days (ER: SHOOT_DAY ||--o{ SCENE_SHOOT, SCENE ||--o{
+    SCENE_SHOOT). depends_on lists the schemas this entity's required refs point
+    at (the family convention: depends_on = required-FK edges; optional refs are
+    documented on the field).
+  generates:
+    - "go:SceneShoot"
+    - "typescript:SceneShoot"
+    - "zig:SceneShoot"
+    - "json_schema:scene_shoot"
+  depends_on:
+    - "lightwave://schemas/data/cineos/scene"
+    - "lightwave://schemas/data/cineos/shoot_day"
+
+required_fields:
+  - name: scene_ref
+    type: str
+    description: "Slug/id of the Scene being scheduled"
+  - name: shoot_day_ref
+    type: str
+    description: "Slug/id of the ShootDay it is scheduled on"
+
+optional_fields:
+  - name: shoot_order
+    type: int
+    description: "Order of this scene within the shoot day (e.g. 3 = third up)"
+  - name: planned_start
+    type: str
+    description: "Planned start time on the day (e.g. '09:30')"
+  - name: planned_end
+    type: str
+    description: "Planned end time on the day (e.g. '11:00')"
+  - name: page_count
+    type: str
+    description: "Scheduled length in eighths (e.g. '1 4/8')"
+  - name: status
+    type: str
+    description: "Scheduling status; values from the cineos_scene_shoot_statuses enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_scene_shoot_statuses"
+  - name: notes
+    type: str
+    description: "Scheduling notes (e.g. 'company move before this')"
+
+relations:
+  parent: shoot_day
+  children: []
+
+example:
+  scene_ref: "wet-under-blue-sky-sc-27"
+  shoot_day_ref: "wet-under-blue-sky-main-day-12"
+  shoot_order: 3
+  planned_start: "09:30"
+  status: "planned"

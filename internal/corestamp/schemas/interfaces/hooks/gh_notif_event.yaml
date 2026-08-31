@@ -1,0 +1,68 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/hooks/gh_notif_event"
+  title: "GitHub Notification Event"
+  description: |
+    Structured event emitted by lightwave-cli/dev/gh_notif_to_event.py after
+    polling GitHub notifications. Consumed by dev/gh-notif-signal.sh to post
+    nullwatch spans, file nulltickets stubs, and auto-dispatch allowlisted
+    remote workflow failures (v1: github-org-sync) to nullclaw personas.
+
+required_fields:
+  - name: event_type
+    type: string
+    description: "gh.notif.ci_failed | gh.notif.review_requested | gh.notif.other"
+  - name: timestamp
+    type: string
+    description: "ISO-8601 datetime at which the event was emitted."
+  - name: repo
+    type: string
+    description: "Full repository name (e.g. lightwave-media/lightwave-cli)."
+  - name: workflow
+    type: string
+    description: "Workflow name extracted from the notification title, or pull_request."
+  - name: title
+    type: string
+    description: "Raw notification subject title."
+  - name: fingerprint
+    type: string
+    description: "Dedupe key: repo|workflow|title."
+  - name: signal
+    type: string
+    description: "remote_workflow | review_requested | other"
+  - name: occurrence_count
+    type: int
+    description: "How many notification threads collapsed into this fingerprint."
+  - name: latest_updated_at
+    type: string
+    description: "ISO-8601 updated_at of the newest thread in the bucket."
+
+optional_fields:
+  - name: thread_ids
+    type: list
+    description: "GitHub notification thread ids included in this fingerprint."
+  - name: subject_url
+    type: string
+    description: "API URL for the subject (check suite / PR)."
+  - name: run_url
+    type: string
+    description: "Browser URL for the workflow run when resolvable."
+  - name: reason
+    type: string
+    description: "GitHub notification reason (ci_activity, review_requested, …)."
+
+example:
+  event_type: gh.notif.ci_failed
+  timestamp: "2026-07-23T19:00:00Z"
+  repo: lightwave-media/lightwave-cli
+  workflow: github-org-sync
+  title: "github-org-sync workflow run failed for main branch"
+  fingerprint: "lightwave-media/lightwave-cli|github-org-sync|github-org-sync workflow run failed for main branch"
+  signal: remote_workflow
+  occurrence_count: 14
+  latest_updated_at: "2026-07-23T18:30:21Z"
+  thread_ids:
+    - "1234567890"
+  subject_url: "https://api.github.com/repos/lightwave-media/lightwave-cli/check-suites/1"
+  run_url: ""
+  reason: ci_activity

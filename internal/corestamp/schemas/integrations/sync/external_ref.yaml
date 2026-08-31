@@ -1,0 +1,206 @@
+_meta:
+  version: "2.0.0"
+  schema_id: "lightwave://schemas/integrations/sync/external_ref"
+  title: "External Reference — id map, outbox, and echo suppression"
+  description: |
+    Links a local authoritative row (kind + id) to an external system object
+    (GitHub issue, Notion page, etc.). Drives projection adapters:
+    write-print-first, outbound mutate, inbound reconcile.
+
+    v2.0.0 reconciles TWO stamps that described one table (WS-2 / M1):
+      - `external_projection` (this file, v1.x) — carried the outbox
+        (`sync_status`) and provider cursors (`etag`), no echo suppression.
+      - `external_refs` (LWAI-0003 §3 + lightwave-ai implementation_plan 0001)
+        — carried `last_written_sha256` + origin tagging for echo suppression,
+        no outbox.
+    Landing both would have produced two mapping tables for one concept. The
+    merged shape keeps every field from each; the two designs are complementary:
+    **`sync_status` is what to do next, `last_written_sha256` is what I already
+    did.**
+
+    ECHO SUPPRESSION IS LOAD-BEARING, NOT OPTIONAL. Without it the reconcile
+    cron reads back the adapter's own write, sees a change, and re-queues it —
+    the backstop fights the adapter indefinitely. Any inbound event whose
+    content hash equals `last_written_sha256` MUST be dropped.
+
+    WHAT GETS HASHED: the PRINT FILE CONTENT at `print_path`, not the DB row
+    (CORE-0049). Adapters write `~/.lightwave/specs/**` and the store is
+    reindexed from it; a write that reached only the store would be discarded
+    on the next reindex, so the print is the only stable thing to hash.
+
+    Naming note: LWAI-0003 §3 and implementation_plan 0001 M1 place this at
+    `data/external_refs`. It lives under `integrations/sync/` instead — it is
+    an integration concern, and `data/` is declarative shape per R-14. The
+    table name matches LWAI-0003 so downstream (M3b) implements one name.
+  generates:
+    - "pydantic:ExternalRef"
+    - "postgres:DDL"
+  depends_on:
+    - "lightwave://schemas/data/meta/brain_structure"
+  table_kind: entity
+  table_name: external_refs
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: binding_key
+  unique: true
+
+required_fields:
+  - name: binding_key
+    type: str
+    description: |
+      Stable natural key: "{provider}:{external_type}:{external_id}" or
+      "{provider}:{local_kind}:{local_id}" when external_id not yet assigned.
+      Collapses LWAI-0003's composite (canonical_id, entity_kind, store) into
+      one indexable column.
+    pattern: "^[a-z0-9_.:#/-]+$"
+    storage: db
+  - name: provider
+    type: str
+    description: |
+      External system slug — LWAI-0003 §3 `store`:
+      notion | github | cloud | cli_legacy | nulltickets.
+      Widened from {github, notion} in v1.x so the legacy createos_* read-model
+      and the nulltickets runtime feed map through the same table.
+    storage: db
+    indexed: true
+  - name: direction
+    type: str
+    description: "outbound | inbound | bidirectional"
+    storage: db
+  - name: authority
+    type: str
+    description: |
+      Who wins structured-field conflicts: local | external (default local).
+      NOTE: the per-field default is CONTESTED and not resolved by this schema —
+      CORE-0048 says local wins on structured columns; LWAI-0003 §2 gives Notion
+      title/description/acceptance-criteria/priority/points/timeline. This column
+      records the decision per binding; the policy that populates it is tracked
+      separately. Adapters MUST read it rather than assuming.
+    storage: db
+  - name: local_kind
+    type: str
+    description: "SST kind slug of the local row (LWAI-0003 `entity_kind`) — e.g. task, epic, knowledge_page"
+    storage: db
+    indexed: true
+  - name: local_id
+    type: str
+    description: "Local natural key (LWAI-0003 `canonical_id`) — usually slug, or UUID string"
+    storage: db
+    indexed: true
+  - name: print_path
+    type: str
+    description: |
+      Path of the canonical print file this binding projects, relative to
+      ~/.lightwave/specs (e.g. "task/wire-v-core-poll-loop.yaml"). This is the
+      adapter's WRITE TARGET and the file whose content `last_written_sha256`
+      hashes. Adapters never write the store directly (CORE-0049 §2).
+    storage: db
+  - name: external_type
+    type: str
+    description: "Provider object type (issue, milestone, project_item, pull_request, page, database)"
+    storage: db
+  - name: sync_status
+    type: str
+    description: |
+      Outbox marker: pending | synced | drift | error | tombstoned.
+      A row at `pending` IS queued work — there is no separate outbox table.
+    storage: db
+    indexed: true
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: external_id
+    type: str
+    description: "Provider-native ID (GitHub node/number string, Notion page UUID, etc.)"
+    storage: db
+    indexed: true
+  - name: last_written_sha256
+    type: str
+    nullable: true
+    description: |
+      SHA-256 of the print file content as the adapter last wrote it
+      (LWAI-0003 §4). THE ECHO-SUPPRESSION KEY: an inbound event whose computed
+      content hash equals this value is the adapter's own write coming back and
+      MUST be dropped, not re-queued. Null before the first outbound write.
+    storage: db
+    indexed: true
+  - name: last_write_origin
+    type: str
+    description: |
+      Origin tag for the last write (LWAI-0003 §4 "every fabric write is
+      origin-tagged"): local | adapter:github | adapter:notion | adapter:cloud |
+      adapter:nulltickets. Lets a reconcile distinguish operator edits from
+      adapter round-trips when the hash alone is ambiguous.
+    storage: db
+  - name: idempotency_key
+    type: str
+    description: |
+      Client-supplied key for the in-flight edge write (LWAI-0003 §4,
+      nulltickets precedent). Makes an interrupted outbound write safe to retry
+      without creating a duplicate external object.
+    storage: db
+  - name: last_synced_at
+    type: datetime
+    description: "ISO 8601 timestamp of last successful adapter round-trip"
+    storage: db
+  - name: etag
+    type: str
+    description: "Provider etag / updated_at opaque token for incremental fetch of THIS object. Per-edge cursors are a separate concern — see relations note."
+    storage: db
+  - name: external_url
+    type: str
+    description: "Canonical browser URL for the external object"
+    storage: db
+  - name: last_error
+    type: str
+    description: "Last adapter error message when sync_status=error"
+    storage: db
+  - name: metadata
+    type: "map[str, str]"
+    description: "Small provider-specific bag (LWAI-0003 `external_meta`) — repo full_name, project number, database_id"
+    storage: db
+    column_type: jsonb
+
+relations:
+  parent: null
+  children: []
+  # NOT MODELLED HERE, deliberately: LWAI-0003 §4 also requires per-EDGE cursors
+  # (one per provider, not one per binding) and a monotonic `task_version` on the
+  # entity itself. Both are real requirements with the wrong cardinality for this
+  # table. They need a sibling `edge_cursor` schema and a task-column bump
+  # respectively — flagged rather than folded in here, so neither gets modelled
+  # by accident at the wrong grain.
+
+example:
+  binding_key: "github:issue:lightwave-media/lightwave-core#412"
+  provider: github
+  direction: bidirectional
+  authority: local
+  local_kind: task
+  local_id: wire-v-core-poll-loop
+  print_path: "task/wire-v-core-poll-loop.yaml"
+  external_type: issue
+  external_id: "412"
+  sync_status: synced
+  last_written_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  last_write_origin: "adapter:github"
+  # Real values are ULIDs; this example is deliberately low-entropy so the
+  # secret scanner does not flag the stamp (gitleaks generic-api-key).
+  idempotency_key: "example-idempotency-key-0001"
+  last_synced_at: "2026-08-12T18:00:00Z"
+  etag: "W/\"abc123\""
+  external_url: "https://github.com/lightwave-media/lightwave-core/issues/412"
+  metadata:
+    repo: lightwave-media/lightwave-core
+    project_number: "3"
+  created_at: "2026-08-12T12:00:00Z"
+  updated_at: "2026-08-12T18:00:00Z"

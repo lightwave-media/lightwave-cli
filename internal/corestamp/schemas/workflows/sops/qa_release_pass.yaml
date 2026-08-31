@@ -1,0 +1,77 @@
+name: "qa_release_pass"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/qa_release_pass"
+  title: "QA release pass SOP"
+  description: |
+    v_qa-engineer release gate — intention vs execution. Runs release_qa_pass.sh,
+    emits 06-qa-release-verdict.md, blocks release train when blockers > 0.
+    Chains to core-pre-push-panel (staff → cto) on PASS.
+  depends_on:
+    - "lightwave://schemas/data/meta/feature_flag"
+    - "lightwave://schemas/data/meta/review_panel_verdict"
+
+id: qa_release_pass
+title: "QA release pass (v_qa-engineer)"
+version: 1.0.0
+execution_mode: supervised
+
+trigger:
+  source: release_train
+  event: post_feature_merge_pre_release_pr
+
+parameters:
+  - name: repo
+    type: string
+    default: lightwave-cli
+  - name: artefact_dir
+    type: string
+    description: "~/.lightwave/artefacts/release-qa/<run-id>/"
+
+steps:
+  - id: check_flag
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        state="$(lw release flag autonomous_qa_release_pass 2>/dev/null | awk '{print $2}')"
+        if [ "${state:-off}" != "on" ]; then
+          echo "autonomous_qa_release_pass off — skipping QA release pass"
+          exit 0
+        fi
+
+  - id: execute_matrix
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        mkdir -p "${artefact_dir}"
+        REPO_ROOT="$(git -C "${repo}" rev-parse --show-toplevel 2>/dev/null || pwd)"
+        cd "$REPO_ROOT"
+        bash dev/release_qa_pass.sh "${artefact_dir}" > "${artefact_dir}/05-qa-release-matrix.log" 2>&1
+
+  - id: qa_verdict
+    tool: delegate
+    args:
+      agent: v_qa-engineer
+      message: |
+        Release QA pass for ${repo}. Read execution log and release docs.
+        Compare INTENTION (CHANGELOG, PRD/ADR deltas, commands.yaml) vs EXECUTION
+        (matrix log). Emit ${artefact_dir}/06-qa-release-verdict.md ending with:
+        QA-RELEASE-VERDICT: blockers=N tests_proposed=M
+        List gaps and proposed CI tests for dev agents to land before PASS.
+    emit: "${artefact_dir}/06-qa-release-verdict.md"
+
+  - id: gate
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        V="${artefact_dir}/06-qa-release-verdict.md"
+        if [ ! -f "$V" ]; then exit 1; fi
+        if grep -E 'QA-RELEASE-VERDICT: blockers=[1-9]' "$V"; then
+          echo "QA release pass BLOCKED" >&2
+          exit 1
+        fi
+        echo "QA release pass OK — proceed to core-pre-push-panel"

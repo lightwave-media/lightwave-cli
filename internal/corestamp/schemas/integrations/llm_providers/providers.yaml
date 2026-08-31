@@ -1,0 +1,52 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/integrations/llm_providers/providers"
+  title: "LLM Provider Registry"
+  description: |
+    Registry of supported LLM providers. Each entry declares the provider's
+    slug, display name, base URL pattern, and supported authentication
+    methods. Individual model entries live in models/ with per-model
+    capability+cost data.
+
+    Populated as part of cost-intelligence alignment (Phase 1, 2026-06-21).
+    New providers: add an entry here + model file(s) in models/.
+  generates:
+    - "pydantic:LLMProviderRegistry"
+  depends_on: []
+
+required_fields:
+  - name: provider_id
+    type: str
+    description: "Provider slug matching model_capabilities.provider values. Must be kebab-case."
+  - name: name
+    type: str
+    description: "Human-readable provider name (e.g. Anthropic, OpenAI, OpenRouter)."
+  - name: base_url
+    type: str
+    description: "API base URL template. May contain {model_id} placeholder."
+  - name: auth_method
+    type: str
+    description: "Authentication method: api_key | bearer | oauth | none"
+  - name: supported_features
+    type: "list[str]"
+    description: "Feature flags: prompt_caching | batch_api | streaming | vision | thinking_tokens | function_calling"
+
+optional_fields:
+  - name: status
+    type: str
+    description: "active | deprecated | planned — lifecycle state"
+  - name: notes
+    type: str
+    description: "Human-readable notes about integration status, limitations, or quirks."
+
+example:
+  provider_id: anthropic
+  name: "Anthropic"
+  base_url: "https://api.anthropic.com/v1/messages"
+  auth_method: api_key
+  supported_features:
+    - prompt_caching
+    - streaming
+    - vision
+    - thinking_tokens
+  status: active

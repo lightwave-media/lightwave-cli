@@ -1,0 +1,76 @@
+_meta:
+  version: 0.1.0
+  schema_id: lightwave://schemas/data/ui/app_shell
+  title: App Shell — application scaffold contract
+  description: 'The contract for scaffolding a whole React application (unblocks the
+
+    app-react-vite blueprint, Stage 0): shell kind, routing, providers, and
+
+    auth posture. A website shell pairs with a site_config; app/admin shells
+
+    add authenticated surfaces. The scaffold reads this contract and emits
+
+    the Vite + React entry, provider tree, and router skeleton.
+
+    '
+  generates:
+  - typescript:AppShell
+  - go:AppShell
+  - json_schema:app_shell
+  depends_on:
+  - lightwave://schemas/data/ui/site_config
+required_fields:
+- name: name
+  type: str
+  description: App package name, kebab-case (e.g. joelschaeffer-site)
+- name: kind
+  type: enum
+  values_ref: lightwave://schemas/data/enums/ui_app_shell_kinds
+  description: website = public marketing site; app = authenticated product surface; admin = internal back office
+- name: router
+  type: enum
+  options:
+  - react-router
+  - tanstack-router
+  - none
+  description: Router configuration for the app shell navigation tree.
+- name: providers
+  type: list[str]
+  description: 'Provider tree, outermost first. Canonical values: theme, query, auth, toast. Promote to data/enums/ when first
+    consumed by codegen (see ADR-0006 DECISIONS).'
+- name: auth
+  type: Auth
+  description: Authentication configuration for the app shell.
+optional_fields:
+- name: site_config
+  type: str
+  nullable: true
+  description: Reference to the site_config instance this shell renders (schema_id or repo-relative path); required when kind
+    is website
+- name: description
+  type: str
+  nullable: true
+  description: Human-readable description of this app shell configuration.
+sub_schemas:
+  Auth:
+    posture:
+      type: enum
+      options:
+      - public
+      - authenticated
+      - admin
+      description: Default access posture for routes
+    provider:
+      type: str
+      description: Auth provider identifier when posture is not public (nullable)
+example:
+  name: joelschaeffer-site
+  kind: website
+  router: react-router
+  providers:
+  - theme
+  auth:
+    posture: public
+    provider: null
+  site_config: lightwave://schemas/data/ui/site_config#example
+  description: Public portfolio site for joelschaeffer.site, rendered entirely from data sources.

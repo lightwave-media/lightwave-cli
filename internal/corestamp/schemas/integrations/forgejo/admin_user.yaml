@@ -1,0 +1,92 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/admin_user"
+  title: "Forgejo Admin User Management — 1:1 SST Mirror"
+  description: |
+    1:1 mirror of Forgejo's admin user management API.
+    Source: swagger.v1.json #/paths/~1admin~1users
+
+    Admin-only endpoints for full user lifecycle management — create, edit,
+    delete, rename, key management. Required for bootstrapping the Lightwave
+    platform with initial admin and agent users.
+
+  source_ref: "forgejo://swagger.v1.json#/paths/~1admin~1users"
+  table_kind: entity
+  table_name: admin_user_actions  # audit log of admin user ops
+  generates:
+    - "go:ForgejoAdminUser"
+
+primary_key:
+  column: id
+  type: uuid
+
+required_fields:
+  - name: action
+    type: str
+    description: "create | edit | delete | rename"
+    storage: db
+  - name: target_user
+    type: str
+    description: "Username of the target user"
+    storage: db
+  - name: admin_user
+    type: str
+    description: "Username of the admin performing the action"
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+
+sub_schemas:
+  CreateUserOption:
+    username: str
+    email: str
+    password: str
+    full_name: str
+    login_name: str
+    must_change_password: bool
+    restricted: bool
+    send_notify: bool
+    source_id: int
+    visibility: str
+    created_at: datetime
+
+  EditUserOption:
+    active: bool
+    admin: bool
+    allow_create_organization: bool
+    allow_git_hook: bool
+    allow_import_local: bool
+    description: str
+    email: str
+    full_name: str
+    hide_email: bool
+    location: str
+    login_name: str
+    max_repo_creation: int
+    must_change_password: bool
+    password: str
+    prohibit_login: bool
+    pronouns: str
+    restricted: bool
+    source_id: int
+    visibility: str
+    website: str
+
+  RenameUserOption:
+    new_username: str
+
+  CreateKeyOption:
+    title: str
+    key: str
+    read_only: bool
+
+  DeleteEmailOption:
+    emails: "list[str]"
+
+example:
+  action: "create"
+  target_user: "v-platform-developer"
+  admin_user: "joel"
+  created_at: "2026-06-25T00:00:00Z"

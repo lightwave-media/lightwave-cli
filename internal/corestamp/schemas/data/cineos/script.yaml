@@ -1,0 +1,42 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/script"
+  title: "Script"
+  description: |
+    A film's script under a Project. Holds the screenplay body (or a reference to
+    it) and is the parent of Scenes. Versioning (the 'version BLUE.pdf' in the
+    dashboard) is modeled by script_version in slice 2.
+  generates:
+    - "go:Script"
+    - "typescript:Script"
+    - "zig:Script"
+    - "json_schema:script"
+  depends_on:
+    - "lightwave://schemas/data/cineos/project"
+
+required_fields:
+  - name: title
+    type: str
+    description: "Script title"
+  - name: project_ref
+    type: str
+    description: "Slug/id of the parent Project"
+
+optional_fields:
+  - name: content_ref
+    type: str
+    description: "Path/$ref to the screenplay body (the script document); large text lives outside the row"
+  - name: current_version
+    type: str
+    description: "Label of the current script_version (e.g. 'BLUE'); the version history is script_version (slice 2)"
+
+relations:
+  parent: project
+  children:
+    - scene
+    - script_version
+
+example:
+  title: "Wet Under Blue Sky"
+  project_ref: "wet-under-blue-sky"
+  current_version: "BLUE"

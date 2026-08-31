@@ -1,0 +1,55 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_metadata_value_types"
+  title: "CineOS Metadata Value Type Enum"
+  description: |
+    Value types a metadata_definition can declare — the FilmLight domain-typed
+    value vocabulary (Timecode, TimecodePair, Keycode, Indicator, …) plus the
+    plain scalars. CLOSED. timecode/timecode_pair/keycode serialize as str
+    until first-class scalars land in codegen (tracked lightwave-cli issue —
+    see epic cineos-slice3-stamp).
+  generates:
+    - "go:CineMetadataValueType"
+    - "typescript:CineMetadataValueType"
+    - "zig:CineMetadataValueType"
+    - "json_schema:cineos_metadata_value_types"
+  depends_on: []
+
+name: cineos_metadata_value_types
+description: "Metadata field value types"
+default: string
+closed: true
+options:
+  - value: string
+    label: "String"
+    description: "Free text"
+  - value: integer
+    label: "Integer"
+    description: "Whole number"
+  - value: float
+    label: "Float"
+    description: "Decimal number"
+  - value: boolean
+    label: "Boolean"
+    description: "True/false"
+  - value: date
+    label: "Date"
+    description: "ISO 8601 date"
+  - value: choice
+    label: "Choice"
+    description: "One of the definition's declared choices"
+  - value: timecode
+    label: "Timecode"
+    description: "SMPTE timecode HH:MM:SS:FF (str-serialized pending scalar support)"
+  - value: timecode_pair
+    label: "Timecode pair"
+    description: "In/out SMPTE pair 'IN/OUT' (str-serialized pending scalar support)"
+  - value: keycode
+    label: "Keycode"
+    description: "Film keycode (str-serialized)"
+  - value: category
+    label: "Category"
+    description: "Tag set drawn from the project's category definitions"
+  - value: indicator
+    label: "Indicator"
+    description: "Derived read-only presence flag (e.g. has_grade)"

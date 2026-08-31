@@ -1,0 +1,66 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/auth_gate_event
+  title: Auth Gate Event
+  description: 'Structured row emitted when CreateOS Auth Inbox pauses a runbook at a
+
+    legal/financial/contractual boundary (ADR-0037). Touch ID verification
+
+    is the human authority signal — never inferred from LLM output.
+
+    '
+  generates:
+  - pydantic:AuthGateEvent
+  depends_on:
+  - lightwave://schemas/data/enums/rigor_tiers
+required_fields:
+- name: ts
+  type: str
+  description: ISO 8601 timestamp
+- name: runbook_id
+  type: str
+  description: Identifier of the runbook that triggered this auth gate.
+- name: runbook_step
+  type: str
+  description: Step within the runbook that requires authorization.
+- name: blueprint_id
+  type: str
+  description: Blueprint ID associated with the auth gate request.
+- name: rigor_tier
+  type: str
+  description: rigor_tiers enum value
+- name: human_id
+  type: str
+  description: Identifier of the human operator who must authorize.
+- name: touch_id_verified
+  type: bool
+  description: Whether Touch ID biometric verification was confirmed.
+- name: decision
+  type: str
+  description: approved | denied | deferred
+- name: correlation_id
+  type: str
+  description: Joins gateway, runbook, and audit chain
+optional_fields:
+- name: dropdown_answers
+  type: map[str, str]
+  description: Structured Q&A selections from approval card
+- name: pro_personal_tag
+  type: str
+  description: Pro/personal tag classifying the gate event context.
+- name: dropdown_questions
+  type: list[str]
+  description: Ordered list of dropdown questions presented at the gate.
+example:
+  ts: '2026-06-20T12:00:00Z'
+  runbook_id: invoice-and-close
+  runbook_step: send-invoice
+  blueprint_id: client-deliverable-pack
+  rigor_tier: B
+  human_id: joel
+  touch_id_verified: true
+  decision: approved
+  correlation_id: corr-2026-06-20-001
+  dropdown_answers:
+    client: Henderson
+    amount_confirmed: 'yes'

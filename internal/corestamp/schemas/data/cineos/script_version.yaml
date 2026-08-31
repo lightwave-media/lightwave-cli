@@ -1,0 +1,53 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/script_version"
+  title: "Script Version"
+  description: |
+    A revision of a Script — the 'version BLUE.pdf' in the dashboard. Captures the
+    industry revision color/label and the file, so scene breakdowns can be pinned
+    to a draft (ER: SCRIPT ||--o{ SCRIPT_VERSION; a version affects Scenes — a soft
+    cross-ref carried on the scene, not a containment edge here).
+  generates:
+    - "go:ScriptVersion"
+    - "typescript:ScriptVersion"
+    - "zig:ScriptVersion"
+    - "json_schema:script_version"
+  depends_on:
+    - "lightwave://schemas/data/cineos/script"
+
+required_fields:
+  - name: script_ref
+    type: str
+    description: "Slug/id of the parent Script"
+  - name: label
+    type: str
+    description: "Revision label (e.g. 'BLUE', 'WHITE', 'v3')"
+
+optional_fields:
+  - name: revision_color
+    type: str
+    description: "Industry revision color; values from the cineos_revision_colors enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_revision_colors"
+  - name: revision_date
+    type: date
+    description: "Date this revision was issued"
+  - name: file_ref
+    type: str
+    description: "Path/$ref to the script PDF for this version"
+  - name: is_current
+    type: bool
+    description: "True if this is the active shooting draft"
+  - name: notes
+    type: str
+    description: "Change summary for this revision"
+
+relations:
+  parent: script
+  children: []
+
+example:
+  script_ref: "wet-under-blue-sky"
+  label: "BLUE"
+  revision_color: "blue"
+  revision_date: "2026-06-15"
+  is_current: true

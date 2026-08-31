@@ -121,6 +121,10 @@ linters:
       - docs
       - .github
       - internal/audits
+      # Vendored copy of lightwave-core's Go binding (see internal/corestamp
+      # package docs). Upstream's code to own; holding it to this repo's house
+      # style would make every scripts/sync-core-stamp.sh refresh a conflict.
+      - internal/corestamp
       - third_party$
       - builtin$
       - examples$
@@ -141,6 +145,7 @@ formatters:
       - docs
       - .github
       - internal/audits
+      - internal/corestamp
       - third_party$
       - builtin$
       - examples$

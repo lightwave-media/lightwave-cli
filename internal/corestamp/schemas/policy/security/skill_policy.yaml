@@ -1,0 +1,107 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/policy/security/skill_policy"
+  title: "Skill Security Policy"
+  description: "Policy contract governing what skills (Claude Code skills, Pi extensions, ZeroClaw plugins, agent capabilities) may do — what kinds of files they may carry, whether scripts are allowed, how cross-skill markdown links are policed, and the trust-score impact of adding script-bearing skills. Stamps the security boundary for the skill ecosystem. Migrated 2026-05-25 from governance/security/skill_policy.yaml (Phase 4 follow-up to handoff #1)."
+  generates:
+    - "pydantic:SkillSecurityPolicy"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'org-default', 'claude-code-skills', 'pi-extensions')"
+  - name: applies_to
+    type: "list[str]"
+    description: "Which skill ecosystems this policy applies to (e.g. ['claude-code', 'pi', 'zeroclaw-plugins'])"
+  - name: skill_categories
+    type: "list[CategoryRuleRef]"
+    description: "Rules per skill category. Sub-schema CategoryRule: category (enum: pure-markdown|script-bearing|executable-binary|wasm-module), allowed_extensions (list[str]), default_trust_score (int 0-100), requires_review (bool), audit_required (bool), notes (str)"
+  - name: allow_scripts_flag
+    type: "AllowScriptsRuleRef"
+    description: "Sub-schema AllowScriptsRule: default_value (bool), flip_authority (list[str], who may flip — role slugs or 'human-only'), audit_action (enum: log|require_approval|notify_security), audit_artifact (str, where the audit lands)"
+  - name: markdown_link_rules
+    type: "list[MarkdownLinkRuleRef]"
+    description: "Rules for markdown links within skills. Sub-schema MarkdownLinkRule: pattern (str, regex or glob), action (enum: allow|warn|block), reason (str)"
+  - name: status
+    type: str
+    description: "Lifecycle status"
+
+optional_fields:
+  - name: trust_score_impact
+    type: "list[TrustImpactRef]"
+    description: "How skill events affect a skill's trust score. Sub-schema TrustImpact: event (enum: install|update|script_added|external_call_added|sensitive_perm_added), delta (int, +/- score change), reason (str)"
+  - name: review_workflow_ref
+    type: str
+    description: "$ref to the review workflow (e.g. lightwave://schemas/workflows/blueprints/skill-review)"
+  - name: incident_response_ref
+    type: str
+    description: "$ref to incident response SOP for skill security violations"
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "org-default"
+  applies_to:
+    - "claude-code-skills"
+    - "pi-extensions"
+    - "zeroclaw-plugins"
+  skill_categories:
+    - category: "pure-markdown"
+      allowed_extensions: [".md", ".yaml"]
+      default_trust_score: 80
+      requires_review: false
+      audit_required: false
+      notes: "Read-only instruction text. Lowest risk. Auto-approved."
+    - category: "script-bearing"
+      allowed_extensions: [".md", ".yaml", ".sh", ".py", ".ts", ".js"]
+      default_trust_score: 40
+      requires_review: true
+      audit_required: true
+      notes: "Carries executable scripts. Review required before allow_scripts flip."
+    - category: "executable-binary"
+      allowed_extensions: ["*"]
+      default_trust_score: 10
+      requires_review: true
+      audit_required: true
+      notes: "Native binary. Hardest to audit. Requires explicit operator approval per install."
+    - category: "wasm-module"
+      allowed_extensions: [".wasm", ".md", ".yaml"]
+      default_trust_score: 60
+      requires_review: true
+      audit_required: false
+      notes: "Sandboxed by WASM runtime; safer than native binary."
+  allow_scripts_flag:
+    default_value: false
+    flip_authority: ["joel", "v_cto"]
+    audit_action: "require_approval"
+    audit_artifact: "~/.lightwave/reports/skill_script_approvals.jsonl"
+  markdown_link_rules:
+    - pattern: "^https?://"
+      action: "warn"
+      reason: "External links may exfiltrate context if rendered in a sensitive surface"
+    - pattern: "\\.\\./scripts/.*"
+      action: "block"
+      reason: "Cross-skill script linking creates implicit dependencies hard to audit"
+    - pattern: "^file://"
+      action: "block"
+      reason: "Local file URIs can leak host filesystem"
+  trust_score_impact:
+    - event: "install"
+      delta: 0
+      reason: "Fresh install starts at category default"
+    - event: "script_added"
+      delta: -20
+      reason: "Adding a script post-install signals scope creep"
+    - event: "external_call_added"
+      delta: -10
+      reason: "Outbound network adds attack surface"
+    - event: "sensitive_perm_added"
+      delta: -30
+      reason: "Filesystem-write or secret-read perms are high-trust"
+  status: "draft"

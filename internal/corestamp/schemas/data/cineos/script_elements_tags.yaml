@@ -1,0 +1,47 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/script_elements_tags"
+  title: "Script Elements Tag"
+  description: |
+    A tagged production element within a Scene's breakdown — the cast member, prop,
+    vehicle, or effect a 1st AD marks up during script breakdown (ER: SCENE ||--o{
+    SCRIPT_ELEMENTS_TAGS). Groups its tagged items into ElementCategory buckets
+    (ER: SCRIPT_ELEMENTS_TAGS ||--o{ ELEMENT_CATEGORIES), driving the breakdown
+    sheet and the schedule's resource view.
+  generates:
+    - "go:ScriptElementsTag"
+    - "typescript:ScriptElementsTag"
+    - "zig:ScriptElementsTag"
+    - "json_schema:script_elements_tags"
+  depends_on:
+    - "lightwave://schemas/data/cineos/scene"
+
+required_fields:
+  - name: scene_ref
+    type: str
+    description: "Slug/id of the Scene this tag belongs to"
+  - name: name
+    type: str
+    description: "The tagged element text (e.g. 'Beau', 'heavy bag', '1968 Mustang')"
+
+optional_fields:
+  - name: quantity
+    type: int
+    description: "Count of this element in the scene (e.g. 3 background actors)"
+  - name: highlight_color
+    type: str
+    description: "Breakdown highlight color shown on the script page (a utility-color name, not a hex)"
+  - name: notes
+    type: str
+    description: "Breakdown notes (e.g. 'practical — must function on camera')"
+
+relations:
+  parent: scene
+  children:
+    - element_categories
+
+example:
+  scene_ref: "wet-under-blue-sky-sc-27"
+  name: "heavy bag"
+  quantity: 1
+  notes: "Beau's training bag — weathered, taped"

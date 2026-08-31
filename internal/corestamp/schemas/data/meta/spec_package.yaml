@@ -1,0 +1,108 @@
+# SPEC Package — Lightwave Specification Control Plane
+# The Engineering team choreographs here. Developers read from here.
+# ~/SPEC/{project}/ — each project gets its own spec tree
+# Shared specs live at ~/SPEC/shared/
+
+_meta:
+  schema_id: lightwave://schemas/data/meta/spec_package
+  title: SPEC Package Blueprint
+  version: 1.0.0
+  description: The SPEC package is the control plane for the Lightwave software factory. Engineers write here. Developers read from here.
+  generates:
+    - "pydantic:SpecPackage"
+  depends_on: []
+
+required_fields:
+  - name: package
+    type: object
+    description: "The package structure"
+  - name: experiment_control_plane
+    type: object
+    description: "How experiments are gated"
+
+optional_fields:
+  - name: shared_and_unique
+    type: object
+    description: "What's shared vs per-project"
+
+example:
+  package:
+    root: ~/SPEC/
+    per_project:
+      template: ~/SPEC/{project}/
+      layout:
+        - product_vision/
+        - prd/
+        - sad/
+        - nfr/
+        - adr/
+        - epic/
+        - sprint/
+        - user_story/
+        - task/
+        - doa/
+        - experiments/
+    shared:
+      template: ~/SPEC/shared/
+      layout:
+        - glossary/
+        - principles/
+        - governance/
+        - security/
+        - compliance/
+        - testing/
+        - runbooks/
+        - templates/
+        - experiments/inbox/
+    generation:
+      tool: "lw spec init --project {project}"
+      boilerplate: "src/boilerplate/blueprints/spec-package/"
+      validates_against: "src/schemas/data/reference_documents/"
+
+  shared_and_unique:
+    shared:
+      - "principles/ — print from lightwave-core"
+      - "governance/ — print from lightwave-core"
+      - "security/ — print from lightwave-core"
+      - "glossary/ — maintained by v_architect"
+      - "templates/ — maintained by v_staff-engineer"
+      - "runbooks/ — maintained by v_scrum-manager"
+    unique:
+      - "product_vision/ — per-project vision"
+      - "prd/ — per-project requirements"
+      - "sad/ — per-project architecture"
+      - "adr/ — per-project decisions"
+      - "epic/ — per-project epics"
+      - "sprint/ — per-project sprints"
+      - "user_story/ — per-project stories"
+      - "task/ — per-project tasks"
+      - "doa/ — per-project definitions of awesome"
+      - "experiments/ — per-project experiments"
+
+  experiment_control_plane:
+    description: |
+      Experiments are gated specifications that need engineer approval
+      before a developer can act on them.
+    flow:
+      proposal: any engineer tier
+      review: v_staff-engineer (ponytail audit)
+      approval: v_cto (architecture) or v_staff-engineer (features)
+      enforcement: pre-commit hook rejects developer reading from experiments/
+    programmatic_experiments:
+      description: |
+        Generate specifications programmatically, test against the codebase,
+        iterate before committing. Spec TDD — write spec, generate skeleton,
+        test, refine, commit.
+      steps:
+        - "v_architect runs lw experiment new --project {project} --prompt ..."
+        - "System generates spec draft at ~/SPEC/{project}/experiments/{slug}.md"
+        - "System generates code skeleton via boilerplate"
+        - "CI validates skeleton against SST schemas"
+        - "v_staff-engineer reviews generated spec + skeleton"
+        - "If approved, both promoted to main spec tree + repo"
+
+relations:
+  parent: null
+  children: []
+
+status: active

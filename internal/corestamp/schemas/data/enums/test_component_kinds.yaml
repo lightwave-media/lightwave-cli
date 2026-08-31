@@ -1,0 +1,53 @@
+_meta:
+  version: "0.2.0"
+  schema_id: "lightwave://schemas/data/enums/test_component_kinds"
+  title: "Test Component Kind Enum"
+  description: |
+    Closed set of component surfaces a test_contract may govern. Each value
+    is a distinct testable shape across the LightWave fleet; a test_contract
+    binds ONE component_kind to its required test_patterns + adequacy bar.
+    The company-wide `lw check test-contract` gate keys off this value to
+    decide which contract applies to a given package/file.
+  generates:
+    - "pydantic:TestComponentKind"
+  depends_on: []
+
+name: test_component_kinds
+description: "Component surface a test_contract governs"
+default: go_library
+closed: true
+options:
+  - value: go_cli_handler
+    label: "Go CLI handler"
+    description: "A cobra/dispatcher command handler (lightwave-cli)"
+  - value: go_http_route
+    label: "Go HTTP route"
+    description: "A Huma/Chi route handler (lightwave-platform backend)"
+  - value: go_library
+    label: "Go library"
+    description: "A reusable Go package with no transport/CLI surface"
+  - value: schema_binding
+    label: "Schema binding"
+    description: "A generated loader binding (bindings/go, etc.)"
+  - value: infra_module
+    label: "Infra module"
+    description: "A Terragrunt/OpenTofu module (lightwave-infrastructure-*)"
+  - value: react_component
+    label: "React component"
+    description: "A lightwave-ui component (variants over props)"
+  - value: stamp_shaped_print
+    label: "Stamp-shaped print"
+    description: >
+      A store row, YAML instance, or on-disk document whose shape is a
+      lightwave-core schema. Tests must census current prints (print_census)
+      against the stamp (stamp_bound), not pin a named instance.
+
+example:
+  name: test_component_kinds
+  description: "Component surface a test_contract governs"
+  default: go_library
+  closed: true
+  options:
+    - value: go_http_route
+      label: "Go HTTP route"
+      description: "A Huma/Chi route handler (lightwave-platform backend)"

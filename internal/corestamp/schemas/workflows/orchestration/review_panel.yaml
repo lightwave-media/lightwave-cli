@@ -1,0 +1,78 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/workflows/orchestration/review_panel"
+  title: "Review Panel Pipeline"
+  description: |
+    Named pipeline of reviewer personas that gates a push (or runs in
+    shadow alongside the gate). Stamps the SHAPE of the pre-push review
+    panel currently hard-coded in dev/cli.sh review --converge:
+    an ordered persona pipeline (Run 1: v_staff-engineer → v_cto),
+    sequential execution, short-circuit on the first persona that flags a
+    🔴 blocker.
+
+    Decisions of record: spec/adr/0001 (first slice), 0004 (nullhub is the
+    hub — dispatch goes through the hub's agent-invoke proxy), 0005
+    (shadow first — claude-CLI stays authoritative while shadow_mode is
+    true), 0007 (stamp roles, print models — personas are referenced by
+    NAME only; model ids live in per-machine ~/.nullclaw prints, never
+    here). Full record:
+    ~/.lightwave/brain/memory/2026-06-12-swarm-review-panel-decisions.md.
+
+    Stamp/print split:
+      - This schema + its instances under src/ are the stamp (panel
+        membership, ordering, gating semantics, dispatch budget).
+      - nullclaw renders per-persona prompts (per #132, prompt.zig);
+        nullhub/lw render instance + agent config prints; concrete model
+        ids and instance names are prints.
+
+    Each persona's output must reduce to a verdict record conforming to
+    verdict_contract (data/meta/review_panel_verdict.yaml), whose terminal
+    CONVERGE-VERDICT line stays byte-compatible with the dev/cli.sh prose
+    contract.
+  generates:
+    - "zig:ReviewPanel"
+  depends_on:
+    - "lightwave://schemas/data/meta/agent_definition"
+    - "lightwave://schemas/data/meta/review_panel_verdict"
+    - "lightwave://schemas/data/enums/review_dispatch_transports"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable panel identifier, kebab-case slug per R-11 (e.g. 'core-pre-push-panel')."
+  - name: personas
+    type: "list[str]"
+    description: "ORDERED pipeline of persona names. Each entry must match the `name` of a persona instance validated by data/meta/agent_definition.yaml (e.g. v_staff-engineer, v_cto). Execution is sequential in list order. Personas carry their own role/prompt/tier via agent_definition; the panel adds membership + ordering only — no model ids (ADR-0007)."
+  - name: short_circuit_on_blockers
+    type: bool
+    description: "When true, the first persona whose verdict has blockers > 0 stops the pipeline; remaining personas are NOT invoked (matches the dev/cli.sh converge gate)."
+  - name: dispatch_transport
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/review_dispatch_transports"
+    description: "How persona invocations reach the swarm. Required even though the enum declares a default — every panel instance must state its transport explicitly; the enum default documents the canonical choice (nullhub-agent-invoke per ADR-0004: clients are clients of nullhub, never of raw nullclaw ports), not an omission fallback."
+  - name: per_persona_timeout_secs
+    type: int
+    description: "Wall-clock budget for a single persona invocation. A timed-out persona yields no verdict; in shadow mode that is logged, never a block."
+  - name: total_budget_secs
+    type: int
+    description: "Wall-clock cap on the whole pipeline run. Must be >= per_persona_timeout_secs (otherwise the first persona can never return a verdict) but does NOT need to be >= per_persona_timeout_secs * len(personas) — short-circuit makes that worst case rare; this is just the ceiling."
+  - name: shadow_mode
+    type: bool
+    description: "When true (Run 1), the panel runs in parallel with the incumbent claude-CLI pipeline and its verdicts are ADVISORY — the incumbent stays authoritative for the gate (ADR-0005). Flipping to false is the Run-2 cutover, gated on parity evidence."
+  - name: verdict_contract
+    type: str
+    description: "lightwave:// URI of the schema every persona verdict must conform to. For this generation of panels: lightwave://schemas/data/meta/review_panel_verdict."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "core-pre-push-panel"
+  personas: ["v_staff-engineer", "v_cto"]
+  short_circuit_on_blockers: true
+  dispatch_transport: "nullhub-agent-invoke"
+  per_persona_timeout_secs: 300
+  total_budget_secs: 900
+  shadow_mode: true
+  verdict_contract: "lightwave://schemas/data/meta/review_panel_verdict"

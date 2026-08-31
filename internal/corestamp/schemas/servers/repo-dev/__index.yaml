@@ -1,0 +1,16 @@
+# =============================================================================
+# REPO-DEV SERVER REGISTRY
+# =============================================================================
+# Declares repo-specific development servers. Each repo can declare its own
+# dev server configuration (e.g., a Vite dev server for the docs app at
+# the repo root). These are schema-driven — no hand-written server configs.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/servers/repo-dev/__index"
+  title: "Repo Dev Server Registry"
+  description: "Sub-registry for repo-scoped development server configurations."
+
+schemas:
+  server: server.yaml

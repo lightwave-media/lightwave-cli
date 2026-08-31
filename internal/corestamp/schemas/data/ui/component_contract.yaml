@@ -1,0 +1,174 @@
+_meta:
+  version: 0.2.0
+  schema_id: lightwave://schemas/data/ui/component_contract
+  title: Component Contract — lightwave-ui component declaration
+  description: 'The contract every lightwave-ui component declares: identity, category,
+
+    props, style variants, provenance, maturity, and need coverage. Components are vendored
+
+    shadcn-style (copy-in prints); `lw ui add` copies a component into a
+
+    consuming site and records provenance, `lw ui sync` three-way-diffs
+
+    upstream changes against local edits. The typescript binding emits a Zod
+
+    schema per component contract (ADR-0006); variants map to cva variant
+
+    maps per lightwave-ui AGENTS.md. v0.2.0 adds covers and does_not_cover so
+
+    catalog search matches need phrases, not folder names.
+
+    '
+  generates:
+  - typescript:ComponentContract
+  - go:ComponentContract
+  - json_schema:component_contract
+  depends_on: []
+required_fields:
+- name: name
+  type: str
+  description: Component export name, PascalCase (e.g. Button)
+- name: category
+  type: enum
+  values_ref: lightwave://schemas/data/enums/ui_component_categories
+  description: lightwave-ui category folder the component lives under
+- name: description
+  type: str
+  description: Human-readable description of this UI component contract.
+- name: props
+  type: list[PropField]
+  description: Public prop contract; the typescript binding emits these as a Zod object schema
+- name: provenance
+  type: Provenance
+  description: Where this component came from and which release it is pinned to
+- name: maturity
+  type: enum
+  values_ref: lightwave://schemas/data/enums/ui_component_maturities
+  description: Graduation state; only tenant-agnostic components ship in lightwave-ui releases
+optional_fields:
+- name: subcategory
+  type: str
+  nullable: true
+  description: Optional nested folder (e.g. buttons under base)
+- name: variants
+  type: list[Variant]
+  description: cva style variants (variants over props; boolean styling props are forbidden)
+- name: prop_types
+  type: dict[str, list[PropField]]
+  description: Named nested shapes referenced from props by PascalCase type name
+- name: peer_dependencies
+  type: list[str]
+  description: npm peer packages this component requires beyond the lightwave-ui baseline
+- name: a11y_notes
+  type: str
+  nullable: true
+  description: Accessibility contract notes (roles, keyboard behaviour)
+- name: covers
+  type: list[str]
+  description: Need phrases this variant satisfies. Catalog search matches these phrases, not folder names.
+- name: does_not_cover
+  type: list[str]
+  description: Explicit gaps. Proof the variant cannot express a need; take the registered-new-variant path, not an app-local copy.
+sub_schemas:
+  PropField:
+    name:
+      type: str
+      description: Prop name, camelCase
+    type:
+      type: str
+      description: 'SST type expression: str|int|float|bool|enum|list[X]|dict[str, X]|PascalCase ref into prop_types'
+    required:
+      type: bool
+    description:
+      type: str
+      nullable: true
+      description: Optional prose
+    options:
+      type: list[str]
+      nullable: true
+      description: Enum values when type is enum
+    default:
+      type: str
+      nullable: true
+      description: Optional default, rendered verbatim into the binding
+  Variant:
+    name:
+      type: str
+      description: Variant axis name (e.g. size, color)
+    options:
+      type: list[str]
+    default:
+      type: str
+  Provenance:
+    origin:
+      type: enum
+      options:
+      - untitled-ui
+      - lightwave
+      - custom
+    origin_version:
+      type: str
+      description: Upstream kit version the component was forked from (null for lightwave/custom)
+    lightwave_ui_release:
+      type: str
+      description: lightwave-ui release this contract version ships in (semver)
+    synced_at:
+      type: str
+      description: ISO 8601 timestamp of the last lw ui sync against upstream
+example:
+  name: Button
+  category: base
+  subcategory: buttons
+  description: Primary action button; button or anchor depending on href.
+  props:
+  - name: children
+    type: str
+    required: false
+    description: Button label content
+  - name: href
+    type: str
+    required: false
+    description: Renders an anchor via AriaLink when present
+  - name: isDisabled
+    type: bool
+    required: false
+  prop_types:
+    IconRef:
+    - name: name
+      type: str
+      required: true
+      description: Icon registry key resolved via @lightwave-media/ui/icons
+  variants:
+  - name: size
+    options:
+    - sm
+    - md
+    - lg
+    - xl
+    default: md
+  - name: color
+    options:
+    - primary
+    - secondary
+    - tertiary
+    - link-gray
+    - link-color
+    - primary-destructive
+    - secondary-destructive
+    - tertiary-destructive
+    - link-destructive
+    default: primary
+  provenance:
+    origin: untitled-ui
+    origin_version: react-kit-2026-05
+    lightwave_ui_release: 2.0.0
+    synced_at: '2026-06-12T00:00:00Z'
+  maturity: tenant-agnostic
+  a11y_notes: Renders AriaButton/AriaLink from react-aria-components; loading state must keep accessible name.
+  covers:
+  - primary action
+  - labeled button
+  - link rendered as a button
+  does_not_cover:
+  - split button with overflow menu
+  - icon-only toolbar control

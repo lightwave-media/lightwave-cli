@@ -1,0 +1,15 @@
+# =============================================================================
+# DOCS SERVER REGISTRY
+# =============================================================================
+# Declares the docs server configuration. Serves the compressed codebase
+# (SST index) at localhost:3200, with cloud sync to docs.lightwave-media.ltd.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/servers/docs/__index"
+  title: "Docs Server Registry"
+  description: "Sub-registry for docs server configuration."
+
+schemas:
+  server: server.yaml

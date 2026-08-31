@@ -1,0 +1,53 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_shot_types"
+  title: "CineOS Shot Type Enum"
+  description: |
+    Camera-movement type of a Shot (shot.shot_type). OPEN (closed: false) — common
+    movements are suggested; bespoke rigs/moves are allowed (R-41 resolves the ref
+    but does not enforce membership).
+  generates:
+    - "go:CineShotType"
+    - "typescript:CineShotType"
+    - "zig:CineShotType"
+    - "json_schema:cineos_shot_types"
+  depends_on: []
+
+name: cineos_shot_types
+description: "Camera movement type (suggested)"
+default: static
+closed: false
+options:
+  - value: static
+    label: "Static"
+    description: "Locked-off / static frame"
+  - value: pan
+    label: "Pan"
+    description: "Horizontal pivot"
+  - value: tilt
+    label: "Tilt"
+    description: "Vertical pivot"
+  - value: dolly
+    label: "Dolly"
+    description: "Camera moves on a dolly"
+  - value: track
+    label: "Track"
+    description: "Tracking / trucking move"
+  - value: handheld
+    label: "Handheld"
+    description: "Operated handheld"
+  - value: crane
+    label: "Crane"
+    description: "Crane / jib move"
+  - value: steadicam
+    label: "Steadicam"
+    description: "Stabilized body-mount"
+  - value: gimbal
+    label: "Gimbal"
+    description: "Electronic gimbal"
+  - value: drone
+    label: "Drone"
+    description: "Aerial / drone"
+  - value: zoom
+    label: "Zoom"
+    description: "Optical zoom move"

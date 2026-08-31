@@ -1,0 +1,37 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/voice_engines
+  title: Voice TTS Engine Enum
+  description: 'Closed enum of TTS engines supported by nullvoice (Voicebox lineage).
+
+    '
+  generates:
+  - rust:VoiceEngine
+  - pydantic:VoiceEngine
+  depends_on: []
+name: voice_engines
+description: nullvoice TTS engine identifiers
+default: kokoro
+closed: true
+options:
+- value: qwen3_tts
+  label: Qwen3 TTS
+  description: Qwen3 TTS option.
+- value: qwen_custom_voice
+  label: Qwen CustomVoice
+  description: Qwen CustomVoice option.
+- value: kokoro
+  label: Kokoro
+  description: Kokoro option.
+- value: chatterbox_multilingual
+  label: Chatterbox Multilingual
+  description: Chatterbox Multilingual option.
+- value: chatterbox_turbo
+  label: Chatterbox Turbo
+  description: Chatterbox Turbo option.
+- value: lux_tts
+  label: LuxTTS
+  description: LuxTTS option.
+- value: hume_tada
+  label: HumeAI TADA
+  description: HumeAI TADA option.

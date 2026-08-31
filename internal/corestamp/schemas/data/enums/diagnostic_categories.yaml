@@ -1,0 +1,52 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/data/enums/diagnostic_categories"
+  title: "Diagnostic Category Enum"
+  description: |
+    Top-level categories a diagnostic check belongs to. A `DiagResult` carries
+    one category string so callers (TUI dashboard, web UI, pre-push hook) can
+    group/filter results without parsing the message body.
+
+    Closed enum — adding a new category requires a stamp PR. The closed set
+    keeps `lw local --doctor` output stable for scripting / dashboards.
+
+    Stamped 2026-05-26 alongside diagnostic_severities + diagnostic_result.
+  generates:
+    # `generates:` is metadata for the future `lw codegen <lang>` verb
+    # (Phase 7+) — NOT a claim that any binding does codegen today.
+    - "rust:DiagnosticCategory"
+    - "pydantic:DiagnosticCategory"
+  depends_on: []
+
+name: diagnostic_categories
+description: "Diagnostic check categories — fixed top-level grouping for DiagResult.category"
+default: null
+closed: true
+options:
+  - value: config
+    label: "Config"
+    description: "Config-file semantics — required fields present, values in-range, cross-section consistency."
+  - value: workspace
+    label: "Workspace"
+    description: "Workspace layout — expected dirs exist, marker files present, ownership/permissions sane."
+  - value: daemon
+    label: "Daemon"
+    description: "Background daemon lifecycle — heartbeat freshness, pid liveness, scheduler progress, channel state."
+  - value: environment
+    label: "Environment"
+    description: "Host environment — required env vars set, OS version sufficient, network reachable."
+  - value: cli_tools
+    label: "CLI Tools"
+    description: "External CLIs present on PATH (e.g. docker, git, gh, bun)."
+  - value: providers
+    label: "Providers"
+    description: "AI provider reachability — auth + endpoint health, probed via the provider's model-list call."
+  - value: git
+    label: "Git"
+    description: "Git fleet state — branch policy, remotes, dirty trees, upstream drift."
+  - value: worktree
+    label: "Worktree"
+    description: "Worktree topology — stale/orphan registrations, canonical mount violations."
+  - value: gpu
+    label: "GPU"
+    description: "Local GPU/VRAM — concurrent local model loads, unified memory pressure."

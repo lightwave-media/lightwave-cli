@@ -1,0 +1,61 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/lightwave-contract"
+  title: ".lightwave/contract.json shape"
+  description: |
+    Per-repo validity-gate contract pointer. Lives at <repo>/.lightwave/
+    contract.json. Read by the validity-gate library at ~/.lightwave/lib/
+    validity/ to determine which fidelity contract scores Write/Edit
+    tool calls in this repo.
+
+    Upgrade path from the legacy extensionless `.lightwave/contract`
+    (single-line path text marker): contract.json is structured JSON that
+    can declare scope, fallback chain, and per-repo overrides. The
+    validity-gate library reads `.lightwave/contract.json` first;
+    if absent, falls back to `.lightwave/contract` (text marker) for
+    backward compatibility; if both absent, the $LW_VALIDITY_CONTRACT
+    env var; if that absent, the global ~/.lightwave/config/contracts/
+    active symlink. Precedence chain documented in CLAUDE.md §6.
+
+    Optional `_shape` field is documentary only — points back at this
+    schema URI but the validity-gate library doesn't read it. The field
+    deliberately is NOT `$schema` because VS Code / JSON-LSP try to fetch
+    `$schema` URIs and lightwave:// is a custom scheme they can't resolve
+    (Phase 6+ may emit real JSON Schema files for IDE autocomplete; for
+    now, the YAML schema here is the source of truth).
+  generates:
+    - "pydantic:LightwaveContract"
+  depends_on: []
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: active_contract
+    type: str
+    description: |
+      Path or URI to the active validity-gate contract YAML for this repo.
+      Resolved relative to the workspace root; ~ expanded. Examples:
+        ~/.lightwave/config/contracts/lightwave-core-rebuild-2026-05-25.yaml
+        lightwave://contracts/spec-doctrine-2026-05-23
+  - name: scope
+    type: str
+    description: "Human-readable scope label (e.g., 'lightwave-core-phase-5', 'createos-prod')."
+
+optional_fields:
+  - name: min_fidelity_score
+    type: float
+    description: "Override the contract's default score threshold for this repo (0.0–1.0)."
+  - name: action
+    type: str
+    description: "Override the contract's action: log | warn | block."
+  - name: fallback
+    type: str
+    description: "Where to look if active_contract resolution fails. Example: 'env:LW_VALIDITY_CONTRACT' or 'global:active'."
+
+example:
+  _shape: "lightwave://schemas/data/meta/lightwave-contract"
+  active_contract: "~/.lightwave/config/contracts/lightwave-core-rebuild-2026-05-25.yaml"
+  scope: "lightwave-core-phase-5"
+  min_fidelity_score: 0.7
+  action: "warn"
+  fallback: "env:LW_VALIDITY_CONTRACT"

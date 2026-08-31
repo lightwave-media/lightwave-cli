@@ -1,0 +1,36 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/voice_tone_registry
+  title: Voice Tone Registry
+  description: 'v_speak-owned mapping from persona id to voice profile id.
+
+    '
+  generates:
+  - pydantic:VoiceToneRegistry
+  depends_on: []
+required_fields:
+- name: schema_version
+  type: int
+  description: SemVer version of the voice tone registry schema.
+- name: managed_by
+  type: str
+  description: Always v_speak
+- name: default_profile
+  type: str
+  description: Profile ID of the default voice profile for the registry.
+- name: persona_bindings
+  type: map[str,str]
+  description: Map of persona slugs to their assigned voice profile IDs.
+optional_fields:
+- name: precedence
+  type: list[str]
+  description: Binding resolution order, e.g. operator_override before persona_default
+example:
+  schema_version: 1
+  managed_by: v_speak
+  default_profile: default
+  persona_bindings:
+    v_cli-developer: v_cli-developer
+  precedence:
+  - operator_override
+  - persona_default

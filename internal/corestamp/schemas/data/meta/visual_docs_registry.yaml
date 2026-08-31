@@ -1,0 +1,127 @@
+_meta:
+  version: 0.1.0
+  schema_id: lightwave://schemas/data/meta/visual_docs_registry
+  title: Visual Docs Registry
+  description: Version-locked mermaid documents. Each .mmd file carries YAML frontmatter. Agents diff .mmd between versions
+    to understand high-level system changes.
+name: visual_docs_registry
+description: Mermaid visual documentation registry — lifecycle phases, architecture topology, spec delta gaps
+required_fields:
+- name: path
+  type: str
+  description: Path relative to repo root
+- name: chart_type
+  type: str
+  description: Mermaid diagram type
+- name: source_schema
+  type: str
+  description: Schema that drives this diagram
+- name: description
+  type: str
+  description: Human-readable description of this visual docs registry.
+example:
+  path: docs/references/lifecycle-phases.mmd
+  chart_type: flowchart
+  source_schema: src/schemas/workflows/sops/software_lifecycle.yaml
+  description: Phase state machine
+registry:
+  lifecycle-phases:
+    path: docs/references/lifecycle-phases.mmd
+    chart_type: flowchart
+    source_schema: src/schemas/workflows/sops/software_lifecycle.yaml
+    description: Phase state machine — discovery→planning→execution→review→maintenance
+  architecture-topology:
+    path: docs/references/architecture-topology.mmd
+    chart_type: flowchart
+    source_schema: src/schemas/policy/governance/harness_configuration_plane.yaml
+    description: Package topology — STAMP→CODE→RUNTIME→FRONTEND layers
+  spec-delta-gaps:
+    path: docs/references/spec-delta-gaps.mmd
+    chart_type: pie
+    source_schema: spec/delta/
+    description: SPEC→DOCS gap distribution
+  agile-product-flow:
+    path: docs/references/agile-product-flow.mmd
+    chart_type: flowchart
+    source_schema: src/schemas/workflows/sops/agile_pipeline.yaml
+    description: Full agile cycle — idea to release with bug triage
+  sprint-execution-sequence:
+    path: docs/references/sprint-execution-sequence.mmd
+    chart_type: sequence
+    source_schema: src/schemas/workflows/sops/agile_pipeline.yaml
+    description: Sprint execution — orchestrator to developer to CI to merge
+  discussion-to-product-loop:
+    path: docs/references/discussion-to-product-loop.mmd
+    chart_type: flowchart
+    source_schema: src/schemas/workflows/sops/agile_pipeline.yaml
+    description: Discussion→product automation bridge — review output feeds backlog
+  unified-task-model:
+    path: docs/references/unified-task-model.mmd
+    chart_type: flowchart
+    source_schema: src/schemas/workflows/sops/agile_pipeline.yaml
+    description: 'Unified task model — all tasks reduce to spec deltas: current state, desired state, delta to implement'
+  task-type-runbook-matrix:
+    path: docs/references/task-type-runbook-matrix.mmd
+    chart_type: flowchart
+    source_schema: src/schemas/workflows/sops/agile_pipeline.yaml
+    description: 12 task types → dev runbook → test runbook → record trail
+  repo-topology:
+    path: docs/references/repo-topology.mmd
+    chart_type: flowchart
+    source_schema: src/schemas/policy/governance/harness_configuration_plane.yaml
+    description: How all 7 Lightwave repos connect
+  spec-docs-delta-analysis:
+    path: docs/references/spec-docs-delta-analysis.mmd
+    chart_type: flowchart
+    source_schema: spec/delta/
+    description: SPEC vs DOCS — 10 existing docs, 10 spec gaps remain
+  worktree-lifecycle:
+    path: docs/references/worktree-lifecycle.mmd
+    chart_type: stateDiagram
+    source_schema: src/schemas/policy/security/worktree_policy.yaml
+    description: Worktree state machine
+  release-train-pipeline:
+    path: docs/references/release-train-pipeline.mmd
+    chart_type: flowchart
+    source_schema: src/schemas/workflows/sops/release_autonomous_train.yaml
+    description: Release train pipeline
+  agent-identity-lifecycle:
+    path: docs/references/agent-identity-lifecycle.mmd
+    chart_type: stateDiagram
+    source_schema: src/schemas/data/meta/agent_identity.yaml
+    description: Agent identity lifecycle
+  lsp-control-plane:
+    path: docs/references/lsp-control-plane.mmd
+    chart_type: flowchart
+    source_schema: src/schemas/policy/compliance/lsp_control_plane.yaml
+    description: LSP control plane
+  createos-topology:
+    path: docs/references/createos-topology.mmd
+    chart_type: flowchart
+    source_schema: v_architect
+    description: createOS Tauri topology
+  forgejo-discussion-flow:
+    path: docs/references/forgejo-discussion-flow.mmd
+    chart_type: flowchart
+    source_schema: v_architect
+    description: Forgejo discussion to issue flow
+  websocket-broadcast-protocol:
+    path: docs/references/websocket-broadcast-protocol.mmd
+    chart_type: sequence
+    source_schema: v_architect
+    description: WebSocket protocol
+  agent-runtime-modules:
+    path: docs/references/agent-runtime-modules.mmd
+    chart_type: flowchart
+    source_schema: lightwave-ai/src/
+    description: Agent runtime Zig modules
+  data-flow-architecture:
+    path: docs/references/data-flow-architecture.mmd
+    chart_type: flowchart
+    source_schema: v_architect
+    description: Data flow between all 7 repos — how schemas, bindings, DB, WS, and agents connect
+  auth-access-control:
+    path: docs/references/auth-access-control.mmd
+    chart_type: stateDiagram
+    source_schema: src/schemas/data/meta/agent_identity.yaml
+    description: Full auth lifecycle — identity→auth→action→audit→session→tool grants→revoked

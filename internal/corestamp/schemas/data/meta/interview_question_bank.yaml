@@ -1,0 +1,24 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/interview_question_bank"
+  title: "Kickoff Interview Question Bank"
+  description: |
+    Backup questions keyed by interview_round for agent clarification rounds.
+  generates:
+    - "pydantic:InterviewQuestionBank"
+  depends_on:
+    - "lightwave://schemas/data/enums/interview_rounds"
+
+required_fields:
+  - name: questions_by_round
+    type: "map[str, list[str]]"
+    description: "Round slug → list of question prompts"
+
+example:
+  questions_by_round:
+    clarification:
+      - "What is explicitly out of scope for this initiative?"
+      - "Which repo owns the first PR slice?"
+    technical:
+      - "LM Studio model tier for developer personas?"
+      - "Hybrid forge or GitHub-only for Phase 1?"

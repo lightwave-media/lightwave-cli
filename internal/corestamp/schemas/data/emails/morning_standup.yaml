@@ -1,0 +1,314 @@
+_meta:
+  version: 0.1.0
+  schema_id: lightwave://schemas/data/emails/morning_standup
+  title: Morning Standup — daily agent-meeting minutes email props
+  description: 'Daily agent-fleet standup minutes from v_general-manager@lightwave-media.ltd.
+
+    Production-shaped (full StandupMinutesProps with nested types). The
+
+    consuming agent generates this payload; the email renders via React
+
+    Email; transport is SES.
+
+    '
+  generates:
+  - go:StandupMinutes
+  - typescript:StandupMinutesProps
+  - json_schema:morning_standup
+  depends_on: []
+template_kind: email_template
+react_component: lightwave-ui/src/emails/morning-standup.tsx
+react_export: MorningStandup
+parameterization_status: production
+required_fields:
+- name: standup_id
+  type: str
+  description: ULID for this standup run
+- name: generated_at
+  type: str
+  description: ISO 8601 timestamp
+- name: date
+  type: str
+  description: ISO 8601 date (YYYY-MM-DD) for the standup day
+- name: day_of_week
+  type: str
+  description: Day of the week for this standup (e.g. Monday).
+- name: week_number
+  type: int
+  description: ISO week number of the year (1–53).
+- name: title
+  type: str
+  description: Primary heading of the morning standup report.
+- name: subtitle
+  type: str
+  description: Secondary heading or date context for the report.
+- name: executive_summary
+  type: ExecutiveSummary
+  description: High-level narrative summary for the operator.
+- name: urgent_items
+  type: list[UrgentItem]
+  description: Items requiring same-day attention or escalation.
+- name: engineering_goals
+  type: EngineeringGoals
+  description: Engineering focus areas and deliverables for the day.
+- name: platform_status
+  type: PlatformStatus
+  description: Current status of platform services and deployments.
+- name: creative_verticals
+  type: list[CreativeVerticalStatus]
+  description: Creative domain status (cinematography, photography, etc.).
+- name: financial_summary
+  type: FinancialSummary
+  description: Financial highlights, cash position, and invoicing status.
+- name: content_pipeline_summary
+  type: dict[str, int]
+  description: Status of the content creation and publishing pipeline.
+- name: agent_insights
+  type: list[AgentInsight]
+  description: Notable observations and findings from agent sessions.
+- name: principles_alignment
+  type: PrinciplesAlignment
+  description: Alignment check against the platform operating principles.
+- name: deadlines_this_week
+  type: list[str]
+  description: Deadlines and time-sensitive commitments due this week.
+- name: agents_consulted
+  type: list[str]
+  description: Persona slugs of agents consulted during report preparation.
+optional_fields:
+- name: quote_of_day
+  type: str
+  nullable: true
+  description: Optional motivational or thematic quote for the report header.
+- name: sprint_end_date
+  type: str
+  nullable: true
+  description: ISO 8601 date
+- name: recipient_email
+  type: str
+  description: Override recipient (defaults to operator from config)
+- name: theme
+  type: enum
+  options:
+  - light
+  - dark
+  default: light
+  description: Color or visual theme applied to the email template.
+- name: brand_logo_url
+  type: str
+  nullable: true
+  description: URL of the brand logo image used in the email header.
+- name: brand_name
+  type: str
+  nullable: true
+  description: Brand display name used in the email header.
+- name: logo_context
+  type: enum
+  options:
+  - product
+  - system
+  default: system
+  description: Alt text or contextual description for the brand logo.
+sub_schemas:
+  ExecutiveSummary:
+    health_score:
+      type: int
+    health_status:
+      type: enum
+      options:
+      - excellent
+      - good
+      - attention
+      - critical
+    urgent_count:
+      type: int
+    blocked_count:
+      type: int
+    completed_yesterday:
+      type: int
+    sprint_burn_rate:
+      type: float
+    sprint_days_remaining:
+      type: int
+  UrgentItem:
+    id:
+      type: str
+    title:
+      type: str
+    urgency_reason:
+      type: str
+    due_date:
+      type: str
+      nullable: true
+    hours_overdue:
+      type: float
+      nullable: true
+    blocker_type:
+      type: str
+      nullable: true
+  TaskRecommendation:
+    task_id:
+      type: str
+    title:
+      type: str
+    reason:
+      type: str
+    principle_alignment:
+      type: float
+    estimated_effort:
+      type: str
+      nullable: true
+    affected_files_count:
+      type: int
+    unlocks:
+      type: list[str]
+  EngineeringGoals:
+    recommended_tasks:
+      type: list[TaskRecommendation]
+    active_plans:
+      type: list[str]
+    code_reviews_pending:
+      type: int
+  PlatformStatus:
+    deployment_status:
+      type: str
+    last_deploy:
+      type: str
+      nullable: true
+    error_rate_24h:
+      type: float
+    uptime_percentage:
+      type: float
+    pending_prs:
+      type: int
+    ci_status:
+      type: str
+  CreativeVerticalStatus:
+    name:
+      type: str
+    icon:
+      type: str
+    active_projects:
+      type: int
+    items_needing_attention:
+      type: list[str]
+    principle_score:
+      type: float
+      nullable: true
+    highlights:
+      type: list[str]
+  FinancialSummary:
+    invoices_pending:
+      type: int
+    invoices_overdue:
+      type: int
+    expected_income_this_month:
+      type: float
+    expenses_to_categorize:
+      type: int
+    quickbooks_bookkeeper_messages_pending:
+      type: int
+  AgentInsight:
+    agent:
+      type: str
+    perspective:
+      type: str
+    insight:
+      type: str
+    priority:
+      type: int
+    action_suggested:
+      type: str
+      nullable: true
+  PrincipleGap:
+    principle_id:
+      type: str
+    principle_name:
+      type: str
+    current_score:
+      type: float
+    gap:
+      type: float
+    recommendation:
+      type: str
+  PrinciplesAlignment:
+    overall_score:
+      type: float
+    status:
+      type: enum
+      options:
+      - excellent
+      - good
+      - attention
+      - critical
+    top_aligned:
+      type: list[str]
+    gaps:
+      type: list[PrincipleGap]
+    sources_evaluated:
+      type: list[str]
+example:
+  standup_id: 01J9XKM7B2NQYZ3F1S4D6E8H0M
+  generated_at: '2026-06-03T07:00:00Z'
+  date: '2026-06-03'
+  day_of_week: Wednesday
+  week_number: 23
+  title: Morning Standup — 2026-06-03
+  subtitle: Wednesday, Week 23 — CreateOS Stage 0
+  executive_summary:
+    health_score: 78
+    health_status: good
+    urgent_count: 2
+    blocked_count: 0
+    completed_yesterday: 5
+    sprint_burn_rate: 0.72
+    sprint_days_remaining: 4
+  urgent_items:
+  - id: issue-108
+    title: 'lw CLI design: define verb schemas in lightwave-core'
+    urgency_reason: blocks lightwave-cli refactor
+    due_date: null
+    hours_overdue: null
+    blocker_type: null
+  engineering_goals:
+    recommended_tasks: []
+    active_plans:
+    - createos-platform-stage-0
+    code_reviews_pending: 1
+  platform_status:
+    deployment_status: stable
+    last_deploy: '2026-06-02T18:45:00Z'
+    error_rate_24h: 0.001
+    uptime_percentage: 99.98
+    pending_prs: 1
+    ci_status: green
+  creative_verticals: []
+  financial_summary:
+    invoices_pending: 0
+    invoices_overdue: 0
+    expected_income_this_month: 0
+    expenses_to_categorize: 3
+    quickbooks_bookkeeper_messages_pending: 0
+  content_pipeline_summary: {}
+  agent_insights: []
+  principles_alignment:
+    overall_score: 0.82
+    status: good
+    top_aligned:
+    - Contract-driven
+    - Local-first
+    gaps: []
+    sources_evaluated:
+    - ~/.lightwave/specs/
+    - ~/.lightwave/records/
+  deadlines_this_week: []
+  sprint_end_date: '2026-06-07'
+  agents_consulted:
+  - v_research
+  - v_architect
+  - v_cto
+  recipient_email: joel.schaeffer@lightwave-media.ltd
+  theme: light
+  brand_logo_url: null
+  brand_name: LightWave Media
+  logo_context: system

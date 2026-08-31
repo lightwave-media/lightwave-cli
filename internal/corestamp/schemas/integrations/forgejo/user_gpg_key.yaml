@@ -1,0 +1,33 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/user_gpg_key"
+  title: "Forgejo User GPG Key — 1:1 SST Mirror"
+  source_ref: "forgejo://swagger.v1.json#/definitions/GPGKey"
+  description: "GPG key associated with a Forgejo user account for commit verification."
+  table_kind: entity
+  table_name: user_gpg_keys
+  generates: ["go:ForgejoGPGKey"]
+primary_key: { column: id, type: uuid }
+required_fields:
+  - { name: user_ref, type: str, storage: db, indexed: true }
+  - { name: key_id, type: str, storage: db }
+  - { name: public_key, type: str, storage: db }
+  - { name: verified, type: bool, storage: db }
+  - { name: created_at, type: datetime, storage: db }
+optional_fields:
+  - { name: can_sign, type: bool, storage: db }
+  - { name: can_certify, type: bool, storage: db }
+  - { name: can_encrypt_comms, type: bool, storage: db }
+  - { name: can_encrypt_storage, type: bool, storage: db }
+  - { name: expires_at, type: datetime, storage: db }
+  - { name: primary_key_id, type: str, storage: db }
+  - { name: emails, type: "list[GPGKeyEmail]", storage: db, column_type: jsonb }
+  - { name: subkeys, type: "list[GPGKey]", storage: db, column_type: jsonb }
+example:
+  user_ref: "joel"
+  key_id: "ABCD1234"
+  public_key: "-----BEGIN PGP PUBLIC KEY BLOCK-----..."
+  verified: true
+  can_sign: true
+  created_at: "2026-06-25T00:00:00Z"

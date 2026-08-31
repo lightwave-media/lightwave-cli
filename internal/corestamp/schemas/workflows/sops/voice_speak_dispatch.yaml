@@ -1,0 +1,44 @@
+name: "voice_speak_dispatch"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/voice_speak_dispatch"
+  title: "Voice speak dispatch SOP"
+  description: |
+    Agent invoke path: text output → v_speak registry → nullvoice synthesis.
+  depends_on:
+    - "lightwave://schemas/data/meta/voice_tone_registry"
+    - "lightwave://schemas/data/meta/persona_voice_profile"
+
+id: voice_speak_dispatch
+title: "Dispatch agent text to spoken output"
+version: 1.0.0
+execution_mode: automated
+
+trigger:
+  source: agent
+  event: voice_speak_requested
+
+parameters:
+  - name: persona
+    type: string
+  - name: text
+    type: string
+  - name: goal
+    type: string
+    optional: true
+
+steps:
+  - id: resolve_profile
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw voice profile validate --persona "${persona}"
+
+  - id: synthesize
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw voice speak --persona "${persona}" --text "${text}" ${goal:+--goal "$goal"}

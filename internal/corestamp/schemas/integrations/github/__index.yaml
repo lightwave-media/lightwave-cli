@@ -1,0 +1,17 @@
+# =============================================================================
+# GITHUB INTEGRATION — milestones, Projects v2, PR metadata
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/integrations/github/__index"
+  title: "GitHub Integration Schema Registry"
+  description: |
+    GitHub projection shapes for milestones, org Projects, and PR metadata.
+    Complements forgejo/ (self-hosted forge API mirror). Authority: local
+    (CORE-0048). Board hygiene: lw scrum sync.
+
+schemas:
+  milestone: milestone.yaml
+  project: project.yaml
+  pull_request: pull_request.yaml

@@ -1,0 +1,47 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/operator_interaction"
+  title: "Operator Interaction"
+  description: |
+    A single operator → agent interaction event within an active
+    session. Rendered into user_prompt's <interaction> block on every
+    user message after kickoff.
+
+    The `type` field discriminates rendering — KICKOFF carries the full
+    task definition (heavy, once per session); other types are lighter
+    continuations within the active session.
+
+    Stamped 2026-05-28 as part of Phase B (pairs with interaction_types
+    enum).
+  generates:
+    - "rust:OperatorInteraction"
+    - "pydantic:OperatorInteraction"
+  depends_on:
+    - "lightwave://schemas/data/enums/interaction_types"
+
+required_fields:
+  - name: type
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/interaction_types"
+    description: "Interaction kind — kickoff | post | comment | instruction | poke | answer | kick. Discriminator for composer rendering."
+  - name: operator_handle
+    type: str
+    description: "Operator's identifier (e.g. 'joel-schaeffer'). Mostly for observability + multi-operator audit when teams use shared agents."
+  - name: timestamp_iso
+    type: str
+    description: "ISO-8601 datetime when the operator submitted this interaction. Composer surfaces in <interaction>.timestamp_iso."
+
+optional_fields:
+  - name: in_reply_to
+    type: str
+    description: "Id of a previous interaction or agent message this responds to. Threads the conversation; null for kickoff or unsolicited posts."
+  - name: source_channel
+    type: str
+    description: "Where the interaction originated — 'cli' | 'slack' | 'web' | 'pi-voice' | 'email'. Lets the composer optionally adjust rendering per channel."
+
+example:
+  type: instruction
+  operator_handle: "joel-schaeffer"
+  timestamp_iso: "2026-05-28T15:42:00Z"
+  in_reply_to: "msg-abc123"
+  source_channel: "cli"

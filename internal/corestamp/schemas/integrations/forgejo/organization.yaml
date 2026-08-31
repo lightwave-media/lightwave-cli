@@ -1,0 +1,115 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/organization"
+  title: "Forgejo Organization — 1:1 SST Mirror"
+  description: |
+    1:1 mirror of Forgejo's Organization struct and org-scoped API endpoints.
+    Source: swagger.v1.json #/definitions/Organization, #/paths/~1orgs
+
+    Organizations are the tenant boundary in Forgejo. In Lightwave, they map
+    to tenants — each tenant is an org with its own teams, repos, and runners.
+    The platform's multi-tenancy (ADR-0010) is enforced at this boundary.
+
+  source_ref: "forgejo://swagger.v1.json#/definitions/Organization"
+  table_kind: entity
+  table_name: organizations
+  generates:
+    - "go:ForgejoOrganization"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: username
+  unique: true
+
+required_fields:
+  - name: username
+    type: str
+    description: "Organization slug — unique across the instance"
+    storage: db
+    pattern: "^[a-z0-9][a-z0-9._-]*$"
+    indexed: true
+  - name: name
+    type: str
+    description: "Display name (may match username)"
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: full_name
+    type: str
+    storage: db
+  - name: description
+    type: str
+    storage: db
+  - name: email
+    type: str
+    storage: db
+  - name: location
+    type: str
+    storage: db
+  - name: website
+    type: str
+    storage: db
+  - name: avatar_url
+    type: str
+    storage: db
+  - name: visibility
+    type: str
+    description: "public | limited | private"
+    storage: db
+  - name: repo_admin_change_team_access
+    type: bool
+    description: "Whether repo admins can change team access"
+    storage: db
+  # Lightwave extension
+  - name: tenant_id
+    type: uuid
+    description: "Lightwave tenant UUID — maps to platform tenancy"
+    storage: db
+    indexed: true
+
+sub_schemas:
+  CreateOrgOption:
+    username: str
+    description: str
+    email: str
+    full_name: str
+    location: str
+    website: str
+    visibility: str
+    repo_admin_change_team_access: bool
+
+  EditOrgOption:
+    description: str
+    email: str
+    full_name: str
+    location: str
+    website: str
+    visibility: str
+    repo_admin_change_team_access: bool
+
+  OrganizationPermissions:
+    can_create_repository: bool
+    can_read: bool
+    can_write: bool
+    is_admin: bool
+    is_owner: bool
+
+example:
+  username: "lightwave-media"
+  name: "LightWave Media"
+  full_name: "LightWave Media LLC"
+  description: "Agentic Operating Layer — multi-domain scrum platform"
+  visibility: "private"
+  tenant_id: "550e8400-e29b-41d4-a716-446655440001"
+  created_at: "2026-06-25T00:00:00Z"
+  updated_at: "2026-06-25T00:00:00Z"

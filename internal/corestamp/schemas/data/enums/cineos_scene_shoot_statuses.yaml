@@ -1,0 +1,40 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_scene_shoot_statuses"
+  title: "CineOS Scene-Shoot Status Enum"
+  description: |
+    Scheduling state for a SceneShoot — the scene↔shoot-day assignment as it moves
+    through the shooting schedule. Closed.
+  generates:
+    - "go:CineSceneShootStatus"
+    - "typescript:CineSceneShootStatus"
+    - "zig:CineSceneShootStatus"
+    - "json_schema:cineos_scene_shoot_statuses"
+  depends_on: []
+
+name: cineos_scene_shoot_statuses
+description: "Scheduling state for a scene on a shoot day"
+default: planned
+closed: true
+options:
+  - value: planned
+    label: "Planned"
+    description: "Scheduled on the day, not yet shot"
+    is_active: true
+  - value: shot
+    label: "Shot"
+    description: "Completed on the day"
+    is_active: false
+    is_completed: true
+  - value: partial
+    label: "Partial"
+    description: "Partially shot; carries to another day"
+    is_active: true
+  - value: omitted
+    label: "Omitted"
+    description: "Dropped from the day"
+    is_active: false
+  - value: moved
+    label: "Moved"
+    description: "Rescheduled to a different day"
+    is_active: false

@@ -1,0 +1,147 @@
+_meta:
+  version: "3.0.1"
+  schema_id: "lightwave://schemas/data/enums/task_statuses"
+  title: "Task Status Enum"
+  description: |
+    Lifecycle statuses for Task entities with per-option state-machine transitions
+    (`can_transition_to`). Closed enum — platform-defined workflow.
+
+    Task.state_machine_ref points at this enum's options[].can_transition_to.
+
+    v3.0 (2026-06-14): redefined to the canonical Agile ticket-lifecycle BOARD
+    (the "Agile Scrum Ceremonies & Event" workflow). Two lanes share one enum
+    because bugs are Tasks (task_type=bug) and the bug lane converges into the
+    delivery lane at `prioritized`:
+
+      delivery: open → considering → scoping → prioritized → in_design →
+                in_development → in_review → ready_for_deployment → closed
+                (considering/scoping may divert to `not_doing`)
+      bug:      open → triage → awaiting_prioritization → prioritized
+                (triage may divert to need_more_info / not_a_bug / cannot_reproduce;
+                 need_more_info loops back to triage after info is gathered)
+
+    The orange "Add to Sprint" / "Release Notes" / "Gather Info" boxes in the
+    diagram are AUTOMATIONS (transition triggers owned by the runtime pipeline),
+    not statuses; the yellow diamonds are DECISION branches (multiple outgoing
+    edges), not statuses. Only the status nodes + edges live here.
+
+    `is_active` marks states where work is actively in hand (grooming through
+    review/deploy, plus triage). Intake (`open`), the `awaiting_prioritization`
+    queue, blocked (`need_more_info`) and all terminals are inactive. It is a
+    UI/reporting hint, NOT a dispatch signal: v_core dispatches on
+    status=`prioritized`, so a confirmed bug queued in `awaiting_prioritization`
+    is found by its status, never hidden by `is_active: false`.
+
+    Migration from v2.0 (legacy createos import) → v3.0, for the downstream
+    Django/UI migration (no automatic data migration ships with this stamp):
+      future       → open
+      approved     → prioritized
+      next_up      → prioritized
+      in_progress  → in_development
+      blocked      → in_development   (no standalone blocked status in the board)
+      in_review    → in_review        (unchanged)
+      archived     → closed
+      on_hold      → open
+      cancelled    → not_doing
+  generates:
+    - "pydantic:TaskStatus"
+  depends_on: []
+
+name: task_statuses
+description: "Lifecycle statuses for Task entities with state-machine transitions"
+default: open
+closed: true
+options:
+  # ── Intake (shared entry) ────────────────────────────────────────────────
+  - value: open
+    label: "Open"
+    description: "Submitted and accepted onto the board; not yet groomed. Entry point for both the delivery and bug lanes."
+    is_active: false
+    can_transition_to: [considering, triage]
+
+  # ── Delivery lane: grooming ──────────────────────────────────────────────
+  - value: considering
+    label: "Considering"
+    description: "Being weighed for the backlog (do-or-don't decision)."
+    is_active: true
+    can_transition_to: [scoping, not_doing]
+  - value: scoping
+    label: "Scoping"
+    description: "Sized and scoped (do-or-don't decision)."
+    is_active: true
+    can_transition_to: [prioritized, not_doing]
+  - value: prioritized
+    label: "Prioritized"
+    description: "Groomed, scoped and prioritized; ready to enter a sprint. v_core polls Tasks in this status for dispatch. Bug-lane tasks rejoin the board here."
+    is_active: true
+    can_transition_to: [in_design]
+
+  # ── Delivery lane: build ─────────────────────────────────────────────────
+  # Intentional one-way lane: once a task enters the build (past `prioritized`)
+  # there is no back-edge to `not_doing` — the only terminal reachable from here
+  # is `closed`. Abandonment happens during grooming (considering/scoping divert
+  # to not_doing), not after sprint commitment. This is faithful to the board.
+  - value: in_design
+    label: "In Design"
+    description: "Added to a sprint; design in progress."
+    is_active: true
+    can_transition_to: [in_development]
+  - value: in_development
+    label: "In Development"
+    description: "Implementation in progress."
+    is_active: true
+    can_transition_to: [in_review]
+  - value: in_review
+    label: "In Review"
+    description: "Implementation under review (peer/lead converge gate before deployment)."
+    is_active: true
+    can_transition_to: [ready_for_deployment, in_development]
+  - value: ready_for_deployment
+    label: "Ready for Deployment"
+    description: "Approved and queued for release."
+    is_active: true
+    can_transition_to: [closed]
+  - value: closed
+    label: "Closed"
+    description: "Released and complete (release notes published)."
+    is_active: false
+    is_completed: true
+    can_transition_to: []
+
+  # ── Rejection terminal (delivery do-or-don't) ────────────────────────────
+  - value: not_doing
+    label: "Not Doing"
+    description: "Deliberately not pursued (do-or-don't decision said don't)."
+    is_active: false
+    is_completed: true
+    can_transition_to: []
+
+  # ── Bug lane: triage ─────────────────────────────────────────────────────
+  - value: triage
+    label: "Triage"
+    description: "Bug under triage: reproducible? intended? enough info?"
+    is_active: true
+    can_transition_to: [awaiting_prioritization, need_more_info, not_a_bug, cannot_reproduce]
+  - value: need_more_info
+    label: "Need More Info"
+    description: "Triage is blocked pending more information; returns to triage once info is gathered (driven by the Gather Info automation)."
+    is_active: false
+    is_blocked: true
+    can_transition_to: [triage]
+  - value: awaiting_prioritization
+    label: "Awaiting Prioritization"
+    description: "Triaged and confirmed; waiting to rejoin the delivery board at prioritized."
+    is_active: false
+    can_transition_to: [prioritized]
+  - value: not_a_bug
+    label: "Not a Bug"
+    description: "Triage decided the reported behaviour is intended — not a defect."
+    is_active: false
+    is_completed: true
+    can_transition_to: []
+  - value: cannot_reproduce
+    label: "Cannot Reproduce"
+    description: "Triage could not reproduce the reported defect."
+    is_active: false
+    is_completed: true
+    can_transition_to: []

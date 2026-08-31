@@ -1,0 +1,16 @@
+# =============================================================================
+# MCP SERVER REGISTRY
+# =============================================================================
+# Declares the Model Context Protocol server configuration. Agents discover
+# available MCP tools through this server, which reads the SST and exposes
+# tools that match the agent's tier and persona permissions.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/servers/mcp/__index"
+  title: "MCP Server Registry"
+  description: "Sub-registry for MCP server configuration."
+
+schemas:
+  server: server.yaml

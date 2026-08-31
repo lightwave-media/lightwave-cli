@@ -1,0 +1,26 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/uli_term_statuses"
+  description: "Lifecycle status for ULI glossary terms"
+  title: "ULI Term Status Enum"
+  generates:
+    - "pydantic:UliTermStatus"
+  depends_on: []
+
+name: uli_term_statuses
+description: "Lifecycle of a term in the CreateOS bounded-context glossary"
+default: draft
+closed: true
+options:
+  - value: draft
+    label: "Draft"
+    description: "Candidate term; not yet enforced by gate reply"
+  - value: ratified
+    label: "Ratified"
+    description: "Enforced by Agent Gate Reply and drift tests"
+  - value: deprecated
+    label: "Deprecated"
+    description: "Superseded; gate reply suggests canonical replacement"
+  - value: alias
+    label: "Alias"
+    description: "Maps to another canonical term; not independently stamped"

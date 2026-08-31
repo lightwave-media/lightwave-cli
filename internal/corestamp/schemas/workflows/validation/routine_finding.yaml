@@ -1,0 +1,65 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/validation/routine_finding"
+  title: "Routine Finding"
+  description: |
+    Output shape for a single finding emitted by validate-routines.sh (Layer 1)
+    and consumed by Layers 2-4 of the routine-validation pipeline. Each JSON
+    object written to stdout by `validate-routines.sh --json` must conform.
+
+    Surfaced as a stamp gap in the 2026-06-17 swarm review (v_architect):
+    without a contract, Layers 2-4 compose on bash-string format rather than
+    a typed schema, making the interface brittle.
+
+    Linked: lightwave-core#181.
+
+required_fields:
+  - name: routine
+    type: str
+    description: "Routine name — matches the SKILL.md `name:` field (e.g. `v_cli-developer_heartbeat`)."
+  - name: class
+    type: str
+    description: |
+      Finding class. Enum:
+        frontmatter    — missing or malformed SKILL.md frontmatter field
+        coverage_gap   — tool call in the routine body has no corresponding allow pattern
+        syntax         — YAML/shell parse error in the routine or SKILL.md
+        scope_violation — routine references files or repos outside its declared write_boundary
+  - name: detail
+    type: str
+    description: "Human-readable description of the finding."
+  - name: severity
+    type: str
+    description: |
+      Finding severity. Enum:
+        error   — blocks the routine from being considered valid
+        warn    — actionable but non-blocking; surfaced in the daily digest
+        info    — informational; logged but not surfaced in digests
+
+optional_fields:
+  - name: call
+    type: str
+    description: "The bash invocation in question (coverage_gap class only)."
+  - name: pattern
+    type: str
+    description: "The allow pattern derived from the call (coverage_gap class only); suitable for inclusion in settings.json."
+  - name: line
+    type: int
+    description: "Line number within the source file where the finding was detected."
+  - name: file
+    type: str
+    description: "Source file path where the finding was detected (relative to repo root or absolute)."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  routine: "v_cli-developer_heartbeat"
+  class: "coverage_gap"
+  detail: "Bash call `gh run list --repo lightwave-media/lightwave-cli --limit 20` has no matching allow pattern in the routine's declared permissions."
+  severity: "warn"
+  call: "gh run list --repo lightwave-media/lightwave-cli --limit 20"
+  pattern: "Bash(gh run list --repo lightwave-media/lightwave-cli *)"
+  line: 47
+  file: "~/.claude/scheduled-tasks/v_cli-developer_heartbeat/SKILL.md"

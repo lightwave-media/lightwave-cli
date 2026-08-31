@@ -1,0 +1,30 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/user_email"
+  title: "Forgejo User Email — 1:1 SST Mirror"
+  source_ref: "forgejo://swagger.v1.json#/definitions/Email"
+  description: "Email address associated with a Forgejo user account."
+  table_kind: entity
+  table_name: user_emails
+  generates: ["go:ForgejoEmail"]
+primary_key: { column: id, type: uuid }
+natural_key: { column: email, unique: true }
+required_fields:
+  - { name: email, type: str, storage: db }
+  - {
+      name: user_ref,
+      type: str,
+      storage: db,
+      fk_ref: "lightwave://schemas/integrations/forgejo/user",
+      fk_column: login,
+      indexed: true,
+    }
+  - { name: verified, type: bool, storage: db }
+optional_fields:
+  - { name: primary, type: bool, storage: db }
+example:
+  email: "agent@example.com"
+  user_ref: "v-platform-developer"
+  verified: true
+  primary: true

@@ -1,0 +1,29 @@
+# =============================================================================
+# AGENT TOOLS SCHEMA REGISTRY (Category B / kind family: agent_tools)
+# =============================================================================
+# Schemas governing how tools are EXPOSED to agents — tool catalog filtering,
+# tool-list materialization, per-role tool gates. Distinct from interfaces/cli/
+# (which declares each lw verb's contract); agent_tools/ schemas govern the
+# meta-shape of how tools are grouped, filtered, and rendered into agent
+# prompt contexts.
+#
+# First schema lands 2026-05-25 (handoff R1 — tool_filter_groups). Root cause
+# fix for prompt-bloat (34k+ tokens of tool definitions per call).
+# =============================================================================
+
+_meta:
+  version: "0.2.0"
+  schema_id: "lightwave://schemas/interfaces/agent_tools/__index"
+  title: "Agent Tools Schema Registry"
+  description: |
+    Sub-registry for agent-tool-meta schemas (filtering, grouping, composition).
+    Consumed by v_core's tool-context composer (compose_tool_list(role)) at
+    every agent session spawn; the composer returns the per-role tool list
+    in-memory. See ADR-0004 for the pure-function composition pattern (v0.2.0
+    semantics — prior v0.1.0 materialized bundles to ~/.lightwave/bundles/tools/).
+
+schemas:
+  tool_filter_groups: tool_filter_groups.yaml
+  claude_code: claude_code.yaml
+  claude_code_runner: claude_code_runner.yaml
+  agent_lifecycle_event: agent_lifecycle_event.yaml

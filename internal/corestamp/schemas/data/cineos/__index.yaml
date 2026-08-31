@@ -1,0 +1,111 @@
+# =============================================================================
+# CINEOS PRODUCTION DOMAIN — entity schema registry (Category A / data)
+# =============================================================================
+# The cinematography-production data model behind the createOS CineOS product
+# (ADR-0018: CineOS is a product spanning creative-strategy / content-creation /
+# photography). Source of truth: Joel's ER model (6 years of design).
+#
+# SLICE 1 — production spine:
+#   project · script · scene · shot · schedule · shoot_day · location · set
+# SLICE 2 — scheduling, breakdown, docs, org:
+#   scene_shoot · script_version · script_elements_tags · element_categories ·
+#   doc · note · image · team · production_company
+# SLICE 3 — dramatized audiobook (EPIC-CINE-AUDIO-001):
+#   screenplay_scene · audio_manifest
+# SLICE 4 — capture & post-production (epic cineos-slice3-stamp, PRD
+#   cineos-baselight-activation; shapes derived from the Baselight study):
+#   clip · timeline · grade · deliverable · render_op · metadata_definition ·
+#   baselight_link · camera_format
+# =============================================================================
+
+_meta:
+  version: "0.4.0"
+  schema_id: "lightwave://schemas/data/cineos/__index"
+  title: "CineOS Production Domain Registry"
+  description: |
+    Entity schemas for the CineOS cinematography-production domain — the noun-form
+    of the CineOS product. These generate the Go / TypeScript / Zig types and the
+    JSON Schema the createOS CineOS surfaces (the "Wet under blue sky" dashboard),
+    lightwave-platform, and lightwave-sys (desktop core) consume. Codegen targets
+    are per-language (ADR-0017: go / typescript / zig / json_schema — no pydantic).
+    The film `project` generates the CineProject symbol to stay distinct from the
+    agile-spine project's Project symbol (the agile goal/project spine lands in
+    PR #293).
+
+    Domain model (slices 1 + 2):
+
+    ```mermaid
+    erDiagram
+      PROJECT  ||--o{ SCRIPT             : "has"
+      PROJECT  ||--o{ SCHEDULE           : "has"
+      PROJECT  ||--o{ SCENE              : "contains"
+      PROJECT  ||--o{ TEAM               : "has"
+      PROJECT  ||--o{ PRODUCTION_COMPANY : "has"
+      SCRIPT   ||--o{ SCRIPT_VERSION     : "has"
+      SCRIPT   ||--o{ SCENE              : "contains"
+      SCENE    ||--o{ SHOT               : "contains"
+      SCENE    ||--o{ SCRIPT_ELEMENTS_TAGS : "tagged with"
+      SCENE    ||--o{ SCENE_SHOOT        : "scheduled in"
+      SCRIPT_ELEMENTS_TAGS ||--o{ ELEMENT_CATEGORIES : "groups into"
+      SCHEDULE ||--o{ SHOOT_DAY          : "includes"
+      SHOOT_DAY ||--o{ SCENE_SHOOT       : "plans"
+      SHOOT_DAY }o--|| LOCATION          : "uses"
+      LOCATION ||--o{ SET                : "has"
+      SET      ||--o{ SCENE              : "appears in"
+      DOC      ||--o{ NOTE               : "has"
+      DOC      ||--o{ IMAGE              : "has"
+      SHOT     ||--o{ IMAGE              : "can include"
+      SCRIPT_VERSION ||--o{ SCREENPLAY_SCENE : "parses into"
+      SCRIPT_VERSION ||--o{ AUDIO_MANIFEST   : "voiced as"
+      SCREENPLAY_SCENE }o--o| SCENE           : "soft-refs"
+      SHOT     }o--o{ CLIP               : "captured as"
+      CLIP     ||--o{ GRADE              : "graded by"
+      PROJECT  ||--o{ TIMELINE           : "has"
+      TIMELINE ||--o{ DELIVERABLE        : "outputs"
+      DELIVERABLE ||--o{ RENDER_OP       : "rendered by"
+      PROJECT  ||--o{ BASELIGHT_LINK     : "synced via"
+      TIMELINE }o--o| BASELIGHT_LINK     : "mirrors"
+    ```
+
+    depends_on convention (this family): each schema's `depends_on` lists the
+    cineos schemas its REQUIRED fields reference (its hard-FK edges). Optional,
+    polymorphic cross-refs (e.g. doc.scene_ref, image.shot_ref) are documented on
+    the field, not in `depends_on` — so `doc` and `image` carry no `depends_on`.
+
+    The narrative charter + user-journey (an R-9 spec instance, out of repo) lives
+    under ~/.lightwave/specs/domain/cineos.md; the ER above is the source of truth
+    for the data layer.
+
+schemas:
+  # slice 1 — production spine
+  project: project.yaml
+  script: script.yaml
+  scene: scene.yaml
+  shot: shot.yaml
+  schedule: schedule.yaml
+  shoot_day: shoot_day.yaml
+  location: location.yaml
+  set: set.yaml
+  # slice 2 — scheduling, breakdown, docs, org
+  scene_shoot: scene_shoot.yaml
+  script_version: script_version.yaml
+  script_elements_tags: script_elements_tags.yaml
+  element_categories: element_categories.yaml
+  doc: doc.yaml
+  note: note.yaml
+  image: image.yaml
+  team: team.yaml
+  production_company: production_company.yaml
+  # slice 3 — dramatized audiobook (EPIC-CINE-AUDIO-001; parsed content + audio,
+  # distinct from the production-breakdown scene noun)
+  screenplay_scene: screenplay_scene.yaml
+  audio_manifest: audio_manifest.yaml
+  # slice 4 — capture & post-production (epic cineos-slice3-stamp)
+  clip: clip.yaml
+  timeline: timeline.yaml
+  grade: grade.yaml
+  deliverable: deliverable.yaml
+  render_op: render_op.yaml
+  metadata_definition: metadata_definition.yaml
+  baselight_link: baselight_link.yaml
+  camera_format: camera_format.yaml

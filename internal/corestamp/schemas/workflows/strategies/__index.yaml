@@ -1,0 +1,17 @@
+# =============================================================================
+# STRATEGIES SCHEMA REGISTRY — workflows/strategies/
+# =============================================================================
+# Observability and conformance contracts for CI/CD strategies. Each schema
+# declares WHAT a pipeline must emit and HOW conformance is checked — not
+# the step-by-step implementation (owned by the reusable workflow prints).
+# =============================================================================
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/strategies/__index"
+  title: "Strategies Schema Registry"
+  description: "Observability and conformance contracts for CI/CD pipelines."
+
+schemas:
+  ci-node: ci-node.yaml
+  model_selection: model_selection.yaml

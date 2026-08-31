@@ -1,0 +1,27 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/ui_app_shell_kinds"
+  title: "UI App Shell Kind Enum"
+  description: |
+    Shell kinds for app_shell contracts. Determines default auth posture
+    derivation (website -> public, app -> authenticated, admin -> admin)
+    and which scaffold blueprint lw site init renders.
+  generates:
+    - "typescript:AppShellKind"
+    - "go:AppShellKind"
+  depends_on: []
+
+name: ui_app_shell_kinds
+description: "Application shell kinds"
+default: website
+closed: true
+options:
+  - value: website
+    label: "Website"
+    description: "Public marketing site shell; pairs with a site_config"
+  - value: app
+    label: "App"
+    description: "Authenticated product surface shell"
+  - value: admin
+    label: "Admin"
+    description: "Internal back-office shell"

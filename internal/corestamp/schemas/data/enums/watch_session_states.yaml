@@ -1,0 +1,23 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/watch_session_states"
+  title: "Watch Session State Enum"
+  description: "Lifecycle states for an agent watch session (agent_watch_session.status). Mirrors the four observable states a supervisor agent tracks over a watched target."
+  depends_on: []
+name: watch_session_states
+description: "Lifecycle states for agent_watch_session records"
+default: "active"
+closed: true
+options:
+  - value: "active"
+    label: "Active"
+    description: "Watcher is monitoring the target; no trigger condition has fired."
+  - value: "paused"
+    label: "Paused"
+    description: "Watcher is temporarily suspended (e.g. target is idle and debounce is cooling)."
+  - value: "triggered"
+    label: "Triggered"
+    description: "A state change on the target matched the trigger condition; intervention runbook is queued or executing."
+  - value: "completed"
+    label: "Completed"
+    description: "Watch session has ended — target reached a terminal state or the session was explicitly closed."

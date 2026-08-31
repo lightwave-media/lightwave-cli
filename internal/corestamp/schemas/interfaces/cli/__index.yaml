@@ -1,0 +1,22 @@
+# =============================================================================
+# CLI INTERFACE SCHEMA REGISTRY
+# =============================================================================
+# Declares the `lw` command surface consumed by lightwave-cli's schema-driven
+# dispatcher. For now this is a single hand-authored monolithic commands.yaml
+# (REQ R1 Option A). When per-verb schemas + codegen land (Option B), this
+# index gains the per-verb files and commands.yaml becomes a generated
+# aggregate emitted from them.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/interfaces/cli/__index"
+  title: "CLI Interface Schema Registry"
+  description: "Sub-registry for the lw CLI command surface. commands.yaml is the stamp the dispatcher loads (internal/sst/cli_loader.go) and the drift gate validates (lw check schema)."
+
+schemas:
+  commands: commands.yaml
+  kickoff_cli: kickoff_cli.yaml
+  createos_sidecar: createos_sidecar.yaml
+  voice_domain: voice_domain.yaml
+  release_domain: release_domain.yaml

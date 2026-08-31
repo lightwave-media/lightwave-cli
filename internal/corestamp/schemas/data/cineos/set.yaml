@@ -1,0 +1,41 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/set"
+  title: "Set"
+  description: |
+    A dressed space within a Location that scenes play on (e.g. the kitchen, the
+    backyard). Scenes reference the Set they shoot on (scene.set_ref).
+  generates:
+    - "go:Set"
+    - "typescript:Set"
+    - "zig:Set"
+    - "json_schema:set"
+  depends_on:
+    - "lightwave://schemas/data/cineos/location"
+
+required_fields:
+  - name: name
+    type: str
+    description: "Set name (e.g. 'Kitchen', 'Backyard')"
+  - name: location_ref
+    type: str
+    description: "Slug/id of the parent Location"
+
+optional_fields:
+  - name: description
+    type: str
+    description: "What the set is / how it's dressed"
+  - name: set_type
+    type: str
+    description: "Kind of dressed set; values from the cineos_set_types enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_set_types"
+
+relations:
+  parent: location
+  children: []
+
+example:
+  name: "Backyard"
+  location_ref: "beaus-house"
+  set_type: "exterior"
+  description: "Beau's training yard — heavy bag, weathered fence"

@@ -1,0 +1,87 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/data/reference_documents/adr"
+  title: "Architectural Decision Record"
+  description: "Captures one architectural decision atomically — context, decision, consequences, alternatives considered. Modeled after Michael Nygard's ADR format. Stable identity via sequential ADR-NNNN id. Independent of R-P-I-V-R lineage; an ADR may be anchored to a domain, repo, or stand alone. Migrated 2026-05-25 from governance/reference/adr.yaml (Phase 4 file #17)."
+  generates:
+    - "pydantic:ADR"
+  depends_on:
+    - "lightwave://schemas/data/enums/adr_statuses"
+
+status_enum: "adr_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Sequential ADR identifier, format: ADR-NNNN (monotonic, zero-padded to 4 digits). Stable across renames."
+  - name: title
+    type: str
+    description: "Short title; ≤ 80 chars; imperative or noun-phrase (e.g., 'Use Cargo workspace for lightwave-sys')."
+  - name: status
+    type: str
+    description: "Lifecycle status; one of: proposed | accepted | deprecated | superseded."
+  - name: date
+    type: date
+    description: "ISO date the decision was made (or last status-changed)."
+  - name: area
+    type: str
+    description: "Which repo or component the decision applies to (e.g., lightwave-core, lightwave-sys, lightwave-cli, lightwave-platform)."
+  - name: context
+    type: str
+    description: "One paragraph: the forces in play. What's being decided and why now. Names the constraints and the trade-off space."
+  - name: decision
+    type: str
+    description: "The decision itself, stated clearly. One paragraph max — the headline of what we chose."
+  - name: consequences
+    type: "list[str]"
+    description: "Outcomes of the decision. Prefix each with '+ ' for positive or '- ' for negative. Honest tradeoff disclosure required."
+  - name: alternatives_considered
+    type: "list[AlternativeRef]"
+    description: "Options that were considered and rejected; sub-schema: option (str), why_rejected (str). At least one alternative is required — 'no alternative' is itself a flag."
+
+optional_fields:
+  - name: superseded_by
+    type: str
+    description: "ADR-NNNN identifier of the ADR that supersedes this one (when status is 'superseded')."
+  - name: supersedes
+    type: str
+    description: "ADR-NNNN identifier of the ADR that this one supersedes."
+  - name: related
+    type: "list[str]"
+    description: "$refs to related ADRs, SADs, PRDs, or Domain Charters."
+
+relations:
+  parent: null # ADRs are atomic — no required agile parent
+  children: []
+
+example:
+  id: "ADR-0042"
+  title: "Use Cargo workspace for lightwave-sys multi-binary structure"
+  status: "accepted"
+  date: "2026-05-25"
+  area: "lightwave-sys"
+  context: |
+    lightwave-sys has two distinct binary concerns: a Tauri desktop application
+    (createOS / cineOS / photoOS UIs) and a local CI runner daemon (Docker-based,
+    triggered by lw cli). A single binary mixes desktop dependencies into the
+    daemon; separate repos would double release pipelines and version-skew risk.
+  decision: |
+    Use a Cargo workspace with crates/core-lib + crates/desktop + crates/daemon.
+    Strict per-crate dependency boundaries: daemon never depends on desktop;
+    both depend only on core-lib.
+  consequences:
+    - "+ Two binaries from one source tree; one release pipeline"
+    - "+ Shared logic in core-lib without copy-paste"
+    - "+ Independent feature flags per crate"
+    - "- Slightly more complex Cargo.toml management"
+    - "- Workspace compile times slower than single-crate (mitigated by sccache)"
+  alternatives_considered:
+    - option: "Two separate crates in separate repos"
+      why_rejected: "Doubles release pipelines; version skew risk between desktop and daemon"
+    - option: "Single binary with feature flags"
+      why_rejected: "Desktop deps (Tauri, system tray) bloat the daemon binary"
+    - option: "Daemon in Go, desktop in Rust"
+      why_rejected: "Splits the runtime language; loses shared core-lib benefit"
+  related:
+    - "lightwave://specs/sad/lightwave-sys"
+    - "lightwave://specs/adr/ADR-0001-createos-placement-routa-cherry-pick"

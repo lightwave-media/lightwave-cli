@@ -1,0 +1,8 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/tenancy/__index"
+  title: "Tenancy Schemas Registry"
+  description: "Multi-tenant configuration schemas — per-tenant shell config, domain mapping, tenant settings."
+schemas:
+  tenant_shell_config: tenant_shell_config.yaml
+  promoted_product: promoted_product.yaml

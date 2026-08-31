@@ -1,0 +1,39 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/interview_rounds
+  title: Interview Round Enum
+  description: 'Interview round identifiers for UserStory discovery process
+
+    (used in UserStory.current_interview_round field). Closed enum.
+
+    Extracted 2026-05-25 from legacy products/createos/config.yaml.
+
+    '
+  generates:
+  - pydantic:InterviewRound
+  depends_on: []
+name: interview_rounds
+description: Interview rounds in the UserStory discovery process
+default: initial
+closed: true
+options:
+- value: initial
+  label: Initial Discovery
+  order: 1
+  description: Initial Discovery option.
+- value: clarification
+  label: Clarification
+  order: 2
+  description: Clarification option.
+- value: technical
+  label: Technical Details
+  order: 3
+  description: Technical Details option.
+- value: edge_cases
+  label: Edge Cases
+  order: 4
+  description: Edge Cases option.
+- value: final
+  label: Final Review
+  order: 5
+  description: Final Review option.

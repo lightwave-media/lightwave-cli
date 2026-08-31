@@ -1,0 +1,45 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/task_types"
+  title: "Task Type Enum"
+  description: |
+    Type classification for Task entities (feature, bug, chore, refactor, docs,
+    test, spike). Closed enum.
+    Extracted 2026-05-25 from legacy products/createos/config.yaml.
+  generates:
+    - "pydantic:TaskType"
+  depends_on: []
+
+name: task_types
+description: "Type classification for Task entities"
+default: feature
+closed: true
+options:
+  - value: feature
+    label: "Feature"
+    description: "New functionality"
+    icon: "sparkles"
+  - value: bug
+    label: "Bug Fix"
+    description: "Fix for existing functionality"
+    icon: "bug"
+  - value: chore
+    label: "Chore"
+    description: "Maintenance or cleanup"
+    icon: "wrench"
+  - value: refactor
+    label: "Refactor"
+    description: "Code restructuring"
+    icon: "arrows-right-left"
+  - value: docs
+    label: "Documentation"
+    description: "Documentation updates"
+    icon: "document-text"
+  - value: test
+    label: "Test"
+    description: "Test additions or fixes"
+    icon: "beaker"
+  - value: spike
+    label: "Spike"
+    description: "Research or exploration"
+    icon: "magnifying-glass"

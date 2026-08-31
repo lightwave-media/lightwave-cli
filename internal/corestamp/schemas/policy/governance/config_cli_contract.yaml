@@ -1,0 +1,98 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/policy/governance/config_cli_contract"
+  title: "Config CLI Completeness Contract"
+  description: "Requirement contract that any runtime exposing a config CLI (lw, zeroclaw/v_core, pi, etc.) MUST support every mutation the underlying TOML/YAML format allows. Stamps the discipline: if the file format permits an operation, the CLI exposes it. Surfaces bugs like lightwave-sys#134, #135 (missing add/remove/patch verbs) as a contract violation rather than an isolated bug. Migrated 2026-05-25 from governance/tooling/config_cli_contract.yaml (Phase 4 follow-up to handoff #1)."
+  generates:
+    - "pydantic:ConfigCLIContract"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lw', 'v_core', 'pi')"
+  - name: runtime
+    type: str
+    description: "Which runtime exposes this CLI (e.g. 'lightwave-cli', 'lightwave-v_core', 'pi-harness')"
+  - name: config_format
+    type: str
+    description: "Underlying config format the CLI mutates (enum: toml|yaml|json|hcl|ini)"
+  - name: config_paths
+    type: "list[str]"
+    description: "Filesystem paths the CLI is responsible for (e.g. ['~/.lightwave/v_core/config.toml'])"
+  - name: required_verbs
+    type: "list[VerbRequirementRef]"
+    description: "Mandatory verbs the CLI MUST support. Sub-schema VerbRequirement: name (enum: get|set|add|remove|patch|init|migrate|list|validate), description (str, what it does), example (str, sample invocation), rfc_compliance (str|null, e.g. 'RFC 6902' for patch — for verbs with formal specs)"
+  - name: status
+    type: str
+    description: "Lifecycle: draft | accepted | violated | compliant"
+
+optional_fields:
+  - name: enforcement_test
+    type: str
+    description: "Test or audit path that verifies CLI compliance (e.g. 'tests/conformance/config_cli/<runtime>.py')"
+  - name: known_violations
+    type: "list[ViolationRef]"
+    description: "Known gaps. Sub-schema Violation: verb (str), gap_description (str), ticket_ref (str|null, GitHub issue), severity (enum: blocker|warn|info)"
+  - name: rationale_for_completeness
+    type: str
+    description: "Why the contract requires every mutation — surfaces the design principle"
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lw"
+  runtime: "lightwave-cli"
+  config_format: "yaml"
+  config_paths:
+    - "~/.lightwave/config/**/*.yaml"
+  required_verbs:
+    - name: "get"
+      description: "Read any leaf at a dotted/slashed path"
+      example: "lw config get agents.v_core.tier"
+      rfc_compliance: null
+    - name: "set"
+      description: "Write any existing leaf at a path"
+      example: "lw config set agents.v_core.tier local-heavy"
+      rfc_compliance: null
+    - name: "add"
+      description: "Create new HashMap/array entries (NOT just modify existing)"
+      example: "lw config add agents.v_research.providers openrouter"
+      rfc_compliance: null
+    - name: "remove"
+      description: "Delete entries including HashMap tables (not just leaf values)"
+      example: "lw config remove agents.v_legacy"
+      rfc_compliance: null
+    - name: "patch"
+      description: "JSON-Patch compliant batch mutation with correct token escaping"
+      example: "lw config patch < ops.json"
+      rfc_compliance: "RFC 6902"
+    - name: "init"
+      description: "Bootstrap default sections"
+      example: "lw config init agents"
+      rfc_compliance: null
+    - name: "migrate"
+      description: "Schema-version upgrades on config files"
+      example: "lw config migrate"
+      rfc_compliance: null
+    - name: "list"
+      description: "List all paths under a prefix"
+      example: "lw config list agents.*"
+      rfc_compliance: null
+    - name: "validate"
+      description: "Validate config against lightwave-core schema; fail-closed on errors"
+      example: "lw config validate"
+      rfc_compliance: null
+  enforcement_test: "tests/conformance/config_cli/lw.py"
+  known_violations: []
+  rationale_for_completeness: |
+    The CLI is the operator-and-agent surface for config. If the file
+    format permits operation X but the CLI lacks verb X, operators
+    bypass the CLI to hand-edit YAML — defeating validation, audit,
+    and provenance. The contract eliminates that escape valve.
+  status: "draft"

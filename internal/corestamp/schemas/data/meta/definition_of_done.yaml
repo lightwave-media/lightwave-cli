@@ -1,0 +1,66 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/definition_of_done"
+  title: "Definition of Done"
+  description: |
+    The verifiable acceptance criteria for a unit of work. Composed
+    into the user_prompt's <definition_of_done> block at session
+    kickoff so the agent knows exactly what passing looks like.
+
+    DISTINCT from user_story.acceptance_criteria — those describe what
+    the user gets (given/when/then prose). DoD is the ENGINEERING-level
+    contract: which gates must pass, which tests must exist, which
+    artifacts must be produced. Typically composed at task or
+    user_story level; sprint-level DoD also valid for end-of-sprint
+    quality gates.
+
+    Each criterion declares HOW it's verified (verification_method)
+    and WHETHER auto-verifiable. The composer + R-rules can use this
+    to assert progress.
+
+    Stamped 2026-05-28 as part of Phase B.
+  generates:
+    - "rust:DefinitionOfDone"
+    - "pydantic:DefinitionOfDone"
+  depends_on: []
+
+required_fields:
+  - name: criteria
+    type: "list[Criterion]"
+    description: "Non-empty list of verifiable criteria. Each criterion is one acceptance gate."
+    min_length: 1
+
+optional_fields:
+  - name: scope_ref
+    type: str
+    description: "Optional slug of the task / user_story / sprint this DoD applies to. When omitted, the parent context determines scope."
+  - name: stricter_than_ref
+    type: str
+    description: "Slug of a parent DoD this one extends. Inheritance: this DoD's criteria are ADDITIONAL to the parent's, not a replacement."
+
+sub_schemas:
+  Criterion:
+    id: "str"
+    description: "str"
+    verification_method: "str"   # 'tests' | 'review' | 'gate' | 'manual' | 'metric'
+    auto_verifiable: "bool"
+    target_ref: "str | null"     # Optional pointer to the test / gate / metric that verifies this
+
+example:
+  scope_ref: "tk-pr-j-pipeline-v2"
+  criteria:
+    - id: "dod-1"
+      description: "v_staff-engineer + v_cto pipeline runs sequentially in dev/cli.sh review"
+      verification_method: "tests"
+      auto_verifiable: true
+      target_ref: "tests/integration/test_pr_j_v2_sequential.sh"
+    - id: "dod-2"
+      description: "Pre-push hook blocks on first persona's 🔴 finding"
+      verification_method: "tests"
+      auto_verifiable: true
+      target_ref: "tests/integration/test_pr_j_v2_short_circuit.sh"
+    - id: "dod-3"
+      description: "Help text reflects new pipeline mental model"
+      verification_method: "review"
+      auto_verifiable: false
+      target_ref: null

@@ -1,0 +1,80 @@
+name: "session_spawn"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/session_spawn"
+  title: "Session spawn SOP"
+  description: |
+    Enforced startup protocol for v_*-developer sessions. Blocked until
+    kickoff_ok in .tasks/<session>/kickoff/kickoff.json.
+  generates:
+    - "go:SessionSpawnSOP"
+  depends_on:
+    - "lightwave://schemas/data/meta/kickoff_interview"
+
+id: session_spawn
+title: "Spawn an agent developer session"
+version: 1.0.0
+execution_mode: automated
+
+trigger:
+  source: harness
+  event: session_start
+
+parameters:
+  - name: session_id
+    type: string
+  - name: persona
+    type: string
+  - name: task_id
+    type: string
+
+steps:
+  - id: home_sync
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw home sync
+
+  - id: verify_kickoff
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw kickoff status --require-finalized --session "${session_id}"
+
+  - id: git_ritual
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        git fetch origin --prune
+        git status --short
+        test -f AGENTS.md
+        behind="$(git rev-list --count HEAD..origin/main 2>/dev/null || echo 0)"
+        if [ "${behind}" != "0" ]; then
+          echo "ERROR: worktree is ${behind} commit(s) behind origin/main — run lw release propagate first (ADR-0036)." >&2
+          exit 1
+        fi
+
+  - id: docs_sync_render
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw docs sync --yes && lw docs render --yes
+
+  - id: spec_delta
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw spec delta --task "${task_id}"
+
+  - id: write_spawn_json
+    tool: memory_store
+    args:
+      namespace: sessions
+      key: "spawn-${session_id}"
+      value: "spawn_ok written to .tasks/${session_id}/spawn.json"

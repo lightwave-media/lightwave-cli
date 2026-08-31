@@ -1,0 +1,99 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/agent_tools/claude_code"
+  title: "Claude Code tool config"
+  description: |
+    Schema for the `[claude_code]` config section consumed by any LightWave
+    runtime that delegates coding tasks to the `claude -p` CLI. Authentication
+    uses the binary's own OAuth session (Max subscription) by default — no
+    API key needed unless `env_passthrough` includes `ANTHROPIC_API_KEY`.
+
+    Currently implemented (parallel-defined) by lightwave-sys via the
+    `ClaudeCodeConfig` struct in `crates/zeroclaw-config/src/schema.rs`
+    and the `tool: claude_code` dispatch arm in
+    `crates/zeroclaw-runtime/src/sop/pipeline.rs` (`PipelineStep::tool`).
+    Symbol references not line numbers — cross-repo line numbers rot the
+    moment the sibling reorders code; grep-able symbols don't.
+
+    Per the stamp/print/code doctrine this YAML is the SST stamp; the Rust
+    struct is the code-layer consumer. Per ADR-0003 (schema release train)
+    Wave 2, the Rust BINDING ships as a thin loader (`load_schema(name)` →
+    parsed YAML). Codegen of the typed `ClaudeCodeConfig` struct from this
+    YAML is a separate `lw codegen rust <schema>` verb in lightwave-cli
+    (Phase 7+, when actions/blueprints land). The `generates:` hint below
+    is metadata for that codegen verb to consume — NOT a claim that the
+    binding does codegen itself.
+  generates:
+    - "rust:ClaudeCodeConfig" # consumed by lw cli `lw codegen rust` (Phase 7+)
+    - "pydantic:ClaudeCodeConfig" # consumed by lw cli `lw codegen python` (Phase 7+)
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default', 'cineos-prod')."
+
+optional_fields:
+  - name: enabled
+    type: bool
+    description: "Enable the `claude_code` tool. Default false (opt-in)."
+  - name: timeout_secs
+    type: int
+    description: |
+      Maximum execution time in seconds. Coding tasks can be long; default 600
+      (10 min). Increase for sustained refactors; decrease for snappy review
+      passes. Subprocess is SIGKILLed at expiry — no graceful drain.
+  - name: allowed_tools
+    type: "list[str]"
+    description: |
+      Claude Code tools the subprocess is allowed to use (passed via
+      --allowedTools "<tool>(<args>)" pattern). Default: [Read, Edit, Bash, Write].
+      Tighten to read-only ([Read, Glob, Grep]) for review-only invocations;
+      broaden carefully — Edit + Write + Bash give the subprocess fs + shell
+      See `docs/references/architecture/integration-surfaces.md` for the LightWave
+      tool-permission model.
+  - name: system_prompt
+    type: str
+    description: |
+      Optional system prompt prepended to every claude_code invocation.
+      Use to inject persona context (load v_<persona>.yaml's hard_rules) or
+      project conventions. Empty by default — caller supplies the prompt
+      via stdin per-invocation.
+  - name: max_output_bytes
+    type: int
+    description: |
+      Maximum stdout/stderr capture size in bytes. Default 2_097_152 (2 MB).
+      Output beyond cap is truncated with a warning. Increase for codegen
+      tasks emitting large files; decrease for review/lint tasks where output
+      is small + bounded.
+  - name: env_passthrough
+    type: "list[str]"
+    description: |
+      Environment variable names to forward from the parent process to the
+      claude subprocess. Empty by default. Common entries:
+        - `ANTHROPIC_API_KEY` — switch from Max-subscription OAuth to API-key
+          billing (consumes API tokens, not Max quota)
+        - `CLAUDE_CODE_MODEL` — override the default model for this invocation
+        - `LW_VALIDITY_CONTRACT` — propagate the active validity-gate contract
+          to the subprocess (so its Write/Edit calls are scored)
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default"
+  status: "active"
+  enabled: true
+  timeout_secs: 600
+  allowed_tools:
+    - "Read"
+    - "Edit"
+    - "Bash"
+    - "Write"
+  system_prompt: null
+  max_output_bytes: 2097152
+  env_passthrough: []

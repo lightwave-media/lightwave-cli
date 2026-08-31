@@ -1,0 +1,189 @@
+# =============================================================================
+# SPEC ARTIFACT KINDS — in-repo markdown shape contract
+# =============================================================================
+# Every file in a repo's spec/ directory is a markdown materialization of a
+# canonical agile/reference artifact kind. This file declares the IN-REPO
+# MARKDOWN SHAPE for each such kind:
+#   - extension matches `extension`
+#   - frontmatter contains every key in `frontmatter_required`
+#   - body contains a level-2 heading for every entry in `required_sections`
+#
+# THIS IS NOT THE KIND TAXONOMY.
+# The canonical kind taxonomy lives in:
+#   - data/agile_artifacts/<kind>.yaml — R-P-I-V-R lifecycle artifacts
+#                                       (Document records in the platform DB)
+#   - data/reference_documents/<kind>.yaml — repo-local references
+#                                            (ADR, agent_handoff, …)
+#   - workflows/sops/<slug>.yaml — procedural SOPs consumed by the v_core
+#                                  dispatcher (kind family: sops)
+#
+# Each entry below uses the canonical `kind:` slug from those families and
+# carries a `data_ref:` pointer to the data-schema cousin. This file ONLY
+# adds policy: how the same kind materializes as a markdown file under
+# <repo>/spec/<kind>/ for `lw docs spec-lint` to enforce.
+#
+# Consumed by `lw docs spec-lint`. Companion: doc_artifact_kinds.yaml (the
+# generated/code-derived layer) and template_kinds.yaml (the broader
+# per-template-kind registry of which this file is a sibling).
+# =============================================================================
+_meta:
+  version: "0.7.0"
+  schema_id: "lightwave://schemas/policy/governance/spec_artifact_kinds"
+  title: "Spec Artifact Kinds (in-repo markdown shape)"
+  description: |
+    Per-kind frontmatter + section requirements for files under <repo>/spec/.
+    Uses canonical kind slugs from data/agile_artifacts/ and
+    data/reference_documents/. Consumed by `lw docs spec-lint`.
+  generates:
+    - "go:SpecArtifactKind"
+    - "json_schema:spec_artifact_kinds"
+  depends_on:
+    - "lightwave://schemas/data/agile_artifacts/prd"
+    - "lightwave://schemas/data/agile_artifacts/sad"
+    - "lightwave://schemas/data/agile_artifacts/implementation_plan"
+    - "lightwave://schemas/data/reference_documents/adr"
+    - "lightwave://schemas/data/reference_documents/technical_study"
+    - "lightwave://schemas/data/meta/testing_strategy_plan"
+    - "lightwave://schemas/workflows/sops/__index"
+  changelog:
+    - version: "0.7.0"
+      date: "2026-08-26"
+      summary: "Declare nfr, epic, kickoff kinds (all on disk, none declared — #454/#462) and admit `amended` to the adr lifecycle (ADR-0048 is amended in place by CORE-0049)."
+    - version: "0.6.0"
+      date: "2026-08-26"
+      summary: "Declare the pointer exemption (#423): an optional `pointer_ref` frontmatter key that, when it resolves, relaxes required_sections for that file — pointer specs stop needing per-section skeletons that defer to the canonical doc."
+    - version: "0.5.0"
+      date: "2026-08-24"
+      summary: "Declare `technical_study` kind — first-hand studies of external systems under spec/, mirroring the new data/reference_documents/technical_study family. No required_sections, per the reasoning in the entry (first instances: createOS spec/baselight-data-study.md and spec/filmlight-lightwave-synthesis.md, both standing spec-lint violations)."
+    - version: "0.4.0"
+      date: "2026-08-24"
+      summary: "Declare `test_strategy` kind — markdown test strategies under spec/ mirroring the data/meta/testing_strategy_plan family (first instance: lightwave-ai spec/test-strategy-agent-gateway.md, a standing spec-lint violation on that repo's main)."
+    - version: "0.3.0"
+      date: "2026-08-03"
+      summary: "Declare `sop` kind — markdown SOPs under spec/sops/ mirroring the workflows/sops family (first instance: lightwave-ai spec/sops/nightly-release-train.md)."
+    - version: "0.2.0"
+      date: "2026-06-11"
+      summary: "Consolidate with data/agile_artifacts + data/reference_documents — use canonical slugs + data_ref pointers, no parallel taxonomy."
+    - version: "0.1.0"
+      date: "2026-06-11"
+      summary: "Initial draft (deprecated: invented `design`/`plan` slugs)."
+
+name: "spec_artifact_kinds"
+
+# Each entry: in-repo markdown shape contract for one canonical kind.
+spec_artifact_kinds:
+  - kind: prd
+    data_ref: "lightwave://schemas/data/agile_artifacts/prd"
+    description: "Product Requirements Document — markdown form of the data/agile_artifacts/prd schema. What + why, no how."
+    extension: ".md"
+    frontmatter_required: [kind, status, owner, created_at]
+    frontmatter_status_enum_ref: "lightwave://schemas/data/enums/document_statuses"
+    required_sections: ["Problem", "Audience", "Success Metrics", "Out of Scope"]
+    validator: "lw docs spec-lint"
+
+  - kind: adr
+    data_ref: "lightwave://schemas/data/reference_documents/adr"
+    description: "Architecture Decision Record — Michael Nygard format. Repo-local; not a platform Document record."
+    extension: ".md"
+    frontmatter_required: [kind, status, decided_at]
+    frontmatter_status_enum: [proposed, accepted, amended, superseded, deprecated]
+    required_sections: ["Context", "Decision", "Consequences"]
+    validator: "lw docs spec-lint"
+
+  - kind: sad
+    data_ref: "lightwave://schemas/data/agile_artifacts/sad"
+    description: "System Architecture Document — markdown form of the data/agile_artifacts/sad schema. How the system is structured."
+    extension: ".md"
+    frontmatter_required: [kind, status, prd_ref]
+    frontmatter_status_enum_ref: "lightwave://schemas/data/enums/document_statuses"
+    required_sections: ["Background", "Components", "Data Flows", "Tech Decisions", "Alternatives Considered"]
+    validator: "lw docs spec-lint"
+
+  - kind: implementation_plan
+    data_ref: "lightwave://schemas/data/agile_artifacts/implementation_plan"
+    description: "Implementation plan — markdown form of the data/agile_artifacts/implementation_plan schema. Milestones, sequencing, definition of done."
+    extension: ".md"
+    frontmatter_required: [kind, status, owner]
+    frontmatter_status_enum_ref: "lightwave://schemas/data/enums/document_statuses"
+    required_sections: ["Milestones", "Risks", "Definition of Done"]
+    validator: "lw docs spec-lint"
+
+  - kind: technical_study
+    data_ref: "lightwave://schemas/data/reference_documents/technical_study"
+    description: "First-hand study of an external or existing system — what it stores, how it is structured, what we should emulate. Research input to a PRD or ADR, not a decision record."
+    extension: ".md"
+    frontmatter_required: [kind, status, owner, created_at]
+    frontmatter_status_enum_ref: "lightwave://schemas/data/enums/document_statuses"
+    # No `required_sections`, deliberately. Section matching in
+    # docsfactory.MissingSections is exact and case-sensitive, so promoting one
+    # study's outline into the schema forces every later study into it. Studies
+    # organise around the system they examine — "Database architecture — three
+    # layers" is right for one subject and meaningless for the next. Frontmatter
+    # is enough to make the kind legible; the outline belongs to the author.
+    # Same reasoning as `test_strategy` (v0.4.0, #455).
+    validator: "lw docs spec-lint"
+
+  - kind: sop
+    data_ref: "lightwave://schemas/workflows/sops/__index"
+    description: "Standard Operating Procedure — repo-local markdown procedure for operators + agents. Canonical executable SOPs live in workflows/sops/; spec/sops/ files are their operator-facing markdown cousins."
+    extension: ".md"
+    frontmatter_required: [kind, status, owner]
+    frontmatter_status_enum: [draft, active, deprecated]
+    required_sections: ["Intent", "Cadence", "Roles"]
+    validator: "lw docs spec-lint"
+
+  # No required_sections yet — deliberately. The only instance in the fleet
+  # (lightwave-ai spec/test-strategy-agent-gateway.md) organises itself around
+  # headings specific to that initiative, and section matching is exact and
+  # case-sensitive, so promoting them here would force every future test
+  # strategy into one initiative's idiosyncratic outline. Frontmatter is
+  # constrained now to clear the standing "unknown kind" violation; the
+  # authoring initiative settles the body shape and tightens this entry.
+  - kind: test_strategy
+    data_ref: "lightwave://schemas/data/meta/testing_strategy_plan"
+    description: "Test strategy — repo-local markdown form of the data/meta/testing_strategy_plan family. Which harness, which SWEBOK test levels and techniques, and what coverage target the work must satisfy. Authored by v_qa-engineer, consumed by the implementing persona."
+    extension: ".md"
+    frontmatter_required: [kind, status, owner]
+    frontmatter_status_enum: [draft, active, deprecated]
+    validator: "lw docs spec-lint"
+
+  - kind: nfr
+    data_ref: "lightwave://schemas/data/agile_artifacts/nfr"
+    description: "Non-Functional Requirements — markdown form of the canonical nfr document kind (document_statuses has always listed it). Latency, capacity, sunset and operability budgets a PRD's feature set must satisfy."
+    extension: ".md"
+    frontmatter_required: [kind, status, owner]
+    frontmatter_status_enum_ref: "lightwave://schemas/data/enums/document_statuses"
+    validator: "lw docs spec-lint"
+
+  - kind: epic
+    data_ref: "lightwave://schemas/data/agile_artifacts/epic"
+    description: "Epic — repo-local markdown shadow of a canonical Epic record. The record of truth is the platform DB; a spec/epic/ file exists only where a repo needs the narrative alongside the code."
+    extension: ".md"
+    frontmatter_required: [kind, status, owner]
+    frontmatter_status_enum_ref: "lightwave://schemas/data/enums/epic_statuses"
+    validator: "lw docs spec-lint"
+
+  - kind: kickoff
+    data_ref: "lightwave://schemas/data/meta/kickoff_interview"
+    description: "Kickoff interview artifact — the rendered kickoff brief plus its user_prompt, materialized under spec/kickoff/<slug>/ by the kickoff FSM. Frontmatter-only contract: the body shape belongs to the interview schema."
+    extension: ".md"
+    frontmatter_required: [kind, status]
+    frontmatter_status_enum: [draft, active, archived]
+    validator: "lw docs spec-lint"
+
+# Pointer exemption (#423). A spec file may be a POINTER to a canonical spec
+# elsewhere (e.g. lightwave-ai spec/prd/0005 pointing at core PRD-0005).
+# Requiring the full section skeleton of such files produces boilerplate whose
+# every section says "see the canonical doc". Declared contract:
+#   - frontmatter may carry `pointer_ref: <repo-relative or lightwave:// path>`
+#   - when present AND resolvable, required_sections is waived for that file;
+#     frontmatter_required still applies in full (a pointer still has identity)
+#   - when present and NOT resolvable, the file FAILS lint outright — a dangling
+#     pointer is worse than a missing section
+# Consumer: `lw docs spec-lint` (lightwave-cli docsfactory). Stamp leads; the
+# lint change is tracked on lightwave-cli.
+pointer_exemption:
+  frontmatter_key: "pointer_ref"
+  waives: "required_sections"
+  keeps: "frontmatter_required"
+  on_unresolvable: "fail"

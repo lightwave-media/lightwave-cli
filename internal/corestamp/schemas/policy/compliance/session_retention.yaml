@@ -1,0 +1,161 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/compliance/session_retention"
+  title: "Session Retention & Truncation Policy"
+  description: |
+    Per-channel-class declarative policy for how agent conversation sessions
+    are retained and truncated. Caps on message count, age, byte size.
+    Truncation strategies and protected-content rules.
+
+    Forensic root cause captured 2026-05-25 in ZeroClaw operation: a Telegram
+    session bloated unbounded to 637 messages / 1.6 MB before manual
+    truncation. The prompt-bloat cascade (compressed 230k → 150k tokens per
+    turn, still over E4B's 131k context) made every chat call slow or fail.
+    No declarative policy existed — every channel reinvented retention logic
+    or had none.
+
+    Per handoff 2026-05-25-zeroclaw-runtime-ergonomics R3 (should).
+  generates:
+    - "pydantic:SessionRetentionPolicy"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default')"
+  - name: per_channel_class_policies
+    type: "list[ChannelClassPolicyRef]"
+    description: |
+      Per-channel-class retention defaults. Sub-schema ChannelClassPolicy:
+        channel_class (str, slug — references channel_bindings.sink_classes
+          OR raw channel slug — e.g. 'sysadmin_alert' | 'team_thread' |
+          'telegram' | 'whatsapp'),
+        max_messages (int|null, hard cap on message count; null = unbounded),
+        max_age_days (int|null, hard cap on message age in days; null = unbounded),
+        max_size_bytes (int|null, hard cap on total session bytes; null = unbounded),
+        truncation_strategy (str, references truncation_strategies key below),
+        soft_warn_at_pct (int, 0-100, default 80 — emit warn when reached),
+        hard_truncate_at_pct (int, 0-100, default 100 — force truncate when reached),
+        notes (str).
+  - name: truncation_strategies
+    type: "dict[str, TruncationStrategyRef]"
+    description: |
+      Named truncation strategies. Sub-schema TruncationStrategy:
+        strategy_kind (enum: keep_recent | drop_tool_results | summarize_older | hybrid),
+        keep_recent_n (int|null, for keep_recent: how many recent turns to preserve),
+        summarize_older_into_field (str|null, for summarize_older: where the summary lands —
+          e.g. 'compressed_context_<turn>'),
+        target_compression_ratio (float|null, for summarize_older / hybrid: target post-summary size),
+        notes (str).
+  - name: protected_kinds
+    type: "list[ProtectedKindRef]"
+    description: |
+      Message kinds that are NEVER truncated. Sub-schema ProtectedKind:
+        kind (str, e.g. 'system_message' | 'tool_definition' | 'last_n_user_pairs' | 'pinned'),
+        protection_level (enum: always | only_until_size_critical | only_until_age_critical),
+        notes (str).
+
+optional_fields:
+  - name: default_protection_rules
+    type: "list[str]"
+    description: "Standard rules applied across all channel classes (free-form list)."
+  - name: truncation_trigger_audit_log
+    type: str
+    description: "Path under ~/.lightwave/observability/ where truncation events are recorded."
+  - name: summarization_provider_override
+    type: str
+    description: "When using summarize_older strategy, which LLM provider/tier to use (defaults to free-tier per cost discipline)."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default"
+  per_channel_class_policies:
+    - channel_class: "telegram"
+      max_messages: 100
+      max_age_days: 30
+      max_size_bytes: 524288 # 512 KB
+      truncation_strategy: "hybrid"
+      soft_warn_at_pct: 75
+      hard_truncate_at_pct: 100
+      notes: "Joel's primary chat. Forensic case for this policy — was 637 msgs / 1.6 MB before manual truncation."
+    - channel_class: "whatsapp"
+      max_messages: 200
+      max_age_days: 60
+      max_size_bytes: 1048576 # 1 MB
+      truncation_strategy: "summarize_older"
+      soft_warn_at_pct: 80
+      hard_truncate_at_pct: 100
+      notes: "Personal assistant. Longer retention for life-context continuity."
+    - channel_class: "slack"
+      max_messages: 50
+      max_age_days: 14
+      max_size_bytes: 262144 # 256 KB
+      truncation_strategy: "keep_recent"
+      soft_warn_at_pct: 80
+      hard_truncate_at_pct: 100
+      notes: "Team channel — recent context only; older turns archive separately to brain/memory/."
+    - channel_class: "email"
+      max_messages: null # unbounded for formal record
+      max_age_days: null
+      max_size_bytes: null
+      truncation_strategy: "keep_recent"
+      soft_warn_at_pct: 80
+      hard_truncate_at_pct: 100
+      notes: "Formal channel — full record retained for archival."
+    - channel_class: "agent_session"
+      max_messages: 200
+      max_age_days: 7
+      max_size_bytes: 1048576 # 1 MB
+      truncation_strategy: "hybrid"
+      soft_warn_at_pct: 75
+      hard_truncate_at_pct: 100
+      notes: "Internal agent-to-agent sessions. Shorter retention; sessions are ephemeral."
+  truncation_strategies:
+    keep_recent:
+      strategy_kind: "keep_recent"
+      keep_recent_n: 20
+      summarize_older_into_field: null
+      target_compression_ratio: null
+      notes: "Keep last 20 user/assistant turn pairs; drop everything older."
+    drop_tool_results:
+      strategy_kind: "drop_tool_results"
+      keep_recent_n: null
+      summarize_older_into_field: null
+      target_compression_ratio: null
+      notes: "Drop tool result messages aggressively (largest in size); keep user/assistant text intact."
+    summarize_older:
+      strategy_kind: "summarize_older"
+      keep_recent_n: 10
+      summarize_older_into_field: "compressed_context_<turn_id>"
+      target_compression_ratio: 0.2
+      notes: "Compress older turns into rolling summary; keep last 10 turns at full fidelity."
+    hybrid:
+      strategy_kind: "hybrid"
+      keep_recent_n: 15
+      summarize_older_into_field: "compressed_context_<turn_id>"
+      target_compression_ratio: 0.3
+      notes: "Drop tool results first; then summarize older user/assistant turns; keep last 15 at full fidelity."
+  protected_kinds:
+    - kind: "system_message"
+      protection_level: "always"
+      notes: "System prompts NEVER truncated under any condition."
+    - kind: "tool_definition"
+      protection_level: "always"
+      notes: "Tool definitions in context NEVER truncated (filtering is via tool_filter_groups, not here)."
+    - kind: "last_n_user_pairs"
+      protection_level: "always"
+      notes: "Last N user/assistant pairs preserved (N = strategy.keep_recent_n)."
+    - kind: "pinned"
+      protection_level: "always"
+      notes: "Explicitly pinned messages (operator or agent decision) preserved."
+    - kind: "tool_result"
+      protection_level: "only_until_size_critical"
+      notes: "Tool results aged first when truncation triggers."
+  truncation_trigger_audit_log: "~/.lightwave/observability/session_truncation.jsonl"
+  summarization_provider_override: "frontier-free"

@@ -1,0 +1,47 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/diagnostic_severities"
+  title: "Diagnostic Severity Enum"
+  description: |
+    Severity levels emitted by health/diagnostic checks (`lw local --doctor`,
+    `zc doctor`, future `lw doctor`). Three-level scale matches the de-facto
+    `ok | warn | error` taxonomy used by most CI tooling — intentionally
+    coarser than syslog (no `info`/`debug`/`critical` distinctions, since
+    diagnostics are gating decisions, not log streams).
+
+    Closed enum. Wire encoding is lowercase (matches the existing
+    lightwave-sys `Severity` Rust enum, which uses
+    `serde(rename_all = "lowercase")`).
+
+    Semantics:
+      - ok    — check passed
+      - warn  — degraded but non-blocking
+      - error — check failed; blocking
+
+    Stamped 2026-05-26 to bring zeroclaw's doctor module under the SST
+    contract. lightwave-sys Rust binding is the parallel-defined consumer
+    (will be marked as such once the lightwave-sys companion PR lands).
+  generates:
+    # `generates:` is metadata for the future `lw codegen <lang>` verb
+    # (Phase 7+) — NOT a claim that any binding does codegen today.
+    # Symbol names are deliberately qualified ("Diag*" / "Diagnostic*")
+    # to avoid collisions in any large consumer — "Severity" alone is
+    # one of the most over-used type names in any codebase.
+    - "rust:DiagSeverity"
+    - "pydantic:DiagnosticSeverity"
+  depends_on: []
+
+name: diagnostic_severities
+description: "Severity levels for diagnostic check results — ok | warn | error"
+default: "ok"
+closed: true
+options:
+  - value: ok
+    label: "OK"
+    description: "Check passed; no action required."
+  - value: warn
+    label: "Warning"
+    description: "Degraded state but non-blocking. Operator should investigate but work can continue."
+  - value: error
+    label: "Error"
+    description: "Check failed. Blocking — caller must resolve before proceeding."

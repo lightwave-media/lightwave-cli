@@ -1,0 +1,49 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/handoff_statuses"
+  title: "Agent Handoff Status Enum"
+  description: |
+    Lifecycle statuses for inter-agent handoffs. Distinct from document_statuses
+    because handoffs have a triage-and-execute lifecycle (received → triaged →
+    accept/reject/defer → in_progress → completed) that doesn't map to the
+    simpler draft/active/archived document lifecycle.
+
+    Extracted 2026-05-26 (R-17 caught example.status='received' was not a valid
+    document_statuses value — proving handoff needs its own enum).
+  generates:
+    - "pydantic:HandoffStatus"
+  depends_on: []
+
+name: handoff_statuses
+description: "Lifecycle statuses for agent-to-agent handoffs"
+default: received
+closed: true
+options:
+  - value: received
+    label: "Received"
+    description: "Handoff has been received by the target agent; not yet triaged"
+    is_active: true
+  - value: triaged
+    label: "Triaged"
+    description: "Receiver has reviewed each request and recorded an accept/reject/defer/modify decision"
+    is_active: true
+  - value: partially_accepted
+    label: "Partially Accepted"
+    description: "Some requests accepted, others rejected/deferred. Triage block records per-request decisions."
+    is_active: true
+  - value: accepted
+    label: "Accepted"
+    description: "All requests accepted; work scheduled or in progress"
+    is_active: true
+  - value: rejected
+    label: "Rejected"
+    description: "All requests rejected; no follow-up work"
+    is_active: false
+  - value: in_progress
+    label: "In Progress"
+    description: "Accepted requests are being worked on"
+    is_active: true
+  - value: completed
+    label: "Completed"
+    description: "All accepted requests have shipped; handoff is closed"
+    is_active: false

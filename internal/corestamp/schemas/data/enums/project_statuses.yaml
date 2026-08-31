@@ -1,0 +1,44 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/project_statuses"
+  title: "Project Status Enum"
+  description: |
+    Lifecycle statuses for Project entities (the middle tier of the work spine
+    Goal → Project → Epic → Sprint → Task). Closed enum. Distinct from
+    epic_statuses by the explicit "planning" phase — a Project is scoped/planned
+    before its Epics execute, whereas an Epic is already-scoped work. New
+    2026-06-19 with the goal/project spine.
+  generates:
+    - "pydantic:ProjectStatus"
+  depends_on: []
+
+name: project_statuses
+description: "Lifecycle statuses for Project entities"
+default: not_started
+closed: true
+options:
+  - value: not_started
+    label: "Not Started"
+    description: "Project defined but not yet planned"
+    is_active: false
+  - value: planning
+    label: "Planning"
+    description: "Project being scoped — epics not yet executing"
+    is_active: true
+  - value: in_progress
+    label: "In Progress"
+    description: "Project actively executing via its epics"
+    is_active: true
+  - value: completed
+    label: "Completed"
+    description: "Project delivered"
+    is_active: false
+    is_completed: true
+  - value: on_hold
+    label: "On Hold"
+    description: "Project paused"
+    is_active: false
+  - value: cancelled
+    label: "Cancelled"
+    description: "Project was cancelled"
+    is_active: false

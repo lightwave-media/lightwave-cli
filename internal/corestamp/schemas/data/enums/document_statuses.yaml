@@ -1,0 +1,30 @@
+_meta:
+  version: "2.0.0"
+  schema_id: "lightwave://schemas/data/enums/document_statuses"
+  title: "Document Status Enum"
+  description: |
+    Lifecycle statuses for Document-subtype artifacts (R-P-I-V-R document kinds:
+    product_vision, market_analysis, prd, sad, nfr, ddd, api_spec, plus reference
+    docs: domain_charter, adr, glossary, agent_handoff, architectural_fit).
+    Used as `status_enum: document_statuses` in schema declarations.
+
+    v2.0: values merged from print back into stamp per revised R-15 (single source
+    of truth; codegen consumers read values directly from stamp).
+  generates:
+    - "pydantic:DocumentStatus"
+  depends_on: []
+
+name: document_statuses
+description: "Status for documents in createOS"
+default: draft
+closed: true
+options:
+  - value: draft
+    label: "Draft"
+    description: "Document is being drafted"
+  - value: active
+    label: "Active"
+    description: "Document is active and in use"
+  - value: archived
+    label: "Archived"
+    description: "Document is archived"

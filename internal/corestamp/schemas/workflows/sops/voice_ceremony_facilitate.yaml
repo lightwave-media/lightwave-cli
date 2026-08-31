@@ -1,0 +1,38 @@
+name: "voice_ceremony_facilitate"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/voice_ceremony_facilitate"
+  title: "Voice ceremony facilitate SOP"
+  description: Human voice ceremony with spec-delta guru coaching.
+  depends_on:
+    - "lightwave://schemas/data/meta/voice_ceremony_session"
+
+id: voice_ceremony_facilitate
+title: "Facilitate human voice ceremony with delta coaching"
+version: 1.0.0
+execution_mode: interactive
+
+trigger:
+  source: operator
+  event: voice_ceremony_requested
+
+parameters:
+  - name: kind
+    type: string
+  - name: session
+    type: string
+
+steps:
+  - id: start_session
+    tool: shell
+    args:
+      command: lw voice ceremony start --kind "${kind}" --session "${session}"
+  - id: compute_delta
+    tool: shell
+    args:
+      command: lw spec delta
+  - id: coach_turn
+    tool: shell
+    args:
+      command: lw voice ceremony coach --session "${session}"

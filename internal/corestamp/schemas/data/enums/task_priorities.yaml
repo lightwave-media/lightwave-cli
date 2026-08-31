@@ -1,0 +1,42 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/task_priorities
+  title: Task Priority Enum
+  description: 'Priority levels for Task entities. Closed enum.
+
+    Extracted 2026-05-25 from legacy products/createos/config.yaml.
+
+    '
+  generates:
+  - pydantic:TaskPriority
+  depends_on: []
+name: task_priorities
+description: Priority levels for Task entities
+default: medium
+closed: true
+options:
+- value: critical
+  label: Critical
+  numeric_value: 1
+  color: '#DC2626'
+  description: Critical option.
+- value: high
+  label: High
+  numeric_value: 2
+  color: '#EA580C'
+  description: High option.
+- value: medium
+  label: Medium
+  numeric_value: 3
+  color: '#CA8A04'
+  description: Medium option.
+- value: low
+  label: Low
+  numeric_value: 4
+  color: '#2563EB'
+  description: Low option.
+- value: backlog
+  label: Backlog
+  numeric_value: 5
+  color: '#6B7280'
+  description: Backlog option.

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sync"
 
-	lightwavecore "github.com/lightwave-media/lightwave-core/bindings/go"
+	"github.com/lightwave-media/lightwave-cli/internal/corestamp"
 )
 
 // EnvLiveSchemas forces reads to come from a lightwave-core checkout even when
@@ -22,13 +22,14 @@ const EnvLiveSchemas = "LW_CLI_LIVE_SCHEMAS"
 // <lightwaveRoot>/lightwave-core/src/schemas/... That single assumption is why
 // the surface gate has to skip without a checkout, why schema-drift CI mints a
 // token just to clone core, and why `lw` cannot run on a machine that has only
-// `lw`. lightwave-core ships bindings/go, a module that embeds the whole schema
-// tree, so the checkout can be a preference rather than a requirement.
+// `lw`. internal/corestamp vendors lightwave-core's binding, which embeds the
+// whole schema tree, so the checkout can be a preference rather than a
+// requirement — and lw stays buildable from a bare public clone.
 //
 // Resolution order, and why it is this way round:
 //
-//  1. A checkout, when present. The embedded copy is a snapshot pinned in
-//     go.mod and CAN lag core; a checkout is by definition current. Preferring
+//  1. A checkout, when present. The embedded copy is a vendored snapshot and
+//     CAN lag core; a checkout is by definition current. Preferring
 //     it means adopting the binding never regresses anyone who has core.
 //  2. The embedded binding otherwise, so a machine with no checkout still works.
 //
@@ -48,7 +49,7 @@ func SchemaBytes(lightwaveRoot, key string) ([]byte, error) {
 			EnvLiveSchemas, live, liveErr)
 	}
 
-	embedded, embErr := lightwavecore.ReadSchema(key)
+	embedded, embErr := corestamp.ReadSchema(key)
 	if embErr != nil {
 		// Report the checkout path too: "schema not found" is confusing when
 		// the real cause is that core simply is not checked out here.
@@ -64,7 +65,7 @@ func SchemaBytes(lightwaveRoot, key string) ([]byte, error) {
 // EmbeddedStampVersion is the schema version the linked binding carries. It is
 // what `lw` falls back to, so it belongs in `lw version` output and in any
 // report that claims to describe the stamp.
-func EmbeddedStampVersion() string { return lightwavecore.Version }
+func EmbeddedStampVersion() string { return corestamp.Version }
 
 var embeddedWarn sync.Once
 
@@ -79,6 +80,6 @@ func warnEmbeddedOnce() {
 		fmt.Fprintf(os.Stderr,
 			"lw: no lightwave-core checkout; using the embedded stamp snapshot (v%s). "+
 				"Schema-dependent results reflect that snapshot, not core's current state.\n",
-			lightwavecore.Version)
+			corestamp.Version)
 	})
 }

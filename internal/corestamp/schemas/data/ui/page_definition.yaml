@@ -1,0 +1,113 @@
+_meta:
+  version: 0.1.0
+  schema_id: lightwave://schemas/data/ui/page_definition
+  title: Page Definition — typed page instance for a site
+  description: 'A page in a site''s manifest: its type (marketing, legal, admin, app),
+
+    the ordered sections that compose it, and its SEO contract. Legal pages
+
+    additionally carry compliance metadata so the factory can refuse to
+
+    scaffold a legal page without its required blocks. Page definitions are
+
+    instances a site''s data layer conforms to; section props are validated
+
+    against the matching section_contract at render time.
+
+    '
+  generates:
+  - typescript:PageDefinition
+  - json_schema:page_definition
+  depends_on:
+  - lightwave://schemas/data/ui/section_contract
+required_fields:
+- name: slug
+  type: str
+  description: URL path segment ('' for the home page, e.g. 'privacy-policy')
+- name: title
+  type: str
+  description: Page title shown in browser tab and as the H1 heading.
+- name: page_type
+  type: enum
+  values_ref: lightwave://schemas/data/enums/ui_page_types
+  description: Page type controlling layout and rendering mode.
+- name: sections
+  type: list[SectionRef]
+  description: Ordered section instances composing the page
+- name: seo
+  type: Seo
+  description: SEO metadata block (meta description, OG tags, canonical).
+optional_fields:
+- name: legal
+  type: LegalMeta
+  nullable: true
+  description: Required when page_type is legal; the factory rejects legal pages without it
+- name: collection
+  type: str
+  nullable: true
+  description: Collection key when this page is a generated detail page (e.g. projects)
+sub_schemas:
+  SectionRef:
+    section:
+      type: str
+      description: Section contract key '<family>/<variant>'
+    props:
+      type: dict
+      description: Props for the section; validated against the section_contract registered under key
+  Seo:
+    title:
+      type: str
+      description: Document title; falls back to page title
+    description:
+      type: str
+    og_image:
+      type: str
+      description: Absolute or media-base-relative image URL (nullable)
+    no_index:
+      type: bool
+      description: Emit robots noindex when true (default false)
+  LegalMeta:
+    jurisdiction:
+      type: str
+      description: Governing jurisdiction (e.g. England and Wales)
+    effective_date:
+      type: str
+      description: ISO 8601 date the document takes effect
+    last_reviewed:
+      type: str
+      description: ISO 8601 date of last legal review (nullable)
+    required_blocks:
+      type: list[str]
+      description: 'Compliance blocks this document must render. Canonical values: data-controller, data-collected, processing-purposes,
+        cookies, retention, third-parties, gdpr-rights, contact, terms-acceptance, liability, governing-law, changes. Promote
+        to data/enums/ when first consumed by codegen (see ADR-0006 DECISIONS).'
+example:
+  slug: privacy-policy
+  title: Privacy Policy
+  page_type: legal
+  sections:
+  - section: header-section/page-intro-01
+    props:
+      title: Privacy Policy
+      summary: How Joel Schaeffer Ltd collects, uses, and protects your data.
+  - section: content/content-large-image-03
+    props:
+      title: Privacy Policy
+      synopsis: Full policy text rendered from the legal data source.
+  seo:
+    title: Privacy Policy — Joel Schaeffer
+    description: How we collect, use, and protect your personal data.
+    no_index: false
+  legal:
+    jurisdiction: England and Wales
+    effective_date: '2026-06-01'
+    last_reviewed: '2026-06-01'
+    required_blocks:
+    - data-controller
+    - data-collected
+    - processing-purposes
+    - cookies
+    - retention
+    - gdpr-rights
+    - contact
+    - governing-law

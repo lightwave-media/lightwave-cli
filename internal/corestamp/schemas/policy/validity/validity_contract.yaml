@@ -1,0 +1,79 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/policy/validity/validity_contract"
+  title: "Validity Contract"
+  description: |
+    Declares what a piece of work is supposed to be faithful TO, so a mutation
+    can be scored against it instead of merely succeeding. Every Write/Edit on
+    the host is measured against the active contract by ~/.lightwave/lib/validity/
+    and recorded to observability/validity.jsonl; with no contract active the
+    write is logged as an unsupervised runaway.
+
+    This stamps the print already in production at ~/.lightwave/config/contracts/,
+    resolved per-session via $LW_VALIDITY_CONTRACT, then <cwd>/.lightwave/contract,
+    then the global `active` symlink.
+
+    Reliability is not validity: a tool call that succeeds has not thereby
+    produced content faithful to its upstream. upstream_artefacts is the load-
+    bearing field — it names the sources the work must not drift from, and an
+    empty list makes the contract unfalsifiable.
+  generates:
+    - "pydantic:ValidityContract"
+  depends_on:
+    - "lightwave://schemas/data/enums/validity_gate_actions"
+
+natural_key:
+  column: task
+  unique: true
+
+required_fields:
+  - name: task
+    type: str
+    description: "Slug naming the work this contract governs. Unique per contract file; matches the filename stem by convention."
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+  - name: claim
+    type: str
+    description: "What the work asserts it will do, in prose. The scored text is compared against this plus the upstream artefacts, so a vague claim yields a meaningless score."
+  - name: upstream_artefacts
+    type: "list[str]"
+    description: "Paths to the sources the work must stay faithful to — specs, ADRs, session decisions, the schemas being consumed. Non-empty: a contract naming no upstream cannot be violated and so measures nothing."
+    min_length: 1
+  - name: min_fidelity_score
+    type: float
+    description: "Score below which `action` fires, in [0.0, 1.0]. Observed contracts sit at 0.05-0.15; soak the distribution before raising one, because the score is corpus-relative and not comparable across contracts."
+  - name: action
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/validity_gate_actions"
+    description: "What happens below threshold. Default new contracts to `warn`; `block` only after the score distribution is known."
+
+optional_fields:
+  - name: scope
+    type: object
+    description: |
+      Which mutations this contract measures. Omitted means every tool call in
+      the session. Sub-schema ContractScope:
+        tools (list[str], surface names to score — the Claude Code and Pi
+          spellings differ, so both cases are listed:
+          [Write, Edit, write, edit]),
+        path_globs (list[str], paths to score; "**/*" for the whole tree).
+  - name: created
+    type: str
+    description: "ISO-8601 timestamp the contract was authored. A contract long outliving its work is how a stale claim keeps scoring new writes."
+
+example:
+  task: "codegen-types"
+  claim: |
+    Implements `lw codegen types` in lightwave-cli (Go): reads the data/ui
+    schema family + ui_* enum stamps from lightwave-core, emits Zod TypeScript
+    per the generates: declarations, resolves values_ref against enum stamps,
+    and proves the round-trip fixture.
+  upstream_artefacts:
+    - "~/.lightwave/specs/adr/ADR-0006-ui-schema-family-and-zod-codegen-split.md"
+    - "~/dev/lightwave-core/src/schemas/data/ui/section_contract.yaml"
+    - "~/dev/lightwave-cli/AGENTS.md"
+  min_fidelity_score: 0.05
+  action: "warn"
+  scope:
+    tools: ["Write", "Edit", "write", "edit"]
+    path_globs: ["**/*"]
+  created: "2026-06-12T18:30:00Z"

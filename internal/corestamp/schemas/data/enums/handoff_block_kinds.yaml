@@ -1,0 +1,52 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/handoff_block_kinds"
+  title: "Handoff Step Block Kinds Enum"
+  description: |
+    Closed vocabulary of typed STEP kinds a handoff's steps[] may use (the
+    execution layer added to agent_handoff in v1.2.0). The names are LIFTED
+    VERBATIM from the runbook MDX component model (src/runbooks/*/runbook.mdx:
+    <Check> / <Command> / <Inputs> / <Template> / <Admonition>) so a handoff
+    step, a human runbook component, and (later) a nullboiler workflow node
+    are the SAME typed unit under three profiles — Joel's "could it all be
+    the same thing?" thesis (spec/sad/0001, spec/adr/0011, spec/adr/0012).
+
+    Each kind carries a success/failure verification contract on the step
+    (the per-step DoD); kinds differ in whether they MUTATE (command,
+    template) or only OBSERVE (check, inputs, admonition).
+
+    Closed enum — adding a step kind is a stamp PR (mirrors the closed
+    valid_tags registry on agent_prompt in template_kinds.yaml). Wire
+    encoding is the bare lowercase value.
+
+    Consumed by data/reference_documents/agent_handoff.yaml (HandoffStep.kind)
+    and the agent_handoff template_kind in policy/governance/template_kinds.yaml.
+  generates:
+    - "pydantic:HandoffBlockKind"
+  depends_on: []
+
+name: handoff_block_kinds
+description: "Typed step kinds in a handoff's steps[] — lifted from the runbook component model"
+default: command
+closed: true
+options:
+  - value: check
+    label: "Check"
+    description: "Read-only VERIFICATION step. Asserts an observable predicate; passes or fails without mutating state. Maps runbook <Check> (exit 0 = pass). The receiver runs it to confirm a precondition or a result."
+    is_active: true
+  - value: command
+    label: "Command"
+    description: "Mutating ACTION step the receiver performs (run a command, edit a file, open a PR). Maps runbook <Command>. May emit named outputs (HandoffStep.produces) for downstream steps."
+    is_active: true
+  - value: inputs
+    label: "Inputs"
+    description: "Declares the typed VARIABLES a downstream step consumes (name/type/default). Maps runbook <Inputs>. Observe-only; referenced by a later step via HandoffStep.consumes."
+    is_active: true
+  - value: template
+    label: "Template"
+    description: "Render a boilerplate blueprint/template as a step (the factory codegen action). Maps runbook <Template> — shells to the Gruntwork boilerplate engine via `lw scaffold`. Mutating; emits the generated paths as outputs."
+    is_active: true
+  - value: admonition
+    label: "Admonition"
+    description: "A caution/danger/info CALLOUT attached to a step — non-executable context that must be read before acting. Maps runbook <Admonition>. Carries no success/failure contract of its own."
+    is_active: true

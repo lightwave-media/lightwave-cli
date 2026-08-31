@@ -1,0 +1,24 @@
+# =============================================================================
+# SCHEDULED JOBS SCHEMA REGISTRY (Category C / kind family: scheduled_jobs)
+# =============================================================================
+# Schemas governing cron jobs, heartbeat tasks, and other scheduled units of
+# work. Distinct from orchestration/ (which governs in-flight concurrency)
+# and from sops/ (which holds procedural executable SOPs); scheduled_jobs/
+# defines the SHAPE of "this thing runs on a schedule with these parameters."
+#
+# First schema lands 2026-05-25 (handoff R6 — cron_job).
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/workflows/scheduled_jobs/__index"
+  title: "Scheduled Jobs Schema Registry"
+  description: "Sub-registry for cron / scheduled / heartbeat job schemas. Consumed by v_core's cron scheduler."
+
+schemas:
+  cron_job: cron_job.yaml
+  scheduled_task_protocol: scheduled_task_protocol.yaml
+  project_board_hygiene: project_board_hygiene.yaml
+  notion_knowledge_hygiene: notion_knowledge_hygiene.yaml
+  ci_feedback_loop: ci_feedback_loop.yaml
+  gh_notif_feedback_loop: gh_notif_feedback_loop.yaml

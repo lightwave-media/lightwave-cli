@@ -1,0 +1,16 @@
+# =============================================================================
+# HTTP INTERFACE SCHEMA REGISTRY
+# =============================================================================
+# Declares HTTP API contracts — CRUD route patterns, codegen targets, and
+# request/response shapes. Read by the MCP schema_fields tool and the
+# codegen-sst-to-go-model runbook to generate HUMA API routes.
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/interfaces/http/__index"
+  title: "HTTP Interface Schema Registry"
+  description: "Maps HTTP interface schemas to their files."
+
+schemas:
+  crud_routes: crud_routes.yaml
+  codegen_targets: codegen_targets.yaml

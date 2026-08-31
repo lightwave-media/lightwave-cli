@@ -1,0 +1,36 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/voice_synthesis_goals
+  title: Voice Synthesis Goal Enum
+  description: Context for when an agent invokes speech — maps to SOP and profile
+    defaults.
+  generates:
+  - rust:VoiceSynthesisGoal
+  - pydantic:VoiceSynthesisGoal
+  depends_on: []
+name: voice_synthesis_goals
+description: Why the agent is speaking
+default: narrate
+closed: true
+options:
+- value: notify
+  label: Notify
+  description: Notify option.
+- value: narrate
+  label: Narrate
+  description: Narrate option.
+- value: handoff
+  label: Handoff
+  description: Handoff option.
+- value: status
+  label: Status
+  description: Status option.
+- value: review_verdict
+  label: Review verdict
+  description: Review verdict option.
+- value: reactive_ack
+  label: Reactive ack
+  description: Hot-path backchannel; cached or streamed; no LLM (NFR-0001)
+- value: monitor_feedback
+  label: Monitor feedback
+  description: System monitor spoke status; may chain async dispatch

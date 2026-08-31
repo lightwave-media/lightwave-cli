@@ -1,0 +1,26 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/misc"
+  title: "Forgejo Miscellaneous — Packages, Settings, NodeInfo, Markdown, ActivityPub, Version — 1:1 SST Mirror"
+  description: "Consolidated remaining schemas: package registry, instance settings, nodeinfo, markdown rendering, activitypub federation, version endpoint."
+  source_ref: "forgejo://swagger.v1.json misc + settings + package + activitypub paths"
+  table_kind: entity
+  table_name: packages
+  generates: ["go:ForgejoPackage"]
+primary_key: {column: id, type: uuid}
+required_fields:
+  - {name: name, type: str, storage: db}
+  - {name: owner, type: str, storage: db, indexed: true}
+  - {name: type, type: str, description: "alpine|cargo|chef|composer|conan|conda|container|cran|debian|generic|go|helm|maven|npm|nuget|pub|pypi|rpm|rubygems|swift|vagrant", storage: db}
+  - {name: version, type: str, storage: db}
+  - {name: created_at, type: datetime, storage: db}
+optional_fields:
+  - {name: repo_ref, type: str, storage: db}
+  - {name: html_url, type: str, storage: db}
+example:
+  name: "lightwave-platform"
+  owner: "lightwave-media"
+  type: "container"
+  version: "v0.5.0"
+  created_at: "2026-06-25T00:00:00Z"

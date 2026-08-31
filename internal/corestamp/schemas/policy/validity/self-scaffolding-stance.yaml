@@ -1,0 +1,167 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/validity/self-scaffolding-stance"
+  title: "Self-Scaffolding Stance (the two-axis compass + the Fence)"
+  description: |
+    Lightwave's deliberate architectural stance on agent self-scaffolding,
+    derived from the Ornith 1.0 synthesis (workflow wf_8a93b7eb-a26; transcript
+    ~/.lightwave/sources/youtube/uD4-uy0GmHE.md) and ratified in ADR-0043.
+
+    Two axes locate any agentic architecture:
+      - scaffold_author:    model  | human   (who writes the harness)
+      - improvement_locus:  training | inference (how the harness gets better)
+
+    Ornith sits at (model x training): the model writes its own per-task scaffold
+    and a GRPO loop trains it to write better ones. Lightwave deliberately sits at
+    (human x inference): runbooks/blueprints/`lw` verbs are human-authored
+    deterministic primitives, and improvement happens by GROWING THE TOOLBOX
+    (promoting recurring compositions into new primitives), never by moving
+    weights. The toolbox is Lightwave's learnable object.
+
+    When the model DOES self-scaffold a one-off harness, it does so by COMPOSING
+    those deterministic primitives — `lw scaffold`, runbooks, `lw schema gen`, the
+    `lw` surface — not by emitting freeform code. That makes Ornith's L1 (immutable
+    environment + sanctioned tools only) the `lw` surface + the stamp, by
+    construction.
+
+    This schema is the SST stamp of that stance. It is doctrine, not a runtime
+    contract: the enforcing mechanisms are harness_configuration_plane (tool grants
+    + model_tiering), the hook suite (L2), and the review pipeline (L3). Companion:
+    policy/governance/harness_configuration_plane.yaml.
+  generates:
+    - "pydantic:SelfScaffoldingStance"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/data/enums/model_tiers"
+    - "lightwave://schemas/policy/governance/harness_configuration_plane"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default')."
+  - name: chosen_quadrant
+    type: str
+    description: |
+      Lightwave's deliberate position on the two axes — fixed as
+      'human_authored x inference_time'. Crossing into the training quadrant is
+      an explicit, separate decision (see out_of_scope).
+  - name: axes
+    type: "list[AxisRef]"
+    description: |
+      The two locating axes. Sub-schema Axis:
+        name (enum: scaffold_author | improvement_locus),
+        poles (list[str] — e.g. ['model','human'] or ['training','inference']),
+        lightwave_pole (str — the pole Lightwave occupies),
+        rationale (str — why that pole).
+  - name: composition_primitives
+    type: "list[str]"
+    description: |
+      The deterministic primitives a self-scaffolded harness composes FROM (the
+      model never emits freeform code outside these). E.g. 'lw scaffold',
+      'runbooks', 'lw schema gen', 'lw CLI verbs'.
+  - name: fence
+    type: "FenceRef"
+    description: |
+      The boundary deciding whether a task is done via a pre-authored runbook or a
+      model-self-scaffolded one-off. Sub-schema Fence:
+        rule (str — the cold rule: 'STAMP-CONTACT v RECURRENCE'),
+        deterministic_side (str — when to reach for / author a runbook),
+        self_scaffolding_side (str — when the model may self-scaffold),
+        decidability (str — honest note: stamp-contact decidable up front,
+          recurrence handled retroactively via the promotion loop),
+        guards_always_on (bool — L1/L2/L3 + validity contract apply on BOTH sides).
+  - name: model_tiering
+    type: "ModelTieringRef"
+    description: |
+      Model tier assigned by harness LAYER (the economic outcome: cheaper models
+      do advanced engineering because intelligence lives in the harness).
+      Sub-schema ModelTiering:
+        authoring_layer (str — constitution/harness authoring),
+        authoring_tier (str — model_tiers value: frontier | powerful),
+        execution_layer (str — the swarm using a harness),
+        execution_tier (str — model_tiers value: standard | local | economic),
+        wires_to (list[str] — existing mechanisms it composes with, e.g.
+          cron_job.model_override, harness_configuration_plane.model_tiering).
+  - name: guard_layers
+    type: "list[GuardLayerRef]"
+    description: |
+      The three anti-reward-hacking layers (Ornith L1/L2/L3) mapped to Lightwave
+      mechanisms, each with an HONEST fidelity grade so the doctrine never
+      overclaims its own enforcement. Sub-schema GuardLayer:
+        layer (enum: L1 | L2 | L3),
+        ornith_role (str),
+        lightwave_mechanism (str),
+        fidelity (enum: real | partial | aspirational | absent),
+        note (str — what is real vs not, with the load-bearing caveat).
+
+optional_fields:
+  - name: promotion_loop
+    type: str
+    description: |
+      The toolbox-growth mechanism (Lightwave's analog of Ornith's learnable
+      harness): a self-scaffolded harness observed to recur is promoted into a
+      runbook/blueprint/`lw` verb; a missing primitive is filed as a tool-gap
+      issue (§11). Implements the fence's retroactive recurrence handling.
+  - name: out_of_scope
+    type: "list[str]"
+    description: "Stances explicitly NOT taken (e.g. training/finetuning; freeform code-gen self-scaffolding; agent-authored permission machinery)."
+
+relations:
+  parent: "lightwave://schemas/policy/governance/harness_configuration_plane"
+  children: []
+
+example:
+  id: "lightwave-default"
+  status: "active"
+  chosen_quadrant: "human_authored x inference_time"
+  axes:
+    - name: "scaffold_author"
+      poles: ["model", "human"]
+      lightwave_pole: "human"
+      rationale: "Harnesses are inspectable, version-controlled runbooks/blueprints/verbs — auditable and reusable, unlike a harness internalized into weights."
+    - name: "improvement_locus"
+      poles: ["training", "inference"]
+      lightwave_pole: "inference"
+      rationale: "Improvement = growing the toolbox (promoting recurring compositions into primitives), not gradient descent. No training loop in the stack."
+  composition_primitives:
+    - "lw scaffold <blueprint|template>"
+    - "runbooks (src/runbooks/*.mdx)"
+    - "lw schema gen <lang>"
+    - "lw CLI verbs"
+  fence:
+    rule: "STAMP-CONTACT v RECURRENCE"
+    deterministic_side: "Reach for (or author) a runbook if the task touches a stamped/irreversible surface (schema, infra, release, secrets, git history, scaffold) OR it recurs."
+    self_scaffolding_side: "The model may self-scaffold a one-off harness ONLY if the task is BOTH genuinely one-off AND stamp-free AND sandboxed."
+    decidability: "Stamp-contact is decidable up front (cold). Recurrence is a prediction, so it is handled retroactively by the promote-on-second-occurrence loop, not classified a priori. Because the rule is an OR, a stamp-touching task can never slip to the self-scaffolding side."
+    guards_always_on: true
+  model_tiering:
+    authoring_layer: "constitution / harness authoring (write runbooks, blueprints, lw verbs; self-scaffold a NEW composition)"
+    authoring_tier: "frontier"
+    execution_layer: "execution / the swarm using a vetted harness"
+    execution_tier: "standard"
+    wires_to:
+      - "cron_job.model_override / provider_override"
+      - "harness_configuration_plane.model_tiering"
+  guard_layers:
+    - layer: "L1"
+      ornith_role: "Immutable environment + sanctioned tools only"
+      lightwave_mechanism: "The stamp (src/schemas, read-only at runtime via //go:embed) + the lw CLI surface"
+      fidelity: "real"
+      note: "Verified: zero runtime code under src/schemas; embedded read-only; executor never references it. Mutations only via human PR."
+    - layer: "L2"
+      ornith_role: "Deterministic rule monitor; zero reward for editing verifiers / unsanctioned tools / escape"
+      lightwave_mechanism: "Pre-tool-use hook suite (bash-guard, spawn-gate, reuse-check) + validity/fidelity gate"
+      fidelity: "partial"
+      note: "Action-ban hooks are real and firing (deny trail). BUT the validity/fidelity gate — the closest analog to 'editing verifiers earns zero reward' — runs WARN-only (zero blocks): it measures, it does not veto. Also: checks/*.sh, review_prompt.tpl, and v_*.yaml hard_rules are NOT yet deny-protected (the verifier is editable by the agent)."
+    - layer: "L3"
+      ornith_role: "Frozen LLM-as-judge veto for intent-gaming within allowed tools"
+      lightwave_mechanism: "Pre-push review pipeline v_staff-engineer -> v_cto converge"
+      fidelity: "partial"
+      note: "Judge is real and has fired, but the push-time veto is currently dead (core.hooksPath points at a nonexistent dir; committed phase-3 hook inverts exit codes). Works on manual invocation only until repaired."
+  promotion_loop: "A self-scaffolded harness observed twice in the observability trail is promoted to a runbook candidate (mdx + checks skeleton), graded against a held-out check; a missing primitive is filed as a tool-gap issue (§11). This is the inference-time analog of Ornith's learnable harness — the toolbox is the learnable object."
+  out_of_scope:
+    - "Training / finetuning any model (we grow the toolbox, not the weights)."
+    - "Freeform code-generation self-scaffolding (composition-over-primitives only)."
+    - "Agent-authored permission machinery (the safety-harness is operator-owned; §9)."

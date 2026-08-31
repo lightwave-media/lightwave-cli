@@ -1,0 +1,120 @@
+_meta:
+  version: "1.3.2"
+  schema_id: "lightwave://schemas/data/agile_artifacts/ddd"
+  title: "Detailed Design Document"
+  description: "Story-level technical design. API contracts, data models, sequence diagrams, error handling. Drills below the SAD for a specific user_story. Migrated 2026-05-25 from governance/agile/ddd.yaml (Phase 4 file #8) — Augusta example replaced with v_core."
+  generates:
+    - "pydantic:DDD"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/data/enums/life_domains"
+    # MIGRATION-PENDING: user_story migrates later in Phase 4
+    - "lightwave://schemas/data/agile_artifacts/user_story"
+  table_kind: entity
+  table_name: ddds
+
+status_enum: "document_statuses"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: slug
+  unique: true
+
+required_fields:
+  - name: slug
+    type: str
+    description: "URL-safe unique identifier; lowercase, hyphen-separated"
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+    storage: db
+  - name: name
+    type: str
+    description: "DDD artifact title (short label)"
+    storage: db
+  - name: user_story_ref
+    type: str
+    description: "Slug of parent user_story"
+    storage: db
+    fk_ref: "lightwave://schemas/data/agile_artifacts/user_story"
+    fk_column: slug
+    indexed: true
+  - name: api_contracts
+    type: "list[APIContractRef]"
+    description: "High-level API contracts; full OpenAPI spec lives in api_spec.yaml"
+    storage: db
+    column_type: jsonb
+  - name: data_models
+    type: "list[DataModelRef]"
+    description: "Data model entries; sub-schema: name, fields, relationships"
+    storage: db
+    column_type: jsonb
+  - name: sequence_diagrams
+    type: "list[SequenceRef]"
+    description: "Sequence diagram references; sub-schema: name, path, summary"
+    storage: db
+    column_type: jsonb
+  - name: domain
+    type: str
+    description: "LifeDomain slug; validated against life_domains"
+    storage: db
+  - name: created_at
+    type: datetime
+    description: "ISO 8601 timestamp of record creation; auto-populated"
+    storage: db
+  - name: updated_at
+    type: datetime
+    description: "ISO 8601 timestamp of last modification; auto-updated"
+    storage: db
+
+optional_fields:
+  - name: error_handling
+    type: "list[ErrorScenario]"
+    description: "Error scenarios; sub-schema: trigger, response, recovery"
+    storage: db
+    column_type: jsonb
+  - name: caching_strategy
+    type: str
+    description: "Caching approach (TTL, invalidation, layers)"
+    storage: db
+  - name: migration_steps
+    type: "list[str]"
+    description: "Ordered migration steps for schema/data changes"
+    storage: db
+    column_type: jsonb
+
+relations:
+  parent: user_story
+  parent_fk:
+    column: user_story_ref
+    references: user_stories.slug
+    on_delete: CASCADE
+  children:
+    - api_spec
+    - task
+
+example:
+  slug: "v-core-poll-loop-ddd"
+  name: "v_core poll loop DDD"
+  user_story_ref: "v-core-polls-ready-tasks"
+  api_contracts:
+    - name: "ListReadyTasks"
+      method: "internal-only (direct SQL via sqlx against local SQLite)"
+      input: "operator_active_domains"
+      output: "list[TaskRow]"
+  data_models:
+    - name: "TaskRow"
+      fields: "id, status, user_story_id, epic_id, domain_id, priority, ..."
+      relationships: "user_story → UserStoryRow, epic → EpicRow"
+  sequence_diagrams:
+    - name: "v_core poll cycle"
+      path: "docs/diagrams/v_core-poll.mermaid"
+      summary: "SELECT Ready-candidates → is_ready() filter → dispatch to agent harness"
+  domain: "software-development"
+  created_at: "2026-06-24T12:00:00Z"
+  updated_at: "2026-06-24T12:00:00Z"
+  error_handling:
+    - trigger: "is_ready() returns False after status='next_up'"
+      response: "log warn to observability/dispatch.jsonl, continue to next candidate"
+      recovery: "no auto-revert; status correction is a separate concern"

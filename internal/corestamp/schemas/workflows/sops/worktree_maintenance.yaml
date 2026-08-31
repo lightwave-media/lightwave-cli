@@ -1,0 +1,55 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/worktree_maintenance"
+  title: "Worktree Maintenance SOP — self-healing cleanup"
+  description: >
+    Scheduled SOP that prunes stale worktrees, deletes [gone] branches, and
+    removes expired worktrees (>72h) across all repos in ~/dev/. Saves dirty
+    work before removal. Idempotent — safe to run hourly via cron. Consumed
+    by v_core cron and the release pipeline post-ship phase.
+
+    Companion to worktree_policy.yaml. This SOP is the defense-in-depth layer
+    for sessions that crash without running stop.ts cleanup.
+  depends_on:
+    - "lightwave://schemas/policy/security/worktree_policy"
+
+
+name: "worktree_maintenance"
+id: worktree_maintenance
+title: "Worktree self-healing maintenance"
+version: 1.0.0
+execution_mode: auto
+
+trigger:
+  source: cron
+  schedule: "0 * * * *"
+
+parameters: []
+
+steps:
+  - id: run_mise_maintenance
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        for repo in ~/dev/*/; do
+          [ -d "$repo/.git" ] || continue
+          REPO_NAME="$(basename "$repo")"
+          echo "▶ worktree maintenance: ${REPO_NAME}"
+          mise -C "$repo" run worktree:maintenance 2>&1 || echo "   ⚠️  ${REPO_NAME} maintenance completed with warnings"
+        done
+
+  - id: log_summary
+    tool: memory_store
+    args:
+      namespace: "sessions"
+      key: "worktree-maintenance-$(date +%Y-%m-%dT%H)"
+      value: "Worktree maintenance completed at $(date -u +%FT%TZ)"
+
+  - id: broadcast
+    tool: shell
+    args:
+      command: |
+        if command -v lw >/dev/null 2>&1; then
+          lw broadcast worktree-maintenance-complete || true
+        fi

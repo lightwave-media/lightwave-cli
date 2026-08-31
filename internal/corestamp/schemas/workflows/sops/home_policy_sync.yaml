@@ -1,0 +1,28 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/home_policy_sync"
+  title: "Home policy sync SOP"
+  description: |
+    Stamp→print sync for operator baseline policy (flags registry, …).
+    Automated — operators never hand-copy registry.yaml after core ships.
+  depends_on:
+    - "lightwave://schemas/data/meta/home_baseline"
+
+
+name: "home_policy_sync"
+id: home_policy_sync
+title: "Sync home policy prints"
+version: 1.0.0
+execution_mode: automated
+
+trigger:
+  source: harness
+  event: session_start
+
+steps:
+  - id: sync
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw home sync

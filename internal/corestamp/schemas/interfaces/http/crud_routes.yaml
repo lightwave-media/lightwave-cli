@@ -1,0 +1,84 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/http/crud_routes"
+  title: "CRUD Route Contract"
+  description: |
+    Declares the standard REST route set for entity schemas in the SST.
+    Codegen reads this to determine what HTTP routes to generate for each
+    entity, based on its `relations` (parent, children) and `table_kind`.
+
+    Routes follow the HUMA framework pattern:
+      GET    /{collection}          — list (paginated)
+      POST   /{collection}          — create
+      GET    /{collection}/{id}     — read single
+      PUT    /{collection}/{id}     — update
+      DELETE /{collection}/{id}     — delete
+
+    Nested routes are generated when `relations.parent` is declared:
+      GET    /{parent_collection}/{parent_id}/{collection}  — list by parent
+
+  generates:
+    - "go:HumaRoutes"
+    - "openapi:CRUDRoutes"
+  depends_on: []
+
+required_fields:
+  - name: routes
+    type: "list[RouteDef]"
+    description: "The standard route definitions"
+
+sub_schemas:
+  RouteDef:
+    method: str
+    path: str
+    handler: str
+    authz_action: str
+    description: str
+    nested: bool  # true if path contains {parent_id}
+
+# =============================================================================
+example:
+  routes:
+    - method: GET
+      path: "/{collection}"
+      handler: List
+      authz_action: list
+      description: "List all records, paginated"
+      nested: false
+
+    - method: POST
+      path: "/{collection}"
+      handler: Create
+      authz_action: create
+      description: "Create a new record"
+      nested: false
+
+    - method: GET
+      path: "/{collection}/{id}"
+      handler: Read
+      authz_action: read
+      description: "Read a single record by ID"
+      nested: false
+
+    - method: PUT
+      path: "/{collection}/{id}"
+      handler: Update
+      authz_action: update
+      description: "Update an existing record by ID"
+      nested: false
+
+    - method: DELETE
+      path: "/{collection}/{id}"
+      handler: Delete
+      authz_action: delete
+      description: "Delete a record by ID"
+      nested: false
+
+    - method: GET
+      path: "/{parent_collection}/{parent_id}/{collection}"
+      handler: ListByParent
+      authz_action: list
+      description: "List records nested under a parent"
+      nested: true
+
+status: active

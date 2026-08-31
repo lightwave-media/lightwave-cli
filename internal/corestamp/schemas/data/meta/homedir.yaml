@@ -1,0 +1,715 @@
+_meta:
+  version: "3.8.0"
+  schema_id: "lightwave://schemas/data/meta/homedir"
+  title: "HomeDir Structure"
+  description: |
+    Canonical structure of ~/.lightwave/* — the LightWave Media PRINT filesystem.
+    Defines top-level dirs, recursive sub-structure, kind→dir mapping, ephemeral
+    runtime files, and consolidation paths from external homes. lightwave-core
+    defines the SHAPE; the actual filesystem is the PRINT.
+
+    v3.8.0 (2026-08-14): CORE-0049 — db/ no longer holds SQLite files. The
+    structured query layer moved to Postgres (one schema namespace per domain,
+    rebuilt from the specs/ print), so db/ keeps only __domains.yaml catalog
+    metadata and db/.sync (PowerSync internal state) is removed with PowerSync
+    itself. index/ is marked legacy: still written to, retired on a schedule
+    under EPIC-SYNC-001 rather than deleted by assumption.
+
+    v3.7.0 (2026-08-04): ADD logs/, state/, secrets/, forgejo-runner/
+    DirSpecs — four dirs observed undeclared by R-35: host-side lw-cli
+    automation logs (org-sync.log), per-feature persistent state
+    (gh-notif-fingerprints.json), local credential material for host-side
+    automation, and the Forgejo Actions runner home. secrets/ declares the
+    DIR only — its contents are never enumerated. Zones: logs/ + state/
+    RUNTIME; secrets/ + forgejo-runner/ RETAINED (homedir_zones.yaml v1.5.0
+    lockstep). forbidden_paths is not the right bucket — R-34 requires
+    forbidden paths to NOT exist, while these legitimately exist.
+
+    v3.6.0 (2026-06-27): ADD inbox/ — front door for raw captured artifacts
+    awaiting grooming (ADR-0043 self-scaffolding proof case). Daily lw-inbox-groom
+    scrubs/classifies/routes items (knowledge → brain/knowledge; others staged),
+    archiving processed raw to inbox/_archive/. Analogous to harvest/; RUNTIME
+    zone (wipe-safe — durable copies land in brain/knowledge + sources/).
+
+    v3.5.0 (2026-06-24): ADD db/ — local SQLite databases per knowledge domain.
+    Seven domain files (scrum.db, specs.db, agents.db, git.db, observability.db,
+    knowledge.db, config.db) with PowerSync replication to cloud PostgreSQL.
+    Declared in brain_structure.yaml; homedir provides the filesystem anchor.
+
+    v3.3.0 (2026-06-23): ADD forgejo/, docs/, bin/, records/, verify/, workspace/
+    governance/, harvest/, scratch/, reports/ DirSpecs — closes 10 undocumented
+    directories. Every directory in ~/.lightwave/ now has a declared DirSpec with
+    write_authority, purpose, and zone classification. This enables one-command
+    recovery: lw home init can faithfully reproduce the entire directory tree.
+
+    v3.2.1 (2026-06-19): de-inline the zone map from notes → companion homedir_zones.yaml (single source of truth).
+    v3.2 (2026-06-18): ADD worktrees/, artefacts/, archive/; config/workspace.yaml print.
+    v3.1 (2026-05-28): ADD skills/ + sops/ (Anthropic SKILL.md vs daemon SOPs); REMOVE v_core/sops/. R-21.
+
+    v3.0 BREAKING (2026-05-27): REMOVE `bundles/` top-level dir (with its tools/,
+    prompts/, contexts/ nested sub-dirs). Major bump because a top-level
+    canonical-layout dir is being removed — any code that hardcoded
+    ~/.lightwave/bundles/* breaks. EXTEND `observability/` with a new
+    `sessions/<session_id>/` nested DirSpec for per-session debug tees
+    (system_prompt.md, tool_list.json, user_prompt.md, spawn-metadata.json).
+    Per ADR-0004 (Persona prompt + tool composition is a pure function; no
+    persistent bundle files) — per-role tool lists and system prompts are now
+    composed in-memory at every agent-session spawn via the compose_* function
+    family (compose_tool_list, compose_system_prompt, compose_user_prompt,
+    compose_persona_bundle). The PROD audit tee replaces the prior per-session
+    audit role: written once per session, never read by another session, safe
+    to garbage-collect on a retention policy.
+
+    v2.3 (2026-05-26): ADD `sources/` top-level dir — external upstream material
+    LightWave references but doesn't author (canonical standards, articles,
+    transcripts, books). Closes the gap document-policy.md line 19 mentioned
+    but homedir didn't declare. First inhabitant: ~/.lightwave/sources/standards/
+    swebok-v4.pdf (the IEEE/ISO TR 19759 reference for Phase 5(c) SWEBOK
+    alignment in lightwave-core/docs/references/).
+
+    v2.2 (2026-05-26): Migrated to src/schemas/data/meta/ per R-14 kind-family
+    taxonomy. Legacy lightwave/schema/definitions/data/homedir.yaml carries
+    `_meta.superseded_by` pointing here; will purge after the production loaders
+    cut over.
+
+    v2.1 (2026-05-25): `config/enums/` REMOVED. Enum values now live in stamp
+    alongside their shape per revised R-15 (codegen consumers bake values into
+    types directly). The print-location split for enums was over-engineering.
+
+    v2.0 BREAKING — deprecates `accepts_subdirs` (flat string list) in favor of
+    `nested_dirs` (recursive DirSpec). Every sub-folder MUST have its own DirSpec
+    with documented `purpose:`. Prevents reactive sub-folder additions. R-16
+    enforces this structurally: no flat accepts_subdirs allowed.
+  generates:
+    - "pydantic:HomeDirStructure"
+  depends_on: []
+
+required_fields:
+  - name: root_path
+    type: str
+    description: "Filesystem root path, conventionally '~/.lightwave'. Tilde-expansion is the consumer's responsibility."
+  - name: dirs
+    type: "list[DirSpec]"
+    description: "Top-level directories under root_path. See DirSpec sub-schema for field shape."
+  - name: kind_to_dir_map
+    type: "dict[str, str]"
+    description: "Mapping from artifact-kind slug to canonical dir path (relative to root_path). Single source of truth for 'where does kind X live'. Consulted by lw cli and agent harnesses before any read/write."
+
+optional_fields:
+  - name: forbidden_paths
+    type: "list[str]"
+    description: "Paths under root_path that MUST NOT be written by any consumer (e.g., reserved for future use, or operator-only manual files)."
+  - name: notes
+    type: str
+    description: "Free-form prose: deprecations, migration notes, runtime model documentation, gotchas."
+
+# =============================================================================
+# Sub-schema DirSpec (recursive — referenced by required_fields.dirs above
+# and by DirSpec.nested_dirs for recursive structure)
+# =============================================================================
+# Required:
+#   - path                   (str)         relative to parent (root_path for top-level)
+#   - purpose                (str)         WHY this dir exists. Must justify presence,
+#                                          not just describe contents. Used to prevent
+#                                          reactive sub-folder additions (per R-16).
+#   - write_authority        (enum)        stamp_tool | operator | lightwave-sys | lw-cli | agent
+#   - read_consumers         (list[str])   consumer names that read from this dir
+# Optional:
+#   - accepts_kinds          (list[str])   artifact-kind slugs that may be written here
+#                                          (used by specs/-style dirs where sub-folders
+#                                          ARE the kinds, enumerated via kind_to_dir_map)
+#   - nested_dirs            (list[DirSpec])  RECURSIVE structure. Each sub-folder is a
+#                                          full DirSpec with its own purpose. Use this
+#                                          to declare any sub-folder structure.
+#   - accepts_files          (list[str])   known sibling files allowed in this dir
+#                                          (e.g., 'ipc.sock', '.pid'). Glob patterns OK.
+#   - legacy_external_paths  (list[str])   paths OUTSIDE root_path that fold INTO this
+#                                          dir during migration (e.g., '~/.brain')
+#   - migration_status       (enum)        current | migration_pending | future_only
+#
+# REMOVED in v2.0:
+#   - accepts_subdirs        (was: list[str] flat allow-list) — replaced by nested_dirs.
+#                            Flat sub-folder declarations made it too easy to add
+#                            sub-folders reactively without documenting purpose.
+#                            R-16 enforces: no flat accepts_subdirs in any DirSpec.
+# =============================================================================
+
+example:
+  root_path: "~/.lightwave"
+  dirs:
+    - path: "specs"
+      purpose: |
+        Holds filled R-P-I-V-R artifacts and reference documents — the operator's
+        actual specs, not the stamp shapes. Singular home for everything authored
+        via grill-me-to-spec or written by hand. Sub-folder structure enumerated
+        via accepts_kinds + kind_to_dir_map (not nested_dirs) because sub-folders
+        ARE the artifact kinds — adding a sub-folder = adding a kind, which is
+        governed elsewhere (R-2 registry completeness).
+      accepts_kinds:
+        - product_vision
+        - market_analysis
+        - prd
+        - sad
+        - nfr
+        - ddd
+        - api_spec
+        - epic
+        - sprint
+        - user_story
+        - task
+        - implementation_plan
+        - domain_charter
+        - adr
+        - glossary
+        - architectural_fit
+        - agent_handoff
+      write_authority: lw-cli
+      read_consumers: [lightwave-sys, agent-harness, lw-cli, grill-me-to-spec]
+      migration_status: current
+    - path: "config"
+      purpose: |
+        Per-machine operator config. Each sub-folder is a kind family of per-instance
+        config files (one file per registered thing of that kind). Distinct from
+        v_core/ (which holds the orchestrator's runtime state, not operator-edited
+        config) and brain/ (knowledge, not config). Sub-folders declared explicitly
+        via nested_dirs — adding a new config kind requires a new DirSpec here,
+        not a string in a flat list.
+      write_authority: operator
+      read_consumers: [lightwave-sys, agent-harness, claude-code, pi, zeroclaw]
+      migration_status: current
+      nested_dirs:
+        - path: "agents"
+          purpose: |
+            Per-agent v_* role config files (one file per role: v_core.yaml,
+            v_dev.yaml, etc.). Stamp ships role definitions at lightwave-core/
+            schemas/governance/...; print holds operator's local instances + overrides.
+          write_authority: operator
+          read_consumers: [lightwave-sys, agent-harness]
+        - path: "contracts"
+          purpose: |
+            Per-contract validity-gate YAMLs. Operator-authored fidelity contracts
+            that govern Write/Edit scoring per CLAUDE.md §6. Switched via
+            ~/.lightwave/config/contracts/active symlink.
+          write_authority: operator
+          read_consumers: [claude-code-hooks, pi-extensions, validity-runtime]
+        - path: "principles"
+          purpose: |
+            Per-principle YAML files declaring engineering principles
+            (e.g., engineering.yaml from CLAUDE.md). Stamp ships the shape;
+            print holds operator's selected/customized principles per persona fleet.
+          write_authority: operator
+          read_consumers: [agent-harness, claude-code]
+        - path: "hooks"
+          purpose: |
+            Hook SOURCE files (executable). Per the locked decision: hook SHAPE in
+            stamp at lightwave-core/schemas/interfaces/hooks/; hook SOURCE here in
+            print. Per-hook sub-files: pre-commit, pre-tool-use, etc.
+          write_authority: operator
+          read_consumers: [git-hooks-runtime, claude-code-hooks, pi-extensions]
+      accepts_files: ["workspace.yaml"]
+    - path: "index"
+      purpose: |
+        Legacy local SQLite mirror of the spec print, populated by
+        `lw spec import` per ADR-0002. Superseded by the Postgres store
+        (CORE-0049) and retired on a schedule under EPIC-SYNC-001 — it is
+        still written to, so it is not deleted by assumption.
+        Queryable layer for agents that need fast lookup of artifacts without
+        round-tripping through cloud or parsing markdown.
+      accepts_files: ["lightwave.db", "lightwave.db-wal", "lightwave.db-shm"]
+      write_authority: lightwave-sys
+      read_consumers: [lightwave-sys, lw-cli]
+      migration_status: current
+    - path: "lib"
+      purpose: |
+        Shared runtime library code used by multiple tool surfaces (Claude Code
+        hooks, Pi extensions, git hooks, lw cli). Lives in print because it's
+        OPERATOR-INSTALLED (vs. lightwave-core which is the stamp). One sub-folder
+        per library by domain. Distinct from per-tool installation dirs (those
+        live in their respective tool's home like ~/.claude/hooks/).
+      write_authority: operator
+      read_consumers: [claude-code, pi, agent-harness, git-hooks]
+      migration_status: current
+      nested_dirs:
+        - path: "validity"
+          purpose: |
+            Validity-gate library code (TypeScript). Shared by Claude Code hooks
+            (~/.claude/hooks/pre-tool-use-fidelity.ts) and Pi extensions
+            (~/.pi/agent/extensions/fidelity-gate.ts) to score Write/Edit against
+            the active contract per CLAUDE.md §6 doctrine.
+          write_authority: operator
+          read_consumers: [claude-code-hooks, pi-extensions]
+        - path: "doc"
+          purpose: |
+            Document-validation library code. Used by pre-commit hooks to
+            validate docs against shape rules (path allowlist, filename suffix,
+            frontmatter schema, body line cap).
+          write_authority: operator
+          read_consumers: [git-hooks, lw-cli]
+        - path: "commit"
+          purpose: |
+            Commit-message validation library code. Used by commit-msg hook to
+            validate against Conventional Commits (11 allowed types).
+          write_authority: operator
+          read_consumers: [git-hooks]
+        - path: "branch"
+          purpose: |
+            Branch-name validation library code. Used by pre-push hooks to
+            enforce branch naming conventions.
+          write_authority: operator
+          read_consumers: [git-hooks]
+    - path: "observability"
+      purpose: |
+        Append-only jsonl event streams from runtime tools. ONE home for all ops
+        events (dispatch, validity, sessions, cron, ...) — not fragmented across
+        v_core/dispatch-log/ or other per-subsystem dirs. Operator-readable for
+        audit; consumed by lw cli reporting verbs. Nested `sessions/<session_id>/`
+        sub-dirs hold per-session debug tees of composed context (written once
+        per session, never read by another session).
+      accepts_files:
+        [
+          validity.jsonl,
+          dispatch.jsonl,
+          session-events.jsonl,
+          cron.jsonl,
+          operator-cli.jsonl,
+          release-qa.jsonl,
+        ]
+      write_authority: lightwave-sys
+      read_consumers: [lw-cli, operator]
+      migration_status: current
+      nested_dirs:
+        - path: "sessions"
+          purpose: |
+            Per-session debug tees of composed context. Each session gets its
+            own sub-dir named by session_id (e.g. sessions/abcd1234/) containing
+            four files written once at spawn and never re-read by another
+            session: system_prompt.md, tool_list.json, user_prompt.md,
+            spawn-metadata.json. Audit-only — safe to garbage-collect on a
+            retention policy. The session_id sub-dirs are dynamic (one per
+            spawn); the file shape inside each is fixed. accepts_files is
+            therefore documented in this purpose prose rather than declared
+            on the sessions/ DirSpec itself (which would misleadingly suggest
+            the files live directly in sessions/ rather than one level deeper).
+          write_authority: lightwave-sys
+          read_consumers: [operator, lw-cli]
+          migration_status: current
+    - path: "brain"
+      purpose: |
+        Operator knowledge layer — raw research notes, memos, ADR drafts,
+        lessons-learned, archived plans, audit outputs, research outputs
+        (pre-formalization). Distinct from specs/ (formalized R-P-I-V-R artifacts)
+        because brain holds RAW knowledge before promotion. Absorbs ~/.brain/*
+        per the consolidation Epic.
+      write_authority: operator
+      read_consumers: [agent-harness, brain-query-tool, lw-cli]
+      legacy_external_paths: ["~/.brain"]
+      migration_status: migration_pending
+      nested_dirs:
+        - path: "memory"
+          purpose: "Long-form operator memory — plans archive, audits, research outputs, feedback, lessons"
+          write_authority: operator
+          read_consumers: [agent-harness, brain-query-tool, recall-plans-skill]
+          nested_dirs:
+            - path: "plans-archive"
+              purpose: "Archived Claude execution plans (YAML digests + markdown originals)"
+              write_authority: operator
+              read_consumers: [recall-plans-skill, brain-query-tool]
+            - path: "audits"
+              purpose: "Drift audits, alignment audits, brain-truth audits"
+              write_authority: lw-cli
+              read_consumers: [operator, agent-harness]
+            - path: "research-out"
+              purpose: "Outputs from /local-research and similar synthesizers"
+              write_authority: lw-cli
+              read_consumers: [operator, agent-harness]
+            - path: "feedback"
+              purpose: "Per-session lessons and doctrine drafts (raw, pre-promotion to schemas)"
+              write_authority: operator
+              read_consumers: [agent-harness]
+            - path: "lessons"
+              purpose: "Crystallized lessons-learned ready for promotion to ADRs / strategy docs"
+              write_authority: operator
+              read_consumers: [agent-harness, brain-query-tool]
+        - path: "cortex"
+          purpose: "Agent context layers — per-role inputs consumed by v_core's compose_* functions at session spawn"
+          write_authority: operator
+          read_consumers: [agent-harness, lightwave-sys]
+        - path: "notes"
+          purpose: "Ad-hoc operator notes (working scratch space)"
+          write_authority: operator
+          read_consumers: [operator]
+        - path: "tool-feedback"
+          purpose: "Per-tool feedback channel (lw, agent harness, hooks). Sibling-distinct from memory/feedback (per-session lessons) so write paths are unambiguous at tool invocation time."
+          write_authority: operator
+          read_consumers: [agent-harness]
+    - path: "db"
+      purpose: |
+        Domain catalog metadata only. Since CORE-0049 the structured query
+        layer is Postgres — one schema namespace per domain, rebuilt from the
+        file print at specs/ — so NO .db files live here. Domains are declared
+        in brain_structure.yaml and enumerated in __domains.yaml.
+        Distinct from index/ (legacy spec mirror) and v_core/memory/ (daemon KV).
+      accepts_files: ["__domains.yaml"]
+      write_authority: lw-cli
+      read_consumers: [agent-harness, lw-cli, lightwave-sys]
+      migration_status: current
+    - path: "reports"
+      purpose: |
+        Generated audit / validity / drift / spend reports. Output of lw cli
+        report verbs (lw report drift, lw report validity, etc.). Distinct from
+        observability/ (raw event streams) because reports are SYNTHESIZED
+        artifacts; observability is the source they're synthesized from.
+      write_authority: lw-cli
+      read_consumers: [operator, agent-harness]
+      migration_status: current
+    - path: "sources"
+      purpose: |
+        External upstream material LightWave references but doesn't author —
+        canonical standards (SWEBOK, ISO, RFC, W3C), articles, transcripts,
+        books. Read-only from the LightWave system's POV; immutable.
+        Distinct from specs/ (operator-authored R-P-I-V-R) and brain/ (operator
+        knowledge synthesis) because sources/ is *upstream of print*: the LLM
+        Wiki at docs/ may ingest sources/ to produce synthesis pages, but
+        sources/ itself is not LightWave-authored. Adds a fourth quadrant
+        alongside stamp/code/print: external reference material.
+
+        Locked 2026-05-26 (v2.3.0). Document-policy.md line 19 referenced
+        sources/ since 2026-05-23 but homedir hadn't declared it; this closes
+        the gap. First inhabitant: standards/swebok-v4.pdf for the
+        lightwave-core Phase 5(c) SWEBOK alignment work.
+      write_authority: operator
+      read_consumers: [agent-harness, llm-wiki-ingest, brain-query-tool]
+      migration_status: current
+      nested_dirs:
+        - path: "standards"
+          purpose: |
+            Canonical standards documents — IEEE, ISO, RFC, W3C, ASTM, etc.
+            Immutable from LightWave's POV (we cite, don't edit). Filed by
+            standard organization + slug (e.g. ieee-iso-19759-swebok-v4.pdf
+            or, less formally, swebok-v4.pdf).
+          write_authority: operator
+          read_consumers: [agent-harness, llm-wiki-ingest]
+        - path: "articles"
+          purpose: |
+            Web articles, blog posts, op-eds clipped via Obsidian Web Clipper
+            or similar. Markdown + assets. Ephemeral relative to standards/
+            but durable enough to feed the LLM Wiki ingest flow.
+          write_authority: operator
+          read_consumers: [agent-harness, llm-wiki-ingest]
+        - path: "transcripts"
+          purpose: |
+            Conversation transcripts, podcast/video captions, meeting notes
+            from external sources. Source-of-truth for synthesis the LLM Wiki
+            produces.
+          write_authority: operator
+          read_consumers: [agent-harness, llm-wiki-ingest]
+        - path: "books"
+          purpose: |
+            Long-form books, papers, theses. PDFs or markdown. Same role as
+            standards/ but for less-formalized canonical material (e.g. SICP,
+            DDD by Eric Evans).
+          write_authority: operator
+          read_consumers: [agent-harness, llm-wiki-ingest]
+    - path: "skills"
+      purpose: |
+        Chat-invocable knowledge bundles in Anthropic SKILL.md directory
+        format. One sub-folder per skill (SKILL.md + optional scripts/,
+        references/, assets/, agents/, evals/). Loaded into LLM context
+        at session spawn when the persona's `skills:` field permits AND
+        the description triggers. DISTINCT from sops/ (daemon-executed
+        automation; not LLM-loaded). Consumers reach this via symlink
+        (Claude Code, Cursor) or direct read (v_core, Pi). Format + agent
+        round-trip enforced by R-21. Migration_status is `current`
+        (canonical-target semantic — schema declares this is where skills
+        live; the dir is created/populated by operator-side migration).
+      write_authority: operator
+      read_consumers: [claude-code, v_core, pi, cursor, agent-harness]
+      migration_status: current
+    - path: "sops"
+      purpose: |
+        Operator-authored runtime SOPs executed programmatically by v_core
+        daemon — cron jobs, audit pipelines, rollback runners, automated
+        flows. NOT loaded into LLM context (that's skills/). Flat
+        single-file YAML per SOP with `_meta.type: sop`; shape validated
+        against lightwave-core/schemas/workflows/sops/ at load time.
+        Replaces legacy `~/.lightwave/v_core/sops/` (removed in v3.1) and
+        absorbs the flat-YAML "skills" previously at brain/skills/ +
+        config/skills/ (never schema-declared; v3.1 closes that gap).
+        Migration_status is `current` (canonical-target — operator-side
+        migration creates + populates the dir).
+      write_authority: operator
+      read_consumers: [v_core, lw-cli]
+      migration_status: current
+    - path: "artefacts"
+      purpose: "Task build artefacts; archived to archive/ by task_done."
+      write_authority: lightwave-sys
+      read_consumers: [lw-cli, v_core]
+      migration_status: current
+    - path: "archive"
+      purpose: "Monthly task artefact tarballs (YYYY-MM/<task_id>.tar.gz)."
+      write_authority: lw-cli
+      read_consumers: [operator, lw-cli]
+      migration_status: current
+    - path: "v_core"
+      purpose: |
+        Resident orchestrator runtime state — the always-on daemon's home.
+        Absorbs ~/.zeroclaw/* after the zeroclaw→lightwave-v_core rename per the
+        consolidation Epic. Holds executable SOPs, plugins, channel adapters,
+        LLM provider config, cron schedule, KV memory, in-flight sessions, and
+        ephemeral runtime files (sockets, PID). Distinct from config/ (operator
+        config) because v_core/ is the orchestrator's OWNED state — operator
+        edits it via lw cli verbs, not by hand.
+      write_authority: lightwave-sys
+      read_consumers: [lightwave-sys, lw-cli, operator]
+      legacy_external_paths: ["~/.zeroclaw"]
+      migration_status: migration_pending
+      nested_dirs:
+        - path: "plugins"
+          purpose: "Runtime plugins (WASM or native). One sub-folder per registered plugin with manifest.yaml + binary/module."
+          write_authority: operator
+          read_consumers: [lightwave-sys]
+        - path: "channels"
+          purpose: "Channel adapter configs (Slack, Telegram, HTTP gateway, MCP server). One sub-folder per channel."
+          write_authority: operator
+          read_consumers: [lightwave-sys]
+        - path: "providers"
+          purpose: "LLM provider configs (OpenRouter, Anthropic, etc.). One sub-folder per provider; tokens fetched from AWS SSM at startup, NEVER persisted here."
+          write_authority: operator
+          read_consumers: [lightwave-sys]
+        - path: "cron"
+          purpose: "Scheduled-jobs configuration. v_core's cron scheduler owns history (writes to observability/cron.jsonl)."
+          write_authority: operator
+          read_consumers: [lightwave-sys]
+        - path: "memory"
+          purpose: "v_core's KV memory store (SQLite-backed)"
+          write_authority: lightwave-sys
+          read_consumers: [lightwave-sys, lw-cli]
+          accepts_files: ["memory.db", "memory.db-wal", "memory.db-shm"]
+        - path: "sessions"
+          purpose: "In-flight agent session state — one file per session (named by session_id). Cleaned up on session terminate."
+          write_authority: lightwave-sys
+          read_consumers: [lightwave-sys, lw-cli]
+        - path: "run"
+          purpose: "Ephemeral runtime files — Unix domain socket, PID file, lock files. Created at daemon start, removed at clean shutdown. Not durable state."
+          write_authority: lightwave-sys
+          read_consumers: [lightwave-sys, lw-cli]
+          accepts_files: ["ipc.sock", "v_core.pid", "*.lock"]
+    - path: "forgejo"
+      purpose: |
+        Local Forgejo instance data — git repositories, issues, discussions,
+        attachments, and configuration for the self-hosted code forge at
+        localhost:3600. This is the persistent backing store for the
+        discussion-first policy (bugs start as discussions before promotion
+        to issues).
+      write_authority: lw-cli
+      read_consumers: [forgejo, agent-harness, lw-cli]
+      migration_status: current
+    - path: "docs"
+      purpose: |
+        LLM-maintained operator wiki — ingestible knowledge pages written
+        and updated by agent personas during research/discovery phases.
+        Distinct from brain/ (operator-authored synthesis) and sources/
+        (third-party material). Populated by lw doc write.
+      write_authority: lw-cli
+      read_consumers: [agent-harness, lw-cli, claude-code, pi]
+      migration_status: current
+    - path: "reports"
+      purpose: |
+        Generated reports — CI summaries, sprint retrospectives, quality
+        scores, token budget variance analyses. Generated by lw report
+        verbs; regenerable from database on reset.
+      write_authority: lw-cli
+      read_consumers: [operator, lw-cli, agent-harness]
+      migration_status: current
+    - path: "reviews"
+      purpose: |
+        Saved code review reports from the pre-push review pipeline.
+        Each review is saved as <date>-<branch>.md for re-reading
+        without re-running expensive LLM calls. Accumulates over time;
+        prune periodically.
+      write_authority: lw-cli
+      read_consumers: [operator, lw-cli, agent-harness]
+      migration_status: migration_pending
+    - path: "records"
+      purpose: |
+        Persistent audit records — agent action logs, session transcripts,
+        decision records. Immutable append-only store. Survives reset.
+      write_authority: lightwave-sys
+      read_consumers: [operator, lw-cli, agent-harness]
+      migration_status: current
+    - path: "verify"
+      purpose: |
+        Verification outputs — ponytail audit reports, QA test result
+        summaries, v_cto sign-off records. Generated by the review
+        phase Q-suite; consumed by the release-train pipeline.
+      write_authority: lw-cli
+      read_consumers: [agent-harness, lw-cli, operator]
+      migration_status: current
+    - path: "workspace"
+      purpose: |
+        Workspace-level configuration — settings that apply across all
+        ~/dev/ repos. ~/dev/*/CLAUDE.md pointers, shared tool configs,
+        environment profiles. Operator-authored; survives reset.
+      write_authority: operator
+      read_consumers: [agent-harness, claude-code, pi, zeroclaw]
+      migration_status: current
+    - path: "governance"
+      purpose: |
+        Governance documents — naming conventions, compliance policies,
+        audit procedures. Operator-authored policy layer above the SST.
+      write_authority: operator
+      read_consumers: [agent-harness, lw-cli, operator]
+      migration_status: current
+    - path: "harvest"
+      purpose: |
+        Harvested external data — crawled web content, API scrapes,
+        ingested third-party data awaiting processing into brain/.
+      write_authority: lw-cli
+      read_consumers: [agent-harness, lw-cli]
+      migration_status: current
+    - path: "inbox"
+      purpose: |
+        Front door for raw captured artifacts (YouTube transcripts, notes,
+        links, ideas) awaiting grooming. The daily lw-inbox-groom routine
+        scrubs, classifies, and routes each item into the system (knowledge →
+        brain/knowledge as a knowledge_source; engineering/content/task staged
+        to _staged/), then archives the processed raw to _archive/YYYY-MM-DD/.
+        Analogous to harvest/ (third-party data awaiting processing) but
+        operator/agent drop-driven. Per ADR-0043 (self-scaffolding via
+        deterministic primitives); the groom harness composes lw primitives and
+        runs at the cheap model tier.
+      write_authority: operator
+      read_consumers: [inbox-groomer, agent-harness, lw-cli]
+      migration_status: current
+      nested_dirs:
+        - path: "_archive"
+          purpose: "Processed raw items, bucketed by date (YYYY-MM-DD). Durable copies live in brain/knowledge or sources/; this is the inbox's own audit record."
+          write_authority: lw-cli
+          read_consumers: [operator, agent-harness]
+        - path: "_staged"
+          purpose: "Items classified engineering/content/task awaiting promotion (auto-PR to repo spec/ is DEFERRED until guard repairs land — ADR-0043, lightwave-core#368/#369). One sub-dir per kind."
+          write_authority: lw-cli
+          read_consumers: [agent-harness, operator]
+    - path: "scratch"
+      purpose: |
+        Operator scratch space — temporary files, work-in-progress,
+        manual notes. Not consumed by any agent or tool. May be
+        garbage-collected periodically.
+      write_authority: operator
+      read_consumers: [operator]
+      migration_status: current
+    - path: "bin"
+      purpose: |
+        Operator utility scripts — shell scripts, Python helpers,
+        agent dispatch wrappers. In $PATH for the operator session.
+      write_authority: operator
+      read_consumers: [operator]
+      migration_status: current
+    - path: "logs"
+      purpose: |
+        Top-level log sink for host-side lw-cli automation that is not
+        session-scoped observability (e.g. org-sync.log from the scheduled
+        org sync). Rotated or wiped freely; anything durable graduates to
+        observability/ channels or archive/.
+      write_authority: lw-cli
+      read_consumers: [operator, agent-harness]
+      migration_status: current
+    - path: "state"
+      purpose: |
+        Small persistent state files for host-side tooling that must survive
+        between runs but are not operator-authored config (e.g.
+        gh-notif-fingerprints.json — dedup state for the gh_notif feedback
+        loop). One file per feature.
+      write_authority: lw-cli
+      read_consumers: [lw-cli, agent-harness]
+      migration_status: current
+    - path: "secrets"
+      purpose: |
+        Local credential material for host-side automation (e.g. the
+        org-sync credential). This DirSpec declares the DIRECTORY only —
+        contents are never enumerated in the SST, never read by agents, and
+        never leave the machine. Runtime keys for services stay in AWS SSM;
+        this dir holds only what host cron needs at rest.
+      write_authority: operator
+      read_consumers: [lw-cli]
+      migration_status: current
+    - path: "forgejo-runner"
+      purpose: |
+        Forgejo Actions runner home — registration config.yml plus runner
+        stdout/stderr logs for the local CI runner. Third-party-shaped
+        content; wiping deregisters the runner, so it is RETAINED, not
+        RUNTIME.
+      write_authority: operator
+      read_consumers: [operator]
+      migration_status: current
+  kind_to_dir_map:
+    product_vision: "specs/product_vision"
+    market_analysis: "specs/market_analysis"
+    prd: "specs/prd"
+    sad: "specs/sad"
+    nfr: "specs/nfr"
+    ddd: "specs/ddd"
+    api_spec: "specs/api_spec"
+    epic: "specs/epic"
+    sprint: "specs/sprint"
+    user_story: "specs/user_story"
+    task: "specs/task"
+    implementation_plan: "specs/implementation_plan"
+    domain_charter: "specs/domain"
+    adr: "specs/adr"
+    glossary: "specs/glossary"
+    architectural_fit: "specs/architectural_fit"
+    agent_handoff: "specs/handoff"
+  forbidden_paths:
+    - ".cache"
+    - ".tmp"
+    - ".worktrees"
+    - "worktrees"
+    - "_assets"
+    - "_backup-*"
+    - "_detached"
+    - ".tasks"
+  notes: |
+    See _meta.description for v2.0/v2.1/v2.2/v2.3/v3.2/v3.3 changelog. Authoring discipline:
+
+    - Worktrees are NOT a ~/.lightwave/ dir. Per the locked policy
+      src/schemas/policy/security/worktree_policy.yaml, worktrees are repo-scoped
+      at {repo-root}/.worktrees/{YYYY-MM-DD}-{ticket-slug}/. homedir.yaml does not
+      declare them; homedir_zones.yaml does not classify them. The v3.2.0
+      declaration was a contradiction with worktree_policy.yaml and is removed in v3.4.0.
+
+    - Adding a new top-level dir requires a major-or-minor version bump
+      depending on breakage (v2.3.0 added sources/ — additive, MINOR;
+      v3.1.0 added skills/ + sops/ — additive, MINOR;
+      v3.2.0 added artefacts/, archive/ — additive, MINOR;
+      v3.3.0 added forgejo/, docs/, reports/, records/, verify/, workspace/,
+      governance/, harvest/, scratch/, bin/ — additive, MINOR -> full 28-dir
+      HomeDir declared) + rationale.
+      Zone classification (which top-level dirs are wipe-on-reset) is the
+      companion schema data/meta/homedir_zones.yaml — single source of truth
+      for hygiene/reset tooling; do not re-inline the dir→zone map here.
+
+    - Ephemeral root files (state.json, baseline.lock, index.md, contract)
+      are runtime artifacts owned by their respective writers — not declared
+      as top-level dirs because they are files, not directories.
+    - Adding a sub-folder under an existing top-level requires (1) a full
+      DirSpec in that top-level's nested_dirs with documented purpose,
+      (2) a minor version bump. R-16 enforces (1) structurally.
+    - Adding a new artifact kind requires (1) registering its schema in
+      lightwave-core, (2) adding its slug to accepts_kinds of the appropriate
+      dir, and (3) adding its kind_to_dir_map entry.
+
+    Consolidation: ~/.brain/* → brain/, ~/.zeroclaw/* → v_core/ per Epic
+    `zeroclaw-brain-consolidation` at ~/.lightwave/specs/epic/. migration_status
+    flips to `current` once the Epic's M4 (sunset legacy paths) completes.
+
+    sources/ vs brain/: sources/ holds material *we did not author*
+    (canonical standards, articles, transcripts, books from third parties).
+    brain/ holds *operator knowledge that synthesizes from sources/ and
+    elsewhere* (lessons-learned, audits, research outputs). The LLM Wiki
+    at docs/ may ingest sources/ to produce brain/research-out/ pages.
+
+    Recovery: lw home init reads this schema to faithfully recreate the
+    directory tree after a context flush. AUTHORED dirs are created empty
+    (content from database/backup). GENERATED dirs are populated from database.
+    RUNTIME dirs are created empty (daemon fills them). See runbooks/recover-homedir.

@@ -1,0 +1,43 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/note"
+  title: "Note"
+  description: |
+    A note attached to a Doc — a comment, revision remark, or annotation on a
+    production document (ER: DOC ||--o{ NOTE). Generates CineNote to avoid colliding
+    with the generic Note symbol downstream.
+  generates:
+    - "go:CineNote"
+    - "typescript:CineNote"
+    - "zig:CineNote"
+    - "json_schema:note"
+  depends_on:
+    - "lightwave://schemas/data/cineos/doc"
+
+required_fields:
+  - name: doc_ref
+    type: str
+    description: "Slug/id of the parent Doc"
+  - name: body
+    type: str
+    description: "Note body text content"
+
+optional_fields:
+  - name: author_ref
+    type: str
+    description: "User identifier of the note's author"
+  - name: pinned
+    type: bool
+    description: "True if the note is pinned to the top of the doc"
+  - name: created_at
+    type: str
+    description: "ISO-8601 timestamp the note was created"
+
+relations:
+  parent: doc
+  children: []
+
+example:
+  doc_ref: "day-12-call-sheet"
+  body: "Sunrise 06:14 — first shot must be the exterior before the light turns."
+  pinned: true

@@ -1,0 +1,173 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/validity/spawn_gate"
+  title: "Agent Spawn Gate (preparation-gated fan-out)"
+  description: |
+    Validity gate for in-session agent fan-out. Gates the Agent/Task spawn tool
+    on preparation proportional to the task — "preparation IS the permission."
+
+    Sibling to heartbeat_budget: that schema caps delegation for HEARTBEAT tasks
+    (max_delegation_depth, no_recursive_strategic_delegation). spawn_gate declares
+    the per-SESSION preconditions any interactive/general session must meet before
+    spawning subagents or background agents. The two compose — heartbeat tasks are
+    additionally bound by heartbeat_budget's depth caps.
+
+    PRINT: realized host-side by the Claude Code PreToolUse hook
+    `~/.claude/hooks/pre-tool-use-spawn-gate.ts` (matcher `Task|Agent`), with
+    doctrine at
+    `~/.lightwave/brain/memory/feedback/2026-06-16-spawn-gate-brake-doctrine.yaml`
+    and operator reference `~/.claude/hooks/README.md`. This YAML is the SST stamp
+    of that print's contract.
+
+    Deny-only by design: the harness HARD-BLOCKS an agent from authoring a hook
+    that auto-allows its own tool calls (Auto-Mode Bypass) — user intent cannot
+    clear it, so an agent cannot be talked into removing its own guardrails. The
+    gate therefore only DENIES or stays silent (pass-through); it never emits
+    `permissionDecision: allow`. The frictionless `permissions.allow` "Agent" rule
+    AND the settings.json matcher registration are the operator's hand, not an
+    agent's. A hook `deny` overrides a matching allow-rule, so the gate still wins
+    on the spawns that matter. It fails OPEN on bug/no-session (a brake must not
+    break legitimate delegation) and logs every decision to the observability path.
+  generates:
+    - "pydantic:SpawnGateContract"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/policy/validity/heartbeat_budget"
+    - "lightwave://schemas/interfaces/agent_tools/tool_filter_groups"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default')."
+  - name: matcher
+    type: str
+    description: |
+      PreToolUse matcher selecting the spawn tool. Default 'Task|Agent'. The hook
+      additionally re-checks the tool name internally (^(Task|Agent)$) so a broad
+      matcher cannot gate unrelated tools.
+  - name: preconditions
+    type: "list[SpawnPreconditionRef]"
+    description: |
+      ALL must hold for a spawn to NOT be denied. Sub-schema SpawnPrecondition:
+        name (str, slug),
+        rule (str, plain-language statement),
+        source (enum: validity_contract | interrupt_log | plan_artifact | counter
+          — where the hook reads the signal),
+        check (str, the audit-log `check` value emitted on a deny — e.g.
+          'contract' | 'interrupts' | 'plan' | 'cap'),
+        deny_reason (str, actionable message returned as
+          permissionDecisionReason so the model can self-correct).
+  - name: spawn_cap
+    type: "SpawnCapRef"
+    description: |
+      Bounds total fan-out per session. Sub-schema SpawnCap:
+        env_var (str, default 'LW_SPAWN_CAP'),
+        default (int, default 8),
+        scope (enum: per_session — total spawns, not concurrent),
+        counter_path (str, glob under ~/.lightwave/observability/).
+  - name: decision_semantics
+    type: "DecisionSemanticsRef"
+    description: |
+      How the hook resolves a spawn. Sub-schema DecisionSemantics:
+        on_unmet_precondition (enum: deny),
+        on_all_pass (enum: pass_through — `{}`, NEVER auto-allow),
+        on_error_or_no_session (enum: fail_open — pass-through with a trail),
+        hook_deny_overrides_allow_rule (bool, true),
+        operator_owned (list[str] — actions only a human may perform:
+          'permissions.allow:Agent', 'settings.json:register_matcher',
+          'settings.json:deregister_matcher').
+  - name: invariants
+    type: "list[InvariantRef]"
+    description: |
+      Cross-cutting invariants. Sub-schema Invariant:
+        name (str, slug),
+        rule (str),
+        enforced_by (enum: harness | pre_spawn_check | both),
+        violation_action (enum: deny_spawn | hard_block | fail_open).
+
+optional_fields:
+  - name: observability
+    type: "ObservabilityRef"
+    description: |
+      Sub-schema Observability:
+        log_to (str, path under ~/.lightwave/observability/),
+        record_per_spawn_decision (bool),
+        fields (list[str], record keys — e.g. ts, decision, check, agent, label).
+  - name: plan_artifact
+    type: "PlanArtifactRef"
+    description: |
+      Sub-schema PlanArtifact:
+        env_var (str, 'LW_TASK_PLAN' — overrides the default path),
+        default_path_glob (str, '~/.lightwave/observability/spawn-gate/<session>.plan.md'),
+        min_bytes (int, 200 — guards against an empty touch).
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default"
+  status: "active"
+  matcher: "Task|Agent"
+  preconditions:
+    - name: "active_validity_contract"
+      rule: "A validity contract MUST resolve before spawning (LW_VALIDITY_CONTRACT, then <cwd>/.lightwave/contract, then ~/.lightwave/config/contracts/active)."
+      source: "validity_contract"
+      check: "contract"
+      deny_reason: "no active validity contract — activate one before spawning agents."
+    - name: "zero_directed_interrupts"
+      rule: "Zero unack'd interrupts addressed DIRECTLY to this session (to_agent === agent). to_agent:'*' broadcasts (the bypass-detector notice board about OTHER sessions) are excluded, so a fresh well-behaved session is not blocked by the global backlog."
+      source: "interrupt_log"
+      check: "interrupts"
+      deny_reason: "this session has unack'd interrupts addressed to it — resolve/ack them; a flagged session must not fan out."
+    - name: "task_plan_present"
+      rule: "A task plan artifact >= 200 bytes MUST exist (LW_TASK_PLAN, else ~/.lightwave/observability/spawn-gate/<session>.plan.md). Authored by the model before delegating."
+      source: "plan_artifact"
+      check: "plan"
+      deny_reason: "no task plan found — write goal/sub-tasks/success-criteria to the plan path, then retry."
+    - name: "under_spawn_cap"
+      rule: "Total spawns this session MUST be below the cap (LW_SPAWN_CAP, default 8)."
+      source: "counter"
+      check: "cap"
+      deny_reason: "spawn cap reached — raise LW_SPAWN_CAP or let existing agents finish."
+  spawn_cap:
+    env_var: "LW_SPAWN_CAP"
+    default: 8
+    scope: "per_session"
+    counter_path: "~/.lightwave/observability/spawn-gate/<session>.count"
+  decision_semantics:
+    on_unmet_precondition: "deny"
+    on_all_pass: "pass_through"
+    on_error_or_no_session: "fail_open"
+    hook_deny_overrides_allow_rule: true
+    operator_owned:
+      - "permissions.allow:Agent"
+      - "settings.json:register_matcher"
+      - "settings.json:deregister_matcher"
+  invariants:
+    - name: "no_agent_authored_auto_allow"
+      rule: "An agent MUST NOT author the auto-allow side, nor register/deregister a permission-decision hook. The harness blocks both as Auto-Mode Bypass / self-modification of permission machinery; user intent does not clear it."
+      enforced_by: "harness"
+      violation_action: "hard_block"
+    - name: "deny_only"
+      rule: "The hook MUST NOT emit permissionDecision:'allow'. It only denies or passes through ({}). The frictionless allow is the operator's permissions.allow rule."
+      enforced_by: "pre_spawn_check"
+      violation_action: "deny_spawn"
+    - name: "fail_open_on_error"
+      rule: "On a hook error or missing session_id the gate MUST pass through (a brake must not break legitimate delegation), leaving a loud stderr + log trail."
+      enforced_by: "pre_spawn_check"
+      violation_action: "fail_open"
+    - name: "no_self_amplification"
+      rule: "A session MUST NOT raise its own LW_SPAWN_CAP to evade the cap mid-run. Cap escalation is operator-only."
+      enforced_by: "pre_spawn_check"
+      violation_action: "deny_spawn"
+  observability:
+    log_to: "~/.lightwave/observability/spawn-gate.jsonl"
+    record_per_spawn_decision: true
+    fields: ["ts", "decision", "check", "agent", "label", "count", "cap"]
+  plan_artifact:
+    env_var: "LW_TASK_PLAN"
+    default_path_glob: "~/.lightwave/observability/spawn-gate/<session>.plan.md"
+    min_bytes: 200

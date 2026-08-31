@@ -1,0 +1,28 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/ui_component_maturities"
+  title: "UI Component Maturity Enum"
+  description: |
+    Graduation states for components moving from a single site into the
+    shared lightwave-ui package. Only tenant-agnostic components ship in
+    lightwave-ui releases; the maturity gate is a schema'd contract plus
+    tenant-portability review.
+  generates:
+    - "typescript:ComponentMaturity"
+    - "go:ComponentMaturity"
+  depends_on: []
+
+name: ui_component_maturities
+description: "Component graduation states toward lightwave-ui"
+default: site-local
+closed: true
+options:
+  - value: site-local
+    label: "Site-local"
+    description: "Lives in one consuming site; not yet contracted for reuse"
+  - value: graduating
+    label: "Graduating"
+    description: "Contract stamped, tenant-portability review in progress"
+  - value: tenant-agnostic
+    label: "Tenant-agnostic"
+    description: "Fully schema'd and portable; ships in lightwave-ui releases"

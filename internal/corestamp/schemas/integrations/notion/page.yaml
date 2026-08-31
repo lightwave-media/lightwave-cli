@@ -1,0 +1,98 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/integrations/notion/page"
+  title: "Notion Page — projection shape"
+  description: |
+    Shape of a Notion page as mirrored into local knowledge.db. Local SQLite
+    is authoritative for structured fields (CORE-0048); Notion is the human
+    collaboration projection. Adapters upsert by notion_id.
+  generates:
+    - "pydantic:NotionPage"
+    - "postgres:DDL"
+  table_kind: entity
+  table_name: notion_pages
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: notion_id
+  unique: true
+
+required_fields:
+  - name: notion_id
+    type: str
+    description: "Notion page UUID (idempotent import key)"
+    storage: db
+    indexed: true
+  - name: title
+    type: str
+    description: "Page title at last sync"
+    storage: db
+  - name: parent_type
+    type: str
+    description: "workspace | page_id | database_id"
+    storage: db
+  - name: url
+    type: str
+    description: "Canonical Notion URL"
+    storage: db
+  - name: last_edited_at
+    type: datetime
+    description: "Notion last_edited_time at last sync"
+    storage: db
+  - name: sync_status
+    type: str
+    description: "pending | synced | drift | error"
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: parent_id
+    type: str
+    description: "Parent page or database Notion ID when parent_type is not workspace"
+    storage: db
+    indexed: true
+  - name: database_id
+    type: str
+    description: "Containing database ID when the page is a DB row"
+    storage: db
+    indexed: true
+  - name: local_kind
+    type: str
+    description: "Optional promoted SST kind (task, epic, knowledge_note) after crystallization"
+    storage: db
+  - name: local_id
+    type: str
+    description: "Local slug/UUID once promoted into an SST table"
+    storage: db
+  - name: archived
+    type: bool
+    description: "True when Notion marks the page archived"
+    storage: db
+  - name: properties_json
+    type: str
+    description: "Serialized property bag snapshot for DB-backed pages"
+    storage: db
+    column_type: jsonb
+
+example:
+  notion_id: "abc123-def456-7890"
+  title: "Ready-Task inbox notes"
+  parent_type: database_id
+  parent_id: "db-1111-2222"
+  database_id: "db-1111-2222"
+  url: "https://www.notion.so/abc123def4567890"
+  last_edited_at: "2026-08-12T16:00:00Z"
+  sync_status: synced
+  local_kind: task
+  local_id: wire-v-core-poll-loop
+  archived: false
+  created_at: "2026-08-01T12:00:00Z"
+  updated_at: "2026-08-12T16:05:00Z"

@@ -1,0 +1,58 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/agent_session
+  title: Agent Session — Short-Lived, Token-Bound
+  description: 'Short-lived session bound to an agent identity. Sessions are issued by
+
+    nullhub at activation time and refreshed periodically. Tokens have a 24h
+
+    TTL. Revoked sessions prevent all further tool calls. Expired sessions
+
+    are retained for audit.
+
+    '
+required_fields:
+- name: session_id
+  type: str
+  description: Unique identifier for this agent session.
+- name: agent_id
+  type: str
+  description: Identifier of the agent that owns this session.
+- name: status
+  type: enum
+  options:
+  - active
+  - expired
+  - revoked
+  description: Current lifecycle status of the session.
+- name: issued_at
+  type: str
+  description: ISO 8601 timestamp when the session was issued.
+- name: expires_at
+  type: str
+  description: ISO 8601 timestamp when the session expires.
+optional_fields:
+- name: refresh_count
+  type: int
+  description: Number of times this session token has been refreshed.
+- name: revoked_by
+  type: str
+  description: Identifier of the operator or system that revoked this session.
+- name: revoked_reason
+  type: str
+  description: Human-readable reason this session was revoked.
+- name: runbook_slug
+  type: str
+  description: Slug of the runbook associated with this session.
+- name: phase
+  type: str
+  description: Named phase of the runbook when this session was active.
+example:
+  session_id: sess_abc123
+  agent_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  status: active
+  issued_at: '2026-06-23T10:00:00Z'
+  expires_at: '2026-06-24T10:00:00Z'
+  refresh_count: 0
+  runbook_slug: ci-gate
+  phase: complete

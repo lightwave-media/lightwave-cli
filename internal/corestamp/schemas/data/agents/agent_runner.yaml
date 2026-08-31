@@ -1,0 +1,132 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/agents/agent_runner"
+  title: "Agent Runner Registration"
+  description: |
+    Agent runner registration and lifecycle management. Adapted from Forgejo's
+    `/user/actions/runners` API pattern — agents register as runners, receive
+    a registration token + UUID, and are managed through the same CRUD surface
+    as human users.
+
+    This schema serves lightwave-ai's agentgateway (Zig HTTP server at localhost:7700)
+    and the lightwave-platform Go monolith. Agents are first-class principals per
+    ADR-0012/ADR-0013 — they authenticate, register, and consume tasks through
+    the same identity plane. Role-based access control is enforced via persona_ref
+    → agent_definition → allowed_tools + hard_rules.
+
+  generates:
+    - "go:AgentRunner"
+    - "zig:AgentRunner"
+  depends_on:
+    - "lightwave://schemas/data/enums/runner_statuses"
+    - "lightwave://schemas/data/meta/agent_definition"
+  table_kind: entity
+  table_name: agent_runners
+
+status_enum: "runner_statuses"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: name
+  unique: true
+
+required_fields:
+  - name: name
+    type: str
+    description: "Agent runner name. Unique across all registered runners."
+    storage: db
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+  - name: persona_ref
+    type: str
+    description: "Slug of the persona this agent embodies (e.g. v_platform-developer, v_staff-engineer). Maps to agent_definition which carries role, hard_rules, and allowed_tools."
+    storage: db
+    fk_ref: "lightwave://schemas/data/meta/agent_definition"
+    fk_column: slug
+    indexed: true
+  - name: status
+    type: str
+    description: "Runner lifecycle state. Values from runner_statuses enum: offline, idle, active."
+    storage: db
+    indexed: true
+  - name: version
+    type: str
+    description: "Self-reported version string of the agent runtime (e.g. lightwave-ai v0.5.0)"
+    storage: db
+  - name: created_at
+    type: datetime
+    description: "ISO 8601 timestamp of registration"
+    storage: db
+  - name: updated_at
+    type: datetime
+    description: "ISO 8601 timestamp of last heartbeat"
+    storage: db
+
+optional_fields:
+  - name: registration_token
+    type: str
+    secret: true
+    min_length: 32
+    hash_before_store: argon2id
+    description: "One-time token returned on POST /v1/agents/runners. Hash before write (argon2id); plaintext is returned exactly once on POST and never stored."
+    storage: db
+  - name: description
+    type: str
+    description: "Purpose and capabilities of this agent runner"
+    storage: db
+  - name: labels
+    type: "list[str]"
+    description: "Capability labels for task routing (e.g. ['go', 'huma', 'postgres', 'codegen'])"
+    storage: db
+    column_type: jsonb
+  - name: ephemeral
+    type: bool
+    description: "If true, agent self-destructs after completing one task"
+    storage: db
+  - name: owner_id
+    type: uuid
+    description: "User or organization that owns this runner. NULL for instance-level."
+    storage: db
+    indexed: true
+  - name: last_heartbeat
+    type: datetime
+    description: "Last time the agent reported health via GET /health"
+    storage: db
+  - name: current_task_id
+    type: uuid
+    description: "Task currently assigned to and being processed by this agent"
+    storage: db
+
+relations:
+  parent: agent_definition
+  parent_fk:
+    column: persona_ref
+    references: agent_definitions.slug
+    on_delete: RESTRICT
+
+# ── Registration Contract ─────────────────────────────────────────────────
+#
+# POST /v1/agents/runners
+#   Authorization: Bearer <agent-service-account-token>
+#   Body: { name, persona_ref, description?, labels?, ephemeral? }
+#   Response: { id, uuid, token }
+#
+# The returned token is used by the agent for all subsequent API calls.
+# The tokID + uuid pair uniquely identifies the runner instance.
+
+example:
+  name: "v-platform-developer-002"
+  persona_ref: "v_platform-developer"
+  description: "Platform build agent — Go monolith, Huma CRUD, Postgres RLS"
+  status: "idle"
+  version: "1.0.0"
+  labels:
+    - "go"
+    - "huma"
+    - "postgres"
+    - "codegen"
+  ephemeral: false
+  created_at: "2026-06-25T00:00:00Z"
+  updated_at: "2026-06-25T00:00:00Z"

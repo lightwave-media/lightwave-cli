@@ -1,0 +1,74 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/proposed_test_kinds"
+  title: "Proposed Test Kind Enum (SWEBOK Ch5)"
+  description: |
+    Closed set of test KINDs a code-review session may propose via the
+    qa_handoff payload's `proposed_test_kind` field. Each option maps to a
+    SWEBOK V4 Chapter 5 subsection — the v_qa-engineer doctrine authority
+    (see ~/.lightwave/config/governance/testing.md §2 for the full table
+    and ~/dev/lightwave-core/docs/references/swebok-v4-index.md
+    for the canonical chapter).
+
+    Authored 2026-05-29 per ADR-0005. Extraction from inline prose in
+    qa_handoff.yaml v1.0 → values_ref per R-5 (no hardcoded enums).
+  generates:
+    - "pydantic:ProposedTestKind"
+  depends_on: []
+
+name: proposed_test_kinds
+description: "SWEBOK Ch5 test KIND a qa_handoff may propose"
+default: unit
+closed: true
+options:
+  - value: unit
+    label: "Unit"
+    description: "Single function/class in isolation"
+    swebok_ref: "Ch5 §2.1.1"
+  - value: integration
+    label: "Integration"
+    description: "Two or more components together; contract between them"
+    swebok_ref: "Ch5 §2.1.2"
+  - value: conformance
+    label: "Conformance"
+    description: "System against a declared specification (schema, contract, standard)"
+    swebok_ref: "Ch5 §2.2.1"
+  - value: regression
+    label: "Regression"
+    description: "Pin a previously-fixed bug so a future change can't reintroduce it"
+    swebok_ref: "Ch5 §2.2.5"
+  - value: security
+    label: "Security"
+    description: "Adversarial input or unauthorized-access attempt; assert denied"
+    swebok_ref: "Ch5 §2.2.8"
+  - value: boundary
+    label: "Boundary-value"
+    description: "Inputs at the edge of a partition (N-1, N, N+1)"
+    swebok_ref: "Ch5 §3.1.2"
+  - value: syntax
+    label: "Syntax"
+    description: "Malformed inputs rejected; grammar/parser correctness"
+    swebok_ref: "Ch5 §3.1.3"
+  - value: decision_table
+    label: "Decision table"
+    description: "Truth-table coverage of input combinations and their expected outcomes"
+    swebok_ref: "Ch5 §3.1.5"
+  - value: property
+    label: "Property-based"
+    description: "Property that holds across a generated input space (hypothesis @given, proptest)"
+    swebok_ref: "Ch5 §3.1.9"
+  - value: fault_injection
+    label: "Fault injection"
+    description: "Deliberately break the SUT; assert the detector fires loudly"
+    swebok_ref: "Ch5 §3.4 + §4.2.1"
+
+example:
+  name: proposed_test_kinds
+  description: "SWEBOK Ch5 test KIND a qa_handoff may propose"
+  default: unit
+  closed: true
+  options:
+    - value: unit
+      label: "Unit"
+      description: "Single function/class in isolation"
+      swebok_ref: "Ch5 §2.1.1"

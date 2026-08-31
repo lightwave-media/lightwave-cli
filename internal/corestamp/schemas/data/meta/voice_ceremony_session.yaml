@@ -1,0 +1,56 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/voice_ceremony_session
+  title: Voice Ceremony Session
+  description: 'Human-led voice session at .tasks/<session-id>/voice/ceremony.yaml.
+
+    '
+  generates:
+  - pydantic:VoiceCeremonySession
+  depends_on:
+  - lightwave://schemas/data/enums/voice_session_kinds
+required_fields:
+- name: session_id
+  type: str
+  description: Unique identifier for this voice ceremony session.
+- name: kind
+  type: enum
+  values_ref: lightwave://schemas/data/enums/voice_session_kinds
+  description: Kind of voice ceremony (e.g. daily_brief, interview).
+- name: operator_handle
+  type: str
+  description: Handle of the human operator who initiated the ceremony.
+- name: status
+  type: str
+  description: draft|active|paused|completed|cancelled
+- name: turns
+  type: list[VoiceTurn]
+  description: Number of conversational turns in this ceremony session.
+optional_fields:
+- name: ideal_state_ref
+  type: str
+  description: Path to the ideal-state document used in this ceremony.
+- name: delta_ref
+  type: str
+  description: Path to the delta document generated from this ceremony.
+- name: coaching_focus
+  type: str
+  description: Focus area or theme for the coaching portion of the ceremony.
+- name: participant_personas
+  type: list[str]
+  description: Persona slugs of agents that participated in the ceremony.
+- name: kickoff_ref
+  type: str
+  description: Path or ID of the kickoff interview associated with this ceremony.
+example:
+  session_id: 2026-06-19-guru
+  kind: guru
+  operator_handle: operator
+  status: active
+  coaching_focus: platform
+  ideal_state_ref: lightwave://schemas/policy/governance/repo-infra
+  delta_ref: spec/delta/report.yaml
+  participant_personas:
+  - v_scrum-manager
+  - v_cto
+  turns: []

@@ -1,0 +1,72 @@
+# =============================================================================
+# REPO DOC MANIFEST — what every LightWave repo must have in spec/ + docs/
+# =============================================================================
+# Per-tier defaults + freshness policy. `lw docs check` reads this (plus the
+# per-repo `.lwdocs.yaml` override) to compute drift:
+#   - drift = a required kind is missing from the repo
+#   - drift = a generated kind's `source_commit` < HEAD
+#   - drift = doc mtime < its declared source mtime
+#
+# Tier of the current repo is read from its top-level CLAUDE.md /
+# AGENTS.md `tier:` declaration, or from `repo_registry.yaml` if the repo is
+# stamped in the estate.
+# =============================================================================
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/policy/governance/repo_doc_manifest"
+  title: "Repo Doc Manifest"
+  description: |
+    Per-tier required + recommended spec/docs artifacts and the freshness
+    policy that governs how drift is surfaced. Consumed by `lw docs check`.
+  generates:
+    - "go:RepoDocManifest"
+    - "json_schema:repo_doc_manifest"
+  depends_on:
+    - "lightwave://schemas/policy/governance/spec_artifact_kinds"
+    - "lightwave://schemas/policy/governance/doc_artifact_kinds"
+
+required_fields:
+  - name: id
+    type: str
+    description: "repo_doc_manifest configuration identifier"
+
+example:
+  id: "repo_doc_manifest-example"
+
+name: "repo_doc_manifest"
+
+defaults:
+  spec_required: [prd, adr]
+  docs_required: [architecture, contract, dependency-graph]
+  docs_recommended: [data-flow, runbook]
+
+tiers:
+  cli:
+    docs_required: [architecture, contract, dependency-graph, runbook, command-status]
+  service:
+    docs_required: [architecture, data-flow, contract, dependency-graph, runbook]
+  library:
+    docs_required: [architecture, contract, dependency-graph]
+  agent:
+    docs_required: [architecture, contract, runbook]
+  infra:
+    docs_required: [architecture, runbook]
+  docs:
+    docs_required: [architecture]
+
+freshness:
+  # Maximum age of a generated artifact before stale_action fires.
+  max_age_days: 30
+  # When source files have changed but doc hasn't been resynced.
+  source_change_action: drift_pr   # drift_pr | warn | block_merge
+  # When source_commit frontmatter < repo HEAD.
+  source_commit_action: drift_pr
+  # When doc is older than max_age_days regardless of source change.
+  stale_action: warn
+
+# Per-repo overrides land in `.lwdocs.yaml` at the repo root. Same shape; any
+# key declared overrides the tier default. Example:
+#   tier: cli
+#   docs_required: [architecture, contract]  # drop dep-graph + runbook
+#   freshness:
+#     source_commit_action: warn

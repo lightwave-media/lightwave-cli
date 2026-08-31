@@ -1,0 +1,37 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/repo_release"
+  title: "Forgejo Release — 1:1 SST Mirror"
+  source_ref: "forgejo://swagger.v1.json#/definitions/Release"
+  description: "Tagged release in a Forgejo repository."
+  table_kind: entity
+  table_name: releases
+  generates: ["go:ForgejoRelease"]
+primary_key: { column: id, type: uuid }
+required_fields:
+  - { name: tag_name, type: str, storage: db }
+  - { name: repo_ref, type: str, storage: db, indexed: true }
+  - { name: created_at, type: datetime, storage: db }
+optional_fields:
+  - { name: name, type: str, storage: db }
+  - { name: body, type: str, storage: db }
+  - { name: target_commitish, type: str, storage: db }
+  - { name: is_draft, type: bool, storage: db }
+  - { name: is_prerelease, type: bool, storage: db }
+  - { name: hide_archive_links, type: bool, storage: db }
+  - { name: published_at, type: datetime, storage: db }
+  - {
+      name: attachments,
+      type: "list[Attachment]",
+      storage: db,
+      column_type: jsonb,
+    }
+example:
+  tag_name: "v0.5.0"
+  name: "Agent Runner Registration"
+  body: "Initial release with agent runner registration API"
+  repo_ref: "lightwave-media/lightwave-platform"
+  is_draft: false
+  is_prerelease: false
+  created_at: "2026-06-25T00:00:00Z"

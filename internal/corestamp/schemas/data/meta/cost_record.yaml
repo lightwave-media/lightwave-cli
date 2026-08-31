@@ -1,0 +1,152 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/cost_record"
+  title: "Cost Record"
+  description: |
+    Unified audit record linking agent identity → action → model →
+    tokens → cost. Every LLM API call, every tool invocation that
+    consumes tokens, every spawned subagent — all emit a cost_record.
+
+    Append-only to cost_record.jsonl (~/.lightwave/observability/).
+    Partitioned by month (cost_record-YYYY-MM.jsonl). Read by:
+      - pre-tool-use cost-track hook (in-memory summary, never JSONL)
+      - stop.ts cost aggregation (sprint reconciliation)
+      - v_data-engineer and v_scrum-manager for reporting
+
+    Two cost_kind values: "estimate" (pre-call) and "actual" (post-call).
+    Variance between them calibrates the estimation algorithm.
+
+    Two cost fields:
+      - cost_snapshot_usd: at sprint-creation prices (budget compliance)
+      - cost_real_usd: at current prices (true accounting)
+  generates:
+    - "pydantic:CostRecord"
+  depends_on:
+    - "lightwave://schemas/data/enums/model_tiers"
+    - "lightwave://schemas/data/meta/sprint_budget"
+    - "lightwave://schemas/data/agile_artifacts/task"
+    - "lightwave://schemas/data/meta/session_context"
+
+required_fields:
+  - name: record_id
+    type: str
+    description: "UUID. Generated at emit time. Used for idempotent replay and deduplication."
+  - name: _schema_version
+    type: int
+    description: "Schema version for evolutionary compatibility. Locked at 1."
+  - name: ts
+    type: str
+    description: "ISO-8601 datetime when this record was emitted."
+  - name: agent_id
+    type: str
+    description: "Unique agent identity that performed the action. Cross-references ~/.lightwave/identities/agents/."
+  - name: session_id
+    type: str
+    description: "Session UUID. Links to session_context.yaml. Used for per-session cost aggregation."
+  - name: sprint_id
+    type: "str | null"
+    description: "Sprint slug. Denormalized from session context for fast budget queries (avoids JOIN)."
+  - name: action_type
+    type: str
+    description: "What happened: api_call | tool_use | code_write | spawn | endpoint_hit"
+  - name: cost_kind
+    type: str
+    description: "estimate (pre-call prediction) | actual (post-call measurement). Variance = actual - estimate."
+  - name: model_id
+    type: str
+    description: "Model used (or empty for non-model actions). Cross-references model_capabilities."
+  - name: provider
+    type: str
+    description: "Provider slug: anthropic | openai | openrouter | local"
+  - name: tokens_input
+    type: int
+    description: "Input tokens consumed."
+  - name: tokens_output
+    type: int
+    description: "Output tokens generated."
+  - name: cost_snapshot_usd
+    type: float
+    description: "Cost at sprint-creation prices. Used for budget compliance checking."
+  - name: cost_real_usd
+    type: float
+    description: "Cost at current prices. Used for true accounting."
+
+optional_fields:
+  - name: task_ref
+    type: "str | null"
+    description: "Slug of the task this cost is attributed to. Links to task.yaml."
+  - name: task_type
+    type: "str | null"
+    description: "Task type slug from task_types enum. Enables cost distribution analysis by type."
+  - name: intelligence_tier_used
+    type: str
+    description: "Model tier actually used. Validated against model_tiers."
+  - name: intelligence_tier_required
+    type: str
+    description: "Minimum tier required by the task. Validated against model_tiers."
+  - name: subscription_covered
+    type: bool
+    description: "True if this call was covered by a subscription (Claude Max etc.). cost_real_usd = 0."
+  - name: provider_response_id
+    type: "str | null"
+    description: "Provider's response ID for audit trail (e.g. msg_abc123 for Anthropic)."
+  - name: provider_usage
+    type: "object | null"
+    description: "Raw usage from provider response: { input_tokens: int, output_tokens: int, cache_creation_input_tokens: int|null, cache_read_input_tokens: int|null, thinking_tokens: int|null }"
+  - name: tool_name
+    type: "str | null"
+    description: "Tool that triggered this cost (Read, Write, Edit, Bash, etc.)."
+  - name: file_path
+    type: "str | null"
+    description: "File path the tool operated on (for code_write and tool_use actions)."
+  - name: git_commit
+    type: "str | null"
+    description: "Git commit SHA if the action resulted in a commit."
+  - name: pr_url
+    type: "str | null"
+    description: "PR URL if the action resulted in a PR."
+  - name: attempt_number
+    type: int
+    description: "Retry attempt number for hybrid workflows (local→failover). Default 1."
+  - name: fallback_chain
+    type: "list[str] | null"
+    description: "The chain of models tried before this one succeeded. E.g. [gemma_4_e4b, claude_sonnet_4_6]."
+  - name: parent_agent_id
+    type: "str | null"
+    description: "For subagent-derived identities, the parent agent_id. Enables cost rollup across spawn trees."
+  - name: note
+    type: str
+    description: "Human-readable context about this cost record."
+
+example:
+  record_id: "rec-01j2x3abc456def789ghi"
+  _schema_version: 1
+  ts: "2026-07-15T14:32:18Z"
+  agent_id: "ag-fix-auth-flow-001"
+  session_id: "sess-2026-07-15-cli-dev-task42"
+  sprint_id: "sprint-2026-07"
+  action_type: api_call
+  cost_kind: actual
+  model_id: claude_haiku_4_5
+  provider: anthropic
+  tokens_input: 45231
+  tokens_output: 1204
+  cost_snapshot_usd: 0.040
+  cost_real_usd: 0.040
+  task_ref: task-fix-auth-flow
+  task_type: bug_fix
+  intelligence_tier_used: standard
+  intelligence_tier_required: standard
+  subscription_covered: false
+  provider_response_id: "msg_abc123def456"
+  provider_usage:
+    input_tokens: 45231
+    output_tokens: 1204
+    cache_creation_input_tokens: 28000
+    cache_read_input_tokens: 0
+    thinking_tokens: null
+  tool_name: Write
+  file_path: src/auth/login.go
+  attempt_number: 1
+  fallback_chain: null
+  parent_agent_id: null

@@ -1,0 +1,72 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/render_op"
+  title: "Render Operation"
+  description: |
+    A render/export request and its outcome for one Deliverable — the
+    production-domain view of a queue run. When the data/queue family lands
+    (epic queue-family-stamp), queue_op_ref ties this record to the executing
+    operation; until then it stands alone with its own status/progress.
+  generates:
+    - "go:RenderOp"
+    - "typescript:RenderOp"
+    - "zig:RenderOp"
+    - "json_schema:render_op"
+  depends_on:
+    - "lightwave://schemas/data/cineos/deliverable"
+
+required_fields:
+  - name: deliverable_ref
+    type: str
+    description: "Slug/id of the Deliverable being rendered"
+  - name: status
+    type: str
+    description: "Lifecycle state; values from the cineos_render_op_statuses enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_render_op_statuses"
+
+optional_fields:
+  - name: frames
+    type: str
+    description: "Frame selection ('all', 'graded', 'marks', or an explicit range expression)"
+  - name: progress
+    type: float
+    description: "Completion 0.0–1.0"
+  - name: submitted_by
+    type: str
+    description: "Who submitted the render"
+  - name: submitted_at
+    type: datetime
+    description: "Submission time (ISO 8601)"
+  - name: started_at
+    type: datetime
+    description: "Execution start time"
+  - name: done_at
+    type: datetime
+    description: "Completion time"
+  - name: warnings
+    type: int
+    description: "Warning count from the run"
+  - name: errors
+    type: int
+    description: "Error count from the run"
+  - name: queue_op_ref
+    type: str
+    description: "Id of the executing data/queue operation (forward ref; wired when the queue family lands)"
+  - name: log_ref
+    type: str
+    description: "Path/$ref to the run log"
+
+relations:
+  parent: deliverable
+  children: []
+
+example:
+  deliverable_ref: "h264-review"
+  status: "done"
+  frames: "all"
+  progress: 1.0
+  submitted_by: "Joel Schaeffer"
+  submitted_at: "2026-08-12T14:00:00Z"
+  done_at: "2026-08-12T14:22:31Z"
+  warnings: 0
+  errors: 0

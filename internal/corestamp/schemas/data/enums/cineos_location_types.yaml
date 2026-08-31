@@ -1,0 +1,34 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_location_types"
+  title: "CineOS Location Type Enum"
+  description: |
+    Kind of filming location (location.location_type) — how the place is used for
+    production. Closed.
+  generates:
+    - "go:CineLocationType"
+    - "typescript:CineLocationType"
+    - "zig:CineLocationType"
+    - "json_schema:cineos_location_types"
+  depends_on: []
+
+name: cineos_location_types
+description: "Kind of filming location"
+default: practical
+closed: true
+options:
+  - value: interior
+    label: "Interior"
+    description: "Interior location"
+  - value: exterior
+    label: "Exterior"
+    description: "Exterior location"
+  - value: studio
+    label: "Studio"
+    description: "Sound stage / studio"
+  - value: backlot
+    label: "Backlot"
+    description: "Studio backlot"
+  - value: practical
+    label: "Practical"
+    description: "Real-world practical location"

@@ -1,0 +1,241 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/security/rbac"
+  title: "Role-Based Access Control — User Type Taxonomy + Role Bindings"
+  description: |
+    Stamps the user_type taxonomy (who can act in the system) and maps each
+    user_type to its allowed capability scope (tool_filter_group, iam_role,
+    SSM path glob). Closes issue #55 gap: the old rbac.yaml had 16 user_type
+    labels but no role definitions or capability scopes.
+
+    Relationship to sibling schemas:
+      tool_filter_groups.yaml  — WHAT tools each group may call (tool-level)
+      agent_aws_credentials.yaml — WHICH IAM role a persona credential uses
+      channel_bindings.yaml    — WHICH channel a persona routes through
+      THIS SCHEMA               — WHO belongs to which user_type and WHAT
+                                  capability scope that grants
+
+    User type taxonomy is derived from ~/.lightwave/config/agents/ (the
+    live persona fleet). Capability scopes reference tool_filter_groups by
+    group slug and lightwave_iam_roles by value.
+
+    Runtime enforcement: lightwave-platform (Go monolith — Huma + Chi, per
+    ADR-0018) and nullclaw enforce the role_bindings at the API request +
+    agent spawn level. The stamp defines shapes; the runtime defines policy
+    enforcement.
+  generates:
+    - "pydantic:RBACRegistry"
+  depends_on:
+    - "lightwave://schemas/data/enums/lightwave_iam_roles"
+    - "lightwave://schemas/interfaces/agent_tools/tool_filter_groups"
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-rbac-v1')."
+  - name: user_types
+    type: "list[UserTypeRef]"
+    description: |
+      Closed taxonomy of principals that can act in the system.
+      Sub-schema UserType:
+        slug (str, kebab-slug — e.g. 'operator', 'developer-agent'),
+        label (str, human-readable),
+        description (str, what kind of principal this is),
+        example_personas (list[str], persona slugs from ~/.lightwave/config/agents/).
+  - name: roles
+    type: "list[RoleRef]"
+    description: |
+      Named capability bundles. Sub-schema Role:
+        slug (str, kebab-slug — e.g. 'code-writer', 'audit-logger'),
+        label (str, human-readable),
+        description (str, what this role enables),
+        tool_filter_group (str|null, group slug from tool_filter_groups.yaml),
+        iam_role (str, value from lightwave_iam_roles enum),
+        ssm_path_glob (str|null, SSM parameter path prefix allowed — e.g. '/lightwave/prod/*'),
+        notes (str|null).
+  - name: role_bindings
+    type: "list[RoleBindingRef]"
+    description: |
+      Maps each user_type to its allowed roles. Sub-schema RoleBinding:
+        user_type (str, slug from user_types above),
+        roles (list[str], role slugs from roles above),
+        notes (str|null).
+
+optional_fields:
+  - name: status
+    type: str
+    description: "Lifecycle status (conforms to document_statuses)."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-rbac-v1"
+  user_types:
+    - slug: "operator"
+      label: "Human Operator"
+      description: "Joel — the human who owns and controls the platform. Full capability; no automated constraints."
+      example_personas: []
+
+    - slug: "developer-agent"
+      label: "Developer Agent"
+      description: "Personas that write code, create worktrees, and mutate repos."
+      example_personas:
+        - "v_core-package-developer"
+        - "v_cli-developer"
+        - "v_frontend-developer"
+        - "v_infra-developer"
+        - "v_platform-developer"
+        - "v_localapp-developer"
+        - "v_sys-developer"
+        - "v_nullclaw-developer"
+        - "v_nullhub-developer"
+        - "v_nulltickets-developer"
+        - "v_nullwatch-developer"
+        - "v_nullbuilder-developer"
+
+    - slug: "engineer-agent"
+      label: "Engineer Agent"
+      description: "Personas that review code and produce artifacts but do not write to repos."
+      example_personas:
+        - "v_core-package-engineer"
+        - "v_infra-engineer"
+        - "v_staff-engineer"
+        - "v_qa-engineer"
+        - "v_security-compliance"
+
+    - slug: "architect-agent"
+      label: "Architect / CTO Agent"
+      description: "Personas that make architectural decisions and approve releases."
+      example_personas:
+        - "v_architect"
+        - "v_cto"
+        - "v_release-engineer"
+
+    - slug: "research-agent"
+      label: "Research / Analyst Agent"
+      description: "Personas that gather, synthesize, and present information. Read-heavy, no code writes."
+      example_personas:
+        - "v_research-analyst"
+        - "v_brain"
+        - "v_data-engineer"
+        - "v_ux-researcher"
+
+    - slug: "business-agent"
+      label: "Business / Product Agent"
+      description: "Personas that manage product, legal, financial, and marketing concerns."
+      example_personas:
+        - "v_ceo"
+        - "v_cfo"
+        - "v_general-manager"
+        - "v_product-manager"
+        - "v_marketing-content-lead"
+        - "v_accountant"
+        - "v_legal-advisor"
+        - "v_legal-officer"
+        - "v_scrum-manager"
+
+    - slug: "domain-agent"
+      label: "Domain-Specific Agent"
+      description: "Personas scoped to a creative or operational domain (cinema, photography, devops, spoken interface)."
+      example_personas:
+        - "v_cineos"
+        - "v_photographer"
+        - "v_devops"
+        - "v_speak"
+
+    - slug: "daemon-agent"
+      label: "Daemon / Core Agent"
+      description: "Always-on system agents that run unattended (v_core, v_core-maintenance). Minimal tool surface; audit-logged."
+      example_personas:
+        - "v_core"
+        - "v_core-maintenance"
+
+  roles:
+    - slug: "code-writer"
+      label: "Code Writer"
+      description: "May edit repo files, create worktrees, commit, and push via PR."
+      tool_filter_group: "dev"
+      iam_role: "lightwave-agent"
+      ssm_path_glob: "/lightwave/prod/*"
+      notes: "Granted to developer-agent user_type."
+
+    - slug: "code-reviewer"
+      label: "Code Reviewer"
+      description: "May read all repo content and produce review artifacts. No writes."
+      tool_filter_group: "analyst"
+      iam_role: "lightwave-agent"
+      ssm_path_glob: null
+      notes: "Granted to engineer-agent and architect-agent."
+
+    - slug: "release-approver"
+      label: "Release Approver"
+      description: "May approve production deployments and tag releases."
+      tool_filter_group: "analyst"
+      iam_role: "lightwave-agent"
+      ssm_path_glob: "/lightwave/prod/*"
+      notes: "Granted to architect-agent only."
+
+    - slug: "research-reader"
+      label: "Research Reader"
+      description: "Web search, file reads, API reads. No mutations."
+      tool_filter_group: "analyst"
+      iam_role: "lightwave-agent"
+      ssm_path_glob: null
+      notes: "Granted to research-agent and business-agent."
+
+    - slug: "business-operator"
+      label: "Business Operator"
+      description: "Access to business tools (calendar, email, QuickBooks read, task management)."
+      tool_filter_group: "chat"
+      iam_role: "lightwave-agent"
+      ssm_path_glob: null
+      notes: "Granted to business-agent. No code write."
+
+    - slug: "audit-logger"
+      label: "Audit Logger"
+      description: "Append-only writes to observability channels. No code writes, no SSM reads."
+      tool_filter_group: "maintenance"
+      iam_role: "lightwave-agent"
+      ssm_path_glob: null
+      notes: "Granted to daemon-agent."
+
+    - slug: "sysadmin-runner"
+      label: "Sysadmin Runner"
+      description: "Maintenance operations: prune worktrees, check health, emit alerts."
+      tool_filter_group: "maintenance"
+      iam_role: "lightwave-agent"
+      ssm_path_glob: "/lightwave/prod/*"
+      notes: "Granted to daemon-agent."
+
+  role_bindings:
+    - user_type: "operator"
+      roles: ["code-writer", "code-reviewer", "release-approver", "research-reader", "business-operator", "audit-logger", "sysadmin-runner"]
+      notes: "Human operator — all capabilities."
+    - user_type: "developer-agent"
+      roles: ["code-writer", "research-reader", "audit-logger"]
+      notes: null
+    - user_type: "engineer-agent"
+      roles: ["code-reviewer", "research-reader", "audit-logger"]
+      notes: null
+    - user_type: "architect-agent"
+      roles: ["code-reviewer", "release-approver", "research-reader", "audit-logger"]
+      notes: null
+    - user_type: "research-agent"
+      roles: ["research-reader", "audit-logger"]
+      notes: null
+    - user_type: "business-agent"
+      roles: ["research-reader", "business-operator", "audit-logger"]
+      notes: null
+    - user_type: "domain-agent"
+      roles: ["research-reader", "audit-logger"]
+      notes: "Domain agents get read + log only; code writes require explicit developer-agent elevation."
+    - user_type: "daemon-agent"
+      roles: ["audit-logger", "sysadmin-runner"]
+      notes: "Minimal surface — only what's needed for unattended operation."
+
+  status: "active"

@@ -1,0 +1,60 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/agent_identity
+  title: Agent Identity — Database-Driven, UUID-Immutable
+  description: 'Database-driven agent identity. UUID is immutable (assigned at creation).
+
+    Persona slug and display name are renamable. Provider API keys are shared
+
+    resources (not per-agent). Status lifecycle: provisioning → active →
+
+    suspended → archived. Every action attributable to agent_id + session_id.
+
+    '
+required_fields:
+- name: agent_id
+  type: str
+  description: UUID v4, immutable
+- name: persona_slug
+  type: str
+  description: Canonical persona identifier (e.g. v_cto, v_developer).
+- name: display_name
+  type: str
+  description: Human-readable display name for the agent persona.
+- name: status
+  type: enum
+  options:
+  - provisioning
+  - active
+  - suspended
+  - archived
+  description: Lifecycle status of this agent identity record.
+optional_fields:
+- name: instance_id
+  type: str
+  description: Unique instance identifier for this agent deployment.
+- name: provider_ref
+  type: str
+  description: Reference to the model provider configuration for this agent.
+- name: session_id
+  type: str
+  description: Current active session ID for this agent identity.
+- name: token_iat
+  type: str
+  description: JWT iat — ISO 8601 timestamp when the identity token was issued.
+- name: token_exp
+  type: str
+  description: JWT exp — ISO 8601 timestamp when the identity token expires.
+- name: deactivated_at
+  type: str
+  description: ISO 8601 timestamp when this identity was deactivated.
+example:
+  agent_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  persona_slug: v_staff-engineer
+  display_name: Staff Engineer
+  status: active
+  instance_id: v_staff-engineer
+  provider_ref: ssm:/lightwave/prod/openrouter/api_key
+  session_id: sess_abc123
+  token_iat: '2026-06-23T10:00:00Z'
+  token_exp: '2026-06-24T10:00:00Z'

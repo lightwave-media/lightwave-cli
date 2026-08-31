@@ -1,0 +1,34 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/visual_block_kinds
+  title: Visual Block Kind Enum
+  description: Required visual header block kinds for plan_file and human-facing specs
+  generates:
+  - pydantic:VisualBlockKind
+  depends_on: []
+name: visual_block_kinds
+description: Diagram types required before prose in visual-first documents
+default: mermaid_flowchart
+closed: true
+options:
+- value: mermaid_flowchart
+  label: Mermaid flowchart
+  description: Mermaid flowchart option.
+- value: mermaid_sequence
+  label: Mermaid sequence
+  description: Mermaid sequence option.
+- value: mermaid_gantt
+  label: Mermaid gantt
+  description: Mermaid gantt option.
+- value: mermaid_state
+  label: Mermaid state
+  description: Mermaid state option.
+- value: ascii_box
+  label: ASCII box
+  description: ASCII box option.
+- value: ascii_tree
+  label: ASCII tree
+  description: ASCII tree option.
+- value: status_table
+  label: Status table
+  description: Status table option.

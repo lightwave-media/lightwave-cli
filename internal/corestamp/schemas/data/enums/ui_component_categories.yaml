@@ -1,0 +1,36 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/ui_component_categories"
+  title: "UI Component Category Enum"
+  description: |
+    lightwave-ui category taxonomy — the folder a component lives under and
+    the axis lw ui add/sync and codegen branch on. Closed enum; mirrors the
+    category folders shipped in lightwave-ui releases.
+  generates:
+    - "typescript:ComponentCategory"
+    - "go:ComponentCategory"
+  depends_on: []
+
+name: ui_component_categories
+description: "lightwave-ui component category folders"
+default: base
+closed: true
+options:
+  - value: base
+    label: "Base"
+    description: "Primitive building blocks (buttons, inputs, badges)"
+  - value: application
+    label: "Application"
+    description: "Authenticated product-surface components (tables, navigation, modals)"
+  - value: marketing
+    label: "Marketing"
+    description: "Public site sections (heroes, content, footers)"
+  - value: foundations
+    label: "Foundations"
+    description: "Tokens, icon wrappers, layout primitives"
+  - value: shared-assets
+    label: "Shared Assets"
+    description: "Logos, illustrations, shared media components"
+  - value: emails
+    label: "Emails"
+    description: "React Email templates paired with data/emails contracts"

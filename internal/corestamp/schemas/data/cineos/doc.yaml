@@ -1,0 +1,57 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/doc"
+  title: "Doc"
+  description: |
+    A production document — call sheet, treatment, contract, breakdown sheet, shot
+    list — that carries Notes and Images (ER: DOC ||--o{ NOTE, DOC ||--o{ IMAGE).
+    A Doc attaches to what it documents via optional project/scene/shot refs (soft
+    cross-refs, not a hard parent), so it has no required FK and depends_on is
+    empty. Generates CineDoc to avoid colliding with the generic Doc symbol
+    downstream.
+  generates:
+    - "go:CineDoc"
+    - "typescript:CineDoc"
+    - "zig:CineDoc"
+    - "json_schema:doc"
+  depends_on: []
+
+required_fields:
+  - name: title
+    type: str
+    description: "Document title (e.g. 'Day 12 Call Sheet')"
+
+optional_fields:
+  - name: doc_type
+    type: str
+    description: "Document kind; values from the cineos_doc_types enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_doc_types"
+  - name: body
+    type: str
+    description: "Document body (markdown/text), if held inline"
+  - name: file_ref
+    type: str
+    description: "Path/$ref to the document file, if external"
+  - name: project_ref
+    type: str
+    description: "Slug/id of the Project this doc attaches to (soft cross-ref)"
+  - name: scene_ref
+    type: str
+    description: "Slug/id of the Scene this doc attaches to (soft cross-ref)"
+  - name: shot_ref
+    type: str
+    description: "Slug/id of the Shot this doc attaches to (soft cross-ref)"
+  - name: created_by
+    type: str
+    description: "User identifier of the doc's author"
+
+relations:
+  parent: null
+  children:
+    - note
+    - image
+
+example:
+  title: "Day 12 Call Sheet"
+  doc_type: "call_sheet"
+  project_ref: "wet-under-blue-sky"

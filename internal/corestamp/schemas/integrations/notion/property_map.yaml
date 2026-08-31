@@ -1,0 +1,71 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/integrations/notion/property_map"
+  title: "Notion Property Map"
+  description: |
+    Maps Notion database property names/types onto local SST field paths.
+    Lets adapters project structured columns without hardcoding DB layouts.
+  generates:
+    - "pydantic:NotionPropertyMap"
+  depends_on:
+    - "lightwave://schemas/integrations/notion/database"
+
+required_fields:
+  - name: slug
+    type: str
+    description: "Stable map identifier"
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+  - name: database_notion_id
+    type: str
+    description: "Notion database UUID this map applies to"
+  - name: mappings
+    type: "list[PropertyMapping]"
+    description: |
+      Each mapping: notion_property (str), notion_type (str), local_field (str),
+      local_kind (str|null), required (bool).
+
+optional_fields:
+  - name: notes
+    type: str
+    description: "Operator notes about intentional omissions or renames"
+
+sub_schemas:
+  PropertyMapping:
+    required_fields:
+      - name: notion_property
+        type: str
+        description: "Exact Notion property name"
+      - name: notion_type
+        type: str
+        description: "title | rich_text | select | multi_select | status | date | number | url | relation | checkbox"
+      - name: local_field
+        type: str
+        description: "Local column / SST field name"
+      - name: required
+        type: bool
+        description: "Whether absence of the Notion property is an error"
+    optional_fields:
+      - name: local_kind
+        type: str
+        description: "Target SST kind when promoting a DB row (e.g. task)"
+
+example:
+  slug: life-domain-tasks-v1
+  database_notion_id: "db-1111-2222"
+  mappings:
+    - notion_property: Name
+      notion_type: title
+      local_field: title
+      local_kind: task
+      required: true
+    - notion_property: Status
+      notion_type: status
+      local_field: status
+      local_kind: task
+      required: true
+    - notion_property: Domain
+      notion_type: select
+      local_field: domain
+      local_kind: task
+      required: false
+  notes: "Legacy Notion-as-inbox; prefer local Ready-Task inbox going forward."

@@ -1,0 +1,52 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/media_backup_archive"
+  title: "Media backup & archive SOP"
+  description: |
+    Operator SOP for camera/shuttle intake, project backup tiers (3-2-1),
+    checksum verification, and Deep Archive. Deletions and reformats are
+    Joel-gated (supervised). Print lives at ~/.lightwave/sops/media_backup_archive.yaml;
+    human doctrine at ~/.lightwave/docs/products/lightwave-media-data-doctrine.md.
+    Source plan: ~/.claude/plans/2026-08-09-media-backup-archive-doctrine.md.
+  generates:
+    - "go:MediaBackupArchiveSOP"
+    - "json_schema:media_backup_archive"
+  depends_on: []
+
+name: "media_backup_archive"
+id: media_backup_archive
+title: "Media drive intake, project backup tiers, and Deep Archive ritual"
+version: 1.1.0
+execution_mode: supervised
+
+trigger:
+  source: manual
+  event: human.media_drive_arrival
+
+# Tier map (operator prints; update via doctrine / home sync):
+# working  → /Volumes/lightwave-desktop-raid-001
+# nearline → QNAP CIN_Work (smb://192.168.1.109/CIN_Work) primary;
+#            Synology Work Media (smb://192.168.1.239/Work Media) secondary
+# photo    → QNAP Photo_Archive (smb://192.168.1.109/Photo_Archive)
+# cold     → s3 Deep Archive (bucket via lightwave-infrastructure-*)
+
+parameters: []
+
+steps:
+  - id: drive_arrival
+    tool: escalate_to_human
+    args:
+      message: |
+        Media drive intake checklist:
+
+        - Identify project (canonical name YYYY-Month_NNN_TITLE_Type); if none, create via Post Haste — never mkdir by hand
+        - Offload with checksums (ShotPut Pro / rsync + manifest) to RAID working project location
+        - Verify: checksum pass + file counts
+        - Register offload in Silverstack (folder tree is catalog of record)
+        - Mirror to nearline NAS (prefer CIN_Work); verify
+        - Only then is the source card/shuttle reusable
+
+# NOTE: archive_project and deletion_gate are separate rituals that fire at different times:
+# - archive_project fires when a project reaches DELIVERED status
+# - deletion_gate fires when considering local deletion after verified copies exist
+# These should be implemented as separate SOPs with their own trigger events.

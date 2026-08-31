@@ -1,0 +1,134 @@
+name: "spec_delta_context"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/spec_delta_context"
+  title: "Spec-Delta Context Model — developer persona context derivation"
+  description: |
+    Declares how developer personas (v_core-package-developer, v_staff-engineer
+    in implementer mode, etc.) derive their working context from the delta
+    between `spec/` and `docs/`.
+
+    Core equation:
+
+      spec_delta = specs/ - docs/
+
+    - `spec/` — what engineers said to build (PRD, ADR, SAD, implementation
+      plan). Authored by architect / staff / CTO personas. Human intent.
+    - `docs/` — what the code currently does. STRICTLY codegen output
+      (mermaid + markdown). Per R-31, no human-authored prose lives in
+      `docs/`; the directory is regenerated from the source tree.
+    - `spec_delta` — the work that remains: what the spec demands but the
+      docs do not yet describe. This is the developer's assignment.
+
+    The developer persona receives a closed context bundle:
+
+      { spec_delta, definition_of_done, constraints }
+
+    It does NOT receive:
+      - free-form instructions
+      - design decisions (those live in the spec, already in the delta)
+      - architectural rationale (architect's job, captured in ADRs)
+
+    The developer's job is to IMPLEMENT, not to design. Design leakage into
+    the developer context is a validity violation.
+  generates:
+    - "go:SpecDeltaContextSOP"
+    - "json_schema:spec_delta_context"
+  depends_on:
+    - "lightwave://schemas/policy/validity/core-self"
+
+id: spec_delta_context
+title: "Spec-Delta Context Model"
+version: 1.0.0
+execution_mode: supervised
+status: active
+
+trigger:
+  source: manual
+  event: developer.context_resolve
+
+parameters:
+  - name: spec_root
+    type: string
+    description: "Path to spec/ tree (e.g. spec/)"
+  - name: docs_root
+    type: string
+    description: "Path to codegen docs/ tree (e.g. docs/)"
+  - name: scope_filter
+    type: string
+    optional: true
+    description: "Optional glob/sub-path narrowing the delta to a slice"
+
+required_fields:
+  - name: spec_delta
+    type: "list[dict]"
+    description: |
+      Ordered list of delta entries — each a spec demand not yet reflected
+      in codegen docs. Each entry: { id, source_spec, demand, gap }.
+  - name: definition_of_done
+    type: "list[str]"
+    description: |
+      Verifiable success criteria for the delta. Each item must be
+      checkable by a test, lint, or doc-regen pass — not by human judgement.
+  - name: constraints
+    type: "dict"
+    description: |
+      Hard guardrails the implementation must respect (R-rules, ADRs,
+      validity contract, layer boundaries). Values are references, not
+      prose.
+
+optional_fields:
+  - name: scope_filter
+    type: string
+    description: "Sub-path or glob narrowing the delta to a single slice"
+  - name: excluded
+    type: "list[str]"
+    description: "Spec demands explicitly deferred from this delta (with reason)"
+  - name: validity_contract
+    type: string
+    description: "Path to the pinned validity contract for this session"
+  - name: forbidden_context
+    type: "list[str]"
+    description: |
+      Context categories the developer must NOT receive (default:
+      free_form_instructions, design_decisions, architectural_rationale).
+
+example:
+  spec_delta:
+    - id: DELTA-001
+      source_spec: "spec/adr/ADR-0031-git-fleet-audit.md"
+      demand: "Pre-push hook must run `lw git doctor` (Phase 0.5)"
+      gap: "docs/references/git-fleet.md does not mention Phase 0.5"
+    - id: DELTA-002
+      source_spec: "spec/prd/PRD-local-audit-strict.md"
+      demand: "LW_GIT_AUDIT_STRICT=1 fails audit on advisory-tier violations"
+      gap: "docs/references/self-validity.md lists the flag but not strict semantics"
+  definition_of_done:
+    - "docs/references/git-fleet.md documents Phase 0.5 after `mise run docs:regen`"
+    - "tests/validation/test_git_fleet_audit.py passes with LW_GIT_AUDIT_STRICT=1"
+    - "no human-authored prose added to docs/ (R-31 codegen-only)"
+  constraints:
+    r_rules: ["R-31", "R-12", "R-6"]
+    adrs: ["ADR-0031"]
+    layer_boundary: "stamp ≠ code (lightwave-core holds YAML only)"
+    validity_contract: "~/.lightwave/config/contracts/2026-06-24-git-fleet.yaml"
+  forbidden_context:
+    - free_form_instructions
+    - design_decisions
+    - architectural_rationale
+  scope_filter: "docs/references/git-fleet.md"
+
+relations:
+  - relation: enforces
+    target: "lightwave://schemas/policy/validity/core-self"
+    note: "R-31 (docs are codegen-only) is the load-bearing rule for this model"
+  - relation: consumes
+    target: "spec/"
+    note: "Engineer-authored specs (PRD/ADR/SAD/plan) — the minuend"
+  - relation: consumes
+    target: "docs/"
+    note: "Codegen-only docs (mermaid + markdown) — the subtrahend"
+  - relation: feeds
+    target: "lightwave://schemas/workflows/sops/lw_dev_session"
+    note: "Developer phase of lw-dev session consumes the resolved delta bundle"

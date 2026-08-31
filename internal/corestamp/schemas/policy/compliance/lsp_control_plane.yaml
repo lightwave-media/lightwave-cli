@@ -1,0 +1,187 @@
+name: "lsp_control_plane"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/compliance/lsp_control_plane"
+  title: "LSP Control Plane — Agent Code Quality Enforcement"
+  description: |
+    The control plane for how agents write code. Every LSP rule is mapped to a
+    Lightwave engineering principle. The configuration is auditable, versioned,
+    and reproducible across all repos via blueprints.
+
+    Governance: agents cannot pass CI without 0 LSP errors. Warnings are
+    tracked against a baseline — any increase blocks the phase transition.
+    This is the code quality equivalent of the harness configuration plane:
+    compliance is architectural, not aspirational.
+
+    Sources: ~/.lightwave/brain/cortex/agents/principles/engineering.yaml
+
+  generates:
+    - "ruff:pyproject.toml"
+    - "basedpyright:pyrightconfig.json"
+    - "golangci:.golangci.yml"
+    - "eslint:.eslintrc"
+    - "oxlint:.oxlintrc.json"
+
+# ── Python (ruff + basedpyright) ─────────────────────────────────────────────
+
+python:
+  ruff:
+    line_length: 120
+    target_version: py312
+    select:
+      - code: "E"
+        description: "pycodestyle errors"
+        purpose: "Mechanical correctness — code that won't run is blocked"
+      - code: "F"
+        description: "pyflakes"
+        purpose: "Dead code, undefined names — subtraction over addition"
+        principle: subtraction_over_addition
+      - code: "B"
+        description: "flake8-bugbear"
+        purpose: "Likely bugs — structural correctness"
+        principle: boundary_validation
+      - code: "I"
+        description: "isort"
+        purpose: "Import ordering — predictable imports"
+        principle: surgical_changes
+      - code: "S"
+        description: "flake8-bandit"
+        purpose: "Security — secrets, subprocess, unsafe patterns"
+        principle: secure_by_design
+      - code: "DTZ"
+        description: "flake8-datetimez"
+        purpose: "Timezone-aware datetime — no naive UTC"
+        principle: boundary_validation
+      - code: "SIM"
+        description: "flake8-simplify"
+        purpose: "Code simplification — less code"
+        principle: subtraction_over_addition
+    ignore:
+      - code: "S101"
+        description: "assert used in tests"
+        reason: "pytest uses assertions as test assertions — legitimate in test files"
+        scope: test_files_only
+    per_file_ignores:
+      tests:
+        - "S101" # assert in tests
+        - "S105" # possible hardcoded password (test fixtures)
+        - "S106" # possible hardcoded password func arg
+        - "S603" # subprocess without shell=True check
+        - "S607" # partial executable path
+        - "E501" # line length in test strings
+
+  basedpyright:
+    include: [tests, dev]
+    typeCheckingMode: standard
+    rules:
+      - rule: reportMissingTypeArgument
+        severity: warning
+        principle: boundary_validation
+        note: "Tracked as baseline tech debt (28 currently). Set to 'error' when tests are typed."
+      - rule: reportUnknownVariableType
+        severity: none
+        note: "PyYAML returns Any — false positives unavoidable"
+      - rule: reportUnknownParameterType
+        severity: none
+      - rule: reportUnknownMemberType
+        severity: none
+      - rule: reportUnknownArgumentType
+        severity: none
+      - rule: reportUnknownLambdaType
+        severity: none
+      - rule: reportAny
+        severity: none
+      - rule: reportExplicitAny
+        severity: none
+      - rule: reportMissingParameterType
+        severity: none
+      - rule: reportUnusedCallResult
+        severity: none
+      - rule: reportUnnecessaryIsInstance
+        severity: none
+
+# ── Go ─────────────────────────────────────────────────────────────────────────
+
+go:
+  tools: [golangci-lint, gofmt]
+  golangci:
+    linters:
+      - name: errcheck
+        principle: boundary_validation
+      - name: gosimple
+        principle: subtraction_over_addition
+      - name: govet
+        principle: boundary_validation
+      - name: ineffassign
+        principle: subtraction_over_addition
+      - name: staticcheck
+        principle: duplication_detection
+      - name: unused
+        principle: subtraction_over_addition
+      - name: gosec
+        principle: secure_by_design
+
+# ── Shell ──────────────────────────────────────────────────────────────────────
+
+shell:
+  tools: [shellcheck]
+  severity: warning
+  principle: boundary_validation
+
+# ── Zig ────────────────────────────────────────────────────────────────────────
+
+zig:
+  tools: [zig fmt, zig ast-check]
+  zig_fmt: { check: true }
+  principle: surgical_changes
+  note: "Zig compiler catches most issues. fmt enforces consistency. ast-check catches dead code."
+
+# ── TypeScript ──────────────────────────────────────────────────────────────────
+
+typescript:
+  tools: [oxlint, tsc]
+  oxlint:
+    rules:
+      - correctness
+      - suspicious
+      - pedantic
+      - style
+      - no_unused_vars
+    principles:
+      - subtraction_over_addition # no_unused_vars
+      - boundary_validation # TypeScript strict mode
+      - surgical_changes # no_formatting_only changes
+  tsc:
+    strict: true
+    noEmit: true
+
+# ── YAML ────────────────────────────────────────────────────────────────────────
+
+yaml:
+  tools: [yaml-language-server, yamllint]
+  schema_validation: "Phase 6 — JSON Schema generation from SST required first"
+  syntax: "ci yaml-check task validates parseability"
+
+# ── Phase Gate ──────────────────────────────────────────────────────────────────
+
+phase_gate:
+  description: "Agents cannot commit or transition phases with non-zero LSP errors."
+  enforcement: |
+    SELECT COUNT(*) FROM lsp_diagnostics WHERE severity='error' AND repo='current'
+    IF count > 0: block phase transition
+    IF count == 0 AND warnings > baseline: block phase transition (regression)
+    IF count == 0 AND warnings <= baseline: allow
+
+# ── Example ──────────────────────────────────────────────────────────────────────
+
+example:
+  python:
+    ruff:
+      select: ["E", "F", "B", "I", "S", "DTZ", "SIM"]
+      ignore: ["S101"]
+      line_length: 120
+    basedpyright:
+      typeCheckingMode: standard
+      include: [tests, dev]
+      reportMissingTypeArgument: warning

@@ -1,0 +1,36 @@
+_meta:
+  version: "2.0.0"
+  schema_id: "lightwave://schemas/data/enums/user_story_statuses"
+  title: "User Story Status Enum"
+  description: |
+    Lifecycle statuses for UserStory entities. Closed enum.
+
+    v2.0: values merged from print back into stamp per revised R-15.
+    Originally extracted from legacy products/createos/config.yaml.
+  generates:
+    - "pydantic:UserStoryStatus"
+  depends_on: []
+
+name: user_story_statuses
+description: "Lifecycle statuses for UserStory entities"
+default: draft
+closed: true
+options:
+  - value: draft
+    label: "Draft"
+    description: "Initial draft"
+  - value: interviewing
+    label: "Interviewing"
+    description: "User story interview in progress"
+  - value: discovered
+    label: "Discovered"
+    description: "Requirements discovered"
+  - value: ready
+    label: "Ready"
+    description: "Ready for implementation"
+  - value: in_progress
+    label: "In Progress"
+    description: "Being implemented"
+  - value: completed
+    label: "Completed"
+    description: "Implementation complete"

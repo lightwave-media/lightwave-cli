@@ -1,0 +1,33 @@
+name: "createos_sidecar"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/cli/createos_sidecar"
+  title: "createOS Tauri sidecar invoke map"
+  description: |
+    Sidecar shells out to lw on PATH (mise shims). No duplicate FSM in Rust.
+  generates: []
+
+handlers:
+  - name: kickoff_start
+    lw: ["kickoff", "start"]
+  - name: kickoff_status
+    lw: ["kickoff", "status"]
+  - name: kickoff_answer
+    lw: ["kickoff", "answer"]
+  - name: kickoff_finalize
+    lw: ["kickoff", "finalize"]
+  - name: factory_apply
+    lw: ["factory", "apply"]
+  - name: home_validate
+    lw: ["home", "validate"]
+  - name: session_spawn
+    lw: ["session", "spawn"]
+  - name: docs_serve
+    lw: ["docs", "serve"]
+  - name: runbook_open
+    description: "Open a lightwave-core runbook in Runbooks.app (not lw — macOS deep link)"
+    invoke: runbook_open
+  - name: runbook_agent_start
+    description: "Dispatch agent-owned runbook apply in canonical worktree (ADR-0039)"
+    lw: ["runbook", "start"]

@@ -1,0 +1,282 @@
+_meta:
+  version: 1.1.0
+  schema_id: lightwave://schemas/policy/governance/harness_configuration_plane
+  title: Lightwave AI Harness — Configuration Plane
+  description: "The configuration plane for the Lightwave AI Harness System. This is where\nagent autonomy is defined, gated,\
+    \ and audited. Every phase transition is a\ndatabase record. Every tool permission is a phase check. Every persona\nactivation\
+    \ is a phase boundary.\n\nThis is the legally enforceable structure: deterministic, auditable,\nimmutable. The database\
+    \ IS the contract between the agent and the system.\n\nArchitecture:\n  Runbook authors push boilerplate + naming conventions\
+    \ into core.\n  Agents execute runbooks, advancing through phases.\n  Phase gates activate review personas (Q-suite).\n\
+    \  Harness hooks read phase state to allow/deny tool calls.\n  Everything is recorded in runbook_executions — auditable,\
+    \ replayable.\n"
+  generates:
+  - typescript:HarnessConfig
+  - go:HarnessConfig
+  depends_on:
+  - lightwave://schemas/workflows/sops/runbook_execution
+  - lightwave://schemas/data/meta/agent_definition
+  - lightwave://schemas/policy/compliance/token_budget
+  - lightwave://schemas/data/enums/model_tiers
+  # policy/validity/self-scaffolding-stance is intentionally NOT listed: it
+  # declares the reverse edge (it depends_on this schema; relations.parent =
+  # this), so the hard dependency is stance → plane. model_tiering.fence_ref
+  # below is a soft human back-reference — listing it here would declare a cycle.
+  changelog:
+  - version: 1.1.0
+    date: "2026-06-27"
+    summary: "Add model_tiering (ADR-0043): assign model tier by harness layer — frontier authors the constitution/harness layer, cheap/local executes within it."
+required_fields:
+- name: runbook_slug
+  type: str
+  description: Active runbook
+optional_fields:
+- name: current_phase
+  type: str
+  description: Current execution phase
+- name: phase_history
+  type: list[PhaseRecord]
+  description: Ordered list of past phase configurations for this harness.
+sub_schemas:
+  PhaseRecord:
+    phase:
+      type: str
+      description: Phase identifier
+    status:
+      type: str
+    agent_id:
+      type: str
+    reviewer_id:
+      type: str
+      description: Q-suite persona activated at this phase boundary
+    tool_grants:
+      type: list[str]
+      description: Tools allowed in this phase
+    tool_denies:
+      type: list[str]
+      description: Tools denied in this phase
+  QSuite:
+    description: 'The review personas activated at phase boundaries. Each persona has a
+
+      specific gate: QA verifies correctness, Staff Engineer reviews architecture,
+
+      CTO signs off on business impact. The harness auto-activates these personas
+
+      when the agent hits a phase gate.
+
+      '
+    roles:
+    - id: v_cfo
+      gate: budget
+      description: Token budget approval, tech debt liability tracking, cost optimization
+    - id: v_qa-engineer
+      gate: verify
+      description: Test strategy, regression detection, edge case analysis
+    - id: v_staff-engineer
+      gate: scaffold
+      description: Architecture review, abstraction quality, technical debt audit
+    - id: v_cto
+      gate: complete
+      description: Business alignment, R-rule compliance, release-train contract
+tool_grants:
+  description: "Fine-grained tool permissions gated by runbook phase. The harness reads this\nmatrix from the database at\
+    \ each phase transition and updates the agent's\ntoolset accordingly. Same mechanism as user RBAC — just for automated\
+    \ workflows.\n\nPhase order (linear, with review gates):\n  pending → migrate → seed → budget ──▷ v_cfo token budget gate\n\
+    \     → scaffold ──▷ v_staff-engineer architecture gate\n     → verify ──▷ v_qa-engineer QA gate\n     → complete ──▷\
+    \ v_cto sign-off gate\n"
+  phases:
+    pending:
+      allow:
+      - Read
+      - Glob
+      - Grep
+      deny:
+      - Write
+      - Edit
+      - Bash
+      - lw
+    migrate:
+      allow:
+      - Read
+      - Glob
+      - Grep
+      - psql
+      deny:
+      - Write
+      - Edit
+    seed:
+      allow:
+      - Read
+      - Glob
+      - Grep
+      - psql
+      deny:
+      - Write
+      - Edit
+    budget:
+      allow:
+      - Read
+      - Glob
+      - Grep
+      - lw
+      deny:
+      - Write
+      - Edit
+      - Bash
+      reviewer: v_cfo
+    scaffold:
+      allow:
+      - Read
+      - Glob
+      - Grep
+      - Write
+      - Edit
+      - Bash
+      - lw
+      deny: []
+      reviewer: v_staff-engineer
+    verify:
+      allow:
+      - Read
+      - Glob
+      - Grep
+      - Write
+      - Edit
+      - Bash
+      - lw
+      - test
+      deny: []
+      reviewer: v_qa-engineer
+    complete:
+      allow:
+      - Read
+      - Glob
+      - Grep
+      - Write
+      - Edit
+      - Bash
+      - lw
+      - test
+      - deploy
+      deny: []
+      reviewer: v_cto
+incentive_structure:
+  description: 'Agents have asymmetric incentive to push boilerplate technology forward.
+
+    Every capability added to boilerplate/runbook expands the agent''s autonomous
+
+    tool grants. Every naming convention codified in SST reduces the need for
+
+    human review at phase boundaries. The more the agent builds in the
+
+    constitution layer (YAML + Markdown), the more it can do in the execution
+
+    layer before hitting a gate. This is by design.
+
+    '
+  cycle: '1. Agent encounters a phase gate → Q-suite review blocks progress.
+
+    2. Agent files a blueprint/runbook improvement to codify the pattern.
+
+    3. Improvement is reviewed, merged into core (constitution layer).
+
+    4. Next execution, the agent passes the gate without review.
+
+    5. Agent is incentivized to push more into core to gain more autonomy.
+
+    '
+model_tiering:
+  description: "Model tier assigned by harness LAYER (ADR-0043). Intelligence lives in\nthe harness, not the model, so the expensive model AUTHORS the harness and the\ncheap model EXECUTES it — the economic outcome 'cheaper models do more advanced\nengineering'. This is the missing economic axis on top of incentive_structure\n(which already grows the constitution layer). References data/enums/model_tiers;\ncomposes with cron_job.model_override and per-persona default model. The Fence\n(when the model may self-scaffold a NEW harness vs ride an existing one) is\ndefined in policy/validity/self-scaffolding-stance.\n"
+  layers:
+    authoring:
+      what: "Constitution / harness authoring — writing runbooks, blueprints, lw verbs, schemas; self-scaffolding a NEW composition for a novel task."
+      tier: frontier
+      rationale: "Designing a reusable harness is the high-leverage, judgment-heavy work. Pay for capability once; the result is executed cheaply forever."
+    execution:
+      what: "The swarm USING a vetted harness — advancing runbook phases, rendering boilerplate, invoking lw verbs, executing a known composition."
+      tier: standard
+      rationale: "Riding a deterministic, verified harness is easy work; the harness carries the intelligence. Drop to local/economic where the harness is fully deterministic."
+  # fence_ref is a resolvable schema URI (R-4 validates it). wires_to items are
+  # informational field-path pointers (NOT resolvable lightwave:// URIs) — the
+  # schema fields this tiering composes with at runtime, named in prose by design.
+  fence_ref: lightwave://schemas/policy/validity/self-scaffolding-stance
+  wires_to:
+  - cron_job.model_override / provider_override (per-job tier selection)
+  - agent_definition default model per persona tier
+io_contract:
+  description: 'ALL LLM input and output in the Lightwave ecosystem MUST be structured
+
+    against an SST schema. The core library (lightwave-core) is the control
+
+    plane, configuration plane, and enforcement plane for all agents in the
+
+    active system.
+
+
+    Input: Every MCP tool parameter, every runbook variable, every session
+
+    context object is defined by a schema in src/schemas/. The agent harness
+
+    validates input against the schema before execution. No unstructured
+
+    text passes through an agent boundary without a schema-declared shape.
+
+
+    Output: Every MCP tool return value, every runbook execution result,
+
+    every codegen artifact is validated against a schema before delivery.
+
+    Agents produce structured data; the schema is the contract between the
+
+    agent and the system.
+
+
+    Enforcement: The harness hooks (pre-tool-use, post-tool-use) read the
+
+    active SST schemas and reject any input or output that does not conform.
+
+    The MCP server at :7701 auto-generates tool definitions from SST schemas.
+
+    The docs server at :3200 renders the compressed codebase so agents can
+
+    discover available schemas without reading every file.
+
+
+    This is the single most important architectural invariant in Lightwave.
+
+    Without it, agents produce unstructured noise. With it, every agent action
+
+    is auditable, replayable, and composable.
+
+    '
+example:
+  runbook_slug: bootstrap-platform-domain
+  current_phase: scaffold
+  phase_history:
+  - phase: migrate
+    status: passed
+    agent_id: v_core-package-developer
+    tool_grants:
+    - Read
+    - Glob
+    - Grep
+    - psql
+  - phase: seed
+    status: passed
+    agent_id: v_core-package-developer
+    tool_grants:
+    - Read
+    - Glob
+    - Grep
+    - psql
+  - phase: scaffold
+    status: running
+    agent_id: v_core-package-developer
+    tool_grants:
+    - Read
+    - Glob
+    - Grep
+    - Write
+    - Edit
+    - Bash
+    - lw
+    reviewer_id: v_staff-engineer

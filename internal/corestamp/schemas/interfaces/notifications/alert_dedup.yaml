@@ -1,0 +1,122 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/notifications/alert_dedup"
+  title: "Alert / Alarm Dedup Contract"
+  description: |
+    Per-alert-class dedup, debounce, suppression, and escalation contract.
+    Stops the same root condition from firing N independent alerts because
+    the check loop has no memory of "I already alerted in the last X min."
+
+    Forensic root cause captured 2026-05-25 in ZeroClaw operation: the
+    dead-man-switch alert fired ~3 alerts per minute to Telegram with no
+    dedup or throttling. Same root condition produced N independent alerts.
+    Same shape as PagerDuty-style alert dedup; just needed declaring once.
+
+    Per handoff 2026-05-25-zeroclaw-runtime-ergonomics R5 (should).
+  generates:
+    - "pydantic:AlertDedupContract"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default')"
+  - name: alert_classes
+    type: "list[AlertClassRef]"
+    description: |
+      Per-alert-class dedup policy. Sub-schema AlertClass:
+        class_name (str, slug — e.g. 'dead_man_switch' | 'queue_saturation' |
+          'provider_identity_mismatch' | 'cost_cap_warn'),
+        dedup_key_template (str, template using alert-event fields to compute
+          a dedup key — e.g. '{class}:{host}:{check_name}' so alerts with same
+          composite identity dedupe; '{class}:{event_id}' makes every event unique),
+        debounce_window_secs (int, after first alert, suppress dupes within this window),
+        suppression_after_n_in_window (int, max alerts of same dedup_key allowed in
+          escalation_window — beyond this, suppress entirely until escalation_window resets),
+        escalation_window_secs (int, the window over which suppression_after_n applies),
+        max_suppression_duration_secs (int, after this much suppression, escalate
+          regardless — never silently swallow forever),
+        summarization_template (str|null, when repeats are suppressed: how to phrase
+          the periodic 'still firing' summary — e.g. '⚠ {class} still firing —
+          {count} occurrences in last {window}'),
+        sink_class (str, the channel_bindings sink_class slug to emit on —
+          e.g. 'sysadmin_alert'),
+        severity (enum: info | warn | error | critical),
+        notes (str).
+
+optional_fields:
+  - name: global_dedup
+    type: "GlobalDedupRef"
+    description: |
+      Sub-schema GlobalDedup — cross-class dedup behavior:
+        cross_class_dedup_window_secs (int, suppress different-class alerts of same
+          host within window — prevents alert storm during incident),
+        cross_class_dedup_max_distinct (int, max distinct classes allowed in window
+          before all suppressed under a meta-alert).
+  - name: alert_audit_log
+    type: str
+    description: "Path under ~/.lightwave/observability/ for per-alert event log (every alert + suppress + escalate decision)."
+  - name: first_alert_behavior
+    type: "FirstAlertBehaviorRef"
+    description: |
+      Sub-schema FirstAlertBehavior:
+        always_send (bool, default true — first alert in a window always sends regardless of dedup),
+        include_pretext (bool, prepend a header like '🚨 NEW ALERT' to distinguish from repeats).
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default"
+  alert_classes:
+    - class_name: "dead_man_switch"
+      dedup_key_template: "{class}:{check_name}"
+      debounce_window_secs: 300 # 5 min
+      suppression_after_n_in_window: 1
+      escalation_window_secs: 3600 # 1 hour
+      max_suppression_duration_secs: 7200 # 2 hours — forced escalation
+      summarization_template: "⚠ Dead-man-switch '{check_name}' still firing — {count} occurrences over {window}. Stop investigating? Run: lw v_core alert silence {dedup_key}"
+      sink_class: "sysadmin_alert"
+      severity: "critical"
+      notes: "Forensic case for this contract — was firing 3/min with no dedup. New behavior: first alert sends, then summarized rollups every 5 min, escalate after 2 hours of suppression."
+    - class_name: "queue_saturation"
+      dedup_key_template: "{class}:{job_class}"
+      debounce_window_secs: 60
+      suppression_after_n_in_window: 3
+      escalation_window_secs: 1800 # 30 min
+      max_suppression_duration_secs: 3600 # 1 hour
+      summarization_template: "📊 Queue '{job_class}' saturated — {count} rejections in last {window}. Check llm_concurrency policy."
+      sink_class: "sysadmin_alert"
+      severity: "warn"
+      notes: "From R7 (llm_concurrency). Saturation events bundled to prevent Telegram spam."
+    - class_name: "provider_identity_mismatch"
+      dedup_key_template: "{class}:{provider}:{requested_model}:{served_model}"
+      debounce_window_secs: 600 # 10 min
+      suppression_after_n_in_window: 1
+      escalation_window_secs: 86400 # 24 hours
+      max_suppression_duration_secs: 172800 # 48 hours
+      summarization_template: "🚨 Provider identity mismatch — {provider} returned {served_model} for {requested_model} ({count}× in last {window}). File upstream: see provider_identity_invariant schema."
+      sink_class: "sysadmin_alert"
+      severity: "error"
+      notes: "From R8 (provider_identity_invariant). Mismatches are RARE — should always alert."
+    - class_name: "cost_cap_warn"
+      dedup_key_template: "{class}:{scope}:{threshold_pct}"
+      debounce_window_secs: 3600 # 1 hour
+      suppression_after_n_in_window: 1
+      escalation_window_secs: 86400 # 24 hours
+      max_suppression_duration_secs: 172800
+      summarization_template: "💰 Cost cap '{scope}' at {threshold_pct}% — {count}× in last {window}. Review llm_budgets policy."
+      sink_class: "sysadmin_alert"
+      severity: "warn"
+      notes: "From governance/cost/llm_budgets (Phase 1g)."
+  global_dedup:
+    cross_class_dedup_window_secs: 30
+    cross_class_dedup_max_distinct: 5
+  alert_audit_log: "~/.lightwave/observability/alerts.jsonl"
+  first_alert_behavior:
+    always_send: true
+    include_pretext: true

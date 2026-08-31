@@ -1,0 +1,61 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/session_context"
+  title: "Session Context"
+  description: |
+    Per-session runtime metadata composed at spawn time and refreshed
+    on demand by `compose_user_prompt` / `compose_system_prompt` (per
+    ADR-0004). Distinct from agent_definition (the persona DATA) and
+    task (the WORK ITEM) — session_context describes WHEN + WHERE this
+    particular agent invocation is running.
+
+    Two phases of use:
+      - SPAWN — id, spawn_time_iso, dispatcher fill at session start
+        and never change for the life of the session. Rendered into
+        <session_context> in system_prompt.md.
+      - REFRESH — is_kickoff, refresh_needed, last_checkpoint_iso,
+        progress_summary are evaluated PER MESSAGE. is_kickoff is true
+        only for the first user message; refresh_needed flips true
+        when the composer detects the session has been compacted or
+        is approaching the context window.
+
+    Stamped 2026-05-28 as part of Phase B (draining user_prompt.md's
+    composer_injected_roots).
+  generates:
+    - "rust:SessionContext"
+    - "pydantic:SessionContext"
+  depends_on: []
+
+required_fields:
+  - name: id
+    type: str
+    description: "Session UUID or slug. Stable for the life of the agent invocation. Used as the join key in observability logs."
+  - name: spawn_time_iso
+    type: str
+    description: "ISO-8601 datetime when this session was spawned. Composer logs into <session_context>; never mutates after spawn."
+  - name: dispatcher
+    type: str
+    description: "Agent slug that spawned this session — typically v_core, occasionally v_scrum-manager. Provenance for the dispatch chain."
+
+optional_fields:
+  - name: is_kickoff
+    type: bool
+    description: "True only for the FIRST user message of the session; gates the heavy KICKOFF block in user_prompt.md. Composer flips false on subsequent messages."
+  - name: refresh_needed
+    type: bool
+    description: "Composer flips true when the session has been compacted OR is approaching the context window; triggers the <session_refresh> block in user_prompt.md so the agent gets re-grounded."
+  - name: last_checkpoint_iso
+    type: str
+    description: "ISO-8601 datetime of the last operator-saved checkpoint. Surfaced in <session_refresh> so the agent knows where to resume."
+  - name: progress_summary
+    type: str
+    description: "Short prose summary of progress so far. Composer regenerates on refresh — not authored by the operator."
+
+example:
+  id: "sess-2026-05-28-cli-developer-task42-abc123"
+  spawn_time_iso: "2026-05-28T14:32:18Z"
+  dispatcher: "v_core"
+  is_kickoff: true
+  refresh_needed: false
+  last_checkpoint_iso: null
+  progress_summary: null

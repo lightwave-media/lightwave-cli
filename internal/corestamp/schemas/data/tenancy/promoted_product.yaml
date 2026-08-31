@@ -1,0 +1,75 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/tenancy/promoted_product
+  title: Promoted Product
+  description: Domain-registry row promoted as a product in the createOS shell launcher. The mission-control AppTile in lightwave-ui
+    renders a projection of this row and invents no data of its own.
+  generates:
+  - go:PromotedProduct
+  - ts:PromotedProduct
+  table_kind: entity
+  table_name: promoted_products
+primary_key:
+  column: id
+  type: uuid
+required_fields:
+- name: zone
+  type: str
+  storage: db
+  indexed: true
+  description: Registry zone the product owns (e.g. cineos.io). Unique key of the domain registry.
+- name: name
+  type: str
+  storage: db
+  description: Product display name (e.g. cineOS).
+- name: tagline
+  type: str
+  storage: db
+  description: One-line product tagline rendered under the name.
+- name: blurb
+  type: str
+  storage: db
+  description: Short product description rendered on the launcher tile.
+- name: initials
+  type: str
+  storage: db
+  description: Poster monogram rendered until real art lands (e.g. cN).
+- name: state
+  type: str
+  storage: db
+  values_ref: lightwave://schemas/data/enums/promoted_product_states
+  description: Product lifecycle state. Machine value; display labels live on the enum stamp.
+optional_fields:
+- name: tint
+  type: str
+  storage: db
+  description: Brand color for the poster tint (CSS color value). Data-driven — each registry row carries its own, so it arrives
+    as a value, not a class.
+- name: publish_state
+  type: str
+  storage: db
+  values_ref: lightwave://schemas/data/enums/promoted_product_publish_states
+  description: Publish state of the product listing. Machine value; absent when the row carries no publish info. UI projects
+    publish_state + publish_meta together as one publish row.
+- name: publish_meta
+  type: str
+  storage: db
+  description: Free-text publish metadata line rendered next to the publish state (e.g. pricing and seat summary).
+- name: created_at
+  type: datetime
+  storage: db
+  description: ISO 8601 timestamp when this registry row was created.
+- name: updated_at
+  type: datetime
+  storage: db
+  description: ISO 8601 timestamp of the most recent row update.
+example:
+  zone: cineos.io
+  name: cineOS
+  tagline: Cinematographer's Operating System
+  blurb: Scenes, shots, storyboards, locations and crew.
+  initials: cN
+  tint: '#e0457b'
+  state: beta
+  publish_state: private_beta
+  publish_meta: $49/seat/mo — draft · 1 internal

@@ -1,0 +1,141 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/reference_documents/knowledge_source"
+  title: "Knowledge Source"
+  description: |
+    An external work — talk, book, paper, article — read once and distilled into
+    reusable claims. The raw capture stays at content_ref; this record is the
+    distillation, so the fleet cites the insight rather than re-reading the
+    transcript.
+
+    Written by the youtube-transcript skill and the inbox groomer (ADR-0043) to
+    ~/.lightwave/brain/knowledge/. The print predates this stamp: instances were
+    already declaring `conforms_to` this schema_id while no schema existed. The
+    shape below is taken from those instances rather than invented.
+
+    Distinct from technical_study, which is first-hand observation of a system we
+    can re-observe; a knowledge_source is second-hand and its locator points into
+    someone else's fixed artifact.
+  generates:
+    - "pydantic:KnowledgeSource"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/data/enums/life_domains"
+
+status_enum: "document_statuses"
+
+natural_key:
+  column: slug
+  unique: true
+
+required_fields:
+  - name: slug
+    type: str
+    description: "URL-safe unique identifier; lowercase, hyphen-separated."
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+  - name: title
+    type: str
+    description: "Title of the source work as its author published it, not a paraphrase."
+  - name: source_type
+    type: str
+    description: "Medium of the original: youtube_transcript | book | paper | article | talk | podcast. Open vocabulary — the ingesting skill sets it."
+  - name: status
+    type: str
+    description: "Lifecycle status; one of: draft | active | archived."
+  - name: ingested_at
+    type: date
+    description: "ISO date the source was distilled into this record. Distinct from published_at — the gap is how stale the reading is, not the work."
+  - name: content_ref
+    type: str
+    description: "Path to the raw capture (transcript, PDF, clipping) this record distils. The distillation is lossy by design; content_ref is where the unabridged text stays recoverable."
+  - name: summary
+    type: str
+    description: "Prose distillation of the whole work — the thesis and its shape, dense enough that a reader can decide whether to open content_ref."
+
+optional_fields:
+  - name: url
+    type: str
+    description: "Canonical public URL of the source, when it has one."
+  - name: author
+    type: str
+    description: "Author or speaker, with venue when that is what makes the source locatable (e.g. 'AWS Events — Steven Brovich (re:Invent 2025, SNR307)')."
+  - name: published_at
+    type: date
+    description: "ISO date the source itself was published."
+  - name: captured_via
+    type: str
+    description: "Tool that produced the raw capture (e.g. youtube-transcript-api). Provenance for the text at content_ref — a machine transcript is not an author-checked one."
+  - name: domains
+    type: "list[str]"
+    description: "life_domains slugs this source informs. Drives which personas surface it."
+    values_ref: "lightwave://schemas/data/enums/life_domains"
+  - name: frameworks
+    type: "list[str]"
+    description: "Named models or framings the source contributes, one line each. The reusable half of the work — what gets cited later."
+  - name: quotes
+    type: "list[str]"
+    description: "Verbatim lines worth reproducing. Verbatim is the contract: a paraphrase belongs in summary or frameworks."
+  - name: insights
+    type: "list[InsightRef]"
+    description: |
+      Load-bearing claims extracted from the source. Sub-schema Insight:
+        insight_id (str, stable within this record — e.g. 'I1'; what
+          related_artifacts cite),
+        claim (str, the assertion in our words),
+        evidence (str, what the source offers in support — the field that
+          separates a supported claim from an assertion),
+        locator (str, where in the source it sits: '[18:30]', 'ch. 4', 'p. 212'),
+        maps_to (list[str], life_domains slugs the claim bears on),
+        confidence (str, high | medium | low — our confidence in the claim, not
+          the speaker's).
+  - name: related_artifacts
+    type: "list[str]"
+    description: "lightwave:// URIs of schemas, ADRs or studies this source informs or contradicts."
+  - name: tags
+    type: "list[str]"
+    description: "Free-form retrieval tags. Unlike domains, no controlled vocabulary."
+
+relations:
+  parent: null # A source is atomic — it feeds the lineage without sitting in it
+  children: []
+
+example:
+  slug: "aws-agentic-team-structures"
+  title: "A leader's guide to advanced team structures in an agentic world"
+  source_type: "youtube_transcript"
+  status: "active"
+  ingested_at: "2026-06-19"
+  content_ref: "~/.lightwave/sources/youtube/O7u6myBRsns.md"
+  summary: >-
+    Brovich's four-question framework for structuring teams in an agentic world,
+    answered in order: Economics (Use/Compose/Build, decided per workflow),
+    Talent (the expert-generalist who orchestrates rather than builds), Structure
+    (the pod as an inverted pyramid of 3-5 seniors plus agents), and Governance
+    (policy-as-code at the gateway, outside the LLM loop). Thesis: the winners
+    are not those with the best AI but those with the best operating model
+    around it.
+  url: "https://www.youtube.com/watch?v=O7u6myBRsns"
+  author: "AWS Events — Steven Brovich (re:Invent 2025, SNR307)"
+  published_at: "2025-12-01"
+  captured_via: "youtube-transcript-api"
+  domains:
+    - "software-development"
+    - "creative-strategy"
+  frameworks:
+    - "Use / Compose / Build economics — decided per-workflow, not per-company"
+    - "Governance-as-infrastructure: identity, authorization, allowed-actions, auditability enforced at the gateway"
+  quotes:
+    - "AI won't take your job. Someone using AI will."
+    - "Policy is code is the riverbank. The agent can meander, but it can't cross the bank."
+  insights:
+    - insight_id: "I1"
+      claim: "Domain expertise plus AI beats coding skill alone."
+      evidence: "In Anthropic's Feb-2026 flagship hackathon (13,000 applicants) the top three finishers were domain experts, not professional developers — first a lawyer, third a cardiologist."
+      locator: "[18:30]"
+      maps_to: ["software-development", "creative-strategy"]
+      confidence: "high"
+  related_artifacts:
+    - "lightwave://schemas/policy/validity/self-scaffolding-stance"
+  tags:
+    - "operating-model"
+    - "agentic-teams"

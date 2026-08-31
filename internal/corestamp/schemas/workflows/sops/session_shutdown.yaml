@@ -1,0 +1,55 @@
+name: "session_shutdown"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/session_shutdown"
+  title: "Session shutdown SOP"
+  description: |
+    Mandatory shutdown before session end and pre-push bookend verify.
+  generates:
+    - "go:SessionShutdownSOP"
+  depends_on: []
+
+id: session_shutdown
+title: "Shutdown an agent developer session"
+version: 1.0.0
+execution_mode: automated
+
+trigger:
+  source: harness
+  event: session_stop
+
+parameters:
+  - name: session_id
+    type: string
+  - name: task_id
+    type: string
+
+steps:
+  - id: docs_final_sync
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw docs sync --yes && lw docs render --yes && lw docs check --strict
+
+  - id: promote_artifacts
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw session promote --session "${session_id}" --task "${task_id}"
+
+  - id: spec_delta_refresh
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw spec delta --task "${task_id}"
+
+  - id: write_shutdown_json
+    tool: memory_store
+    args:
+      namespace: sessions
+      key: "shutdown-${session_id}"
+      value: "shutdown_ok written to .tasks/${session_id}/shutdown.json"

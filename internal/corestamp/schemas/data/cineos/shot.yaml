@@ -1,0 +1,72 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/shot"
+  title: "Shot"
+  description: |
+    A shot within a Scene — the cinematographer's unit of coverage. Carries the
+    camera/lens/lighting spec that drives the shot list and on-set logging.
+  generates:
+    - "go:Shot"
+    - "typescript:Shot"
+    - "zig:Shot"
+    - "json_schema:shot"
+  depends_on:
+    - "lightwave://schemas/data/cineos/scene"
+
+required_fields:
+  - name: shot_number
+    type: str
+    description: "Shot label within the scene (e.g. '27A')"
+  - name: scene_ref
+    type: str
+    description: "Slug/id of the parent Scene"
+
+optional_fields:
+  - name: description
+    type: str
+    description: "What the shot covers"
+  - name: shot_size
+    type: str
+    description: "Framing size; suggested values from the cineos_shot_sizes enum (open)."
+    values_ref: "lightwave://schemas/data/enums/cineos_shot_sizes"
+  - name: shot_type
+    type: str
+    description: "Camera movement; suggested values from the cineos_shot_types enum (open)."
+    values_ref: "lightwave://schemas/data/enums/cineos_shot_types"
+  - name: camera_angle
+    type: str
+    description: "Camera angle; suggested values from the cineos_camera_angles enum (open)."
+    values_ref: "lightwave://schemas/data/enums/cineos_camera_angles"
+  - name: lens_size
+    type: str
+    description: "Lens focal length (e.g. '32mm')"
+  - name: frame_size
+    type: str
+    description: "Capture format / resolution (e.g. 'Open Gate 4.5K')"
+  - name: composition
+    type: str
+    description: "Composition notes"
+  - name: lighting
+    type: str
+    description: "Lighting notes"
+  - name: lighting_type
+    type: str
+    description: "Lighting setup; suggested values from the cineos_lighting_types enum (open)."
+    values_ref: "lightwave://schemas/data/enums/cineos_lighting_types"
+  - name: shot_duration
+    type: str
+    description: "Estimated duration (e.g. '00:00:08')"
+
+relations:
+  parent: scene
+  children:
+    - image
+
+example:
+  shot_number: "27A"
+  scene_ref: "wet-under-blue-sky-sc-27"
+  description: "Beau wraps his hands, backlit by the window"
+  shot_size: "mcu"
+  shot_type: "static"
+  camera_angle: "eye_level"
+  lens_size: "50mm"

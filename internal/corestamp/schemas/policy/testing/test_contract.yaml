@@ -1,0 +1,133 @@
+_meta:
+  version: 0.3.0
+  schema_id: lightwave://schemas/policy/testing/test_contract
+  title: Test Contract — declarative test-adequacy standard per component kind
+  description: |
+    A test contract declares WHICH test patterns and WHAT adequacy bar a given
+    component kind must satisfy. It is the STAMP for the Lightwave testing
+    standard; downstream repos (lightwave-cli, lightwave-platform,
+    lightwave-infrastructure-*) PRINT it as their own lint/CI gates.
+
+    The required_patterns vocabulary derives from Mitchell Hashimoto's
+    "Advanced Testing with Go" (NewStore TechTalk, 2016) and SWEBOK Ch5 test
+    selection. Adequacy is mutation score OVER line coverage (SWEBOK §3.4 /
+    §4.2.2): line coverage is the entry gate, mutation score is the real bar.
+
+    Stamp/print boundary: this schema defines the SHAPE of a testing standard.
+    It does NOT reach into other repos' test files — enforcement lives in the
+    downstream repo's CI (golangci-lint, a `lw check` verb). A test contract is
+    the upstream those gates conform to, not the gate itself.
+
+    A failure is a development signal, not merely a non-zero exit. Blocking
+    prints MUST identify the violated invariant, expected structure, repair
+    path, forbidden workarounds, and next verification. Disabling, skipping,
+    weakening, or bypassing the detector is never a cure. Suspected false
+    positives are proved with a known-good fixture and fixed under review.
+
+    For SST-shaped data, required_patterns MUST include stamp_bound and
+    print_census: load the stamp (or generated types) and walk every current
+    print. A test file that names one production, one path, or copies
+    STAMP_TIERS by hand is itself a print and cannot scale. Fixtures remain
+    the right tool for behaviour claims (parsers, mocks), not for shape.
+required_fields:
+- name: contract_id
+  type: str
+  description: Unique contract identifier (kebab/snake; stable across versions).
+- name: component_kind
+  type: enum
+  values_ref: "lightwave://schemas/data/enums/test_component_kinds"
+  description: The component surface this contract governs (stamped vocabulary).
+- name: required_patterns
+  type: list[str]
+  values_ref: "lightwave://schemas/data/enums/test_patterns"
+  description: >
+    Test patterns (the HOW axis — Hashimoto) the component MUST exhibit. Each
+    element MUST be a value from the stamped test_patterns enum. Orthogonal to
+    proposed_test_kinds (the SWEBOK WHAT-KIND axis).
+- name: min_line_coverage
+  type: int
+  description: Entry-gate line-coverage floor (percent). Necessary, not sufficient.
+- name: min_mutation_score
+  type: int
+  description: >
+    Adequacy bar — minimum mutation score (percent) on changed packages
+    (SWEBOK §3.4 / §4.2.2). The real measure of suite strength.
+- name: enforcement
+  type: enum
+  options:
+  - advisory
+  - warn
+  - block
+  description: How a downstream gate treats a violation (mirrors validity-contract action).
+optional_fields:
+- name: min_negative_fixtures
+  type: int
+  description: Minimum known-bad fixtures proving the detector rejects an offender.
+- name: determinism_runs
+  type: int
+  description: Repeated identical runs required before promotion beyond advisory.
+- name: max_false_positive_rate
+  type: float
+  description: Maximum accepted false-positive rate on the versioned known-good corpus.
+- name: max_staged_runtime_seconds
+  type: int
+  description: Runtime budget for the staged-file detector path.
+- name: max_ci_overhead_percent
+  type: int
+  description: Maximum full-CI runtime overhead allowed before blocking promotion.
+- name: promotion_evidence
+  type: list[str]
+  description: Evidence required to move advisory to warn or warn to block.
+- name: failure_guidance
+  type: object
+  description: >
+    Development-signal guidance with violated_invariant, expected_structure,
+    cure_command, do_not, and next_verification fields.
+- name: mutation_tool
+  type: str
+  description: Mutation-testing tool the downstream gate runs (e.g. gremlins for Go).
+- name: swebok_refs
+  type: list[str]
+  description: Cited SWEBOK Ch5 sections justifying the chosen test kinds.
+- name: applies_to_repos
+  type: list[str]
+  description: Downstream repos that print this contract as a CI gate.
+- name: source_ref
+  type: str
+  description: Upstream authority the pattern vocabulary derives from.
+example:
+  contract_id: go-http-route-v1
+  component_kind: go_http_route
+  required_patterns:
+  - table_driven
+  - subtests
+  - golden_files
+  - interface_mocking
+  - parallel_safe
+  - hermetic_default
+  min_line_coverage: 70
+  min_mutation_score: 50
+  enforcement: advisory
+  min_negative_fixtures: 1
+  determinism_runs: 10
+  max_false_positive_rate: 0.0
+  max_staged_runtime_seconds: 2
+  max_ci_overhead_percent: 10
+  promotion_evidence:
+  - known-bad fixture fails
+  - known-good corpus stays clean
+  - repeated runs produce identical findings
+  failure_guidance:
+    violated_invariant: HTTP route behavior changed without a rejecting test.
+    expected_structure: Table-driven route tests cover success and boundary failures.
+    cure_command: Add the missing case, then run go test ./... and the mutation task.
+    do_not: Do not skip, weaken, delete, or bypass the test or mutation.
+    next_verification: mise run ci
+  mutation_tool: gremlins
+  swebok_refs:
+  - "§1.3 Integration Testing"
+  - "§2.2 Expected-Output"
+  - "§3.4 Mutation Testing"
+  applies_to_repos:
+  - lightwave-platform
+  source_ref: ~/.lightwave/sources/youtube/yszygk1cpEc.md

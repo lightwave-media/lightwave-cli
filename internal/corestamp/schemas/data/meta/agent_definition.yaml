@@ -1,0 +1,259 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/agent_definition"
+  title: "Agent Definition (Persona)"
+  description: |
+    SCHEMA for ~/.lightwave/config/agents/v_*.yaml persona files. The
+    DATA contract that lightwave-sys::compose_system_prompt + Pi's
+    persona-loader read at agent-session spawn time.
+
+    Companion: src/templates/agents/persona.yaml is the human-facing
+    BLUEPRINT (with prose + an example). THIS file is the validating
+    schema R-59 (persona-compliance) enforces against every v_*.yaml
+    instance (out-of-repo, R-21 pattern; skips in CI).
+
+    Architecture (per ADR-0004):
+      1. Persona YAML (this schema)        — declarative DATA per persona
+      2. Prompt skeleton                    — src/templates/prompts/system_prompt.md
+      3. compose_system_prompt(role)        — fills skeleton with persona data
+      4. claude_code_runner                 — spawns Claude Code in tmux with
+                                              composed prompt as --append-system-prompt
+
+    Tier framework (per persona_tiers enum):
+      - engineer  — WIDE: cross-cutting design, no repo binding
+      - developer — DEEP: bound to one repo, owns implementation
+      - singular  — EXECUTIVE / ORCHESTRATOR / OBSERVER: unique role
+
+    Field values differ per tier (e.g. scope.baseDir is null for engineer
+    + singular but required for developer); see the persona-framework
+    brain lesson at
+    ~/.lightwave/brain/memory/lessons/2026-05-28-persona-framework-engineer-developer-split.md
+    for the patterns.
+  generates:
+    - "rust:AgentDefinition"
+    - "pydantic:AgentDefinition"
+  depends_on:
+    - "lightwave://schemas/data/enums/persona_tiers"
+    - "lightwave://schemas/data/meta/skill_definition"
+
+required_fields:
+  - name: schema_version
+    type: int
+    description: "Locked at 1 until this schema supersedes. Increments on breaking persona-shape changes."
+  - name: name
+    type: str
+    description: "kebab-case slug per R-11. Must match filename stem (v_<name>.yaml). Suffix convention by tier: -engineer | -developer | (none for singular). Industry-term exceptions allowed (v_architect, v_cto, v_DevOps) and documented in the persona-framework brain lesson."
+  - name: tier
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/persona_tiers"
+    description: "Persona tier — drives scope.baseDir nullability, write_boundary scope, and which composer blocks render. See persona_tiers enum."
+  - name: rbac_role
+    type: str
+    description: "Maps persona to RBAC role (governance/access/rbac). Determines data-access permissions in production."
+  - name: scope
+    type: "object<Scope>"
+    description: "Read/write boundaries + capabilities. See Scope sub-schema."
+  - name: data_access
+    type: "object<DataAccess>"
+    description: "Data classes + tenant scope + environments. See DataAccess sub-schema."
+  - name: scrum
+    type: "object<Scrum>"
+    description: "Agile ceremony participation. See Scrum sub-schema."
+  - name: dependencies
+    type: "object<Dependencies>"
+    description: "lightwave-cli + lightwave-core surfaces this persona needs. See Dependencies sub-schema."
+  - name: llm
+    type: "object<Llm>"
+    description: "Primary LLM config (tier, context, max_tokens, temperature). See Llm sub-schema."
+  - name: prompt
+    type: "object<Prompt>"
+    description: "Persona PROMPT DATA (role, authority_includes, hard_rules). Consumed by compose_system_prompt to fill the prompt skeleton at src/templates/prompts/system_prompt.md. This is DATA — the actual prompt text is rendered by the composer."
+  - name: tools
+    type: "object<Tools>"
+    description: "High-level allow/forbidden lists. Refined per harness in claude_code.permissions."
+  - name: claude_code
+    type: "object<ClaudeCode>"
+    description: "Claude Code-specific path-scoped permissions, hooks, plugins, status_line. See ClaudeCode sub-schema."
+
+optional_fields:
+  - name: skills
+    type: "list[str]"
+    description: "Skill slugs from ~/.lightwave/skills/. R-21 round-trip: every skill listed here MUST list this persona's name in its `agents:` field (validated against skill_definition.yaml#/required_fields/agents)."
+  - name: pi
+    type: "object<Pi>"
+    description: "Pi-side persona config. Omit if Pi doesn't dispatch this persona."
+
+# =============================================================================
+# Sub-schemas
+# =============================================================================
+sub_schemas:
+  Scope:
+    baseDir: "str | null" # DEVELOPER: repo path; ENGINEER+SINGULAR: null
+    repoDir: "str | null" # Mirrors baseDir for developers; remote URL acceptable
+    read_boundary: "list[str]" # Glob list; default ["**"]
+    write_boundary: "list[str]" # Path globs the persona may write to (empty for observer-singulars)
+    capabilities: "list[str]" # Action verbs the persona is authorized to perform
+
+  DataAccess:
+    read_classes: "list[str]" # public | internal_docs | code | staging_data | prod_metrics
+    write_classes: "list[str]" # Typically empty for ENGINEER+SINGULAR; [code, test_data] for DEVELOPER
+    tenant_scope: "str" # 'own' (enum); production access RBAC-gated separately
+    environments: "list[str]" # [development, staging]; prod requires explicit RBAC grant
+
+  Scrum:
+    role: "str" # developer | scrum_manager | observer | product_owner
+    domains: "list[str]" # LifeDomain slugs the persona participates in
+    ceremonies: "list[str]" # sprint_planning | daily_standup | sprint_review | retrospective
+    cadence: "str" # per_sprint | continuous
+
+  Dependencies:
+    lightwave_cli: "object<LightwaveCliDep>"
+    lightwave_core: "object<LightwaveCoreDep>"
+
+  LightwaveCliDep:
+    min_version: "str" # semver
+    subcommands: "list[str]" # Only verbs this persona ACTUALLY invokes (audited)
+
+  LightwaveCoreDep:
+    min_version: "str" # semver
+    sst_keys: "list[str]" # schema_ids this persona references
+
+  Llm:
+    primary: "object<LlmConfig>"
+    fallback: "object<LlmConfig> | null"
+    provider_policy: "str | null" # e.g. 'fail-over-after-N-errors'; consumed by lightwave-sys router
+
+  LlmConfig:
+    tier: "str" # 'default' | 'powerful'
+    context_window_min: "int"
+    secret_ref: "str" # AWS SSM path
+    max_tokens: "int"
+    temperature: "float"
+    provider: "str | null" # 'anthropic' | 'openrouter' | 'openai' — optional, defaults per tier
+    model: "str | null" # specific model id when overriding tier default
+
+  Prompt:
+    role: "str" # One-sentence persona declaration
+    delegated_by: "str" # Almost always 'v_core'
+    authority_includes: "list[str]" # Doc-refs per persona-dispatch handoff R6 algorithm
+    hard_rules: "list[str]" # 3-7 enforceable invariants
+    prompt_template: "str" # 'default' — reserved for Phase 7+ per-persona templating
+    sops: "list[str] | null" # Standard operating procedure slugs from ~/.zeroclaw/sops/ that the persona follows
+
+  Tools:
+    allowed: "list[str]" # Read, Glob, Grep + tier-appropriate additions
+    forbidden: "list[str]" # ENGINEER: [Edit, Write]; DEVELOPER: []; observer-SINGULAR: [Edit, Write, Bash]
+
+  ClaudeCode:
+    model: "str" # e.g. claude-sonnet-4-6
+    extended_thinking: "bool"
+    min_version: "str" # semver
+    env: "dict[str, str]"
+    permissions: "object<ClaudeCodePermissions>"
+    hooks: "object<ClaudeCodeHooks>"
+    plugins: "dict[str, bool]" # gopls-lsp, rust-analyzer-lsp, etc.
+    status_line: "object" # { enabled: bool }
+
+  ClaudeCodePermissions:
+    default_mode: "str" # 'ask' | 'auto'
+    allow: "list[str]" # Path-scoped per tier — see framework lesson
+    deny: "list[str]" # Universal (rm -rf, force-push) + tier-specific cross-repo denies
+
+  ClaudeCodeHooks:
+    session_start: "object | null"
+    pre_tool_use: "list[object] | null"
+    stop: "object | null"
+
+  Pi:
+    enabled: "bool"
+    dispatch_kinds: "list[str]" # Which event kinds (slack_message, calendar_event, etc.) Pi dispatches to this persona
+    openrouter_model: "str | null" # Pi-side model override (some personas use OpenRouter-routed models on Pi)
+    permissions: "object | null" # Pi-side permission grants (read/write to specific Pi resources)
+    session: "object | null" # Pi session config (timeout, retention, etc.) — Pi runtime details, opaque to validator
+
+example:
+  schema_version: 1
+  name: v_example-developer
+  tier: developer
+  rbac_role: agent_repo_developer
+  scope:
+    baseDir: /Users/operator/dev/example-repo
+    repoDir: https://github.com/lightwave-media/example-repo
+    read_boundary: ["**"]
+    write_boundary: ["${baseDir}/**"]
+    capabilities: [code_write, test_run, test_write, build, debug, pr_open]
+  skills: [test-author, testing-efficacy]
+  data_access:
+    read_classes: [public, internal_docs, code, staging_data]
+    write_classes: [code, test_data]
+    tenant_scope: own
+    environments: [development, staging]
+  scrum:
+    role: developer
+    domains: [software, example-domain]
+    ceremonies: [sprint_planning, daily_standup, sprint_review, retrospective]
+    cadence: per_sprint
+  dependencies:
+    lightwave_cli:
+      min_version: "0.1.0"
+      subcommands: [task, story, check, test]
+    lightwave_core:
+      min_version: "0.4.0"
+      sst_keys: [agent_definition, agile_artifacts]
+  llm:
+    primary:
+      tier: default
+      context_window_min: 200000
+      secret_ref: "ssm:/lightwave/prod/agents/v_example-developer/api_key"
+      max_tokens: 8192
+      temperature: 0.2
+    fallback: null
+  prompt:
+    role: "Example developer (deep-tier) — owns example-repo. Implements per engineer designs."
+    delegated_by: v_core
+    authority_includes:
+      - principles/engineering
+      - principles/foundational
+      - governance/access/rbac
+      - codebase/example-repo
+    hard_rules:
+      - "Bound to example-repo — does not touch other repos' source"
+      - "Tests authored via test-author skill"
+      - "Implements per engineer designs; questions in conversation, not silent reinterpretation"
+    prompt_template: default
+  tools:
+    allowed: [Read, Glob, Grep, Edit, Write, lw]
+    forbidden: []
+  claude_code:
+    model: claude-sonnet-4-6
+    extended_thinking: false
+    min_version: "2.1.15"
+    env:
+      AWS_PROFILE: lightwave-admin-new
+    permissions:
+      default_mode: ask
+      allow:
+        - Read
+        - Glob
+        - Grep
+        - "Edit(${baseDir}/**)"
+        - "Write(${baseDir}/**)"
+        - "Bash(lw *)"
+      deny:
+        - "Bash(rm -rf *)"
+        - "Bash(git push --force *)"
+    hooks:
+      session_start:
+        timeout_ms: 5000
+        status_message: "Loading agent context..."
+      pre_tool_use:
+        - matcher: "Write|Edit"
+          validators: [input_safe, tool_allowed, file_scope]
+      stop:
+        timeout_ms: 300000
+        status_message: "Running pre-commit gates..."
+    plugins:
+      gopls-lsp: false
+      rust-analyzer-lsp: false
+    status_line:
+      enabled: true

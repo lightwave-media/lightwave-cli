@@ -1,0 +1,62 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/repo_pull"
+  title: "Forgejo Pull Request — 1:1 SST Mirror"
+  source_ref: "forgejo://swagger.v1.json#/definitions/PullRequest"
+  description: "Pull request in a Forgejo repository."
+  table_kind: entity
+  table_name: pull_requests
+  generates: ["go:ForgejoPullRequest"]
+primary_key: { column: id, type: uuid }
+natural_key: { column: number, unique: false }
+required_fields:
+  - { name: number, type: int, description: "PR index number", storage: db }
+  - { name: title, type: str, storage: db }
+  - { name: repo_ref, type: str, storage: db, indexed: true }
+  - { name: head_branch, type: str, storage: db }
+  - { name: base_branch, type: str, storage: db }
+  - {
+      name: state,
+      type: str,
+      description: "open | closed",
+      storage: db,
+      indexed: true,
+    }
+  - { name: created_at, type: datetime, storage: db }
+  - { name: updated_at, type: datetime, storage: db }
+optional_fields:
+  - { name: body, type: str, storage: db }
+  - { name: poster, type: str, storage: db, indexed: true }
+  - { name: assignee, type: str, storage: db }
+  - { name: assignees, type: "list[str]", storage: db, column_type: jsonb }
+  - { name: milestone_id, type: int, storage: db }
+  - { name: is_draft, type: bool, storage: db }
+  - { name: is_locked, type: bool, storage: db }
+  - { name: mergeable, type: bool, storage: db }
+  - { name: has_merged, type: bool, storage: db }
+  - { name: merged_commit_id, type: str, storage: db }
+  - { name: merged_at, type: datetime, storage: db }
+  - { name: merge_base, type: str, storage: db }
+  - { name: due_date, type: datetime, storage: db }
+  - { name: additions, type: int, storage: db }
+  - { name: deletions, type: int, storage: db }
+  - { name: changed_files, type: int, storage: db }
+  - { name: review_comments, type: int, storage: db }
+  - {
+      name: requested_reviewers,
+      type: "list[str]",
+      storage: db,
+      column_type: jsonb,
+    }
+  - { name: closed_at, type: datetime, storage: db }
+example:
+  number: 42
+  title: "feat: agent runner registration API"
+  repo_ref: "lightwave-media/lightwave-platform"
+  head_branch: "feat/agent-runner-registration"
+  base_branch: "main"
+  state: "open"
+  poster: "v-platform-developer"
+  created_at: "2026-06-25T00:00:00Z"
+  updated_at: "2026-06-25T00:00:00Z"

@@ -1,0 +1,26 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/admin_hook"
+  title: "Forgejo Admin Hooks + Cron + Quota + Org Hooks + Labels + Activity — 1:1 SST Mirror"
+  description: "Consolidated admin, org, and activity schemas."
+  source_ref: "forgejo://swagger.v1.json admin + org + activity paths"
+  table_kind: entity
+  table_name: admin_hooks
+  generates: ["go:ForgejoAdminHook"]
+primary_key: {column: id, type: uuid}
+required_fields:
+  - {name: type, type: str, storage: db}
+  - {name: config, type: dict, storage: db, column_type: jsonb}
+  - {name: created_at, type: datetime, storage: db}
+optional_fields:
+  - {name: active, type: bool, storage: db}
+  - {name: events, type: "list[str]", storage: db, column_type: jsonb}
+  - {name: branch_filter, type: str, storage: db}
+  - {name: authorization_header, type: str, storage: db}
+example:
+  type: "forgejo"
+  config: {url: "https://example.com/webhook", content_type: "json"}
+  active: true
+  events: ["push"]
+  created_at: "2026-06-25T00:00:00Z"

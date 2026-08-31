@@ -1,0 +1,25 @@
+# =============================================================================
+# SERVERS SCHEMA REGISTRY (Category D — Server configurations)
+# =============================================================================
+# Category D per R-14 taxonomy. Server configurations declare what to serve,
+# on what ports, with what auth, from what schemas. The SST declares the server
+# shape; the builder (lightwave-ui, lightwave-sys, lw CLI) generates the actual
+# server process from these declarations.
+#
+# Sub-categories: docs/, mcp/, repo-dev/
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/servers/__index"
+  title: "Servers Schema Registry"
+  description: |
+    Top-level registry for server configurations. Each sub-category
+    declares a kind of server (docs, mcp, repo-dev). Servers are
+    schema-driven — the SST declares the contract, a builder generates
+    the running server. No hand-written server configs.
+
+schemas:
+  docs: docs/__index.yaml
+  mcp: mcp/__index.yaml
+  repo_dev: repo-dev/__index.yaml

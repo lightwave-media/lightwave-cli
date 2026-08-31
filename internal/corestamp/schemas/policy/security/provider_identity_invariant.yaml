@@ -1,0 +1,95 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/security/provider_identity_invariant"
+  title: "Provider Model-Identity Invariant"
+  description: |
+    Security invariant: a request for model X MUST be served by exactly model X.
+    Server-side substitution (e.g., LM Studio LCP cache similarity = 1.0 serving
+    a different model from the requested slot) is FORBIDDEN. Client-side
+    verification of response.model == request.model is REQUIRED.
+
+    Forensic root cause captured 2026-05-25 in ZeroClaw operation: a request
+    for `gemma-4-e4b` was served by `gemma-4-26b-a4b` because slot LCP cache
+    similarity = 1.0. The HTTP response's `model:` field returned the wrong
+    model. Silently breaks:
+      - Cost tracking (different price per million tokens)
+      - Capability assumptions (E4B vs MoE behave differently)
+      - Operator transparency (the footer Joel sees may say the wrong model)
+
+    Per handoff 2026-05-25-zeroclaw-runtime-ergonomics R8 (must).
+    Split from prior handoff R12 (provider_loader contract) — this schema
+    captures the security invariant; the full provider_loader contract
+    remains deferred pending integrations/llm_providers/ build-out.
+  generates:
+    - "pydantic:ProviderIdentityInvariant"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default')"
+  - name: client_verification
+    type: "ClientVerificationRef"
+    description: |
+      Sub-schema ClientVerification:
+        required (bool, default true — verify response.model == request.model on every call),
+        mismatch_action (enum: raise_error | log_warn_continue | log_silently),
+        log_path (str, path under ~/.lightwave/observability/ for mismatch events).
+  - name: per_provider_settings
+    type: "list[ProviderSettingRef]"
+    description: |
+      Per-provider identity policy. Sub-schema ProviderSetting:
+        provider_id (str, $ref to integrations/llm_providers/<id> when that catalog exists),
+        identity_substitution_allowed (bool, default false — providers may NOT
+          silently substitute models),
+        rationale (str, why this provider's setting is what it is),
+        upstream_bug_url_template (str|null, URL template for filing upstream
+          when mismatch detected — provider's issue tracker).
+
+optional_fields:
+  - name: alert_class
+    type: str
+    description: "Alert class slug to fire on mismatch (references interfaces/notifications/alert_dedup once that lands per handoff R5)."
+  - name: cost_tracking_impact
+    type: str
+    description: "Free-form prose: how mismatches affect cost tracking (most relevant for paid providers)."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default"
+  client_verification:
+    required: true
+    mismatch_action: "raise_error"
+    log_path: "~/.lightwave/observability/provider_identity_mismatch.jsonl"
+  per_provider_settings:
+    - provider_id: "lmstudio"
+      identity_substitution_allowed: false
+      rationale: |
+        LM Studio's slot LCP-cache substitution is the root cause of today's
+        forensic finding. Substitution must be explicitly forbidden; client
+        verification + raise_error stops silent breakage.
+      upstream_bug_url_template: "https://github.com/lmstudio-ai/lmstudio.js/issues/new?template=bug.md&title=LCP+slot+substitution+returns+wrong+model"
+    - provider_id: "ollama"
+      identity_substitution_allowed: false
+      rationale: "Universal invariant; ollama has no known substitution behavior but enforce regardless for consistency."
+      upstream_bug_url_template: "https://github.com/ollama/ollama/issues/new?template=bug.md"
+    - provider_id: "openrouter"
+      identity_substitution_allowed: false
+      rationale: "OpenRouter's routing is transparent (model field reflects actually-served model); invariant catches any future drift."
+      upstream_bug_url_template: null
+    - provider_id: "anthropic"
+      identity_substitution_allowed: false
+      rationale: "Anthropic returns exact model in response; invariant enforces regardless."
+      upstream_bug_url_template: null
+  alert_class: "provider_identity_mismatch"
+  cost_tracking_impact: |
+    Cost tracking depends on response.model for per-call cost computation. A
+    mismatch where a paid-tier model serves a free-tier request (or vice versa)
+    silently mis-attributes spend. The raise_error mismatch_action prevents
+    this from going undetected.

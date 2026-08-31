@@ -1,0 +1,123 @@
+name: "lw_dev_session"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/lw_dev_session"
+  title: "lw-dev session — initiative driver SOP"
+  description: |
+    Governs how agent sessions run substantive Lightwave initiatives: orient,
+    capture decisions, contract fidelity, spec-before-build, local CI gates,
+    single-slice PR delivery. The operator skill at ~/.claude/skills/lw-dev/
+    is a PRINT of this SOP; when they drift, this stamp wins.
+
+    Phase 1 bifurcation:
+    - **Kickoff path** — shelved or new initiatives use runbook
+      `kickoff-initiative` (createOS Hub human / `lw kickoff` agent). Interview
+      rounds produce `.tasks/<session>/kickoff/*` artifacts; `lw session spawn`
+      is blocked until `kickoff.json` has `kickoff_ok: true`.
+    - **Inline path** — tactical sessions (<30 min or single-file) skip kickoff
+      FSM; Phase 1 interview runs in-chat only and writes a lightweight
+      decision record under spec/ or brain/memory/feedback/.
+
+    Local CI doctrine (ADR-0028, ADR-0029): `mise run ci` is the canonical gate
+    before every commit; remote CI must invoke the same graph. Forge migration
+    is hybrid and non-blocking for the build loop.
+  generates:
+    - "go:LwDevSessionSOP"
+  depends_on:
+    - "lightwave://schemas/policy/governance/repo-infra"
+
+id: lw_dev_session
+title: "Run an lw-dev initiative session to a single PR slice"
+version: 1.0.0
+execution_mode: supervised
+
+trigger:
+  source: manual
+  event: human.initiative_start
+
+parameters:
+  - name: initiative_slug
+    type: string
+  - name: primary_repo
+    type: string
+  - name: kickoff_session_id
+    type: string
+    optional: true
+
+steps:
+  - id: orient_git
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        echo "Branch: $(git branch --show-current)"
+        git status --short
+        test -f AGENTS.md
+
+  - id: resolve_kickoff
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        if [ -n "${kickoff_session_id:-}" ]; then
+          db="${HOME}/.lightwave/brain/kickoff.db"
+          if [ -f "$db" ]; then
+            sqlite3 "$db" "SELECT kickoff_ok, status FROM initiatives WHERE session_id='${kickoff_session_id}';"
+          fi
+          test -d "${HOME}/.lightwave/.tasks/${kickoff_session_id}/kickoff"
+        else
+          echo "inline session — no kickoff gate"
+        fi
+
+  - id: stamp_check
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        test -f src/schemas/__index.yaml || test -f spec/README.md
+
+  - id: pin_validity_contract
+    tool: memory_store
+    args:
+      namespace: sessions
+      key: "lw-dev-${initiative_slug}-contract"
+      value: "Operator pins ~/.lightwave/config/contracts/<date>-<initiative>.yaml and writes path to <worktree>/.lightwave/contract"
+
+  - id: interview_or_resume
+    tool: escalate_to_human
+    args:
+      message: |
+        Kickoff path: resume shelved session or complete final round; approve
+        scaffold_manifest; set kickoff_ok. Inline path: confirm scope, non-goals,
+        and verify-able success criteria in writing before build.
+
+  - id: spec_slice
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        echo "Write ADR/PRD/plan for THIS PR slice only; defer cross-repo to follow-on runs."
+
+  - id: build_loop
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        mise run ci
+
+  - id: deliver_pr
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        export LW_CLI_DEV_DOMAINS=1
+        lw release prepare --yes
+        lw release ship --yes
+
+  - id: close_session
+    tool: memory_store
+    args:
+      namespace: sessions
+      key: "lw-dev-${initiative_slug}-done"
+      value: "Run validity report; update task statuses; git cleanup per lightwave-git safe sequence."

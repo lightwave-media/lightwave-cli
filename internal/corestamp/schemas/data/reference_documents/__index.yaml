@@ -1,0 +1,25 @@
+# =============================================================================
+# REFERENCE DOCUMENTS SCHEMA REGISTRY (Category A / kind family: reference_documents)
+# =============================================================================
+# Non-R-P-I-V-R reference document kinds — Domain Charter, ADR, Glossary,
+# agent_handoff, architectural_fit. Each is its own document kind with its
+# own schema; stored downstream as Document with matching category.
+#
+# Migrated from legacy governance/reference/ during Phase 4.
+# =============================================================================
+
+_meta:
+  version: "0.3.0"
+  schema_id: "lightwave://schemas/data/reference_documents/__index"
+  title: "Reference Documents Schema Registry"
+  description: "Maps reference-document kinds to their schema files. Distinct from agile_artifacts/ (R-P-I-V-R lineage) — these are independent reference doc kinds."
+
+schemas:
+  domain_charter: domain_charter.yaml
+  adr: adr.yaml
+  ubiquitous_language: ubiquitous_language.yaml
+  agent_handoff: agent_handoff.yaml
+  document_ref: document_ref.yaml
+  technical_study: technical_study.yaml
+  architectural_fit: architectural_fit.yaml
+  knowledge_source: knowledge_source.yaml

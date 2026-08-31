@@ -1,0 +1,7 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/ui_layout/__index"
+  title: "UI Layout Schemas Registry"
+  description: "Server-driven UI schemas — database-driven page layouts rendered by React component registry."
+schemas:
+  page_layout: page_layout.yaml

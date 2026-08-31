@@ -1,0 +1,51 @@
+name: "voice_domain"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/cli/voice_domain"
+  title: "lw voice domain"
+  description: "Voice domain fragment merged at CLI load time (R-12 split)."
+
+domain: voice
+description: "v_speak tone + human ceremony control plane"
+commands:
+  - name: profile
+    description: "Profiles"
+    commands:
+      - name: list
+        description: "List profiles"
+      - name: validate
+        flags: [--persona]
+        description: "Validate persona"
+      - name: set
+        flags: [--persona, --profile]
+        description: "Set binding"
+      - name: diff
+        description: "Diff print"
+  - name: speak
+    flags: [--persona, --text, --goal, --out]
+    description: "Synthesize speech"
+  - name: registry
+    description: "Registry"
+    commands:
+      - name: render
+        flags: [--var-file]
+        description: "Render blueprint"
+  - name: ceremony
+    description: "Human ceremonies"
+    commands:
+      - name: start
+        flags: [--kind, --session, --ideal-state, --focus]
+        description: "Start session"
+      - name: status
+        flags: [--session]
+        description: "Session status"
+      - name: turn
+        flags: [--session, --speaker, --text]
+        description: "Append turn"
+      - name: coach
+        flags: [--session]
+        description: "Delta coaching"
+      - name: end
+        flags: [--session]
+        description: "End session"

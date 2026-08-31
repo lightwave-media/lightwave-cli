@@ -1,0 +1,29 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/rigor_tiers"
+  title: "CreateOS Rigor Tier Enum"
+  description: |
+    Mitchell Hashimoto risk-tiered verification mapped to creative contexts
+    (ADR-0036). Drives Auth Inbox requirements, review depth, and riverbank
+    test assertions. Auto-set from pro/personal tag + stakes; coach may escalate.
+  generates:
+    - "pydantic:RigorTier"
+  depends_on: []
+
+name: rigor_tiers
+description: "CreateOS verification and auth-gate rigor tiers (Mitchell model)"
+default: D
+closed: true
+options:
+  - value: A
+    label: "Craft"
+    description: "Client deliverable, portfolio, licensed asset — full review + ideal-state coaching; Auth gate required"
+  - value: B
+    label: "Business"
+    description: "Invoice, contract, client email, publish — outcome + legal/financial checks; Touch ID required"
+  - value: C
+    label: "Ephemeral"
+    description: "Personal mood board, RSVP page, internal preview — outcome only; log only"
+  - value: D
+    label: "Personal"
+    description: "Personal admin, ideas, coaching runbooks — light validation; pro/personal tag coaching only"

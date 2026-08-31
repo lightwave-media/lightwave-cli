@@ -1,0 +1,50 @@
+_meta:
+  version: 0.1.0
+  schema_id: lightwave://schemas/data/cineos/location
+  title: Location
+  description: 'A real-world filming location (the place crew goes), which holds one or more
+
+    Sets (the dressed spaces scenes play on). Separates the story location from the
+
+    filming location — a script''s ''BEAU''S HOUSE'' may shoot at a different address.
+
+    '
+  generates:
+  - go:Location
+  - typescript:Location
+  - zig:Location
+  - json_schema:location
+  depends_on: []
+required_fields:
+- name: name
+  type: str
+  description: Location name (e.g. 'WRS Studio', 'Beau's House')
+optional_fields:
+- name: address
+  type: str
+  description: Street address of the filming location
+- name: latitude
+  type: float
+  description: Decimal latitude coordinate of the location.
+- name: longitude
+  type: float
+  description: Decimal longitude coordinate of the location.
+- name: location_type
+  type: str
+  description: Kind of filming location; values from the cineos_location_types enum.
+  values_ref: lightwave://schemas/data/enums/cineos_location_types
+- name: story_location
+  type: str
+  description: The location AS WRITTEN in the script (e.g. 'BEAU'S HOUSE')
+- name: filming_location
+  type: str
+  description: The real place it is shot (e.g. 'House on N La Brea')
+relations:
+  parent: null
+  children:
+  - set
+example:
+  name: Beau's House
+  location_type: practical
+  story_location: BEAU'S HOUSE
+  filming_location: Private residence, La Brea

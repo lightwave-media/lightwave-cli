@@ -1,0 +1,203 @@
+_meta:
+  version: 1.4.0
+  schema_id: lightwave://schemas/data/agile_artifacts/task
+  title: Task
+  description: 'Leaf of the R-P-I-V-R lineage. Dispatchable unit of work. v_core polls Tasks where status=''prioritized''
+    and is_ready()=True. Migrated 2026-05-25 from governance/agile/task.yaml (Phase 4 file #13) — Augusta replaced with v_core,
+    Postgres-specific example updated to local SQLite per ADR-0002, createos/config dep dropped. v1.4.0 adds first-class
+    GitHub issue/milestone/project/PR fields (CORE-0048); notion_id remains for legacy import idempotency.'
+  generates:
+  - pydantic:Task
+  depends_on:
+  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/agile_artifacts/user_story
+  table_kind: entity
+  table_name: tasks
+status_enum: task_statuses
+priority_enum: task_priorities
+state_machine_ref: lightwave://schemas/data/enums/task_statuses#options[].can_transition_to
+primary_key:
+  column: id
+  type: uuid
+natural_key:
+  column: slug
+  unique: true
+required_fields:
+- name: slug
+  type: str
+  description: URL-safe unique identifier; lowercase, hyphen-separated
+  pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+  storage: db
+- name: title
+  type: str
+  description: Task title
+  storage: db
+- name: description
+  type: str
+  description: 'Task description (Ready gate prerequisite #1)'
+  storage: db
+- name: user_story_ref
+  type: str
+  description: 'Slug of parent UserStory (Ready gate prerequisite #2)'
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/user_story
+  fk_column: slug
+  indexed: true
+- name: epic_ref
+  type: str
+  description: 'Slug of grandparent Epic (Ready gate prerequisite #5)'
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/epic
+  fk_column: slug
+  indexed: true
+- name: domain
+  type: str
+  description: 'LifeDomain slug (Ready gate prerequisite #6); validated against life_domains'
+  storage: db
+- name: status
+  type: str
+  description: Lifecycle state; validated against task_statuses; transitions enforced by state_machine_ref
+  storage: db
+  indexed: true
+- name: priority
+  type: str
+  description: Validated against task_priorities
+  storage: db
+- name: task_type
+  type: str
+  description: Validated against task_types
+  storage: db
+- name: task_category
+  type: str
+  description: Validated against task_categories
+  storage: db
+- name: created_at
+  type: datetime
+  description: ISO 8601 timestamp of record creation; auto-populated
+  storage: db
+- name: updated_at
+  type: datetime
+  description: ISO 8601 timestamp of last modification; auto-updated
+  storage: db
+optional_fields:
+- name: sprint_ref
+  type: str
+  description: Slug of containing Sprint (authoritative; UserStory.sprint is informational)
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/sprint
+  fk_column: slug
+  indexed: true
+- name: parent_task_ref
+  type: str
+  description: Slug of parent Task (for subtask hierarchies)
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/task
+  fk_column: slug
+  indexed: true
+- name: due_date
+  type: date
+  storage: db
+  description: ISO 8601 date by which this task must be complete.
+- name: do_date
+  type: date
+  description: Date Joel intends to do the task (calendar block)
+  storage: db
+- name: assigned_agent
+  type: str
+  description: Validated against agent registry (e.g. v_core, v_dev, claude-code)
+  storage: db
+- name: agent_status
+  type: str
+  description: Validated against agent_statuses
+  storage: db
+- name: branch_name
+  type: str
+  storage: db
+  description: Git branch name associated with this task's implementation.
+- name: pr_url
+  type: str
+  storage: db
+  description: URL of the pull request implementing this task.
+- name: pr_number
+  type: int
+  storage: db
+  description: GitHub pull request number (companion to pr_url).
+- name: pr_state
+  type: str
+  storage: db
+  description: "GitHub PR state: open | closed | merged"
+- name: github_issue_url
+  type: str
+  storage: db
+  description: Canonical GitHub issue URL when this task projects to an issue.
+- name: github_issue_number
+  type: int
+  storage: db
+  description: Repo-scoped GitHub issue number for this task's projection.
+- name: github_milestone_title
+  type: str
+  storage: db
+  description: Title of the GitHub milestone this task is attached to.
+- name: github_milestone_number
+  type: int
+  storage: db
+  description: Repo-scoped GitHub milestone number.
+- name: github_project_item_id
+  type: str
+  storage: db
+  description: GitHub Projects v2 item node ID (e.g. on Lightwave Swarm #3).
+- name: github_repo
+  type: str
+  storage: db
+  description: "owner/repo for GitHub issue/PR projections"
+- name: ai_summary
+  type: str
+  storage: db
+  description: AI-generated summary of this task's context and progress.
+- name: note
+  type: str
+  storage: db
+  description: Freeform notes or context from the operator about this task.
+- name: intelligence_profile_ref
+  type: str
+  description: 'Slug of the task''s task_intelligence_profile. Populated at sprint planning time by v_scrum-manager or v_data-engineer.
+    Null for uncosted tasks (prior to Phase 1 adoption). Use $ref: task_intelligence_profile for conformance.'
+  storage: db
+- name: notion_id
+  type: str
+  description: Notion page ID for idempotent re-import (legacy from Notion-as-inbox era)
+  storage: db
+relations:
+  parent: user_story
+  parent_fk:
+    column: user_story_ref
+    references: user_stories.slug
+    on_delete: CASCADE
+  children:
+  - implementation_plan
+  - task
+example:
+  slug: wire-v-core-poll-loop
+  title: Wire v_core poll loop against local SQLite index
+  description: Configure sqlx connection pool against ~/.lightwave/index/lightwave.db (local SQLite). Implement the SELECT
+    that materializes Ready candidate Tasks plus the is_ready() filter.
+  user_story_ref: v-core-polls-ready-tasks
+  epic_ref: v-core-v1-ready-task-dispatch
+  domain: software-development
+  status: prioritized
+  priority: high
+  task_type: feature
+  task_category: software_dev
+  assigned_agent: claude-code
+  notion_id: abc123-def456
+  github_repo: lightwave-media/lightwave-core
+  github_issue_number: 412
+  github_issue_url: https://github.com/lightwave-media/lightwave-core/issues/412
+  github_milestone_title: Sprint Current
+  github_milestone_number: 12
+  github_project_item_id: PVTI_example
+  pr_url: https://github.com/lightwave-media/lightwave-core/pull/420
+  pr_number: 420
+  pr_state: open
+  created_at: '2026-06-24T12:00:00Z'
+  updated_at: '2026-06-24T12:00:00Z'

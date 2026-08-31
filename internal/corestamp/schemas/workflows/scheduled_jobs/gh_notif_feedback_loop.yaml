@@ -1,0 +1,72 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/scheduled_jobs/gh_notif_feedback_loop"
+  title: "GitHub Notifications Feedback Loop"
+  description: |
+    Runs lightwave-cli/dev/gh-notif-signal.sh on a schedule to poll GitHub
+    notifications, emit structured events to nullwatch, file nulltickets stubs
+    for non-allowlisted classes, and auto-dispatch one allowlisted remote
+    workflow failure per poll (v1 allowlist: github-org-sync) to
+    v_core-package-developer via nullhub.
+
+    Owner persona: v_core-package-developer (daemon-class).
+    Event contract: lightwave://schemas/interfaces/hooks/gh_notif_event
+    Observability: nullwatch spans via /api/nullwatch/v1/spans
+    Dry-run: LW_GH_NOTIF_DRY_RUN=1 bash dev/gh-notif-signal.sh
+
+id: gh_notif_feedback_loop
+title: "GitHub notifications → nullhub fix loop"
+job_class: maintenance
+schedule: "*/15 * * * *"
+handler:
+  transport: shell
+  command: "dev/gh-notif-signal.sh"
+persona: v_core-package-developer
+invariants:
+  - no_recursive_strategic_delegation
+  - tool_group_compliance
+  - dry_run_safe
+  - allowlist_only_auto_dispatch
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable job identifier slug."
+  - name: title
+    type: str
+    description: "Human-readable title for the job."
+  - name: job_class
+    type: str
+    description: "Job class slug (e.g. maintenance, strategic)."
+  - name: schedule
+    type: str
+    description: "Cron expression (standard 5-field) defining the heartbeat cadence."
+  - name: handler
+    type: object
+    description: "Execution target. Sub-fields: transport (enum: shell | cli | http), command (str)."
+  - name: persona
+    type: str
+    description: "Agent persona role that owns and is dispatched for this job."
+
+optional_fields:
+  - name: budget_ref
+    type: str
+    description: "Reference into heartbeat_budget for per-run cost cap."
+  - name: invariants
+    type: "list[string]"
+    description: "Enforced behavioral invariants for the dispatched persona session."
+
+example:
+  id: gh_notif_feedback_loop
+  title: "GitHub notifications → nullhub fix loop"
+  job_class: maintenance
+  schedule: "*/15 * * * *"
+  handler:
+    transport: shell
+    command: "dev/gh-notif-signal.sh"
+  persona: v_core-package-developer
+  invariants:
+    - no_recursive_strategic_delegation
+    - tool_group_compliance
+    - dry_run_safe
+    - allowlist_only_auto_dispatch

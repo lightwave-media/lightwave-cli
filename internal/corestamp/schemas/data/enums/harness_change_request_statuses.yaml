@@ -1,0 +1,34 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/harness_change_request_statuses"
+  title: "Harness Change Request Status Enum"
+  description: |
+    Closed lifecycle states for an HCR (harness_change_request). Distinct from
+    document_statuses — these encode the propose→review→apply state machine whose
+    load-bearing rule is that the proposer is never the applier. Extracted from
+    harness_change_request.status prose per R-41 (values_ref) / R-5. Authored
+    2026-06-28 per CORE-0045.
+  generates:
+    - "pydantic:HarnessChangeRequestStatus"
+  depends_on: []
+
+name: harness_change_request_statuses
+description: "Lifecycle state of an HCR"
+default: proposed
+closed: true
+options:
+  - value: proposed
+    label: "Proposed"
+    description: "Agent emitted the HCR with a complete diff + linked_incident (agent-set)"
+  - value: reviewed
+    label: "Reviewed"
+    description: "Operator / Q-suite reviewer assessed risk + diff (operator-set)"
+  - value: applied
+    label: "Applied"
+    description: "Operator wired the change by hand; applied_by + applied_at recorded (operator-set)"
+  - value: rejected
+    label: "Rejected"
+    description: "Operator declined; rejected_by + rejected_at recorded (operator-set)"
+  - value: superseded
+    label: "Superseded"
+    description: "Proposing agent withdrew/replaced its own still-unreviewed HCR (agent-set, proposed-only)"

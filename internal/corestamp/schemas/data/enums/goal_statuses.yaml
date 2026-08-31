@@ -1,0 +1,40 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/goal_statuses"
+  title: "Goal Status Enum"
+  description: |
+    Lifecycle statuses for Goal entities (the apex of the work spine
+    Goal → Project → Epic → Sprint → Task). Closed enum. Distinct vocabulary
+    from epic_statuses on purpose: a strategic objective is "achieved" or
+    "abandoned", not "completed" or "cancelled". New 2026-06-19 with the
+    goal/project spine.
+  generates:
+    - "pydantic:GoalStatus"
+  depends_on: []
+
+name: goal_statuses
+description: "Lifecycle statuses for Goal entities"
+default: not_started
+closed: true
+options:
+  - value: not_started
+    label: "Not Started"
+    description: "Goal defined but no project underway yet"
+    is_active: false
+  - value: active
+    label: "Active"
+    description: "Goal is being pursued via one or more projects"
+    is_active: true
+  - value: achieved
+    label: "Achieved"
+    description: "Goal's outcome metric was met"
+    is_active: false
+    is_completed: true
+  - value: on_hold
+    label: "On Hold"
+    description: "Goal paused"
+    is_active: false
+  - value: abandoned
+    label: "Abandoned"
+    description: "Goal dropped before achievement"
+    is_active: false

@@ -1,0 +1,20 @@
+# =============================================================================
+# NOTIFICATIONS SCHEMA REGISTRY (Category B / kind family: notifications)
+# =============================================================================
+# Schemas governing outbound notification behavior — alert dedup, severity,
+# escalation, suppression, summarization. Distinct from agent_tools/ (which
+# governs tool exposure to LLM); notifications/ governs how outbound signals
+# reach operators or downstream consumers.
+#
+# First schema lands 2026-05-25 (handoff R5 — alert_dedup). Forensic root
+# cause: dead-man-switch fired 3 alerts/min to Telegram with no throttling.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/interfaces/notifications/__index"
+  title: "Notifications Schema Registry"
+  description: "Sub-registry for outbound notification contracts. Consumed by alert emitters in v_core, lw cli, and any subsystem that fires operator-facing signals."
+
+schemas:
+  alert_dedup: alert_dedup.yaml

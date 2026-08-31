@@ -1,0 +1,42 @@
+# =============================================================================
+# SOPS REGISTRY (Category C / kind family: sops)
+# =============================================================================
+# Procedural Standard Operating Procedures consumed by lightwave-sys::v_core
+# at dispatch time. Each SOP declares execution_mode, trigger, parameters,
+# steps. Distinguished from blueprints/ (action compositions) and actions/
+# (atomic primitives).
+#
+# Initial content migrated 2026-06-03 from the archived root-folder workspace
+# (templates/sops/) per ADR-0025.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/workflows/sops/__index"
+  title: "SOPs Registry"
+  description: "Maps SOP slug → file. Each SOP is consumed by v_core dispatcher at trigger time. Populated 2026-06-03 from workspace migration (root-folder archive)."
+
+schemas:
+  agile_pipeline: agile_pipeline.yaml
+  task_done: task_done.yaml
+  session_spawn: session_spawn.yaml
+  session_shutdown: session_shutdown.yaml
+  failure_triage: failure_triage.yaml
+  lw_dev_session: lw_dev_session.yaml
+  ship: ship.yaml
+  git_fleet_audit: git_fleet_audit.yaml
+  voice_speak_dispatch: voice_speak_dispatch.yaml
+  voice_profile_tune: voice_profile_tune.yaml
+  voice_ceremony_facilitate: voice_ceremony_facilitate.yaml
+  release_autonomous_train: release_autonomous_train.yaml
+  release_session_propagate: release_session_propagate.yaml
+  qa_release_pass: qa_release_pass.yaml
+  home_policy_sync: home_policy_sync.yaml
+  voice_reactive_monitor: voice_reactive_monitor.yaml
+  worktree_maintenance: worktree_maintenance.yaml
+  runbook_execution: runbook_execution.yaml
+  runbook: runbook.yaml
+  software_lifecycle: software_lifecycle.yaml
+  agile_orchestration: agile_orchestration.yaml
+  spec_delta_context: spec_delta_context.yaml
+  media_backup_archive: media_backup_archive.yaml

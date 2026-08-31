@@ -1,0 +1,72 @@
+name: "task_done"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/task_done"
+  title: "Task Done SOP — cleanup on PR merge"
+  description: |
+    SOP that fires when a PR with body "Refs: <task_id>" is merged on GitHub.
+    Runs to completion without human approval (execution_mode: auto): archive
+    artefacts, remove worktree, close issue, log to memory. Consumed by
+    lightwave-sys::v_core dispatcher. Migrated 2026-06-03 from workspace
+    templates/sops/ (root-folder archive).
+  generates:
+    - "go:TaskDoneSOP"
+    - "json_schema:task_done"
+  depends_on: []
+
+# SOP: task_done
+#
+# Cleanup SOP that fires when a PR with body "Refs: <task_id>" is merged on
+# GitHub. Runs to completion without human approval (execution_mode: auto):
+#
+#   1. tar artefacts/<task_id>/ → archive/<YYYY-MM>/<task_id>.tar.gz
+#   2. remove worktree under {repo-root}/.worktrees/<YYYY-MM-DD>-<task_id>
+#   3. gh issue close <task_id> --reason completed
+#   4. log the completion to the sessions memory namespace
+#
+# Spec: docs/software/ddds/DDD-mvp-vertical-slice.md §5.5.
+#
+# NOTE — this is the operator-distributable starter copy. Copy to
+# ~/.lightwave/workspace/sops/task_done.yaml on first install.
+
+id: task_done
+title: "Cleanup on PR merge"
+version: 1.0.0
+execution_mode: auto
+
+trigger:
+  source: webhook
+  event: github.pull_request.closed
+
+parameters:
+  - name: task_id
+    type: string
+
+steps:
+  - id: archive
+    tool: shell
+    args:
+      command: "tar -czf ~/.lightwave/archive/$(date +%Y-%m)/${task_id}.tar.gz -C ~/.lightwave/artefacts ${task_id}/"
+
+  - id: cleanup_worktree
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        repo_root="${repo_root:-$(pwd)}"
+        git worktree remove "${repo_root}/.worktrees/${task_id}" 2>/dev/null \
+          || git worktree remove "${repo_root}/.worktrees/"*"-${task_id}" 2>/dev/null \
+          || true
+
+  - id: close_issue
+    tool: shell
+    args:
+      command: "gh issue close ${task_id} --reason completed --repo ${repo}"
+
+  - id: log_done
+    tool: memory_store
+    args:
+      namespace: "sessions"
+      key: "${task_id}-done-$(date +%Y-%m-%d)"
+      value: "Task ${task_id} merged + cleaned at $(date -u +%FT%TZ)"
