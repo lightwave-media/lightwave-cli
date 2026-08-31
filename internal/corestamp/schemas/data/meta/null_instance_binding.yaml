@@ -1,0 +1,47 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/null_instance_binding"
+  title: "Null Instance Binding"
+  description: |
+    Two-path contract for lightwave-ui read-only Mission Control views.
+    config_path + data_path (SQLite .db or data_dir for nullwatch).
+  generates:
+    - "pydantic:NullInstanceBinding"
+  depends_on: []
+
+required_fields:
+  - name: module
+    type: str
+    description: "nullclaw|nullhub|nullboiler|nulltickets|nullwatch|nullvoice"
+  - name: config_path
+    type: str
+    description: "Absolute path to config.json"
+  - name: data_path
+    type: str
+    description: "Absolute path to .db or data_dir"
+
+optional_fields:
+  - name: name
+    type: str
+    description: "Instance display name"
+  - name: nullhub_instance
+    type: str
+    description: "Parent nullhub instance slug when nested"
+  - name: persona_ref
+    type: str
+    description: "v_* persona slug when this instance maps to an agent role (null for shared gateways)"
+  - name: runtime
+    type: str
+    description: "native | container | pod — execution driver (nullhub supervisor backend)"
+  - name: lifecycle
+    type: str
+    description: "persistent | ephemeral — auto_start gateways vs on-demand agent jobs"
+  - name: launch_mode
+    type: str
+    description: "nullhub launch_mode token (gateway, server, serve, agent, …)"
+
+example:
+  module: nullhub
+  config_path: /Users/dev/.nullhub/instances/nullclaw/default/config.json
+  data_path: /Users/dev/.nullhub/instances/nullclaw/default/state.db
+  name: default

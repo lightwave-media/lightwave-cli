@@ -1,0 +1,51 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/task_categories
+  title: Task Category Enum
+  description: 'Category classification for Task entities — typically mapped to a
+
+    life-domain or operational concern. Closed enum.
+
+
+    Note: overlaps conceptually with life_domains but uses snake_case slugs
+
+    (software_dev vs software-development); the two are not 1:1. Future
+
+    audit may unify or formally separate them.
+
+
+    Extracted 2026-05-25 from legacy products/createos/config.yaml.
+
+    '
+  generates:
+  - pydantic:TaskCategory
+  depends_on: []
+name: task_categories
+description: Category classification for Task entities
+default: general
+closed: true
+options:
+- value: software_dev
+  label: Software Development
+  description: Software Development option.
+- value: general
+  label: General
+  description: General option.
+- value: financial_admin
+  label: Financial Admin
+  description: Financial Admin option.
+- value: film_production
+  label: Film Production
+  description: Film Production option.
+- value: content_creation
+  label: Content Creation
+  description: Content Creation option.
+- value: photography
+  label: Photography
+  description: Photography option.
+- value: business_admin
+  label: Business Admin
+  description: Business Admin option.
+- value: personal
+  label: Personal
+  description: Personal option.

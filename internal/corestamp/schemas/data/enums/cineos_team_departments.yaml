@@ -1,0 +1,39 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_team_departments"
+  title: "CineOS Team Department Enum"
+  description: |
+    Production department a Team belongs to (team.department). Closed.
+  generates:
+    - "go:CineTeamDepartment"
+    - "typescript:CineTeamDepartment"
+    - "zig:CineTeamDepartment"
+    - "json_schema:cineos_team_departments"
+  depends_on: []
+
+name: cineos_team_departments
+description: "Production department"
+default: production
+closed: true
+options:
+  - value: camera
+    label: "Camera"
+    description: "Camera department"
+  - value: grip
+    label: "Grip"
+    description: "Grip department"
+  - value: electric
+    label: "Electric"
+    description: "Electric / lighting department"
+  - value: art
+    label: "Art"
+    description: "Art department"
+  - value: sound
+    label: "Sound"
+    description: "Sound department"
+  - value: production
+    label: "Production"
+    description: "Production / AD department"
+  - value: post
+    label: "Post"
+    description: "Post-production department"

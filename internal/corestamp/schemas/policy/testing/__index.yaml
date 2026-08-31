@@ -1,0 +1,11 @@
+# Testing policy schemas index — consumed by policy/__index.yaml
+# Each entry maps a test-contract schema slug to its file path relative to this directory.
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/policy/testing/__index"
+  title: "Testing Policy Schemas Index"
+  description: "Registry of testing policy schemas — test contracts declaring what tests must exist for what component kind. Stamp; downstream repos print these as CI gates."
+
+schemas:
+  test_contract: test_contract.yaml

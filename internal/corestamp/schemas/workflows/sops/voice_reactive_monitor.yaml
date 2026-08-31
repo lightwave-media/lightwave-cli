@@ -1,0 +1,52 @@
+name: "voice_reactive_monitor"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/voice_reactive_monitor"
+  title: "v_speak reactive monitor SOP"
+  description: |
+    Continuous monitor: observability ingest → fast voice ack → async dispatch.
+    Hot path satisfies NFR-0001 (no LLM on ack).
+  depends_on:
+    - "lightwave://schemas/data/meta/feature_flag"
+    - "lightwave://schemas/data/enums/voice_synthesis_goals"
+
+id: voice_reactive_monitor
+title: "Reactive system monitor with voice feedback"
+version: 1.0.0
+execution_mode: automated
+
+trigger:
+  source: nullwatch
+  event: observability_record
+
+parameters:
+  - name: channel
+    type: string
+  - name: severity
+    type: string
+    optional: true
+
+steps:
+  - id: classify
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        # Rule/flag classifier only — no LLM (NFR-0001 hot path)
+        lw release flag lw_voice_commands --list >/dev/null
+
+  - id: reactive_ack
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw voice speak --persona v_speak --goal reactive_ack --text "${ack_text:-got it}"
+
+  - id: dispatch_async
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        # Runbook, SOP, workflow, or agent run — MUST NOT block ack step
+        test -n "${dispatch_ref:-}" && lw scaffold run "${dispatch_ref}" || true

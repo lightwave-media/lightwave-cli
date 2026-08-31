@@ -1,0 +1,41 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/cli/kickoff_cli"
+  title: "Kickoff CLI ↔ createOS parity map"
+  description: |
+    Documents 1:1 mapping between lw kickoff/factory/session verbs and
+    createOS Tauri invoke handlers. Both surfaces share .tasks/ artifacts.
+  generates: []
+
+
+required_fields:
+  - name: id
+    type: str
+    description: "kickoff_cli configuration identifier"
+
+example:
+  id: "kickoff_cli-example"
+
+name: "kickoff_cli"
+commands:
+  kickoff_start:
+    cli: "lw kickoff start --runbook {slug} [--task ID]"
+    createos: kickoff_start
+  kickoff_status:
+    cli: "lw kickoff status [--require-finalized]"
+    createos: kickoff_status
+  kickoff_answer:
+    cli: "lw kickoff answer --round R --json '...'"
+    createos: kickoff_answer
+  kickoff_finalize:
+    cli: "lw kickoff finalize"
+    createos: kickoff_finalize
+  factory_plan:
+    cli: "lw factory plan --manifest PATH"
+    createos: factory_apply
+  factory_apply:
+    cli: "lw factory apply --manifest PATH [--dry-run]"
+    createos: factory_apply
+  session_spawn:
+    cli: "lw session spawn --persona P --task ID"
+    createos: session_spawn

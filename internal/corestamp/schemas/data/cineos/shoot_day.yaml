@@ -1,0 +1,50 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/shoot_day"
+  title: "Shoot Day"
+  description: |
+    A single day of principal photography within a Schedule — call/wrap times and
+    the location worked. Scenes are assigned to a day via SceneShoot (slice 2);
+    the dashboard's weekly calendar renders ShootDays and their scene blocks.
+  generates:
+    - "go:ShootDay"
+    - "typescript:ShootDay"
+    - "zig:ShootDay"
+    - "json_schema:shoot_day"
+  depends_on:
+    - "lightwave://schemas/data/cineos/schedule"
+
+required_fields:
+  - name: number
+    type: int
+    description: "Shoot day number within the schedule (e.g. day 12)"
+  - name: schedule_ref
+    type: str
+    description: "Slug/id of the parent Schedule"
+  - name: shoot_date
+    type: date
+    description: "Calendar date of the shoot day"
+
+optional_fields:
+  - name: call_time
+    type: str
+    description: "General crew call (e.g. '07:00')"
+  - name: wrap_time
+    type: str
+    description: "Estimated/actual wrap (e.g. '19:00')"
+  - name: location_ref
+    type: str
+    description: "Slug/id of the Location worked that day"
+
+relations:
+  parent: schedule
+  children:
+    - scene_shoot
+
+example:
+  number: 12
+  schedule_ref: "wet-under-blue-sky-main"
+  shoot_date: "2026-07-21"
+  call_time: "07:00"
+  wrap_time: "19:00"
+  location_ref: "beaus-house"

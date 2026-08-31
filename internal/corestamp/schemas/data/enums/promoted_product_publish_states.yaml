@@ -1,0 +1,29 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/promoted_product_publish_states"
+  title: "Promoted Product Publish State Enum"
+  description: |
+    Publish states for a promoted product's listing in the createOS shell.
+    Distinct from promoted_product_states (product lifecycle): a product can
+    be `beta` lifecycle-wise while its listing is `private_beta`. Absence of
+    a publish state on the row means the listing carries no publish info yet.
+    Machine values are the stamp; `label` carries the display string. Closed
+    enum.
+  generates:
+    - "go:PromotedProductPublishState"
+    - "ts:PromotedProductPublishState"
+  depends_on: []
+
+name: promoted_product_publish_states
+description: "Publish states for a promoted product's listing"
+default: private_beta
+closed: true
+options:
+  - value: published
+    label: "Published"
+    description: "Listing is publicly published"
+    is_active: true
+  - value: private_beta
+    label: "Private beta"
+    description: "Listing is visible to invited users only"
+    is_active: true

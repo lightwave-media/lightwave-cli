@@ -1,0 +1,27 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/reference_documents/document_ref"
+  title: "Document Reference"
+  description: |
+    A lightweight pointer to a document artifact identified by category + slug.
+    Used in `related_documents: list[DocumentRef]` fields across agile_artifact
+    schemas (epic, sprint, user_story, task). Does NOT imply foreign key
+    enforcement — the reference is logical, validated at the application layer.
+
+  generates:
+    - "go:DocumentRef"
+  depends_on: []
+
+required_fields:
+  - name: category
+    type: str
+    description: "Document kind (prd, sad, nfr, ddd, api_spec, adr)"
+  - name: slug
+    type: str
+    description: "Document slug identifier"
+
+example:
+  category: prd
+  slug: 0001-lightwave-platform
+
+status: active

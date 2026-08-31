@@ -1,0 +1,46 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/hooks/verifier_protection"
+  title: "Verifier Protection Hook Contract"
+  description: |
+    Declares the verifier surface that is immutable to agent edits — the
+    Ornith L2 principle from ADR-0043: an agent must not be able to edit the
+    thing that judges it, and "the user told me to" does not clear it. The
+    enforcement is a host deny-only hook (print); this stamp makes the
+    protected surface visible in the SST and is asserted by R-64.
+
+    Scope is agent edits only. Operator and host edits remain allowed, which
+    is what keeps this rule from making the verifier surface unmaintainable —
+    including this file, which is itself part of that surface.
+  generates:
+    - "json_schema:verifier_protection_hook"
+  depends_on: []
+
+required_fields:
+  - name: hook_event
+    type: str
+    description: "Enum: PreToolUse. Fires on Write/Edit/Bash mutations targeting a protected path."
+  - name: protected_surfaces
+    type: "list[ProtectedSurfaceRef]"
+    description: |
+      Path globs immutable to agent edits. Sub-schema ProtectedSurface:
+        glob (str, the protected path pattern),
+        judges (str, what this surface decides about agent work).
+      Declared set:
+        dev/development/checks/*.sh — the executable review checks,
+        dev/development/**/review_prompt*.tpl — the review prompt template,
+        ~/.lightwave/config/agents/v_*.yaml — persona role + hard_rules.
+  - name: on_violation
+    type: str
+    description: "Enum: deny. The only declared response — there is no warn tier for verifier edits."
+
+example:
+  hook_event: PreToolUse
+  protected_surfaces:
+    - glob: "dev/development/checks/*.sh"
+      judges: "Executable review checks that gate pushes; editing one is editing the exam."
+    - glob: "dev/development/**/review_prompt*.tpl"
+      judges: "The review prompt composing v_staff-engineer/v_cto verdicts."
+    - glob: "~/.lightwave/config/agents/v_*.yaml"
+      judges: "Persona hard_rules that define reviewer behaviour."
+  on_violation: deny

@@ -1,0 +1,184 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/policy/compliance/fitness_gate"
+  title: "Compliance Fitness Gate"
+  description: |
+    Pluggable control plane that validates artifacts for FITNESS against
+    audit regimes (EU/GDPR data, financial, legal) and ENFORCES the verdict
+    at the release gates. One regime-agnostic spine; regimes plug in as
+    declarative entries, each binding fitness checks to an enforcement
+    mechanism that ALREADY exists in the repo — nothing new is invented to
+    run a check:
+      - r_rule          -> tests/{meta,validation,conformance}/test_r<N>_*.py
+                           (authored by v_qa-engineer per ADR-0005)
+      - lw_check        -> an `lw check <name>` subcommand (lightwave-cli)
+      - review_pipeline -> a persona finding in dev/cli.sh review --converge
+
+    Every check carries a SMART ERROR (remediation + authority citation +
+    the iteration path) so a failed gate tells the author exactly how to
+    fix it and how the fix re-enters review (qa_handoff -> R-rule). Fitness
+    is measured, not assumed: a block-severity check that cannot prove
+    fitness fails closed.
+
+    Authored 2026-06-19 per ADR-0033 (compliance-fitness control plane).
+    Division of labour: v_qa-engineer authors the fitness checks (R-rules,
+    adequacy criteria); v_release-engineer wires them into the gates.
+  generates:
+    - "pydantic:ComplianceFitnessGate"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/data/enums/flaw_classes"
+    - "lightwave://schemas/data/enums/proposed_test_kinds"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default')."
+  - name: regimes
+    type: "list[FitnessRegimeRef]"
+    description: |
+      Audit regimes plugged into the control plane. Sub-schema FitnessRegime:
+        regime_key (enum: eu_gdpr | financial | legal),
+        title (str, human label),
+        authority (str, the upstream the regime is faithful to — e.g.
+          'GDPR Art.5(1)(c),(e) + Art.6'; financial -> 'SOC2 CC8.1';
+          legal -> 'third-party license + attribution obligations'),
+        status (enum: active | draft | planned),
+        owner_persona (str, default 'v_qa-engineer' — authors the checks),
+        check_ids (list[str], references fitness_checks keys below).
+  - name: fitness_checks
+    type: "dict[str, FitnessCheckRef]"
+    description: |
+      Named fitness checks. Sub-schema FitnessCheck:
+        regime_key (enum: eu_gdpr | financial | legal),
+        severity (enum: block | warn | info — block fails closed),
+        check_status (enum: planned | active — 'planned' = the enforcer is not
+          authored yet; such checks MUST be warn/info until it exists, then
+          flip to block. Guards against a block check that can never prove fitness),
+        enforced_by (enum: r_rule | lw_check | review_pipeline),
+        enforcement_ref (str, clean handle — an R-rule id, an 'lw check
+          <name>' invocation, or 'review:<persona>'. Status lives in
+          check_status, never concatenated into the ref),
+        description (str, what fitness this check proves),
+        remediation (str, the SMART ERROR — exactly how to make it pass),
+        finding_kind (str, values_ref lightwave://schemas/data/enums/flaw_classes
+          — how a failure is classified for the qa_handoff),
+        proposed_test_kind (str, values_ref
+          lightwave://schemas/data/enums/proposed_test_kinds — SWEBOK kind
+          for the R-rule v_qa-engineer authors),
+        feedback_artifact (str, default 'qa_handoff' — the iteration loop).
+  - name: gate_bindings
+    type: "list[GateBindingRef]"
+    description: |
+      Where each severity is enforced. Sub-schema GateBinding:
+        severity (enum: block | warn | info),
+        enforced_at (list[str] — any of: pre_push | merge_gate | ci | lw_check | review),
+        on_fail (enum: block_push | block_merge | warn_only | record_only),
+        notes (str).
+
+optional_fields:
+  - name: finding_log
+    type: str
+    description: "Observability channel slug (relative; the runtime resolves the root) where fitness findings — and any override_env bypasses — are recorded for the audit trail. Tenant-portable: no home-absolute paths."
+  - name: override_env
+    type: str
+    description: "Documented emergency bypass env var (logged when used). Block-severity only."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default"
+  regimes:
+    - regime_key: "eu_gdpr"
+      title: "EU General Data Protection Regulation"
+      authority: "GDPR Art.5(1)(c) data minimisation; Art.5(1)(e) storage limitation; Art.6 lawful basis"
+      status: "draft"  # active only once >=1 of its checks is live
+      owner_persona: "v_qa-engineer"
+      check_ids: ["gdpr-pii-data-class", "gdpr-retention-declared", "gdpr-lawful-basis"]
+    - regime_key: "financial"
+      title: "Financial controls (SOC2 change management)"
+      authority: "SOC2 CC8.1 — change management: sign-off + audit trail"
+      status: "planned"
+      owner_persona: "v_qa-engineer"
+      check_ids: ["fin-change-signoff"]
+    - regime_key: "legal"
+      title: "Legal / licensing obligations"
+      authority: "third-party license + attribution conformance"
+      status: "planned"
+      owner_persona: "v_qa-engineer"
+      check_ids: ["legal-license-attribution"]
+  fitness_checks:
+    gdpr-pii-data-class:
+      regime_key: "eu_gdpr"
+      severity: "warn"
+      enforced_by: "r_rule"
+      check_status: "planned"
+      enforcement_ref: "R-41"
+      description: "Every schema field that holds personal data declares a data-class (no untyped PII)."
+      remediation: "Add `data_class: personal` (or `sensitive`) to the field, or mark it non-personal explicitly. PII without a class cannot be retention- or access-governed (Art.5(1)(c))."
+      finding_kind: "security"
+      proposed_test_kind: "conformance"
+      feedback_artifact: "qa_handoff"
+    gdpr-retention-declared:
+      regime_key: "eu_gdpr"
+      severity: "warn"
+      enforced_by: "r_rule"
+      check_status: "planned"
+      enforcement_ref: "R-42"
+      description: "Any schema carrying personal data is covered by a retention policy (storage limitation)."
+      remediation: "Bind the data-holding schema to policy/compliance/session_retention.yaml with max_age_days set. Unbounded personal data violates Art.5(1)(e)."
+      finding_kind: "contract"
+      proposed_test_kind: "conformance"
+      feedback_artifact: "qa_handoff"
+    gdpr-lawful-basis:
+      regime_key: "eu_gdpr"
+      severity: "warn"
+      check_status: "planned"
+      enforced_by: "review_pipeline"
+      enforcement_ref: "review:v_qa-engineer"
+      description: "Personal-data processing declares a lawful basis (consent / contract / legitimate-interest)."
+      remediation: "Tag the processing with `lawful_basis:` per GDPR Art.6. Reviewer escalates to block when data is sensitive (Art.9)."
+      finding_kind: "contract"
+      proposed_test_kind: "integration"
+      feedback_artifact: "qa_handoff"
+    fin-change-signoff:
+      regime_key: "financial"
+      severity: "warn"
+      check_status: "planned"
+      enforced_by: "review_pipeline"
+      enforcement_ref: "review:v_cto"
+      description: "Production-affecting change carries CTO sign-off + an audit trail (ties to the release merge gate: lw release sign-off/merge)."
+      remediation: "Record sign-off via `lw release sign-off <repo> --by <cto>`; the merge gate enforces it. SOC2 CC8.1."
+      finding_kind: "contract"
+      proposed_test_kind: "integration"
+      feedback_artifact: "qa_handoff"
+    legal-license-attribution:
+      regime_key: "legal"
+      severity: "warn"
+      check_status: "planned"
+      enforced_by: "lw_check"
+      enforcement_ref: "lw check license-attribution"
+      description: "Vendored / copied third-party material carries a license + attribution."
+      remediation: "Add the upstream license header + source citation. Unattributed external material is a legal-fitness failure."
+      finding_kind: "contract"
+      proposed_test_kind: "conformance"
+      feedback_artifact: "qa_handoff"
+  gate_bindings:
+    - severity: "block"
+      enforced_at: ["pre_push", "merge_gate", "ci"]
+      on_fail: "block_push"
+      notes: "Block fitness checks fail closed at pre-push (Phase 1 R-rules) and the merge gate; CI re-asserts the same R-rules."
+    - severity: "warn"
+      enforced_at: ["pre_push", "review"]
+      on_fail: "warn_only"
+      notes: "Warn surfaces as a persona finding in dev/cli.sh review; iterates via qa_handoff, does not block."
+    - severity: "info"
+      enforced_at: ["ci"]
+      on_fail: "record_only"
+      notes: "Informational — recorded to the finding log for the audit trail only."
+  finding_log: "observability/compliance_fitness.jsonl"
+  override_env: "LW_OVERRIDE_FITNESS_BLOCK"  # logged to finding_log when used (audit trail)

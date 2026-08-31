@@ -1,0 +1,111 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/local_git_topology"
+  title: "Local Git Topology Node"
+  description: |
+    Wire shape for one discovered git repository or linked worktree on the
+    operator machine. Consumed by `lw git audit`, `lw git map`, and the
+    local validation network (`mise run local-network`).
+
+    One LocalGitTopology record per checkout (main clone OR linked worktree).
+    Linked worktrees share a `common_dir` but have distinct `path` values.
+  generates:
+    - "go:LocalGitTopology"
+    - "pydantic:LocalGitTopology"
+  depends_on:
+    - "lightwave://schemas/data/enums/diagnostic_severities"
+
+required_fields:
+  - name: path
+    type: str
+    description: "Absolute filesystem path to this checkout root."
+  - name: git_dir
+    type: str
+    description: "Absolute path to this checkout's .git (file for linked worktrees, dir for main)."
+  - name: common_dir
+    type: str
+    description: "Absolute path to the shared git common dir (main .git directory)."
+  - name: is_worktree
+    type: bool
+    description: "True when this checkout is a linked worktree, not the main clone."
+  - name: branch
+    type: str
+    description: "Current branch name or '(detached)'."
+  - name: repo_infra_tier
+    type: str
+    description: "Enum: strict | advisory. strict = LightWave repo (mise.toml + AGENTS.md markers)."
+  - name: violations
+    type: "list[GitViolation]"
+    description: |
+      Typed findings for this node. Sub-schema GitViolation:
+        code (str — stale_worktree | orphan_worktree | hooks_drift | branch_policy | disk_hog | orphan_cursor_worktree | non_canonical_worktree_root | forbidden_worktree_root | missing_worktree_marker | legacy_worktree_layout | worktree_on_main),
+        severity (enum — diagnostic_severities),
+        message (str).
+
+optional_fields:
+  - name: upstream
+    type: str
+    description: "Upstream tracking ref (e.g. origin/main) or empty when unset."
+  - name: ahead
+    type: int
+    description: "Commits ahead of upstream."
+  - name: behind
+    type: int
+    description: "Commits behind upstream."
+  - name: dirty
+    type: "object[DirtyCounts]"
+    description: "Sub-schema DirtyCounts: staged (int), unstaged (int), untracked (int)."
+  - name: linked_worktrees
+    type: "list[str]"
+    description: "Paths of all worktrees sharing this common_dir (including main)."
+  - name: remotes
+    type: "list[RemoteRef]"
+    description: "Sub-schema RemoteRef: name (str), url (str), fetch (bool), push (bool)."
+  - name: hooks_path
+    type: str
+    description: "Value of core.hooksPath for this repo (empty = default .git/hooks)."
+  - name: hooks_installed
+    type: "list[str]"
+    description: "Hook names present and executable (pre-commit, pre-push, commit-msg)."
+  - name: reachability
+    type: "object[Reachability]"
+    description: |
+      Sub-schema Reachability: last_fetch_iso (str|null), credential_helper (str|null),
+      submodule_count (int).
+  - name: repo_name
+    type: str
+    description: "Basename of the repo directory for display."
+
+example:
+  path: "/Users/joelschaeffer/dev/lightwave-core"
+  git_dir: "/Users/joelschaeffer/dev/lightwave-core/.git"
+  common_dir: "/Users/joelschaeffer/dev/lightwave-core/.git"
+  is_worktree: false
+  branch: "main"
+  upstream: "origin/main"
+  ahead: 0
+  behind: 2
+  dirty:
+    staged: 0
+    unstaged: 1
+    untracked: 0
+  linked_worktrees:
+    - "/Users/joelschaeffer/dev/lightwave-core"
+    - "/Users/joelschaeffer/.cursor/worktrees/lightwave-core/rntv"
+  remotes:
+    - name: "origin"
+      url: "git@github.com:lightwave-media/lightwave-core.git"
+      fetch: true
+      push: true
+  hooks_path: "dev/hooks"
+  hooks_installed: ["pre-commit", "pre-push", "commit-msg"]
+  repo_infra_tier: "strict"
+  reachability:
+    last_fetch_iso: "2026-06-18T12:00:00Z"
+    credential_helper: "osxkeychain"
+    submodule_count: 0
+  repo_name: "lightwave-core"
+  violations:
+    - code: "hooks_drift"
+      severity: "warn"
+      message: "worktree at ~/.cursor/worktrees/lightwave-core/rntv missing commit-msg hook"

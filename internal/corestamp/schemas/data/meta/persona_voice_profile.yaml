@@ -1,0 +1,71 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/persona_voice_profile
+  title: Persona Voice Profile
+  description: 'One tone profile in v_speak registry. Executor personas reference by profile_id.
+
+    '
+  generates:
+  - pydantic:PersonaVoiceProfile
+  depends_on:
+  - lightwave://schemas/data/enums/voice_engines
+  - lightwave://schemas/data/enums/voice_profile_kinds
+  - lightwave://schemas/data/enums/voice_synthesis_goals
+  - lightwave://schemas/data/enums/voice_output_formats
+  - lightwave://schemas/data/enums/voice_tone_tags
+required_fields:
+- name: profile_id
+  type: str
+  description: Unique identifier for this voice profile.
+- name: kind
+  type: enum
+  values_ref: lightwave://schemas/data/enums/voice_profile_kinds
+  description: Voice profile kind (e.g. tts, speech, synthesis).
+- name: engine
+  type: enum
+  values_ref: lightwave://schemas/data/enums/voice_engines
+  description: TTS engine used for synthesis (e.g. elevenlabs, openai).
+optional_fields:
+- name: voice_id
+  type: str
+  description: Provider-specific voice ID used for TTS synthesis.
+- name: language
+  type: str
+  description: BCP-47 language code, default en
+- name: speaking_rate
+  type: float
+  description: Speaking rate multiplier (1.0 = normal speed).
+- name: pitch
+  type: float
+  description: Pitch adjustment for TTS synthesis (provider-specific scale).
+- name: tone_tags
+  type: list[enum]
+  values_ref: lightwave://schemas/data/enums/voice_tone_tags
+  description: List of tone descriptors applied to this voice profile.
+- name: paralinguistic_tags
+  type: list[str]
+  description: Paralinguistic cues (e.g. pause, emphasis) applied to synthesis.
+- name: goal
+  type: enum
+  values_ref: lightwave://schemas/data/enums/voice_synthesis_goals
+  description: Intended communicative goal of this voice profile.
+- name: output_format
+  type: enum
+  values_ref: lightwave://schemas/data/enums/voice_output_formats
+  description: Audio output format for synthesized speech (e.g. mp3, wav).
+- name: effects
+  type: object
+  description: Post-processing audio effects applied after synthesis.
+example:
+  profile_id: v_cli-developer
+  kind: persona_default
+  engine: kokoro
+  voice_id: af_bella
+  language: en
+  speaking_rate: 1.0
+  pitch: 0.0
+  tone_tags:
+  - neutral
+  - warm
+  goal: narrate
+  output_format: wav

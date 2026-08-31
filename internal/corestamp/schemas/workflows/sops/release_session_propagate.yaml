@@ -1,0 +1,52 @@
+name: "release_session_propagate"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/release_session_propagate"
+  title: "Release session propagation SOP"
+  description: |
+    Post-merge fleet sync (ADR-0036). Rebases open agent worktrees onto new
+    origin/main, runs local CI, interrupts sessions on break.
+  depends_on:
+    - "lightwave://schemas/data/meta/release_session_propagate_report"
+    - "lightwave://schemas/data/meta/feature_flag"
+
+id: release_session_propagate
+title: "Propagate main head to open agent worktrees"
+version: 1.0.0
+execution_mode: automated
+
+trigger:
+  source: sop_chain
+  event: post_release_merge
+
+parameters:
+  - name: repo
+    type: string
+    description: "lightwave-media/<repo> slug merged to main"
+  - name: main_sha
+    type: string
+    description: "origin/main SHA after merge"
+
+steps:
+  - id: gate_flag
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        state="$(lw release flag autonomous_release_session_propagate 2>/dev/null | awk '{print $2}')"
+        test "${state}" = "on"
+
+  - id: propagate
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw release propagate --repo "${repo}" --main-sha "${main_sha}" --yes
+
+  - id: write_report
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        test -f "${HOME}/.lightwave/reports/release-propagate.latest.json"

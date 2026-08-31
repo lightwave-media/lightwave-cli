@@ -1,0 +1,61 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/plan_file"
+  title: "Plan File Contract"
+  description: |
+    Canonical plan file paths, naming grammar, and visual-first requirements.
+    Joel reads Mermaid/ASCII before prose. Planned R-41 tests path conformance.
+  generates:
+    - "pydantic:PlanFile"
+  depends_on:
+    - "lightwave://schemas/data/enums/plan_tier"
+    - "lightwave://schemas/data/enums/plan_statuses"
+    - "lightwave://schemas/data/enums/visual_block_kinds"
+
+required_fields:
+  - name: slug
+    type: str
+    description: "Kebab-case identifier"
+  - name: plan_tier
+    type: str
+    description: "plan_tier enum value"
+  - name: filename_pattern
+    type: str
+    description: "Deterministic pattern e.g. {slug}.plan.md or {NNNN}-{slug}.md"
+  - name: visual_required
+    type: bool
+    description: "MUST be true for human-facing plans"
+  - name: visual_blocks_min
+    type: int
+    description: "Minimum diagram blocks before prose; default 1"
+
+optional_fields:
+  - name: directory_ref
+    type: str
+    description: "homedir zone or repo-relative path"
+  - name: visual_kinds
+    type: "list[str]"
+    description: "visual_block_kinds enum values allowed"
+  - name: status
+    type: str
+    description: "plan_statuses enum"
+  - name: local_file_path
+    type: str
+    description: "Resolved absolute path when materialized"
+
+filename_grammar:
+  cursor_session: "~/.cursor/plans/{slug}.plan.md"
+  claude_session: "~/.claude/plans/{YYYY-MM-DD}-{slug}.md"
+  repo_spec: "{repo}/spec/implementation_plan/{NNNN}-{slug}.md"
+  operator_spec: "~/.lightwave/specs/implementation_plan/{slug}.md"
+  archive: "~/.lightwave/brain/plans-archive/{YYYY-MM-DD}-{slug}/original.md"
+  validity_contract: "~/.lightwave/config/contracts/{YYYY-MM-DD}-{slug}.yaml"
+
+example:
+  slug: createos-governance-phase0
+  plan_tier: operator_spec
+  filename_pattern: "{slug}.md"
+  visual_required: true
+  visual_blocks_min: 1
+  visual_kinds: [mermaid_flowchart, status_table]
+  directory_ref: "~/.lightwave/specs/implementation_plan/"

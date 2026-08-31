@@ -1,0 +1,94 @@
+_meta:
+  version: "2.1.0"
+  schema_id: "lightwave://schemas/data/enums/life_domains"
+  title: "Life Domains Enum"
+  description: |
+    The 17 top-level life-domains from joel's Notion outline. Used as the `domain:`
+    field value in every R-P-I-V-R artifact (product_vision, prd, sad, nfr, ddd,
+    api_spec, epic, sprint, user_story, task, implementation_plan). Each life-domain
+    may have its own Domain Charter at ~/.lightwave/specs/domain/<slug>.md
+    (currently only `software-development` exists; the other 16 are pending).
+
+    v2.0: values merged from print back into stamp per revised R-15.
+    Originally crystallized from docs/domains/README.md.
+
+    v2.1: `cinematography` added — the operator's own craft and the row cineOS
+    promotes from. It was already load-bearing downstream while unstamped:
+    createOS carried it in PENDING_LIFE_DOMAINS, and the shipped app shelf
+    (createOS#50) uses it as a shelf key classifying 21 applications.
+
+    v2.1 MIGRATION — `financial` → `finance`. The two split operational finance
+    from investments; operator decision 2026-08-02 folded them, and `finance`
+    already reads "capital allocation". `financial` is REMOVED rather than kept
+    as a deprecated alias, so no new artifact can select the retired half.
+    Any artifact still carrying `domain: financial` must be rewritten to
+    `domain: finance` — that is the whole migration, and it is why this is a
+    minor bump on a `closed: false` enum rather than a silent edit.
+
+    closed: false — operators may extend (e.g., add 'spirituality' or 'education'),
+    but extension is a STAMP version bump (PR to lightwave-core), not a runtime
+    knob. Same workflow as adding a new R-P-I-V-R artifact kind.
+
+    Distinct from scrum_domains (config/constraints/scrum_domains.yaml) which is
+    the 8-item enum for agent Scrum participation — different concern, different
+    granularity.
+  generates:
+    - "pydantic:LifeDomain"
+  depends_on: []
+
+name: life_domains
+description: "Top-level life-domains in the createOS taxonomy"
+default: software-development
+closed: false
+options:
+  - value: software-development
+    label: "Software Development"
+    description: "Building and maintaining software (all lightwave-* repos)"
+  - value: legal
+    label: "Legal"
+    description: "Contracts, entity-formation, IP, licensing, compliance"
+  - value: finance
+    label: "Finance"
+    description: "Bookkeeping, tax, accounting, capital allocation, investments and long-term wealth (absorbed the retired `financial` in v2.1)"
+  - value: creative-strategy
+    label: "Creative Strategy"
+    description: "Creative direction, brand, positioning, narrative strategy"
+  - value: content-creation
+    label: "Content Creation"
+    description: "Authoring scripts, copy, posts, screenplays, articles"
+  - value: cinematography
+    label: "Cinematography"
+    description: "Camera, lighting and post-production craft — the row cineOS promotes from"
+  - value: photography
+    label: "Photography"
+    description: "Shoots, portfolios, asset curation, photoOS workflows"
+  - value: personal-admin
+    label: "Personal Admin"
+    description: "Calendar, email triage, household ops, day-to-day administration"
+  - value: home-household
+    label: "Home & Household"
+    description: "Property, maintenance, household systems, home-management"
+  - value: friends-social
+    label: "Friends & Social"
+    description: "Friendships, social planning, relational maintenance"
+  - value: family
+    label: "Family"
+    description: "Family relationships, planning, support"
+  - value: health-fitness
+    label: "Health & Fitness"
+    description: "Physical health, exercise, nutrition, medical"
+  - value: mental-clarity
+    label: "Mental Clarity"
+    description: "Mental health, reflection, mood, stress management"
+  - value: mind-expansion
+    label: "Mind Expansion"
+    description: "Learning, reading, courses, deep practice"
+  - value: travel-exploration
+    label: "Travel & Exploration"
+    description: "Trips, exploration, location-based experiences"
+  - value: customer-operations
+    label: "Customer Operations"
+    description: "Client work, customer support, account management (when products gain external customers)"
+  - value: marketing-social-media
+    label: "Marketing & Social Media"
+    description: "Marketing campaigns, social-media presence, audience growth — distinct from creative-strategy"

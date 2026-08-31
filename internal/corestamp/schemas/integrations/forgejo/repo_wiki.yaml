@@ -1,0 +1,24 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/repo_wiki"
+  title: "Forgejo Wiki — 1:1 SST Mirror"
+  source_ref: "forgejo://swagger.v1.json#/definitions/WikiPage"
+  description: "Wiki page in a Forgejo repository."
+  table_kind: entity
+  table_name: wiki_pages
+  generates: ["go:ForgejoWiki"]
+primary_key: { column: id, type: uuid }
+required_fields:
+  - { name: title, type: str, storage: db }
+  - { name: repo_ref, type: str, storage: db, indexed: true }
+  - { name: content_base64, type: str, storage: db }
+  - { name: created_at, type: datetime, storage: db }
+optional_fields:
+  - { name: message, type: str, storage: db }
+  - { name: html_url, type: str, storage: db }
+example:
+  title: "Agent-Runner-API"
+  repo_ref: "lightwave-media/lightwave-platform"
+  content_base64: "IyBBZ2VudCBSdW5uZXIgQVBJ..."
+  created_at: "2026-06-25T00:00:00Z"

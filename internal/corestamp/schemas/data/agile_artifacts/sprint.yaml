@@ -1,0 +1,100 @@
+_meta:
+  version: "1.3.2"
+  schema_id: "lightwave://schemas/data/agile_artifacts/sprint"
+  title: "Sprint"
+  description: "A time-boxed iteration aggregating user_stories + tasks under one or more epics. May be quality-gated (end_date: null) per the lightwave-core-rebuild precedent. Migrated 2026-05-25 from governance/agile/sprint.yaml (Phase 4 file #11) — Augusta example replaced with v_core."
+  generates:
+    - "pydantic:Sprint"
+  depends_on:
+    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/agile_artifacts/epic"
+  table_kind: entity
+  table_name: sprints
+
+status_enum: "sprint_statuses"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: slug
+  unique: true
+
+required_fields:
+  - name: slug
+    type: str
+    description: "URL-safe unique identifier; lowercase, hyphen-separated"
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+    storage: db
+  - name: name
+    type: str
+    description: "Sprint name"
+    storage: db
+  - name: domain
+    type: str
+    description: "LifeDomain slug; validated against life_domains"
+    storage: db
+  - name: status
+    type: str
+    description: "Lifecycle state; validated against sprint_statuses"
+    storage: db
+    indexed: true
+  - name: start_date
+    type: date
+    description: "Sprint start date"
+    storage: db
+  - name: end_date
+    type: date
+    description: "Sprint end date (may be null for quality-gated sprints per lightwave-core-rebuild precedent)"
+    storage: db
+  - name: created_at
+    type: datetime
+    description: "ISO 8601 timestamp of record creation; auto-populated"
+    storage: db
+  - name: updated_at
+    type: datetime
+    description: "ISO 8601 timestamp of last modification; auto-updated"
+    storage: db
+
+optional_fields:
+  - name: budget_ref
+    type: str
+    description: "Slug of the sprint's sprint_budget. Links this sprint to its cost budget. Populated by v_scrum-manager at sprint planning. Null for uncosted sprints (prior to Phase 1 adoption). Use $ref: sprint_budget for conformance."
+    storage: db
+  - name: epic_ref
+    type: str
+    description: "Slug of associated Epic (nullable; sprints may span epics or stand alone)"
+    storage: db
+    fk_ref: "lightwave://schemas/data/agile_artifacts/epic"
+    fk_column: slug
+    indexed: true
+  - name: objectives
+    type: str
+    description: "Sprint goals / one-paragraph mission statement"
+    storage: db
+  - name: quality_score
+    type: float
+    description: "Retro quality score 0-100 (set post-completion only)"
+    storage: db
+
+relations:
+  parent: epic
+  parent_fk:
+    column: epic_ref
+    references: epics.slug
+    on_delete: CASCADE
+  children:
+    - task
+
+example:
+  slug: "v-core-v1-ready-task-dispatch-sprint"
+  name: "v_core v1 — Ready-Task dispatch sprint"
+  domain: "software-development"
+  status: "active"
+  start_date: "2026-06-01"
+  end_date: "2026-06-30"
+  epic_ref: "v-core-v1-ready-task-dispatch"
+  objectives: "Ship v_core's local SQLite poll loop + dispatch to claude-code/pi harnesses. End-to-end Ready-Task → dispatched-session round-trip verified."
+  created_at: "2026-06-24T12:00:00Z"
+  updated_at: "2026-06-24T12:00:00Z"

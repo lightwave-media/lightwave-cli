@@ -1,0 +1,78 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/ui/tenant"
+  title: "Tenant — multi-tenant site/instance entity"
+  description: |
+    The instance entity each domain becomes on the platform: it ties a slug
+    (the RLS org identifier = app.current_org and the /v1/{tenant}/ path
+    segment), one or more domains, a lifecycle status, and the UI contract the
+    instance renders. It is the missing top-level entity above
+    data/ui/site_config — site_config stays the pure UI/content contract; this
+    schema owns identity, routing, lifecycle, and the reference to it.
+
+    `kind` distinguishes the control plane from peer tenant sites:
+      - control_plane — lightwave-media.ltd: backend API + admin + CEO/owner
+        dashboard; cross-tenant authority. Renders an app_shell (kind=admin),
+        so app_shell_ref is required and site_config_ref is typically null.
+      - tenant_site — a peer site (joelschaeffer.com, cineos.io, …) at the same
+        level as every other tenant; resolves by host, RLS-isolated by slug.
+        Renders a site_config, so site_config_ref is required.
+
+    Emitter cross-field rules (.superRefine() in the Run 2 typescript binding):
+      - kind == tenant_site  => site_config_ref is non-null.
+      - kind == control_plane => app_shell_ref is non-null.
+      - primary_domain, when set, must be one of domains.
+      - slug matches ^[a-z][a-z0-9-]*$ (kebab; it is the RLS org id and a URL
+        path segment, so no uppercase, dots, or underscores).
+  generates:
+    - "typescript:Tenant"
+    - "go:Tenant"
+    - "json_schema:tenant"
+  depends_on:
+    - "lightwave://schemas/data/ui/site_config"
+    - "lightwave://schemas/data/ui/app_shell"
+
+required_fields:
+  - name: slug
+    type: str
+    description: "RLS org identifier (app.current_org) and the /v1/{tenant}/ path segment. Kebab-case, ^[a-z][a-z0-9-]*$ (e.g. joelschaeffer, cineos)"
+  - name: kind
+    type: enum
+    options: ["control_plane", "tenant_site"]
+    description: "control_plane = lightwave-media.ltd (backend/admin/CEO, cross-tenant); tenant_site = a peer site resolved by host"
+  - name: display_name
+    type: str
+    description: "Human-readable instance name (e.g. CineOS)"
+  - name: domains
+    type: "list[str]"
+    description: "Hosts that resolve to this tenant (apex, www, custom hostnames); at least one. ResolveHost(host) -> this slug"
+  - name: status
+    type: enum
+    options: ["provisioning", "active", "suspended", "archived"]
+    description: "Lifecycle status. Only active tenants are served"
+
+optional_fields:
+  - name: primary_domain
+    type: str
+    nullable: true
+    description: "Canonical host for redirects/SEO; must be one of domains. Null defaults to the first domain"
+  - name: site_config_ref
+    type: str
+    nullable: true
+    description: "lightwave:// ref (or slug) of the site_config this instance renders. Required when kind == tenant_site"
+  - name: app_shell_ref
+    type: str
+    nullable: true
+    description: "lightwave:// ref (or name) of the app_shell this instance renders. Required when kind == control_plane (the admin shell)"
+
+example:
+  slug: "cineos"
+  kind: "tenant_site"
+  display_name: "CineOS"
+  status: "active"
+  domains:
+    - "cineos.io"
+    - "www.cineos.io"
+  primary_domain: "cineos.io"
+  site_config_ref: "lightwave://sites/cineos/site_config"
+  app_shell_ref: null

@@ -1,0 +1,33 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_image_kinds"
+  title: "CineOS Image Kind Enum"
+  description: |
+    Role an attached CineImage plays (image.kind). Closed.
+  generates:
+    - "go:CineImageKind"
+    - "typescript:CineImageKind"
+    - "zig:CineImageKind"
+    - "json_schema:cineos_image_kinds"
+  depends_on: []
+
+name: cineos_image_kinds
+description: "Role of an attached image"
+default: reference
+closed: true
+options:
+  - value: reference
+    label: "Reference"
+    description: "Reference / inspiration image"
+  - value: storyboard
+    label: "Storyboard"
+    description: "Storyboard frame"
+  - value: scout
+    label: "Scout"
+    description: "Location-scout still"
+  - value: still
+    label: "Still"
+    description: "Production still"
+  - value: frame_grab
+    label: "Frame Grab"
+    description: "Frame grab from footage"

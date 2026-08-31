@@ -1,0 +1,82 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/reference_documents/technical_study"
+  title: "Technical Study"
+  description: "First-hand study of an external or existing system — what it stores, how it is structured, and what we should emulate. Research INPUT to a PRD or ADR, not a decision record: a study reports what is, an ADR records what we chose. Repo-local like ADR; not a Django Document. Distinct from market_analysis, which is about markets (TAM/SAM/SOM, competitors, positioning) and hangs off a product_vision — a technical study has neither."
+  generates:
+    - "pydantic:TechnicalStudy"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+natural_key:
+  column: slug
+  unique: true
+
+required_fields:
+  - name: slug
+    type: str
+    description: "URL-safe unique identifier; lowercase, hyphen-separated."
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+  - name: title
+    type: str
+    description: "Short title naming the system studied and the angle taken."
+  - name: status
+    type: str
+    description: "Lifecycle status; one of: draft | active | archived."
+  - name: created_at
+    type: date
+    description: "ISO date the study was written. Findings are a snapshot — a study does not silently stay true."
+  - name: subject
+    type: str
+    description: "The system under study, named precisely enough to re-observe it (product plus version or build, not just a vendor name)."
+  - name: method
+    type: str
+    description: "How the findings were obtained — first-hand observation of a live install, vendor documentation, source reading, or a stated mix. This is the study's credibility field: a reader has to be able to tell what was verified from what was read."
+  - name: findings
+    type: "list[str]"
+    description: "What the study established about the subject. Observations, not recommendations — anything phrased as 'we should' belongs in implications."
+  - name: implications
+    type: "list[str]"
+    description: "What the findings mean for our system: what to emulate, what to avoid, what they constrain. This is the half a PRD or ADR actually consumes."
+
+optional_fields:
+  - name: observed_at
+    type: str
+    description: "Version, build, or install identifier of what was actually observed. Findings expire when the subject moves; without this, nobody can tell whether they have."
+  - name: informs
+    type: "list[str]"
+    description: "Slugs of the PRDs, ADRs or plans this study fed. A study nothing cites is either premature or finished."
+  - name: open_questions
+    type: "list[str]"
+    description: "What the study could not settle. Named explicitly so the gaps are visible rather than mistaken for absence of a problem."
+  - name: related
+    type: "list[str]"
+    description: "$refs to related studies, ADRs, PRDs or domain charters."
+
+relations:
+  parent: null # A study is atomic — it precedes the lineage rather than sitting in it
+  children: []
+
+example:
+  slug: "baselight-data-study"
+  title: "cineOS core data study — FilmLight Baselight LOOK PostgreSQL & FLAPI"
+  status: "active"
+  created_at: "2026-08-12"
+  subject: "FilmLight Baselight LOOK 7.0, locally installed"
+  method: "First-hand observation of the live install — queried the running PostgreSQL and drove FLAPI over ws://localhost:1984. Vendor documentation used only to name things, never as a source of behaviour."
+  observed_at: "Baselight LOOK 7.0"
+  findings:
+    - "Scene, shot and grade data live in three distinct database layers rather than one schema"
+    - "FLAPI over ws://localhost:1984 is the sanctioned write surface; the PostgreSQL layer is read-only observability"
+    - "Capture metadata is carried as verbatim ALE keys, not normalised column names"
+    - "Scenes record the build that wrote them, making 'needs upgrade' an explicit state"
+  implications:
+    - "cineOS should model the post-production phase our stamp stops short of: clip, timeline, grade, deliverable, render_op"
+    - "Adopt verbatim ALE keys rather than a readable-name mapping layer — the mapping is where interop breaks"
+    - "Treat version skew as representable state, not an error condition"
+  open_questions:
+    - "Whether LOOK's licence gates permit create_job on the write path, or only link-existing-job"
+  informs:
+    - "cineos-baselight-activation"

@@ -1,0 +1,127 @@
+_meta:
+  version: "1.5.0"
+  schema_id: "lightwave://schemas/data/meta/homedir_zones"
+  title: "HomeDir Zones"
+  description: |
+    Machine-readable zone classification for ~/.lightwave top-level dirs.
+    Lifts the zone taxonomy out of homedir.yaml's prose notes (v3.2.0, the
+    "Zones:" line under notes) into a queryable shape so hygiene tooling and
+    `lw home reset` can READ which dirs are wipeable instead of hard-coding
+    the list. Every dir name MUST be a top-level dir declared in homedir.yaml.
+
+    v1.5.0 (2026-08-04): ADD logs/ + state/ to RUNTIME (regenerate on next
+    run, wipe-safe) and secrets/ + forgejo-runner/ to RETAINED (credential
+    material and runner registration — wiping is data loss). homedir.yaml
+    v3.7.0 lockstep.
+
+    v1.4.0 (2026-06-27): ADD inbox/ to RUNTIME zone — drop/process queue
+    (ADR-0043), wipe-safe; durable copies land in brain/knowledge + sources/.
+
+    v1.3.0 (2026-06-24): ADD db/ to AUTHORED zone — local SQLite databases
+    are operator-authored state (initialized from SST schemas, populated by
+    lw-cli). Must survive reset.
+
+    v1.2.0 (2026-06-24): REMOVE worktrees/ from RUNTIME zone — worktrees are
+    repo-scoped per worktree_policy.yaml ({repo-root}/.worktrees/...), not a
+    ~/.lightwave/ dir. homedir.yaml v3.4.0 removed the corresponding DirSpec in
+    lockstep. RUNTIME now classifies 4 dirs (observability, artefacts, forgejo,
+    harvest).
+
+    v1.1.0 (2026-06-23): ADD forgejo/, docs/, reports/, records/, verify/,
+    workspace/, governance/, harvest/, scratch/, bin/ — closes 10 undocumented
+    directories. Full 28-dir HomeDir now classified.
+
+    Zones are a PROVENANCE grouping; `wipe_on_reset` is the orthogonal reset
+    policy (a RUNTIME dir is not automatically wipe-safe — retained archives
+    and operator daemon state are RUNTIME-class but must survive reset).
+
+    Zones:
+      AUTHORED  — operator-authored source of truth; never wiped
+      GENERATED — derived, regenerable; wiped on reset
+      RUNTIME   — TRANSIENT daemon/tool output (observability, worktrees,
+                  artefacts); archived first where applicable, then wiped
+      RETAINED  — durable runtime that must SURVIVE reset: archive/ (retained
+                  monthly tarballs) + v_core/ (operator daemon config + KV memory)
+      SHARED    — operator-installed shared libraries; not wiped
+      EXTERNAL  — third-party reference material; immutable, not wiped
+
+    Design: archive/ + v_core/ are RETAINED (wipe_on_reset:false), NOT RUNTIME —
+    lw home reset must never destroy retained tarballs or operator daemon state.
+  generates:
+    - "pydantic:HomeDirZones"
+  depends_on:
+    - "lightwave://schemas/data/meta/homedir"
+
+required_fields:
+  - name: version
+    type: str
+    description: "Zone-map version. Bump when a dir's zone changes or a dir is added/removed from homedir.yaml."
+  - name: zones
+    type: "dict[str, ZoneSpec]"
+    description: "Map of zone name -> ZoneSpec. Zone names are the fixed six: AUTHORED, GENERATED, RUNTIME, RETAINED, SHARED, EXTERNAL."
+
+# =============================================================================
+# Sub-schema ZoneSpec (referenced by required_fields.zones)
+# =============================================================================
+# Required:
+#   - wipe_on_reset  (bool)        whether `lw home reset` may DELETE + re-render
+#                                  these dirs. MUST be false for any dir holding
+#                                  retained archives or operator-authored state —
+#                                  over-wiping is data loss, under-wiping is safe.
+#   - dirs           (list[str])   top-level dir names; each MUST exist in
+#                                  homedir.yaml's declared dirs
+#   - rationale      (str)         why this zone carries this wipe policy
+# =============================================================================
+
+example:
+  version: "1.2.0"
+  zones:
+    AUTHORED:
+      wipe_on_reset: false
+      dirs:
+        [
+          specs,
+          config,
+          brain,
+          skills,
+          sops,
+          docs,
+          records,
+          verify,
+          workspace,
+          governance,
+          db,
+          reviews,
+        ]
+      rationale: "Operator-authored source of truth; loss is unrecoverable."
+    GENERATED:
+      wipe_on_reset: true
+      dirs: [index, reports]
+      rationale: "Derived artifacts; regenerable from authored + runtime sources."
+    RUNTIME:
+      wipe_on_reset: true
+      dirs: [observability, artefacts, forgejo, harvest, inbox, logs, state]
+      rationale: "Transient daemon/tool output; task_done archives artefacts to archive/ first, so these are GC-safe to wipe and re-render. inbox/ is the groom queue — processed items are routed to brain/knowledge or archived first. Worktrees are NOT here — they are repo-scoped per worktree_policy.yaml."
+    RETAINED:
+      wipe_on_reset: false
+      dirs: [archive, v_core, secrets, forgejo-runner]
+      rationale: "Durable runtime that must survive reset: archive/ holds retained monthly task tarballs; v_core/ holds operator daemon config (providers, channels, plugins, cron) + KV memory; secrets/ holds host-side credential material; forgejo-runner/ holds the CI runner registration. Wiping any is data loss."
+    SHARED:
+      wipe_on_reset: false
+      dirs: [lib, bin]
+      rationale: "Operator-installed shared libraries and scripts; reinstall, don't wipe."
+    EXTERNAL:
+      wipe_on_reset: false
+      dirs: [sources]
+      rationale: "Third-party reference material; not LightWave-authored, not regenerable."
+    EPHEMERAL:
+      wipe_on_reset: true
+      dirs: [scratch]
+      rationale: "Operator scratch space; safe to wipe. Not consumed by any agent or tool."
+
+notes: |
+  Source of truth for dir membership is homedir.yaml's `dirs` list — this file
+  only CLASSIFIES those dirs. When homedir.yaml adds/removes a top-level dir,
+  update the matching zone here and bump version. Consumers: lw home reset
+  (wipe gate), ~/.lightwave/lib/maintenance/slop.ts (oversize-log scan scoped
+  to RUNTIME zones), agent harnesses (flash-render planning).

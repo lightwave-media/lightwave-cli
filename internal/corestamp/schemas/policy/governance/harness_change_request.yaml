@@ -1,0 +1,186 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/governance/harness_change_request"
+  title: "Harness Change Request (HCR) — propose-and-apply protocol for the safety harness"
+  description: |
+    The stamped shape for an agent-PROPOSED, operator-APPLIED change to the
+    safety harness — the operator-owned surfaces an agent is hard-blocked from
+    self-applying (CLAUDE.md §9): ~/.claude/settings.json, ~/.claude/hooks/*,
+    and the verifier artifacts ADR-0043 (CORE-0043) flagged as unprotected
+    (checks/*.sh, review_prompt.tpl, v_*.yaml hard_rules).
+
+    Why this exists: ADR-0043 §5 ratified "the agent prepares it; the operator
+    wires it" but left "prepares" without a shape. The incentive_structure.cycle
+    in harness_configuration_plane already stamps a propose-and-apply flywheel
+    for the WORK / constitution layer (blueprints, runbooks, lw verbs). The HCR
+    is its SAFETY-layer twin: it gives agent-initiated harness changes an
+    auditable, reversible, operator-gated channel instead of the ad-hoc
+    "paste a diff into chat" handoff.
+
+    The boundary is load-bearing: the agent's degrees of freedom END at the
+    prepared `diff`. Only an operator may move an HCR to `applied`. An agent that
+    sets `applied` (or names itself in `applied_by`) violates §9 — the same
+    invariant the spawn-gate and the settings.json deny enforce at the tool
+    layer. This schema is the SHAPE; enforcement is the operator-owned apply step
+    plus the hook suite (L2). It is doctrine + record, not a runtime auto-apply
+    path.
+  generates:
+    - "pydantic:HarnessChangeRequest"
+    - "go:HarnessChangeRequest"
+  depends_on:
+    - "lightwave://schemas/policy/governance/harness_configuration_plane"
+  changelog:
+    - version: "1.0.0"
+      date: "2026-06-28"
+      summary: "Initial HCR protocol (CORE-0045): propose→review→apply→audit channel for safety-harness changes; operator owns 'applied'; closes the 'prepares' half of CORE-0043's protect-the-verifier P0."
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable HCR id, e.g. 'hcr-2026-06-28-gap-detector-fix'."
+  - name: target_kind
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/harness_target_kinds"
+    description: |
+      The class of safety-harness artifact being changed. Closed vocabulary +
+      per-value §9 / CORE-0043 notes live in the harness_target_kinds enum
+      (claude_settings, claude_hook, check_script, review_prompt,
+      persona_hard_rules).
+  - name: target_path
+    type: str
+    description: "Absolute path of the artifact, e.g. '~/.claude/hooks/pre-tool-use-cli-gap-detector.ts'."
+  - name: diff
+    type: str
+    description: |
+      The prepared change as a unified diff (the 'prepares' artifact of
+      CORE-0043 §5). This is the agent's terminal degree of freedom — the agent
+      authors the diff and nothing downstream of it.
+  - name: rationale
+    type: str
+    description: "Why the change is needed — prose, reader-facing."
+  - name: linked_incident
+    type: str
+    description: |
+      Brain-memory ref justifying the change
+      (~/.lightwave/brain/memory/failures/*.yaml or feedback/*.yaml). REQUIRED —
+      the same bar a new `lw check` must clear (no speculative or aesthetic
+      harness changes). An HCR without a linked incident is not actionable.
+  - name: risk
+    type: str
+    description: "Blast radius — what breaks if this is wrong, and how widely."
+  - name: revert
+    type: str
+    description: "How to undo the change, so apply is reversible (the operator's safety rope)."
+  - name: proposed_by
+    type: str
+    description: "Proposing identity — agent persona + session id (e.g. 'claude-code:sess-a1657017')."
+  - name: proposed_at
+    type: str
+    description: "ISO-8601 timestamp the agent emitted the HCR — the creation event, self-contained in the record (agent sets it alongside proposed_by)."
+  - name: status
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/harness_change_request_statuses"
+    description: |
+      Lifecycle state (see the harness_change_request_statuses enum). The agent
+      may set only `proposed` (and `superseded` of its own STILL-UNREVIEWED HCR).
+      Transitions to `reviewed`, `applied`, and `rejected` are OPERATOR-OWNED.
+
+optional_fields:
+  - name: reviewer_id
+    type: str
+    description: "Operator / Q-suite persona that reviewed the HCR (the L3 analog for safety changes). required_when: status == reviewed."
+  - name: reviewed_at
+    type: str
+    description: "ISO-8601 timestamp the operator reviewed the HCR (paired with reviewer_id, so review latency is answerable from the record). required_when: status == reviewed."
+  - name: applied_by
+    type: str
+    description: |
+      Identity that wired the change. MUST be a human/operator identity — never
+      the proposing agent. This field IS the §9 invariant made auditable.
+      required_when: status == applied (linter-enforced; see invariants).
+  - name: applied_at
+    type: str
+    description: "ISO-8601 timestamp the operator applied the change. required_when: status == applied."
+  - name: rejected_by
+    type: str
+    description: "Operator identity that rejected the HCR (mirrors applied_by, so a rejected record is self-contained). required_when: status == rejected."
+  - name: rejected_at
+    type: str
+    description: "ISO-8601 timestamp the operator rejected the HCR. required_when: status == rejected."
+  - name: audit_ref
+    type: str
+    description: "Pointer into the append-only channel log (see `channel`)."
+  - name: supersedes
+    type: str
+    description: "id of a prior HCR this one replaces."
+
+lifecycle:
+  description: |
+    The propose-and-apply state machine. The single rule that makes it
+    'controlled': the actor who PROPOSES can never be the actor who APPLIES.
+  # Canonical state list is the harness_change_request_statuses enum (bound via
+  # status.values_ref) — deliberately not duplicated inline to avoid drift.
+  transitions:
+    - from: "(none)"
+      to: proposed
+      actor: agent
+      note: "Agent emits the HCR with a complete diff + linked_incident."
+    - from: proposed
+      to: reviewed
+      actor: operator
+      note: "Operator (or a Q-suite reviewer persona) assesses risk + diff."
+    - from: reviewed
+      to: applied
+      actor: operator
+      note: "Operator wires the change by hand (or via a narrowly-scoped, operator-owned permission rule); sets applied_by + applied_at."
+    - from: [proposed, reviewed]
+      to: rejected
+      actor: operator
+      note: "Operator declines; rationale recorded."
+    - from: proposed
+      to: superseded
+      actor: agent
+      note: "Proposing agent withdraws/replaces its own STILL-UNREVIEWED HCR (the replacement sets `supersedes`). Once `reviewed`, the agent cannot supersede — only the operator may move it on (to `rejected`)."
+
+invariants:
+  - "An agent MUST NOT transition an HCR to `applied` — operator-only (§9). 'The user told me to' does not clear it; the apply happens on the operator's hand."
+  - "`applied_by` MUST be a human/operator identity, never the proposing agent."
+  - "Conditional-required (linter-enforced via the `required_when` field notes): `reviewer_id` + `reviewed_at` when `status == reviewed`; `applied_by` + `applied_at` when `status == applied`; `rejected_by` + `rejected_at` when `status == rejected`. Every gate/terminal-state HCR record is self-contained — who acted, and when."
+  - "An agent MUST NOT supersede an HCR in `reviewed` state — operator review is binding. To retract a reviewed HCR the operator first moves it to `rejected`, then the agent may re-propose. (Prevents an agent looping the review process indefinitely.)"
+  - "Every HCR MUST carry a `linked_incident` — no speculative or aesthetic harness changes."
+  - "The `diff` is complete and reversible: `revert` must restore the prior state."
+  - "An HCR is a SHAPE + a record, not an auto-apply trigger. Nothing in this schema grants an agent write access to a `target_kind` surface."
+
+channel:
+  description: |
+    Where HCRs queue and how they are audited. Append-only, operator-readable —
+    the safety-layer mirror of runbook_executions for the work layer.
+  queue: "~/.lightwave/observability/harness-change-requests.jsonl"
+  audit: "Each state transition appends a record (id, from, to, actor, ts). The agent appends `proposed`; the operator appends review/apply/reject. The log is the legally-auditable trail."
+
+relations:
+  parent: "lightwave://schemas/policy/governance/harness_configuration_plane"
+  children: []
+
+example:
+  id: "hcr-2026-06-28-gap-detector-fix"
+  target_kind: "claude_hook"
+  target_path: "~/.claude/hooks/pre-tool-use-cli-gap-detector.ts"
+  diff: |
+    @@ parseLwCommand @@
+    -  const match = cmd.match(/\blw\s+([a-z_-]+)(?:\.|\s+)([a-z_-]+)/i);
+    +  // anchor to a real command boundary; require a known domain
+    +  const m = cmd.match(/(?:^|[;&|(\n])\s*lw\s+([a-z][a-z_-]*)(?:\.|\s+)([a-z][a-z_-]*)/i);
+    +  if (!m || !domainExists(surface, m[1])) return null;
+  rationale: |
+    The detector matched `lw <word> <word>` anywhere in a command — including
+    comments, echo strings, and grep patterns — and fired pre-execution, filing
+    14 garbage [CLI Gap] issues in one day (#239–256). Anchoring + a known-domain
+    guard stops the slop.
+  linked_incident: "~/.lightwave/brain/memory/failures/2026-06-28-cli-gap-detector-runaway.yaml"
+  risk: "Low. Conservative — it under-files rather than over-files; genuinely-new-domain gaps are filed explicitly. Worst case: a real gap goes unfiled."
+  revert: "git checkout the prior version of the hook file; no state migration."
+  proposed_by: "claude-code:sess-a1657017"
+  proposed_at: "2026-06-28T19:40:00Z"
+  status: "proposed"
+  audit_ref: "~/.lightwave/observability/harness-change-requests.jsonl#hcr-2026-06-28-gap-detector-fix"

@@ -1,0 +1,53 @@
+name: "failure_triage"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/failure_triage"
+  title: "Failure triage SOP"
+  description: |
+    Scrum-manager orchestration for universal failure_record FSM.
+    Developer heartbeat picks up only at status:ready after staff review.
+  generates:
+    - "go:FailureTriageSOP"
+  depends_on:
+    - "lightwave://schemas/data/meta/failure_record"
+
+id: failure_triage
+title: "Triage a failure record through to ready"
+version: 1.0.0
+execution_mode: supervised
+
+trigger:
+  source: manual
+  event: failure.detected
+
+parameters:
+  - name: failure_id
+    type: string
+
+steps:
+  - id: scrum_triage
+    tool: escalate_to_human
+    args:
+      message: "v_scrum-manager triages failure ${failure_id} — route research, architect, or reject"
+
+  - id: architect_classify
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        echo "v_architect classifies gap type for ${failure_id}"
+
+  - id: staff_review
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        echo "v_staff-engineer approves implementation approach"
+
+  - id: mark_ready
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        lw failure status --transition ready --id "${failure_id}"

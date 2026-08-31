@@ -1,0 +1,132 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_ale_metadata_keys"
+  title: "CineOS ALE Metadata Key Enum"
+  description: |
+    Built-in capture-metadata keys — the verbatim ALE/FilmLight vocabulary
+    (ADR-0001: no mapping layer anywhere in the sync path). Seeded from the
+    capture-relevant subset of Baselight LOOK 7.0's 81-definition dictionary
+    (spec/baselight-data-study.md in createOS). OPEN (closed: false) —
+    projects register additional keys via metadata_definition; adopted keys
+    are frozen (a rename is a new key). Labels are the FilmLight display
+    names; descriptions note the declared value type.
+  generates:
+    - "go:CineAleMetadataKey"
+    - "typescript:CineAleMetadataKey"
+    - "zig:CineAleMetadataKey"
+    - "json_schema:cineos_ale_metadata_keys"
+  depends_on: []
+
+name: cineos_ale_metadata_keys
+description: "Verbatim ALE/FilmLight capture-metadata keys (built-in dictionary)"
+default: clip
+closed: false
+options:
+  - value: clip
+    label: "Clip"
+    description: "Clip name (string)"
+  - value: tape
+    label: "Tape"
+    description: "Tape / source id (string)"
+  - value: scene
+    label: "Scene"
+    description: "Slate scene label (string)"
+  - value: take
+    label: "Take"
+    description: "Slate take (string in ALE; cineOS promotes to int on clip)"
+  - value: circletake
+    label: "Circle Take"
+    description: "Circled take flag (boolean)"
+  - value: cameraroll
+    label: "Camera Roll"
+    description: "Camera roll (string)"
+  - value: labroll
+    label: "Lab Roll"
+    description: "Lab roll (string)"
+  - value: camera
+    label: "Camera"
+    description: "Camera id/letter (string)"
+  - value: lens
+    label: "Lens"
+    description: "Lens (string)"
+  - value: aperture
+    label: "Aperture"
+    description: "Aperture/T-stop (string)"
+  - value: iso
+    label: "ISO"
+    description: "Exposure index (string)"
+  - value: shutter
+    label: "Shutter"
+    description: "Shutter (string)"
+  - value: shutterangle
+    label: "Shutter Angle"
+    description: "Shutter angle (string)"
+  - value: colourtemp
+    label: "Colour Temp"
+    description: "White balance (string)"
+  - value: tint
+    label: "Tint"
+    description: "Tint (integer)"
+  - value: date
+    label: "Shoot Date"
+    description: "Shoot date (date)"
+  - value: comment
+    label: "Comment"
+    description: "Free comment (string)"
+  - value: filename
+    label: "Filename"
+    description: "Media filename (string)"
+  - value: path
+    label: "Path"
+    description: "Media path (string)"
+  - value: codec
+    label: "Codec"
+    description: "Media codec (string)"
+  - value: width
+    label: "Width"
+    description: "Pixel width (integer)"
+  - value: height
+    label: "Height"
+    description: "Pixel height (integer)"
+  - value: length
+    label: "Length"
+    description: "Length in frames (integer)"
+  - value: fps
+    label: "Format FPS"
+    description: "Format frame rate (float)"
+  - value: sourcefps
+    label: "Source FPS"
+    description: "Source frame rate (float)"
+  - value: srctc
+    label: "Source TC"
+    description: "Source timecode in/out (timecode_pair)"
+  - value: rectc
+    label: "Record TC"
+    description: "Record timecode in/out (timecode_pair)"
+  - value: srctcoffset
+    label: "Source TC Offset"
+    description: "Source timecode offset (timecode)"
+  - value: srckc
+    label: "Keycode"
+    description: "Film keycode (keycode)"
+  - value: atape
+    label: "Audio Roll"
+    description: "Audio roll (string)"
+  - value: atc
+    label: "Audio TC"
+    description: "Audio timecode (timecode)"
+  - value: afile
+    label: "Audio File"
+    description: "Audio file (string)"
+  - value: aoffset
+    label: "Audio Offset"
+    description: "Audio offset (float)"
+  - value: cdl
+    label: "CDL"
+    description: "ASC CDL values (string)"
+  - value: ascccxml
+    label: "ASC CC XML"
+    description: "ASC colour-correction XML (string)"
+  - value: input_space
+    label: "Input Colour Space"
+    description: "Input colour space (choice; values per cineos_colour_spaces)"

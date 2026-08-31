@@ -1,0 +1,75 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/integrations/notion/database"
+  title: "Notion Database — projection shape"
+  description: |
+    Shape of a Notion database mirrored locally. Property schemas are stamped
+    separately (property_map). Used by knowledge hygiene to discover pages.
+  generates:
+    - "pydantic:NotionDatabase"
+    - "postgres:DDL"
+  table_kind: entity
+  table_name: notion_databases
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: notion_id
+  unique: true
+
+required_fields:
+  - name: notion_id
+    type: str
+    description: "Notion database UUID"
+    storage: db
+    indexed: true
+  - name: title
+    type: str
+    description: "Database title"
+    storage: db
+  - name: url
+    type: str
+    description: "Canonical Notion URL"
+    storage: db
+  - name: sync_enabled
+    type: bool
+    description: "Whether knowledge hygiene mirrors this database"
+    storage: db
+  - name: sync_status
+    type: str
+    description: "pending | synced | drift | error"
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: property_map_ref
+    type: str
+    description: "Slug of the property_map stamp for this database"
+    storage: db
+  - name: knowledge_domain
+    type: str
+    description: "Target local DB domain (usually knowledge)"
+    storage: db
+  - name: last_synced_at
+    type: datetime
+    description: "Last successful full/incremental sync"
+    storage: db
+
+example:
+  notion_id: "db-1111-2222"
+  title: "Life Domain Tasks"
+  url: "https://www.notion.so/db11112222"
+  sync_enabled: true
+  sync_status: synced
+  property_map_ref: life-domain-tasks-v1
+  knowledge_domain: knowledge
+  last_synced_at: "2026-08-12T16:00:00Z"
+  created_at: "2026-06-01T12:00:00Z"
+  updated_at: "2026-08-12T16:00:00Z"

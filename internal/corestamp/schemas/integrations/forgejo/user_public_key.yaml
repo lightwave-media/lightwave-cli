@@ -1,0 +1,27 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/user_public_key"
+  title: "Forgejo User Public Key (SSH) — 1:1 SST Mirror"
+  source_ref: "forgejo://swagger.v1.json#/definitions/PublicKey"
+  description: "SSH public key associated with a Forgejo user account."
+  table_kind: entity
+  table_name: user_public_keys
+  generates: ["go:ForgejoPublicKey"]
+primary_key: { column: id, type: uuid }
+required_fields:
+  - { name: title, type: str, storage: db }
+  - { name: key, type: str, storage: db }
+  - { name: fingerprint, type: str, storage: db }
+  - { name: user_ref, type: str, storage: db, indexed: true }
+  - { name: created_at, type: datetime, storage: db }
+optional_fields:
+  - { name: key_type, type: str, storage: db }
+  - { name: read_only, type: bool, storage: db }
+example:
+  title: "platform-dev-macbook"
+  key: "ssh-ed25519 AAAAC3..."
+  fingerprint: "SHA256:abc123..."
+  user_ref: "joel"
+  read_only: false
+  created_at: "2026-06-25T00:00:00Z"

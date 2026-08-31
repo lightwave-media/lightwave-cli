@@ -1,0 +1,268 @@
+_meta:
+  version: "1.14.0"
+  schema_id: "lightwave://schemas/policy/validity/core-self"
+  title: "lightwave-core self-validity contract"
+  description: |
+    The invariant rules lightwave-core enforces ON ITSELF. Each rule
+    declares name, severity, scope, and enforcement test path. Recursion:
+    this file lives IN lightwave-core, validated BY lightwave-core's
+    own tests/meta/ and tests/validation/ suites. Stamp-validates-stamp;
+    rules can't drift from enforcement because both derive from the same
+    declarative source.
+
+    v1.14 (2026-08-26): R-61 locks actionable testing-assurance development signals.
+    v1.13 (2026-08-24): R-14 locked taxonomy adds technical_study to data/reference_documents/.
+    v1.11 (2026-06-26): R-14 locked taxonomy adds data/agents/, data/runbooks/, data/tenancy/, and data/ui_layout/ (prose↔reality drift fixed; R-47/R-48 enforces paths corrected from phantom backend/foundation dirs to bindings/go/).
+    v1.10 (2026-06-19): R-41 (field-level-enum-binding) — a data-schema field MAY declare `values_ref:` to bind to a stamped enum; the URI must resolve and (for closed enums) the example value must be a member. Generalizes R-17's single-status binding to N controlled-vocab fields per schema (the CineOS family surfaced ~12). Tracked #305.
+    v1.9 (2026-06-19): R-14 locked taxonomy adds data/cineos/ — the CineOS cinematography-production domain family, 17 entities across slices 1+2. R-8 is active for the Wave-1 Go binding: Python conformance verifies the Go mirror parses identically to src/schemas, while Go toolchain tests enforce loader behavior, drift, and version lockstep. Future Python/TypeScript/Rust bindings remain explicit deferred surfaces.
+    v1.8 (2026-06-16): R-14 now documents the established data/ui/ and data/emails/ sub-folders in the locked taxonomy (prose↔reality drift flagged in review; folders shipped in #124 / #110). Rules R-18+ split out to core-self-continued.yaml so each file stays under the R-12 500-line cap.
+    v1.7 (2026-06-14): R-30 (composer-renders-system-prompt) — the persona composer must render the real system_prompt.md end-to-end, not silently fall back. R-24/R-25 only inspect the template statically, so a composer path-drift bug shipped while CI stayed green; R-30 invokes the composer.
+    v1.6 (2026-06-13): R-29 (spec-ref-resolution) — path-valued .md refs in spec/ frontmatter (esp. prd_ref) must resolve to a repo file. Closes the gap PR #142 surfaced (renamed PRD left a SAD's prd_ref dangling; CI stayed green).
+    v1.5 (2026-06-03): R-27 (boilerplate-extensions-match-template-kinds) reserved; deferred to Phase 6; tracked lightwave-core#111.
+  generates:
+    - "pydantic:CoreSelfValidityContract"
+  depends_on: []
+
+name: "core_self_validity"
+
+scope:
+  package: "lightwave-core"
+  paths:
+    - "src/**"
+    - "bindings/**"
+    - "tests/**"
+
+rules:
+  - id: R-1
+    name: "no-code-in-schemas"
+    severity: error
+    description: "src/schemas/ holds only .yaml and .md files (plus .gitkeep). Layer-2 code lives in bindings/ or sibling packages (lightwave-cli, lightwave-sys). Scope amended 2026-06-03 (ADR-0020): src/boilerplate/ holds renderable artifacts with extensions per template_kinds.yaml; R-1 does NOT apply there. Scope amended 2026-06-04 (ADR-0026): src/runbooks/ is a third sanctioned renderable tree (Gruntwork Runbooks: .mdx + checks/scripts .sh + templates .tf/.hcl + runbook_test.yml); R-1 does NOT apply there. R-1 enforcement is pinned to src/schemas/ and MUST NOT be widened to scan all of src/."
+    enforced_by: "tests/meta/test_r1_src_has_no_code.py"
+    enforces: ["src/schemas/"]
+    rationale: "Pure declarative identity is load-bearing for the constitution-package framing. Without this rule, runtime code creeps into the stamp and the stamp/code/print distinction collapses."
+  - id: R-2
+    name: "registry-completeness"
+    severity: error
+    description: "Every schema YAML file in src/schemas/<category>/ has a corresponding entry in src/schemas/<category>/__index.yaml (or the appropriate sub-index). No orphans (files without index entries), no phantoms (index entries without files)."
+    enforced_by: "tests/meta/test_r2_registry_completeness.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: "The __index is the canonical lookup. Drift between file tree and index produces silent misses — schemas exist but loaders can't find them, or loaders look for entries that don't exist."
+  - id: R-3
+    name: "yaml-validates-meta-schema"
+    severity: error
+    description: "Every schema YAML in src/schemas/ has a well-formed _meta block (version, schema_id, title, description) and validates against the meta-schema expected for its category."
+    enforced_by: "tests/validation/test_r3_yaml_validates.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: "Without _meta validation, schemas can declare invalid shapes that propagate to bindings. _meta is the schema's self-introduction; missing it breaks discovery."
+  - id: R-4
+    name: "refs-resolve"
+    severity: error
+    description: "All `$ref` cross-file references and lightwave://schemas/... URI references resolve to existing entries. A broken ref is an immediate authoring failure."
+    enforced_by: "tests/validation/test_r4_refs_resolve.py"
+    enforces: ["src/schemas/**/*.yaml", "src/boilerplate/templates/**/*.yaml"]
+    rationale: "Refs are the schema package's joints. Broken joints = broken structure. Late detection of broken refs surfaces as runtime errors in consumer code."
+  - id: R-5
+    name: "no-hardcoded-enums"
+    severity: error
+    description: "No hardcoded enum values in field type declarations. Enums pull from src/schemas/data/enums/ via $ref or `values_ref:`. Severity escalated warn → error in Phase 5 (src/ is post-migration; zero tolerance)."
+    enforced_by: "tests/validation/test_r5_no_hardcoded_enums.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: "Hardcoded enums fragment the value space — same concept declared differently in different schemas. Pull-from-central enables consistent codegen and prevents drift."
+  - id: R-6
+    name: "schemas-have-example-block"
+    severity: error
+    description: "Every schema with `required_fields` has a non-empty `example:` block demonstrating valid usage. Examples must reference existing artifacts where applicable (no fake $refs)."
+    enforced_by: "tests/validation/test_r6_examples_present.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: "Examples are (1) the binding test inputs, (2) the human reading aid, (3) the agent's prompt-template source. Missing example = unusable schema."
+  - id: R-7
+    name: "templates-have-frontmatter"
+    severity: error
+    description: "Every markdown template in src/boilerplate/templates/ has YAML frontmatter declaring its target artifact kind. Frontmatter is the contract between template body and consumer."
+    enforced_by: "tests/validation/test_r7_templates_have_frontmatter.py"
+    enforces: ["src/boilerplate/templates/**/*.md"]
+    rationale: "Frontmatter binds the template body to the schema. Bodies without frontmatter are floating prose with no enforcement contract."
+  - id: R-8
+    name: "cross-binding-conformance"
+    severity: error
+    description: "Every implemented binding in bindings/<lang>/ correctly loads every schema. Wave-1 Go is active; future Python, TypeScript, and Rust bindings stay explicitly deferred until named consumers need them."
+    enforced_by: "tests/conformance/test_r8_cross_binding_load.py"
+    enforces: ["bindings/", "src/schemas/"]
+    rationale: "If bindings drift in what they load from the same source, the SSOT claim breaks. The active Wave-1 check compares the Go mirror to the canonical stamp and relies on Go tests for loader, drift, and version-lockstep behavior."
+    status: active # Wave-1 Go binding active; Python/TypeScript/Rust deferred by PRD-0003 + ADR-0028.
+  - id: R-9
+    name: "no-filled-content-in-src"
+    severity: error
+    description: "No filled R-P-I-V-R content (PRD instances, SAD instances, Epic instances, etc.) in src/. Filled specs live at ~/.lightwave/specs/ per spec-doctrine. src/ holds only shape definitions (schemas) and shape-of-content (templates)."
+    enforced_by: "tests/meta/test_r9_no_filled_content.py"
+    enforces: ["src/"]
+    rationale: "Filled content is the PRINT; stamp must not hold it. Otherwise authoring + indexing layers conflict — which file is canonical, the stamp or the print?"
+  - id: R-10
+    name: "blueprint-action-refs-resolve"
+    severity: error
+    description: "Every blueprint in src/schemas/workflows/blueprints/ references only actions that exist in src/schemas/workflows/actions/. Action references in blueprint `steps:` resolve."
+    enforced_by: "tests/meta/test_r10_blueprint_action_refs.py"
+    enforces: ["src/schemas/workflows/blueprints/**/*.yaml"]
+    rationale: "Blueprint→action integrity is what makes the authoring workflow safe. Dangling action refs = lw cli runtime failures when blueprints execute."
+  - id: R-11
+    name: "slug-naming-convention"
+    severity: error
+    description: |
+      Slugs match `^[a-z][a-z0-9]*([_-][a-z0-9]+)*$`, max 64 chars. Lowercase ASCII letter/digit
+      stems with `_` and/or `-` separators. Both snake_case AND kebab-case are valid; mixing
+      within a single slug is permitted (e.g., `lw-spec_import`) but discouraged. Slug = filename
+      stem. Slug is the durable identity across renames.
+    enforced_by: "tests/validation/test_r11_slug_naming.py"
+    enforces:
+      ["src/schemas/**/*.yaml", "src/boilerplate/templates/**/*.{yaml,md}"]
+    rationale: |
+      Stable slugs survive renames; arbitrary names produce ref-resolution chaos.
+      Snake_case allowed because many slugs bind to Python identifiers (Pydantic class
+      derivation, package paths) where underscores are required and hyphens are
+      illegal. Kebab-case allowed because many slugs appear in URLs, filesystem paths consumed
+      by shell tooling, and human-readable contexts where hyphens are more conventional.
+      Locked 2026-05-25 per Phase 4 file #1 audit (product_vision.yaml).
+  - id: R-12
+    name: "max-file-size"
+    severity: error
+    description: "Schema YAML ≤ 500 lines. Template markdown body ≤ 200 lines. Doc files ≤ 500 lines. Files larger than cap signal under-decomposition; consider splitting."
+    enforced_by: "tests/meta/test_r12_file_sizes.py"
+    enforces:
+      [
+        "src/schemas/**/*.yaml",
+        "src/boilerplate/templates/**/*.md",
+        "docs/**/*.md",
+      ]
+    rationale: "Large schemas hide multiple concerns under one identifier. Cap forces decomposition discipline."
+  - id: R-13
+    name: "deprecation-policy"
+    severity: error
+    description: "Schemas marked deprecated MUST declare `deprecated: {at, reason, replaced_by, sunset_after}`. Removal of a deprecated schema is blocked until `sunset_after` AND zero $ref references remain to it."
+    enforced_by: "tests/validation/test_r13_deprecation_policy.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: "Deprecation discipline = graceful schema evolution. Without it, removals break downstream silently."
+  - id: R-14
+    name: "kind-family-subfolders"
+    severity: error
+    description: |
+      Schemas in src/schemas/<category>/ MUST live in a kind-family sub-folder, not flat at the category root.
+      Allowed at category root: __index.yaml ONLY.
+      Sub-folder names are kebab-case (per R-11).
+
+      Locked sub-folder taxonomy per category:
+
+        data/
+          agents/               — agent runner registration (agent_runner)
+          agile_artifacts/      — 12 R-P-I-V-R schemas (product_vision, market_analysis, prd, sad, nfr,
+                                  ddd, api_spec, epic, sprint, user_story, task, implementation_plan)
+          cineos/               — CineOS cinematography-production domain (17 entities: doc, image,
+                                  location, note, production_company, project, scene, scene_shoot,
+                                  schedule, script, script_elements_tags, script_version, set,
+                                  shoot_day, shot, team, element_categories)
+          emails/               — email artifact schemas (morning_standup, simple_welcome_01)
+          enums/                — status enums, priority enums, life-domains, field options
+          meta/                 — system-describing schemas (homedir, etc.)
+          reference_documents/  — domain_charter, adr, glossary, agent_handoff, architectural_fit,
+                                  technical_study
+          runbooks/             — runbook library schemas (runbook_definition, runbook_edition,
+                                  runbook_contact_sheet, runbook_library)
+          tenancy/              — multi-tenancy security schemas (tenant_shell_config)
+          ui/                   — UI factory contracts (component_contract, section_contract,
+                                  page_definition, site_config, app_shell, collection, ui_node)
+          ui_layout/            — page layout contract (page_layout)
+
+        interfaces/             — http/, cli/, a2a/, mcp/, hooks/  (one folder per interface kind)
+        workflows/              — actions/, blueprints/, sops/, strategies/, skills/, celery_tasks/,
+                                  aws_tasks/, orchestration/, scheduled_jobs/
+        policy/                 — governance/, compliance/, security/, validity/, testing/
+        integrations/           — llm_providers/, oauth_providers/, message_brokers/,
+                                  payment_gateways/, storage_providers/, forgejo/  (one folder per integration kind)
+        servers/               — docs/, mcp/, repo-dev/  (server configurations, schema-driven)
+        (templates/ uses the same pattern: agile_artifacts/, reports/, prompts/, documents/)
+
+      Adding a new sub-folder is a stamp evolution and requires a Sprint Plan amendment +
+      core-self.yaml documentation update.
+    enforced_by: "tests/meta/test_r14_kind_family_subfolders.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: |
+      Without enforced sub-folders, the data/ category would degrade into a flat list of unrelated
+      schemas. Sub-folders give the registry a navigable shape, make the kind taxonomy visible at a
+      glance, and prevent the "where do I put this?" question from being re-litigated per session.
+      Deterministic answer: kind-family sub-folder, every time.
+  - id: R-15
+    name: "enum-options-in-stamp"
+    severity: error
+    description: |
+      Enum schemas in src/schemas/data/enums/ MUST declare their values in stamp via a
+      non-empty `options:` list, plus a `default:` value. No separate print file. Adding
+      or removing an enum value is a stamp version bump, treated like any other schema
+      evolution (same workflow as adding a new R-P-I-V-R artifact kind).
+
+      REVISED 2026-05-25 (replaces prior "values in print" framing). Prior R-15 was
+      over-application of R-9 (R-9 targets filled R-P-I-V-R instances, not enum option
+      lists). Enum option lists ARE shape — they're the closed set of allowed values,
+      structurally part of the type definition.
+
+      Every consumer of these enums is compile-time:
+        - Pydantic codegen bakes values into Enum classes
+        - Rust serde bakes into Rust enums
+        - TS Zod bakes into union types
+        - Go bakes into typed constants
+        - SQLite CHECK constraints (or app-layer validators) enforce at the DB level
+      "Operator extensibility" at runtime is a phantom requirement for LightWave's
+      single-operator local-first stack — extension = stamp evolution, not runtime knob.
+    enforced_by: "tests/meta/test_r15_enum_options_in_stamp.py"
+    enforces: ["src/schemas/data/enums/**/*.yaml"]
+    rationale: |
+      Values + shape live together because they form one type definition. Splitting them
+      created dead-weight print files no consumer actually read, and added drift surface
+      (stamp + print could diverge silently). Single-file enum = single source of truth.
+  - id: R-16
+    name: "no-flat-accepts-subdirs-in-homedir"
+    severity: error
+    description: |
+      The HomeDir schema at lightwave/schema/definitions/data/homedir.yaml MUST NOT
+      use the deprecated `accepts_subdirs:` field (flat string list of sub-folder
+      names). Every sub-folder under any top-level dir MUST be declared via
+      `nested_dirs:` with a full DirSpec including a documented `purpose:` field.
+
+      This is structural enforcement against reactive sub-folder additions. Flat
+      string lists made the bar too low — operators could add a sub-folder by
+      appending one word without thinking through whether the design supports it.
+      Requiring a full DirSpec (purpose, write_authority, read_consumers) makes
+      every sub-folder a forced design moment.
+
+      Locked 2026-05-25 per Phase 1h HomeDir re-audit. Triggered by observation
+      that I added `config/enums/` reactively during Phase 4 file #3 without
+      engaging the broader HomeDir design.
+    enforced_by: "tests/meta/test_r16_no_flat_accepts_subdirs.py"
+    enforces: ["src/schemas/data/meta/homedir.yaml"]
+    rationale: |
+      Pattern questions get re-asked every session unless they're encoded as
+      structural rules. R-16 makes "where do new sub-folders go?" answerable
+      by reading the existing DirSpecs' purposes — and forces authors of new
+      sub-folders to write a purpose that justifies presence in the chosen
+      parent dir. No more "I needed somewhere to put X, picked the nearest
+      semantic home."
+  - id: R-17
+    name: "example-status-conforms-to-enum"
+    severity: error
+    description: |
+      When a schema declares `status_enum: <enum_name>` AND ships an `example:`
+      block, the example's `status:` value MUST be one of the enum's
+      `options[*].value`. Catches semantic drift between schema declarations and
+      their examples — the field-level analogue of R-4 (refs resolve), at the
+      value level rather than the path level.
+
+      Phase 5 narrow scope: covers the `status_enum` + `example.status` pair
+      only. Generalization to arbitrary `values_ref:` field-level enum
+      references can come later if other bug patterns surface.
+    enforced_by: "tests/validation/test_r17_examples_conform.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: |
+      The bug pattern that motivated this rule: ADR schema declared
+      `status_enum: "document_statuses"` (draft/active/archived) while shipping
+      `example.status: "accepted"` (an ADR-lifecycle value not in
+      document_statuses). Caught by code review in PR #75; codified here so the
+      next instance fails CI rather than depending on reviewer vigilance.
+      Locked 2026-05-26 per Phase 5 semantic-consistency expansion.

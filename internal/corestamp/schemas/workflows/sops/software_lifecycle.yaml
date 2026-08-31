@@ -1,0 +1,237 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/software_lifecycle"
+  title: "Software Lifecycle — Phase-Driven Instance Activation"
+  description: |
+    The software lifecycle controls which nullclaw instances are active at each
+    phase of the development cycle. Phases are sequential with gates. Each phase
+    transition activates and deactivates specific agent personas.
+
+    This is the state machine that governs the entire Lightwave AI Harness:
+    - Discovery: v_product-owner, v_ux-researcher active
+    - Planning: v_scrum-manager, v_product-owner active
+    - Execution: all developer personas active (sandboxed per repo)
+    - Review: v_staff-engineer, v_cto, v_qa-engineer active (ponytail audit)
+    - Maintenance: v_core-package-developer, v_infra-developer active
+
+    Phase state is stored in the local PostgreSQL database (lightwave_platform).
+    The harness reads phase state to control instance lifecycle via nullhub API.
+
+  generates:
+    - "go:SoftwareLifecycle"
+  depends_on:
+    - "lightwave://schemas/policy/governance/harness_configuration_plane"
+    - "lightwave://schemas/policy/governance/instance_lifecycle"
+
+required_fields:
+  - name: current_phase
+    type: str
+    description: "Active lifecycle phase"
+  - name: phase_started_at
+    type: datetime
+    description: "When the current phase began"
+
+optional_fields:
+  - name: previous_phase
+    type: str
+    description: "Last completed phase"
+  - name: phase_transition_reason
+    type: str
+    description: "Why the phase changed (manual, CI signal, Q-suite gate)"
+
+# ── Lifecycle Phases ──────────────────────────────────────────────────────────
+
+phases:
+  discovery:
+    order: 0
+    description: |
+      Market research, user interviews, product vision refinement. No code
+      is written. Output: PRD, market_analysis, product_vision artifacts.
+    gates:
+      entry: []
+      exit: [v_product-owner]
+    active_instances:
+      - v_product-owner
+      - v_ux-researcher
+    inactive_instances:
+      - v_core-package-developer
+      - v_cli-developer
+      - v_frontend-developer
+      - v_platform-developer
+      - v_sys-developer
+      - v_infra-developer
+    allowed_tools: [Read, Glob, Grep, lw, fetch]
+    denied_tools: [Write, Edit, Bash_write, git_commit, git_push]
+
+  planning:
+    order: 1
+    description: |
+      Backlog grooming, sprint planning, task estimation, token budgeting.
+      Output: prioritized backlog, sprint assignments, v_cfo token budget.
+    gates:
+      entry: [v_product-owner]
+      exit: [v_scrum-manager, v_cfo]
+    active_instances:
+      - v_product-owner
+      - v_scrum-manager
+      - v_cfo
+      - v_staff-engineer
+    inactive_instances:
+      - v_core-package-developer
+      - v_cli-developer
+      - v_frontend-developer
+      - v_platform-developer
+      - v_sys-developer
+      - v_infra-developer
+      - v_qa-engineer
+    allowed_tools: [Read, Glob, Grep, lw, fetch, Write]
+    denied_tools: [Edit, Bash_write, git_commit, git_push]
+
+  execution:
+    order: 2
+    description: |
+      Active development. All developer personas are sandboxed to their
+      assigned repos. File creation is gated through the boilerplate system.
+      CI runs every 15 minutes via cron. Phase transitions are automatic
+      when all sprint tasks reach 'done'.
+    gates:
+      entry: [v_scrum-manager, v_cfo]
+      exit: [v_staff-engineer, v_qa-engineer, v_cto]
+    active_instances:
+      - v_core-package-developer
+      - v_cli-developer
+      - v_frontend-developer
+      - v_platform-developer
+      - v_sys-developer
+      - v_infra-developer
+      - v_nullclaw-developer
+      - v_nullhub-developer
+      - v_nulltickets-developer
+      - v_nullwatch-developer
+      - v_nullbuilder-developer
+    inactive_instances:
+      - v_product-owner
+      - v_scrum-manager
+      - v_ux-researcher
+    allowed_tools: [Read, Glob, Grep, Write, Edit, Bash, lw, test]
+    denied_tools: [deploy, git_push]
+
+  review:
+    order: 3
+    description: |
+      Q-suite review gate. v_staff-engineer runs ponytail audit on every
+      CI-green pass. v_qa-engineer verifies test coverage and edge cases.
+      v_cto signs off on release-train compliance. Developer instances are
+      paused — only review personas are active.
+    gates:
+      entry: [v_staff-engineer]
+      exit: [v_cto]
+    active_instances:
+      - v_staff-engineer
+      - v_qa-engineer
+      - v_cto
+    inactive_instances:
+      - v_core-package-developer
+      - v_cli-developer
+      - v_frontend-developer
+      - v_platform-developer
+      - v_sys-developer
+      - v_infra-developer
+      - v_product-owner
+      - v_scrum-manager
+      - v_ux-researcher
+    allowed_tools: [Read, Glob, Grep, lw, fetch]
+    denied_tools: [Write, Edit, Bash, git_commit, git_push, deploy]
+
+  maintenance:
+    order: 4
+    description: |
+      Ongoing maintenance, dependency bumps, security patches. Core and
+      infra developers are active. Feature developers are paused.
+      CI continues to run on cron.
+    gates:
+      entry: [v_cto]
+      exit: []
+    active_instances:
+      - v_core-package-developer
+      - v_infra-developer
+      - v_nullclaw-developer
+      - v_nullwatch-developer
+    inactive_instances:
+      - v_frontend-developer
+      - v_platform-developer
+      - v_sys-developer
+      - v_product-owner
+      - v_scrum-manager
+      - v_ux-researcher
+    allowed_tools: [Read, Glob, Grep, Write, Edit, Bash, lw, test, deploy, git_push]
+    denied_tools: []
+
+# ── Phase Transitions ─────────────────────────────────────────────────────────
+
+transitions:
+  discovery_to_planning:
+    from: discovery
+    to: planning
+    trigger: manual
+    gate: v_product-owner
+    description: "PRD approved, move to sprint planning"
+
+  planning_to_execution:
+    from: planning
+    to: execution
+    trigger: manual
+    gate: v_scrum-manager
+    description: "Sprint planned, token budget approved, begin development"
+
+  execution_to_review:
+    from: execution
+    to: review
+    trigger: automatic
+    condition: "all sprint tasks status = 'done'"
+    gate: v_staff-engineer
+    description: "All sprint tasks complete, begin Q-suite review"
+
+  review_to_execution:
+    from: review
+    to: execution
+    trigger: automatic
+    condition: "v_staff-engineer ponytail audit returns fixes required"
+    description: "Review found issues, return to development"
+
+  review_to_maintenance:
+    from: review
+    to: maintenance
+    trigger: manual
+    gate: v_cto
+    description: "All gates passed, release deployed, enter maintenance"
+
+  any_to_discovery:
+    from: "*"
+    to: discovery
+    trigger: manual
+    gate: v_product-owner
+    description: "New product initiative begins"
+
+# ── Instance Lifecycle Actions ─────────────────────────────────────────────────
+
+instance_actions:
+  on_phase_enter:
+    - action: activate
+      targets: "phase.active_instances"
+      description: "Spin up instances needed for this phase"
+    - action: pause_cron
+      targets: "phase.inactive_instances"
+      description: "Pause cron on instances not needed for this phase"
+  on_phase_exit:
+    - action: deactivate
+      targets: "phase.active_instances"
+      description: "Spin down instances from completed phase"
+
+# ── Example ───────────────────────────────────────────────────────────────────
+
+example:
+  current_phase: execution
+  phase_started_at: "2026-06-23T10:00:00Z"
+  previous_phase: planning
+  phase_transition_reason: "Sprint 'v_core v1' planned, token budget approved by v_cfo"

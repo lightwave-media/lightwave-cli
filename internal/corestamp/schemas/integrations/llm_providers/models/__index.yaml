@@ -1,0 +1,12 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/integrations/llm_providers/models/__index"
+  title: "Model Catalog Registry"
+  description: |
+    Per-model capability+cost entries. Referenced by the `downgrade_chain`
+    in policy/compliance/llm_budgets.yaml and by the model-selection
+    strategy in workflows/strategies/model_selection.yaml. Each file is a
+    single model entry conforming to the model_capabilities schema shape.
+    Add a model = add a file + a row here.
+schemas:
+  model_capabilities: model_capabilities.yaml

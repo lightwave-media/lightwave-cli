@@ -1,0 +1,141 @@
+_meta:
+  version: 0.2.0
+  schema_id: lightwave://schemas/data/ui/site_config
+  title: Site Config — whole-site/domain configuration
+  description: 'The whole-site stamp the interview-driven scaffold (`lw site init`)
+
+    instantiates: domain, tenant branding tokens, navigation, page manifest,
+
+    data sources, and the lightwave-ui release pin. ui_release is the
+
+    provenance manifest: it records which lightwave-ui release each copied
+
+    component came from, written by `lw ui add`/`lw ui sync` — this is the
+
+    site↔UI version mapping (initiative decision 5). Tenant-portable: all
+
+    copy, imagery, and theming flow from data sources and tokens, never
+
+    hardcoded in components.
+
+    '
+  generates:
+  - typescript:SiteConfig
+  - go:SiteConfig
+  - json_schema:site_config
+  depends_on:
+  - lightwave://schemas/data/ui/page_definition
+required_fields:
+- name: domain
+  type: str
+  description: Primary domain, no scheme (e.g. joelschaeffer.site)
+- name: site_name
+  type: str
+  description: Display name of the site (used in titles and meta tags).
+- name: brand
+  type: Brand
+  description: Brand configuration (logo, colors, typography).
+- name: nav
+  type: list[NavItem]
+  description: Primary navigation, ordered
+- name: pages
+  type: list[str]
+  description: Page slugs in the site manifest; each resolves to a page_definition instance
+- name: data_sources
+  type: DataSources
+  description: Data source definitions available to site page sections.
+- name: ui_release
+  type: UiRelease
+  description: 'Provenance manifest: lightwave-ui release pin + per-component sync records'
+optional_fields:
+- name: tenant
+  type: str
+  nullable: true
+  description: Tenant identifier when the site is tenant-scoped; null for standalone sites
+- name: locale
+  type: str
+  description: BCP 47 default locale (default en-GB)
+sub_schemas:
+  Brand:
+    logo_light:
+      type: str
+      description: Logo URL for light backgrounds (nullable)
+    logo_dark:
+      type: str
+      description: Logo URL for dark backgrounds (nullable)
+    tokens:
+      type: dict[str, str]
+      description: Semantic token overrides applied to theme.css custom properties (white-label seam)
+  NavItem:
+    label:
+      type: str
+    href:
+      type: str
+  DataSources:
+    copy_source:
+      type: str
+      description: Module path that owns all page/section copy (e.g. src/data/pages.ts)
+    media_base:
+      type: str
+      description: Base URL for imagery/video (e.g. the VITE_MEDIA_BASE CDN root)
+  UiRelease:
+    lightwave_ui_version:
+      type: str
+      description: lightwave-ui release the site is pinned to (semver)
+    components:
+      type: list[ComponentPin]
+      description: One pin per component copied in via lw ui add
+  ComponentPin:
+    # Reconciled to the shipped lightwave-ui.lock print (#328): kind + source
+    # are what the lock actually writes; synced_at is optional until
+    # `lw ui add` stamps it.
+    kind:
+      type: str
+      description: 'Pin kind — component | foundation | … (drives the Rung C test filter)'
+    name:
+      type: str
+      description: Component export name (PascalCase) or section key
+    version:
+      type: str
+      description: lightwave-ui release the copy came from
+    source:
+      type: str
+      description: npm package the copy came from (e.g. "@lightwave-media/ui") — future-proofs multi-source locks
+    synced_at:
+      type: str
+      description: ISO 8601 timestamp of the copy/sync. Optional — not written until `lw ui add` stamps it.
+example:
+  domain: joelschaeffer.site
+  site_name: Joel Schaeffer
+  tenant: null
+  locale: en-GB
+  brand:
+    logo_light: null
+    logo_dark: null
+    tokens:
+      --color-brand-secondary: '#0a0a0a'
+  nav:
+  - label: Work
+    href: /work
+  - label: About
+    href: /about
+  - label: Contact
+    href: /contact
+  pages:
+  - ''
+  - work
+  - about
+  - contact
+  - privacy-policy
+  data_sources:
+    copy_source: src/data/pages.ts
+    media_base: https://media.joelschaeffer.site
+  ui_release:
+    lightwave_ui_version: 2.0.0
+    components:
+    - name: Button
+      version: 2.0.0
+      synced_at: '2026-06-12T00:00:00Z'
+    - name: content/content-section-split-image-02
+      version: 2.0.0
+      synced_at: '2026-06-12T00:00:00Z'

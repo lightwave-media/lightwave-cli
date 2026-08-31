@@ -1,0 +1,40 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_audio_statuses"
+  title: "CineOS Audio Generation Status Enum"
+  description: |
+    Generation state of dramatized-audiobook audio, used at both grains: the
+    whole-script audio_manifest.audio_status and each per-scene entry's status.
+    partial_failure preserves completed scenes and offers per-scene retry — a
+    paid run is never silently restarted (EPIC-CINE-AUDIO-001, decision B).
+    Closed.
+  generates:
+    - "go:CineAudioStatus"
+    - "typescript:CineAudioStatus"
+    - "zig:CineAudioStatus"
+    - "json_schema:cineos_audio_statuses"
+  depends_on: []
+
+name: cineos_audio_statuses
+description: "Dramatized-audiobook generation states (script and scene grain)"
+default: not_generated
+closed: true
+options:
+  - value: not_generated
+    label: "Not Generated"
+    description: "No audio has been generated"
+  - value: queued
+    label: "Queued"
+    description: "Waiting in the local sidecar job queue"
+  - value: processing
+    label: "Processing"
+    description: "TTS generation in progress"
+  - value: ready
+    label: "Ready"
+    description: "Audio generated and playable"
+  - value: partial_failure
+    label: "Partial Failure"
+    description: "Some scenes generated, some failed; completed scenes preserved, failed scenes retryable individually"
+  - value: failed
+    label: "Failed"
+    description: "Generation failed; nothing playable at this grain"

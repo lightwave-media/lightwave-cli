@@ -1,0 +1,140 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/agile_artifacts/scrum_hierarchy"
+  title: "Scrum Hierarchy → Git/Worktree Mapping"
+  description: |
+    Declares the LightWave scrum artifact hierarchy and how each tier maps onto
+    the physical git/worktree structure on disk. The hierarchy is:
+
+        project (repo)
+          └── epic (worktree)
+               └── sprint (branch)
+                    └── user_story (feature branch or task group)
+                         └── task (individual unit of work)
+
+    Each tier carries three invariants:
+      - storage: where the authored OKF-style spec lives
+        (~/.lightwave/specs/<kind>/<slug>.md)
+      - maps_to: the git structure the tier corresponds to
+        (repo / worktree / branch / feature branch / work unit)
+      - status_tracking: queryable in specs.db (local SQLite, syncs to Postgres)
+
+    This schema is a declaration of the mapping contract — it does NOT replace
+    the per-tier artifact schemas (project, epic, sprint, user_story, task).
+    Those remain the source of truth for filled-instance shape; this schema
+    declares how the tiers compose into a git-backed working tree.
+  table_kind: map
+  generates:
+    - "pydantic:ScrumHierarchy"
+  depends_on:
+    - "lightwave://schemas/data/agile_artifacts/project"
+    - "lightwave://schemas/data/agile_artifacts/epic"
+    - "lightwave://schemas/data/agile_artifacts/sprint"
+    - "lightwave://schemas/data/agile_artifacts/user_story"
+    - "lightwave://schemas/data/agile_artifacts/task"
+
+required_fields:
+  - name: project
+    type: dict
+    description: |
+      Top tier. The repo itself (lightwave-core, lightwave-platform, …).
+      One project maps 1:1 to a git repository.
+  - name: epic
+    type: dict
+    description: |
+      Second tier. A major initiative that lives in its own worktree at
+      {repo-root}/.worktrees/{YYYY-MM-DD}-{epic-slug}/.
+  - name: sprint
+    type: dict
+    description: |
+      Third tier. A time-boxed iteration that maps to a branch within the
+      epic's worktree.
+  - name: user_story
+    type: dict
+    description: |
+      Fourth tier. A deliverable slice that maps to a feature branch (or task
+      group) within the sprint branch.
+  - name: task
+    type: dict
+    description: |
+      Leaf tier. An individual unit of work executed within the worktree.
+  - name: storage
+    type: str
+    description: |
+      Where the authored OKF-style spec for each tier lives. Convention:
+      specs/{kind}/{slug}.md (resolved under ~/.lightwave/specs/).
+  - name: maps_to
+    type: str
+    description: |
+      The git structure the tier corresponds to: repo | worktree | branch |
+      feature_branch | work_unit.
+  - name: status_tracking
+    type: str
+    description: |
+      How status is queryable. All tiers are queryable in specs.db (local
+      SQLite index at ~/.lightwave/index/lightwave.db) which syncs to Postgres.
+
+optional_fields:
+  - name: worktree_path_template
+    type: str
+    description: |
+      Path template for the epic worktree. Default:
+      {repo-root}/.worktrees/{YYYY-MM-DD}-{epic-slug}/
+  - name: branch_naming
+    type: str
+    description: |
+      Branch naming convention for sprint/feature branches. Default:
+      {tier}/{sprint-slug}-{story-slug}.
+  - name: sync_target
+    type: str
+    description: |
+      Postgres sync target DSN key (resolved by lightwave-platform). Default:
+      lightwave_postgres.
+
+relations:
+  parent: null
+  children:
+    - project
+    - epic
+    - sprint
+    - user_story
+    - task
+
+example:
+  project:
+    name: "lightwave-core"
+    repo: "lightwave-core"
+    storage: "specs/project/lightwave-core.md"
+    maps_to: "repo"
+    status_tracking: "specs.db (projects table)"
+  epic:
+    name: "scrum-hierarchy-schema"
+    worktree: ".worktrees/2026-06-24-scrum-hierarchy-schema/"
+    storage: "specs/epic/scrum-hierarchy-schema.md"
+    maps_to: "worktree"
+    status_tracking: "specs.db (epics table)"
+  sprint:
+    name: "2026-w25-core"
+    branch: "sprint/2026-w25-core"
+    storage: "specs/sprint/2026-w25-core.md"
+    maps_to: "branch"
+    status_tracking: "specs.db (sprints table)"
+  user_story:
+    name: "declare-scrum-hierarchy-schema"
+    branch: "feature/scrum-hierarchy-schema"
+    storage: "specs/user_story/declare-scrum-hierarchy-schema.md"
+    maps_to: "feature_branch"
+    status_tracking: "specs.db (user_stories table)"
+  task:
+    name: "write-scrum-hierarchy-yaml"
+    storage: "specs/task/write-scrum-hierarchy-yaml.md"
+    maps_to: "work_unit"
+    status_tracking: "specs.db (tasks table)"
+  storage: "specs/{kind}/{slug}.md"
+  maps_to: "repo → worktree → branch → feature_branch → work_unit"
+  status_tracking: "specs.db (local SQLite, syncs to Postgres)"
+  worktree_path_template: "{repo-root}/.worktrees/{YYYY-MM-DD}-{epic-slug}/"
+  branch_naming: "{tier}/{sprint-slug}-{story-slug}"
+  sync_target: "lightwave_postgres"
+
+status: active

@@ -1,0 +1,247 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/runbooks/runbook_contact_sheet"
+  title: "Runbook Contact Sheet (The AI Analysis)"
+  description: |
+    The AI-generated analysis document for a runbook — the CONTACT SHEET
+    produced when a runbook undergoes analysis. Like a photographer's
+    contact sheet showing every frame from a roll, this document displays
+    every parsed component of a runbook with metadata, confidence scores,
+    and semantic analysis.
+
+    Maps to the AI Analysis + Metadata subgraph from the Script Library
+    flowchart: Parse Components → Metadata Extraction → Agent Functions
+    (F1) → Dependencies (F2) → Integration Points (F3) → Harness
+    Structure (F4) → Task Flow (F5).
+
+    Also maps to SWEBOK v4 Ch 1 §3 (Requirements Analysis) + Ch 5 §3
+    (Specification-Based Test Techniques): the contact sheet is the
+    analysis that validates the runbook before it reaches edition status.
+  generates:
+    - "pydantic:RunbookContactSheet"
+  depends_on:
+    - "lightwave://schemas/data/runbooks/runbook_definition"
+
+required_fields:
+  - name: runbook_slug
+    type: str
+    description: "Slug of the runbook_definition this contact sheet analyzes"
+  - name: edition_ref
+    type: "int | null"
+    description: "Edition number if this analysis targets a specific edition; null if analyzing a draft"
+  - name: analysis_timestamp
+    type: str
+    description: "ISO 8601 timestamp of when the analysis was performed"
+  - name: parsed_blocks
+    type: "list[ParsedBlock]"
+    description: "Every block extracted from the runbook.mdx with its kind, content summary, and block-level metadata"
+  - name: metadata
+    type: "object[RunbookMetadata]"
+    description: "Auto-extracted metadata — the META output from the flowchart"
+
+optional_fields:
+  - name: agent_functions
+    type: "list[AgentFunction]"
+    description: "F1 — Agent Functions identified in the runbook (what agents can do when executing this)"
+  - name: dependencies
+    type: "list[DependencyAnalysis]"
+    description: "F2 — Dependencies detected (CLI tools, vendor APIs, other runbooks, filesystem paths)"
+  - name: integration_points
+    type: "list[IntegrationPoint]"
+    description: "F3 — Integration Points identified (AWS services, GitHub APIs, SSM parameters, databases)"
+  - name: harness_structure
+    type: "object[HarnessStructure]"
+    description: "F4 — Harness Structure: the orchestration pattern, execution mode, error handling strategy"
+  - name: task_flow
+    type: "list[TaskFlowStep]"
+    description: "F5 — Task Flow: the logical sequence of operations the runbook performs, independent of block kind"
+  - name: classification_suggestion
+    type: "object[ClassificationSuggestion]"
+    description: "Suggested directory/domain classification with confidence score"
+  - name: validation_results
+    type: "list[ValidationResult]"
+    description: "Any validation warnings or errors found during analysis"
+  - name: overall_confidence
+    type: "float"
+    description: "Overall confidence score (0.0–1.0) for the entire analysis"
+  - name: analysis_model
+    type: "str"
+    description: "Model identifier that performed the analysis (e.g., gemma-4-e4b via LM Studio)"
+
+sub_schemas:
+  ParsedBlock:
+    id: "str"
+    kind: "str"
+    summary: "str"
+    inputs: "list[str] | null"
+    outputs: "list[str] | null"
+    has_script: "bool"
+    has_template: "bool"
+    word_count: "int"
+
+  RunbookMetadata:
+    total_blocks: "int"
+    unique_inputs: "list[str]"
+    unique_outputs: "list[str]"
+    external_references: "list[str]"
+    estimated_duration: "str | null"
+    complexity: "str"        # simple | moderate | complex
+
+  AgentFunction:
+    name: "str"
+    description: "str"
+    entry_block: "str"       # block id where this function is defined
+    input_refs: "list[str]"
+    output_refs: "list[str]"
+    confidence: "float"
+
+  DependencyAnalysis:
+    name: "str"
+    kind: "str"
+    detected_in: "list[str]"  # block ids where referenced
+    required_version: "str | null"
+    confidence: "float"
+
+  IntegrationPoint:
+    service: "str"
+    provider: "str"          # aws, github, cloudflare, etc.
+    actions: "list[str]"
+    detected_in: "list[str]"
+    confidence: "float"
+
+  HarnessStructure:
+    orchestration_pattern: "str"  # sequential | parallel | conditional | loop
+    execution_mode: "str"         # supervised | automated | hybrid
+    error_strategy: "str"         # stop_on_fail | continue_on_fail | retry
+    max_retries: "int | null"
+    estimated_runtime: "str | null"
+
+  TaskFlowStep:
+    order: "int"
+    name: "str"
+    kind: "str"
+    preconditions: "list[str]"
+    postconditions: "list[str]"
+    block_ids: "list[str]"
+
+  ClassificationSuggestion:
+    suggested_directory: "str"
+    confidence: "float"
+    alternatives: "list[str]"
+
+  ValidationResult:
+    severity: "str"    # error | warn | info
+    message: "str"
+    block_id: "str | null"
+    rule: "str | null"
+
+relations:
+  parent: runbook_definition
+  parent_fk: "RunbookContactSheet.runbook_slug → RunbookDefinition.slug"
+  children: []
+
+example:
+  runbook_slug: "deploy-fargate-service"
+  edition_ref: 2
+  analysis_timestamp: "2026-06-20T14:35:00Z"
+  parsed_blocks:
+    - id: "validate-inputs"
+      kind: check
+      summary: "Validates all required input fields are present"
+      inputs: ["service_name", "cpu"]
+      outputs: []
+      has_script: true
+      has_template: false
+      word_count: 45
+    - id: "register-task-def"
+      kind: command
+      summary: "Registers ECS task definition with the service configuration"
+      inputs: ["service_name", "cpu"]
+      outputs: ["task_definition_arn"]
+      has_script: true
+      has_template: true
+      word_count: 120
+    - id: "deploy-service"
+      kind: command
+      summary: "Creates or updates the ECS Fargate service"
+      inputs: ["service_name", "task_definition_arn"]
+      outputs: ["service_url"]
+      has_script: true
+      has_template: false
+      word_count: 95
+  metadata:
+    total_blocks: 3
+    unique_inputs: ["service_name", "cpu", "task_definition_arn"]
+    unique_outputs: ["task_definition_arn", "service_url"]
+    external_references: ["aws ecs", "aws iam", "aws logs"]
+    estimated_duration: "5-10 minutes"
+    complexity: "moderate"
+  agent_functions:
+    - name: "DeployFargateService"
+      description: "Agent can deploy a containerized service to AWS ECS Fargate"
+      entry_block: "register-task-def"
+      input_refs: ["service_name", "cpu"]
+      output_refs: ["service_url"]
+      confidence: 0.95
+  dependencies:
+    - name: "aws"
+      kind: "cli"
+      detected_in: ["validate-inputs", "register-task-def", "deploy-service"]
+      required_version: ">=2.0.0"
+      confidence: 0.99
+    - name: "lightwave-cli"
+      kind: "cli"
+      detected_in: ["deploy-service"]
+      required_version: ">=0.1.0"
+      confidence: 0.85
+  integration_points:
+    - service: "ECS"
+      provider: "aws"
+      actions: ["RegisterTaskDefinition", "CreateService", "UpdateService", "DescribeServices"]
+      detected_in: ["register-task-def", "deploy-service"]
+      confidence: 0.98
+    - service: "IAM"
+      provider: "aws"
+      actions: ["PassRole", "CreateRole"]
+      detected_in: ["register-task-def"]
+      confidence: 0.90
+  harness_structure:
+    orchestration_pattern: "sequential"
+    execution_mode: "supervised"
+    error_strategy: "stop_on_fail"
+    max_retries: 1
+    estimated_runtime: "5-10 minutes"
+  task_flow:
+    - order: 1
+      name: "Validate deployment prerequisites"
+      kind: check
+      preconditions: ["AWS credentials available", "service_name provided"]
+      postconditions: ["All validations pass"]
+      block_ids: ["validate-inputs"]
+    - order: 2
+      name: "Register task definition with ECS"
+      kind: command
+      preconditions: ["Validations passed"]
+      postconditions: ["Task definition ARN available"]
+      block_ids: ["register-task-def"]
+    - order: 3
+      name: "Deploy or update Fargate service"
+      kind: command
+      preconditions: ["Task definition registered"]
+      postconditions: ["Service URL available", "Service is ACTIVE"]
+      block_ids: ["deploy-service"]
+  classification_suggestion:
+    suggested_directory: "infrastructure/deploy"
+    confidence: 0.92
+    alternatives: ["infrastructure/ecs", "operations/deploy"]
+  validation_results:
+    - severity: "info"
+      message: "No explicit rollback step defined"
+      block_id: "deploy-service"
+      rule: "resilience-check-001"
+    - severity: "warn"
+      message: "AWS profile not pinned in Inputs — may use ambient credentials"
+      block_id: "validate-inputs"
+      rule: "security-check-002"
+  overall_confidence: 0.94
+  analysis_model: "gemma-4-e4b via LM Studio"

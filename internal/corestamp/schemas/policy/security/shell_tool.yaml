@@ -1,0 +1,113 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/policy/security/shell_tool"
+  title: "Shell Tool Contract"
+  description: "Contract for agent shell tools (Bash, run, shell-exec, etc.). Defines path expansion rules, working-directory semantics (explicit cwd required), autonomy boundary, and structured error envelope. Surfaces lightwave-sys#136 as a contract violation rather than an isolated bug — every shell tool an agent calls MUST conform. Migrated 2026-05-25 from ai/contracts/shell_tool.yaml (Phase 4 follow-up to handoff #1)."
+  generates:
+    - "pydantic:ShellToolContract"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'claude-code-bash', 'pi-shell-exec', 'v_core-shell')"
+  - name: runtime
+    type: str
+    description: "Which agent runtime provides this tool (e.g. 'claude-code', 'pi', 'v_core')"
+  - name: path_expansion
+    type: "PathExpansionRulesRef"
+    description: "Sub-schema PathExpansionRules: tilde_expand (bool, ~ MUST expand to $HOME), envvar_expand (bool, ${VAR} MUST expand), relative_paths (enum: resolve_against_cwd|forbid|warn), cwd_inheritance (enum: forbid_silent|require_explicit_param), notes (str)"
+  - name: cwd_semantics
+    type: "CwdRulesRef"
+    description: "Sub-schema CwdRules: cwd_param_required (bool, must be true for filesystem-touching commands), absent_cwd_behavior (enum: explicit_failure|use_workspace_root — MUST be explicit_failure per locked discipline), default_root_inheritance (enum: never|configurable|always), notes (str)"
+  - name: autonomy_boundary
+    type: "AutonomyBoundaryRef"
+    description: "Sub-schema AutonomyBoundary: allowed_roots (list[str], paths the tool may write into), forbidden_roots (list[str], paths explicitly off-limits), violation_action (enum: error|warn|escalate), violation_report_format (enum: structured|prose)"
+  - name: error_envelope
+    type: "ErrorEnvelopeRef"
+    description: "Sub-schema ErrorEnvelope: structured_required (bool, all failures must return structured error), fields (list[str], required fields in the envelope — e.g. ['kind', 'message', 'suggested_fix', 'failed_command', 'cwd_at_failure'])"
+  - name: status
+    type: str
+    description: "Lifecycle status"
+
+optional_fields:
+  - name: allowed_commands_pattern
+    type: "list[str]"
+    description: "Regex patterns for allowed command prefixes (e.g. allowlist mode)"
+  - name: forbidden_commands_pattern
+    type: "list[str]"
+    description: "Regex patterns for denied command prefixes (e.g. 'rm -rf /', force-push patterns)"
+  - name: audit_log_path
+    type: str
+    description: "Where shell tool invocations are audited (default: ~/.lightwave/observability/shell.jsonl)"
+  - name: rationale
+    type: str
+    description: "Why the contract is shaped this way"
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "claude-code-bash"
+  runtime: "claude-code"
+  path_expansion:
+    tilde_expand: true
+    envvar_expand: true
+    relative_paths: "resolve_against_cwd"
+    cwd_inheritance: "require_explicit_param"
+    notes: "~ MUST expand to $HOME; ${VAR} MUST expand to env value; relative paths MUST be resolved against the cwd parameter, never against silently-inherited workspace root."
+  cwd_semantics:
+    cwd_param_required: true
+    absent_cwd_behavior: "explicit_failure"
+    default_root_inheritance: "never"
+    notes: "Absent cwd = explicit failure with suggested_fix='supply cwd parameter'. NEVER silently use the workspace root — that hides where commands run."
+  autonomy_boundary:
+    allowed_roots:
+      - "~/dev/lightwave-media/**"
+      - "~/.lightwave/**"
+      - "/tmp/lightwave-**"
+    forbidden_roots:
+      - "/"
+      - "~/Documents/**"
+      - "~/.ssh/**"
+      - "/etc/**"
+      - "/var/**"
+      - "~/.aws/**"
+    violation_action: "error"
+    violation_report_format: "structured"
+  error_envelope:
+    structured_required: true
+    fields:
+      - "kind"
+      - "message"
+      - "suggested_fix"
+      - "failed_command"
+      - "cwd_at_failure"
+      - "exit_code"
+      - "stderr_excerpt"
+  allowed_commands_pattern: []
+  forbidden_commands_pattern:
+    - "^rm -rf /"
+    - "^git push.*--force"
+    - "^git reset.*--hard"
+    - "^chmod 777"
+    - "^curl.*\\|.*sh$"
+  audit_log_path: "~/.lightwave/observability/shell.jsonl"
+  rationale: |
+    Path expansion + explicit cwd + structured errors are the difference
+    between an agent that fails predictably (operator can fix) and one
+    that fails opaquely (operator has to repro the env). The discipline
+    is non-negotiable for autonomy.
+
+    Known limitation: `forbidden_commands_pattern` is a denylist and catches
+    only the literal forms listed. Equivalent shells like `sh <(curl ...)`,
+    `bash -c "$(curl ...)"`, or base64-encoded command bodies bypass these
+    regexes. The denylist is a tripwire for the obvious cases, NOT a security
+    boundary. The real boundary is `allowed_commands_pattern` (allowlist) once
+    populated — operators MUST switch to allowlist mode before deploying any
+    binding that calls untrusted-input commands.
+  status: "draft"

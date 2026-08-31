@@ -1,0 +1,54 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/hooks/discussion_event"
+  title: "Discussion Event"
+  description: |
+    Structured event for GitHub Discussions creation. Emitted by the CI feedback
+    loop on significant events (CI failure triage threads, sprint retrospectives,
+    architecture decisions). Consumed by nullhub to create or reply to discussion
+    threads, and mirrored to Slack via the nullclaw slack channel.
+
+required_fields:
+  - name: category
+    type: string
+    description: "ci-failure | sprint-retro | adr | announcement | general"
+  - name: title
+    type: string
+    description: "Discussion thread title."
+  - name: body
+    type: string
+    description: "Markdown body content for the discussion post."
+  - name: repo
+    type: string
+    description: "Target repository (e.g. lightwave-core)."
+
+optional_fields:
+  - name: labels
+    type: list[string]
+    description: "Discussion labels to apply."
+  - name: mirror_to_slack
+    type: bool
+    description: "Whether to mirror to Slack (default true)."
+  - name: slack_channel
+    type: string
+    description: "Target Slack channel (default from persona config)."
+  - name: refs
+    type: list[string]
+    description: "Related issues, PRs, or commit SHAs."
+
+example:
+  category: ci-failure
+  title: "CI Failure: typecheck — test_r23_declared_rules_exist.py"
+  body: |
+    ## CI Gate Failed
+    - **Gate:** typecheck
+    - **Commit:** a00df94
+    - **File:** tests/validation/test_r23_declared_rules_exist.py:97
+    - **Code:** reportMissingTypeArgument
+    - **Message:** Expected type arguments for generic class "Match"
+
+    v_core-package-developer is triaging this now.
+  repo: lightwave-core
+  labels: [ci-failure, automated]
+  mirror_to_slack: true
+  refs: [a00df94]

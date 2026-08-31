@@ -1,0 +1,156 @@
+_meta:
+  version: 1.5.0
+  schema_id: lightwave://schemas/data/agile_artifacts/epic
+  title: Epic
+  description: 'A major initiative under a PRD. Holds the brief (subtitle/log_line) and aggregates UserStories + Sprints.
+    Mapped 1:1 to Django Epic. Migrated 2026-05-25 from governance/agile/epic.yaml (Phase 4 file #10) — Augusta example replaced
+    with v_core, Postgres-first language updated to local-first per ADR-0002, products/createos/config dep dropped (Epic is
+    generic — not tied to createos). v1.5.0 adds GitHub milestone/project projection fields (CORE-0048).'
+  generates:
+  - pydantic:Epic
+  depends_on:
+  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/agile_artifacts/prd
+  table_kind: entity
+  table_name: epics
+status_enum: epic_statuses
+priority_enum: epic_priorities
+primary_key:
+  column: id
+  type: uuid
+natural_key:
+  column: slug
+  unique: true
+required_fields:
+- name: slug
+  type: str
+  description: URL-safe unique identifier; lowercase, hyphen-separated
+  pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+  storage: db
+- name: name
+  type: str
+  description: Epic name (short human-readable label)
+  storage: db
+- name: prd_ref
+  type: str
+  description: Slug of parent prd
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/prd
+  fk_column: slug
+  indexed: true
+- name: domain
+  type: str
+  description: LifeDomain slug; validated against life_domains
+  storage: db
+- name: status
+  type: str
+  description: Lifecycle state; validated against epic_statuses
+  storage: db
+  indexed: true
+- name: priority
+  type: str
+  description: Priority; validated against the platform-wide priority enum
+  storage: db
+- name: created_at
+  type: datetime
+  description: ISO 8601 timestamp of record creation; auto-populated
+  storage: db
+- name: updated_at
+  type: datetime
+  description: ISO 8601 timestamp of last modification; auto-updated
+  storage: db
+optional_fields:
+- name: subtitle
+  type: str
+  description: Brief subtitle (the 'epic_brief' content lives here)
+  storage: db
+- name: log_line
+  type: str
+  description: One-sentence pitch/description of the epic
+  storage: db
+- name: start_date
+  type: date
+  storage: db
+  description: ISO 8601 date when work on this epic begins.
+- name: target_date
+  type: date
+  description: Target completion date
+  storage: db
+- name: budget_tier
+  type: str
+  description: Validated against budget_tiers enum
+  storage: db
+- name: client
+  type: str
+  description: External client name (for production work)
+  storage: db
+- name: production_company
+  type: str
+  description: Production company / vendor name
+  storage: db
+- name: team_ref
+  type: str
+  description: Slug of associated Team
+  storage: db
+- name: related_documents
+  type: list[DocumentRef]
+  description: List of {category, slug} for required SAD/NFR/DDD links; consumed by the Ready-state gate
+  storage: db
+  column_type: jsonb
+- name: project_ref
+  type: str
+  description: 'Slug of the parent Project in the work spine (Goal → Project → Epic). Optional and orthogonal to prd_ref:
+    prd_ref is the R-P-I-V-R doc-lineage parent, project_ref is the work-hierarchy grouping. Added 2026-06-19 with the goal/project
+    spine.'
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/project
+  fk_column: slug
+  indexed: true
+- name: github_milestone_title
+  type: str
+  description: GitHub milestone title this epic projects onto (engineering tracking surface)
+  storage: db
+- name: github_milestone_number
+  type: int
+  description: Repo-scoped GitHub milestone number for this epic
+  storage: db
+- name: github_project_number
+  type: int
+  description: GitHub Projects v2 number (Lightwave Swarm = 3)
+  storage: db
+- name: github_repo
+  type: str
+  description: "owner/repo for this epic's GitHub projections"
+  storage: db
+relations:
+  parent: prd
+  parent_fk:
+    column: prd_ref
+    references: prds.slug
+    on_delete: RESTRICT
+  children:
+  - user_story
+  - sprint
+example:
+  slug: v-core-v1-ready-task-dispatch
+  name: v_core v1 — Ready-Task dispatch
+  prd_ref: createos-inbox-agent-dispatch
+  domain: software-development
+  status: in_progress
+  priority: high
+  subtitle: 'First v_core release: poll local SQLite index, dispatch Ready Tasks to the right agent harness'
+  log_line: Local SQLite is the inbox. v_core the dispatcher.
+  target_date: '2026-06-30'
+  github_repo: lightwave-media/lightwave-core
+  github_milestone_title: Sprint Current
+  github_milestone_number: 12
+  github_project_number: 3
+  related_documents:
+  - category: prd
+    slug: createos-inbox-agent-dispatch
+  - category: sad
+    slug: createos-architecture-v1
+  - category: nfr
+    slug: createos-inbox-nfrs
+  created_at: '2026-06-24T12:00:00Z'
+  updated_at: '2026-06-24T12:00:00Z'

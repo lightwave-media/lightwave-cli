@@ -1,0 +1,105 @@
+# =============================================================================
+# MCP SERVER — Model Context Protocol tool discovery
+# =============================================================================
+# The MCP server reads the SST and exposes MCP tools that match the agent's
+# tier and persona permissions. Each tool definition is generated from the
+# SST schemas — no hand-written tool definitions.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/servers/mcp/server"
+  title: "MCP Server Configuration"
+  description: |
+    Declares the Model Context Protocol server contract. Agents discover
+    available MCP tools through this server. Tool permissions are derived
+    from the persona tier (singular/engineer/developer) and the tool
+    allow/forbid lists in agent_definition.yaml. The MCP server reads
+    the SST and auto-generates tool definitions for every schema category.
+  # Tier mapping is sourced from data/enums/persona_tiers + the allow/forbid
+  # lists in data/meta/agent_definition; the server derives tool visibility
+  # from those rather than declaring its own tier vocabulary.
+  generates:
+    - "json_schema:McpServerConfig"
+    - "go:McpServer"
+  depends_on:
+    - "lightwave://schemas/data/meta/agent_definition"
+    - "lightwave://schemas/data/enums/persona_tiers"
+
+required_fields:
+  - name: server
+    type: object
+    description: "Server configuration"
+  - name: tools
+    type: object
+    description: "Tool discovery and permission mapping"
+
+optional_fields:
+  - name: transports
+    type: object
+    description: "Transport configurations (stdio, sse, etc.)"
+
+example:
+  server:
+    port: 7701
+    host: localhost
+    protocol: "mcp-2024-11-05"
+
+  tools:
+    discovery:
+      source: "src/schemas/"
+      auto_generate: true
+    permissions:
+      source: "agent_definition.yaml"
+      tier_mapping:
+        developer:
+          allowed_categories:
+            - data
+            - interfaces
+          tools:
+            - Read
+            - Glob
+            - Grep
+            - schemas_read
+        engineer:
+          allowed_categories:
+            - data
+            - interfaces
+            - workflows
+            - policy
+            - servers
+          tools:
+            - Read
+            - Glob
+            - Grep
+            - schemas_read
+            - schemas_write
+            - spec_read
+            - spec_write
+        singular:
+          allowed_categories:
+            - data
+            - interfaces
+            - workflows
+            - policy
+            - integrations
+            - servers
+          tools:
+            - Read
+            - Glob
+            - Grep
+            - schemas_read
+            - orchestrate
+
+  transports:
+    stdio:
+      enabled: true
+    sse:
+      enabled: true
+      endpoint: "/mcp/sse"
+
+relations:
+  parent: null
+  children: []
+
+status: active

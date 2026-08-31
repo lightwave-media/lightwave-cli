@@ -1,0 +1,41 @@
+_meta:
+  version: 0.1.0
+  schema_id: lightwave://schemas/data/cineos/schedule
+  title: Schedule
+  description: 'A Project''s shooting schedule — the container for ShootDays. The Schedule
+
+    Builder imports the script breakdown and lays scenes onto days; SceneShoot
+
+    (slice 2) is the scene↔day assignment with planned times.
+
+    '
+  generates:
+  - go:Schedule
+  - typescript:Schedule
+  - zig:Schedule
+  - json_schema:schedule
+  depends_on:
+  - lightwave://schemas/data/cineos/project
+required_fields:
+- name: project_ref
+  type: str
+  description: Slug/id of the parent Project
+optional_fields:
+- name: name
+  type: str
+  description: Schedule label (e.g. 'Main unit — Block A')
+- name: start_date
+  type: date
+  description: ISO 8601 date when this schedule period begins.
+- name: end_date
+  type: date
+  description: ISO 8601 date when this schedule period ends.
+relations:
+  parent: project
+  children:
+  - shoot_day
+example:
+  project_ref: wet-under-blue-sky
+  name: Main unit
+  start_date: '2026-07-06'
+  end_date: '2026-08-14'

@@ -1,0 +1,47 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_camera_angles"
+  title: "CineOS Camera Angle Enum"
+  description: |
+    Camera angle of a Shot (shot.camera_angle). OPEN (closed: false) — the standard
+    angles are suggested; unusual rigs are allowed (R-41 resolves the ref but does
+    not enforce membership).
+  generates:
+    - "go:CineCameraAngle"
+    - "typescript:CineCameraAngle"
+    - "zig:CineCameraAngle"
+    - "json_schema:cineos_camera_angles"
+  depends_on: []
+
+name: cineos_camera_angles
+description: "Camera angle (suggested)"
+default: eye_level
+closed: false
+options:
+  - value: eye_level
+    label: "Eye Level"
+    description: "Neutral eye-level angle"
+  - value: high
+    label: "High"
+    description: "High angle looking down"
+  - value: low
+    label: "Low"
+    description: "Low angle looking up"
+  - value: dutch
+    label: "Dutch"
+    description: "Canted / dutch angle"
+  - value: ots
+    label: "OTS"
+    description: "Over-the-shoulder"
+  - value: pov
+    label: "POV"
+    description: "Point-of-view"
+  - value: birds_eye
+    label: "Bird's Eye"
+    description: "Directly overhead"
+  - value: worms_eye
+    label: "Worm's Eye"
+    description: "Directly below"
+  - value: overhead
+    label: "Overhead"
+    description: "Top-down overhead"

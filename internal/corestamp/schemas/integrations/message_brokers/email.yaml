@@ -1,0 +1,211 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/integrations/message_brokers/email"
+  title: "Email Outbound Address Registry — lightwave-media.ltd"
+  description: |
+    Stamps the canonical outbound email identity for every @lightwave-media.ltd
+    alias. Maps each alias to its purpose, triage tier (A–D), SES verified
+    identity, sink_class (refs channel_bindings.yaml), and assigned persona.
+
+    Motivation (issue #55): the 16 work aliases existed only in Google
+    Workspace admin — not in the stamp. This schema closes that gap so
+    cron jobs and SOPs can declare `from_alias: noreply` instead of
+    hardcoding addresses, and the runtime resolves to the SES identity.
+
+    Triage tier semantics (A–D):
+      A — Critical / time-sensitive (legal, billing, security)
+      B — Business-important (developers, api, accounts, sales)
+      C — Standard inbound (support, info, hello, marketing, feedback)
+      D — Automated / system-only (noreply, alerts, notifications, admin)
+
+    Relationship to channel_bindings.yaml: channel_bindings stamps the
+    ROUTING layer (email → formal persona). This schema stamps the ADDRESS
+    layer (which alias, which SES identity, which tier).
+
+    SES status as of 2026-06-12: sandbox mode, both FROM and TO must be
+    verified identities. Verification links sent to
+    developers@lightwave-media.ltd and joel.schaeffer@lightwave-media.ltd.
+  generates:
+    - "pydantic:EmailAddressRegistry"
+  depends_on:
+    - "lightwave://schemas/policy/governance/channel_bindings"
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-media-ltd-default')."
+  - name: domain
+    type: str
+    description: "The email domain this registry covers (e.g. 'lightwave-media.ltd')."
+  - name: ses_region
+    type: str
+    description: "AWS region where SES is configured."
+  - name: ses_account
+    type: str
+    description: "AWS account ID hosting SES for this domain."
+  - name: outbound_addresses
+    type: "list[OutboundAddressRef]"
+    description: |
+      Per-alias outbound address definitions. Sub-schema OutboundAddress:
+        alias (str, the local-part — e.g. 'noreply', 'developers'),
+        purpose (str, one-line what this address is for),
+        triage_tier (enum: A | B | C | D — urgency on inbound),
+        ses_identity (str, full address or domain identity verified in SES),
+        sink_class (str, refs channel_bindings.yaml sink_classes — where inbound routes),
+        assigned_persona (str|null, persona slug that SENDS from this alias; null = system-only),
+        notes (str|null).
+
+optional_fields:
+  - name: personal_accounts
+    type: "list[PersonalAccountRef]"
+    description: |
+      Non-domain personal addresses the operator uses (Google, iCloud, etc.).
+      Sub-schema PersonalAccount:
+        address (str, full email),
+        purpose (str),
+        provider (str, e.g. 'google', 'icloud'),
+        notes (str|null).
+  - name: status
+    type: str
+    description: "Lifecycle status (conforms to document_statuses)."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-media-ltd-default"
+  domain: "lightwave-media.ltd"
+  ses_region: "us-east-1"
+  ses_account: "738605694078"
+  outbound_addresses:
+    # Tier A — Critical / time-sensitive
+    - alias: "legal"
+      purpose: "Legal notices, contracts, compliance obligations"
+      triage_tier: "A"
+      ses_identity: "legal@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_legal-officer"
+      notes: null
+    - alias: "billing"
+      purpose: "Invoice disputes, payment alerts, subscription notices"
+      triage_tier: "A"
+      ses_identity: "billing@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_accountant"
+      notes: null
+    - alias: "security"
+      purpose: "Security disclosures, breach notifications, pen-test reports"
+      triage_tier: "A"
+      ses_identity: "security@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_security-compliance"
+      notes: null
+
+    # Tier B — Business-important
+    - alias: "developers"
+      purpose: "Developer-facing API communications, partner integrations, SES sender identity"
+      triage_tier: "B"
+      ses_identity: "developers@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_core-package-developer"
+      notes: "Primary SES verified sender identity (2026-06-12)."
+    - alias: "api"
+      purpose: "API partner onboarding, webhook delivery, service notifications"
+      triage_tier: "B"
+      ses_identity: "api@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_platform-developer"
+      notes: null
+    - alias: "accounts"
+      purpose: "Account lifecycle — creation, billing setup, closure"
+      triage_tier: "B"
+      ses_identity: "accounts@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_general-manager"
+      notes: null
+    - alias: "sales"
+      purpose: "Inbound sales inquiries, partnership proposals"
+      triage_tier: "B"
+      ses_identity: "sales@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_ceo"
+      notes: null
+    - alias: "admin"
+      purpose: "Internal admin notices, system configuration emails"
+      triage_tier: "B"
+      ses_identity: "admin@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_core"
+      notes: null
+
+    # Tier C — Standard inbound
+    - alias: "support"
+      purpose: "Customer support requests"
+      triage_tier: "C"
+      ses_identity: "support@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_general-manager"
+      notes: null
+    - alias: "info"
+      purpose: "General information requests from public visitors"
+      triage_tier: "C"
+      ses_identity: "info@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_general-manager"
+      notes: null
+    - alias: "hello"
+      purpose: "Friendly public contact — media, collaboration pitches"
+      triage_tier: "C"
+      ses_identity: "hello@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_general-manager"
+      notes: null
+    - alias: "marketing"
+      purpose: "Marketing campaign sends and inbound responses"
+      triage_tier: "C"
+      ses_identity: "marketing@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_marketing-content-lead"
+      notes: null
+    - alias: "feedback"
+      purpose: "Product feedback, NPS responses, user research"
+      triage_tier: "C"
+      ses_identity: "feedback@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_ux-researcher"
+      notes: null
+
+    # Tier D — Automated / system-only (no human inbound expected)
+    - alias: "noreply"
+      purpose: "Transactional no-reply sends — receipts, confirmations, digests"
+      triage_tier: "D"
+      ses_identity: "noreply@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: null
+      notes: "System-only sender. Inbound to this address is ignored."
+    - alias: "alerts"
+      purpose: "Automated system alerts — CI failures, infra alarms"
+      triage_tier: "D"
+      ses_identity: "alerts@lightwave-media.ltd"
+      sink_class: "sysadmin_alert"
+      assigned_persona: "v_core"
+      notes: "Prefer Telegram (sysadmin_alert) for real-time. Email is the fallback channel."
+    - alias: "notifications"
+      purpose: "Scheduled digests, workflow completion emails"
+      triage_tier: "D"
+      ses_identity: "notifications@lightwave-media.ltd"
+      sink_class: "formal"
+      assigned_persona: "v_core"
+      notes: null
+
+  personal_accounts:
+    - address: "joel.schaeffer@lightwave-media.ltd"
+      purpose: "Primary operator inbox (Google Workspace). SES verified inbound (2026-06-12)."
+      provider: "google"
+      notes: "Used as the canonical inbound address for all formal email triage."
+
+  status: "active"

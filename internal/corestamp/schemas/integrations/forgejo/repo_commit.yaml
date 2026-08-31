@@ -1,0 +1,35 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/repo_commit"
+  title: "Forgejo Repository Commit — 1:1 SST Mirror"
+  source_ref: "forgejo://swagger.v1.json#/definitions/Commit"
+  description: "Git commit in a Forgejo repository."
+  table_kind: entity
+  table_name: repo_commits
+  generates: ["go:ForgejoCommit"]
+primary_key: { column: id, type: uuid }
+natural_key: { column: sha, unique: true }
+required_fields:
+  - { name: sha, type: str, storage: db }
+  - { name: repo_ref, type: str, storage: db, indexed: true }
+  - { name: message, type: str, storage: db }
+  - { name: author_name, type: str, storage: db }
+  - { name: author_email, type: str, storage: db }
+  - { name: created_at, type: datetime, storage: db }
+optional_fields:
+  - { name: committer_name, type: str, storage: db }
+  - { name: committer_email, type: str, storage: db }
+  - { name: verification_verified, type: bool, storage: db }
+  - { name: verification_reason, type: str, storage: db }
+  - { name: stats_additions, type: int, storage: db }
+  - { name: stats_deletions, type: int, storage: db }
+  - { name: stats_total, type: int, storage: db }
+  - { name: parents, type: "list[str]", storage: db, column_type: jsonb }
+example:
+  sha: "abc123def456789"
+  repo_ref: "lightwave-media/lightwave-platform"
+  message: "feat: add agent runner registration API"
+  author_name: "Joel"
+  author_email: "joel@example.com"
+  created_at: "2026-06-25T00:00:00Z"

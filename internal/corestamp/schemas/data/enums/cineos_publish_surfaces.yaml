@@ -1,0 +1,24 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_publish_surfaces"
+  title: "CineOS Publish Surfaces Enum"
+  description: |
+    Surfaces a CineOS project can be published to — closed routing vocabulary
+    for the public site and in-app portfolio views. `website` = public site
+    roster and any in-app portfolio reader (poster, title, format, media all
+    read from this row — no second website-projects catalog).
+  generates:
+    - "go:CinePublishSurface"
+    - "typescript:CinePublishSurface"
+    - "zig:CinePublishSurface"
+    - "json_schema:cineos_publish_surfaces"
+  depends_on: []
+
+name: cineos_publish_surfaces
+description: "Publish surfaces for CineOS projects"
+default: null
+closed: true
+options:
+  - value: website
+    label: "Website"
+    description: "Public site and in-app portfolio views"

@@ -1,0 +1,63 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/timeline"
+  title: "Timeline"
+  description: |
+    An ordered edit of clips — the post-production working unit (what
+    Baselight calls a "scene": a strip sequence, not a script scene). Events
+    reference clips with record-frame ranges; deliverables render from a
+    timeline. A timeline synced with Baselight carries a baselight_link.
+  generates:
+    - "go:Timeline"
+    - "typescript:Timeline"
+    - "zig:Timeline"
+    - "json_schema:timeline"
+  depends_on:
+    - "lightwave://schemas/data/cineos/project"
+
+required_fields:
+  - name: name
+    type: str
+    description: "Timeline name (e.g. 'winter-time', 'reel-3')"
+  - name: project_ref
+    type: str
+    description: "Slug/id of the owning Project"
+
+optional_fields:
+  - name: description
+    type: str
+    description: "What this timeline is (cut, reel, grading session)"
+  - name: working_format
+    type: str
+    description: "Working format name (e.g. 'DCI 2048x858'); resolves against camera_format/format prints"
+  - name: frame_rate
+    type: float
+    description: "Working frame rate in fps (e.g. 24.0)"
+  - name: start_timecode
+    type: str
+    description: "Record start timecode HH:MM:SS:FF (str pending first-class timecode scalar)"
+  - name: events
+    type: "list[TimelineEvent]"
+    description: "Ordered events; sub-schema: clip_ref (str), record_in (int frame), record_out (int frame, exclusive), track (int, 1-based), enabled (bool)"
+  - name: baselight_link_ref
+    type: str
+    description: "Id of the baselight_link record when this timeline is synced with a Baselight scene"
+
+relations:
+  parent: project
+  children:
+    - deliverable
+
+example:
+  name: "winter-time"
+  project_ref: "wet-under-blue-sky"
+  description: "Director's cut grading timeline"
+  working_format: "DCI 2048x858"
+  frame_rate: 24.0
+  start_timecode: "01:00:00:00"
+  events:
+    - clip_ref: "a046c028-251219-r1js"
+      record_in: 86400
+      record_out: 86496
+      track: 1
+      enabled: true

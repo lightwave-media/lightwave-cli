@@ -1,0 +1,33 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_tts_providers"
+  title: "CineOS TTS Provider Enum"
+  description: |
+    The provider tiers behind the single TtsProvider interface (decision B,
+    2026-08-11): a free local engine is the default, cloud tiers are opt-in and
+    never invoked without a cost estimate plus explicit confirmation. Open
+    (closed: false) — the interface is the contract; adding a provider is a new
+    option here, not a schema change downstream. Distinct from voice_engines
+    (nullvoice's INTERNAL engine list, Voicebox lineage): nullvoice is one
+    provider here and selects among those engines itself.
+  generates:
+    - "go:CineTtsProvider"
+    - "typescript:CineTtsProvider"
+    - "zig:CineTtsProvider"
+    - "json_schema:cineos_tts_providers"
+  depends_on: []
+
+name: cineos_tts_providers
+description: "TTS provider tiers for dramatized-audiobook generation"
+default: nullvoice
+closed: false
+options:
+  - value: nullvoice
+    label: "nullvoice (local)"
+    description: "Local engine (lightwave-ai/src/nullvoice) — free, offline, private; the default pending the CA-03 stability spike"
+  - value: openai_tts
+    label: "OpenAI TTS"
+    description: "Default cloud tier (~$2–5 per feature-length script); requires estimate + confirm"
+  - value: elevenlabs
+    label: "ElevenLabs"
+    description: "Premium tier (~$15–45 per feature-length script); opt-in only, never the default, per-run confirmation required"

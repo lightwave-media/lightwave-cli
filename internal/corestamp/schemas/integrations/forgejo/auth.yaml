@@ -1,0 +1,121 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/auth"
+  title: "Forgejo Authentication — 1:1 SST Mirror"
+  description: |
+    1:1 mirror of Forgejo's auth schemes — access tokens, OAuth2 applications,
+    and authentication configuration.
+    Source: swagger.v1.json #/securityDefinitions, #/definitions/AccessToken, OAuth2Application
+
+  source_ref: "forgejo://swagger.v1.json#/securityDefinitions"
+  table_kind: entity
+  table_name: access_tokens
+  generates:
+    - "go:ForgejoAccessToken"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: name
+  unique: true
+
+required_fields:
+  - name: name
+    type: str
+    description: "Token name (label)"
+    storage: db
+  - name: user_ref
+    type: str
+    description: "Username this token belongs to"
+    storage: db
+    fk_ref: "lightwave://schemas/integrations/forgejo/user"
+    fk_column: login
+    indexed: true
+  - name: token_hash
+    type: str
+    description: "SHA256 hash of the token value"
+    storage: db
+  - name: token_last_eight
+    type: str
+    description: "Last 8 characters of token (for display)"
+    storage: db
+  - name: scopes
+    type: "list[str]"
+    description: "Permission scopes (all, read:issue, write:repository, etc.)"
+    storage: db
+    column_type: jsonb
+  - name: created_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: repositories
+    type: "list[RepositoryMeta]"
+    description: "If set, token is restricted to these repos only"
+    storage: db
+    column_type: jsonb
+
+# ── Security Definitions (1:1 Forgejo) ────────────────────────────────────
+
+security_definitions:
+  AuthorizationHeaderToken:
+    type: apiKey
+    in: header
+    name: Authorization
+    description: "API tokens must be prepended with 'token' followed by a space."
+
+  BasicAuth:
+    type: basic
+
+  SudoHeader:
+    type: apiKey
+    in: header
+    name: Sudo
+    description: "Sudo API request as the user provided as key. Admin required."
+
+  SudoParam:
+    type: apiKey
+    in: query
+    name: sudo
+    description: "Sudo API request as the user provided as key. Admin required."
+
+  TOTPHeader:
+    type: apiKey
+    in: header
+    name: X-FORGEJO-OTP
+    description: "Required with BasicAuth if 2FA is enabled."
+
+sub_schemas:
+  CreateAccessTokenOption:
+    name: str
+    scopes: "list[str]"
+    repositories: "list[RepoTargetOption]"
+
+  RepoTargetOption:
+    owner: str
+    name: str
+
+  CreateOAuth2ApplicationOptions:
+    name: str
+    confidential_client: bool
+    redirect_uris: "list[str]"
+
+  OAuth2Application:
+    id: int
+    name: str
+    client_id: str
+    client_secret: {type: str, secret: true, api_excluded: true}
+    confidential_client: bool
+    redirect_uris: "list[str]"
+    created: datetime
+
+example:
+  name: "agent-gateway-token"
+  user_ref: "v-platform-developer"
+  token_hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  token_last_eight: "abcd1234"
+  scopes: ["read:issue", "write:issue", "read:repository", "write:repository"]
+  created_at: "2026-06-25T00:00:00Z"

@@ -1,0 +1,157 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/issue"
+  title: "Forgejo Issue — 1:1 SST Mirror"
+  description: |
+    1:1 mirror of Forgejo's Issue struct and issue-scoped API endpoints.
+    Source: swagger.v1.json #/definitions/Issue, #/paths/~1repos~1{owner}~1{repo}~1issues
+
+    Issues are the primary task-tracking primitive. In Lightwave, issues map
+    to the agile artifact hierarchy — epics, user stories, and tasks can all
+    be tracked as Forgejo issues with labels for classification.
+
+  source_ref: "forgejo://swagger.v1.json#/definitions/Issue"
+  table_kind: entity
+  table_name: issues
+  generates:
+    - "go:ForgejoIssue"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: number  # repo-scoped index number
+  unique: false
+
+required_fields:
+  - name: number
+    type: int
+    description: "Issue index number (scoped to repo)"
+    storage: db
+  - name: title
+    type: str
+    storage: db
+  - name: repo_ref
+    type: str
+    description: "full_name of repo"
+    storage: db
+    fk_ref: "lightwave://schemas/integrations/forgejo/repository"
+    fk_column: full_name
+    indexed: true
+  - name: state
+    type: str
+    description: "open | closed"
+    storage: db
+    indexed: true
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: body
+    type: str
+    description: "Issue body (markdown)"
+    storage: db
+  - name: poster
+    type: str
+    description: "Username of issue creator"
+    storage: db
+    indexed: true
+  - name: assignee
+    type: str
+    description: "Username of assigned user"
+    storage: db
+    indexed: true
+  - name: assignees
+    type: "list[str]"
+    description: "List of assigned usernames"
+    storage: db
+    column_type: jsonb
+  - name: milestone_id
+    type: int
+    description: "Associated milestone ID"
+    storage: db
+    indexed: true
+  - name: due_date
+    type: datetime
+    description: "ISO 8601 due date for the issue"
+    storage: db
+  - name: is_locked
+    type: bool
+    storage: db
+  - name: comments
+    type: int
+    description: "Comment count (cached)"
+    storage: db
+  - name: pin_order
+    type: int
+    description: "Pin position (0 = not pinned)"
+    storage: db
+  - name: original_author
+    type: str
+    description: "Original author for federated issues"
+    storage: db
+  - name: ref
+    type: str
+    description: "Git reference"
+    storage: db
+  - name: closed_at
+    type: datetime
+    storage: db
+
+relations:
+  parent: repository
+  parent_fk:
+    column: repo_ref
+    references: repositories.full_name
+    on_delete: CASCADE
+
+sub_schemas:
+  CreateIssueOption:
+    title: str
+    body: str
+    assignee: str
+    assignees: "list[str]"
+    closed: bool
+    due_date: datetime
+    labels: "list[int]"
+    milestone: int
+    ref: str
+
+  EditIssueOption:
+    title: str
+    body: str
+    assignee: str
+    assignees: "list[str]"
+    due_date: datetime
+    milestone: int
+    ref: str
+    state: str
+
+  EditDeadlineOption:
+    due_date: datetime
+
+  IssueMeta:
+    index: int
+    owner: str
+    repo: str
+
+  IssueDeadline:
+    due_date: datetime
+
+example:
+  number: 42
+  title: "Implement agent runner registration API"
+  body: "Port the Forgejo /user/actions/runners endpoint into lightwave-platform as POST /v1/agents/runners"
+  repo_ref: "lightwave-media/lightwave-platform"
+  state: "open"
+  poster: "joel"
+  assignee: "v-platform-developer"
+  labels: ["feature", "agent-swarm"]
+  created_at: "2026-06-25T00:00:00Z"
+  updated_at: "2026-06-25T00:00:00Z"

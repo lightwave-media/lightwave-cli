@@ -1,0 +1,28 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/voice_speak_goals
+  title: v_speak Session Goals
+  description: 'Goal taxonomy for v_speak tuning and audit sessions.
+
+    '
+  generates:
+  - pydantic:VoiceSpeakGoals
+  depends_on: []
+required_fields:
+- name: goal_id
+  type: str
+  description: Unique identifier for this voice speak goal.
+- name: title
+  type: str
+  description: Short human-readable title of the speak goal.
+optional_fields:
+- name: description
+  type: str
+  description: Extended description of what this speak goal aims to accomplish.
+- name: sop_ref
+  type: str
+  description: Path to the SOP that governs execution of this speak goal.
+example:
+  goal_id: tune_profile
+  title: Tune persona voice profile
+  sop_ref: voice_profile_tune

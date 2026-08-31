@@ -1,0 +1,201 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/policy/governance/release_pipeline"
+  title: "Release Pipeline — the one deterministic release plane"
+  description: |
+    Declares the org-wide release contract: how every first-party repo cuts a
+    release. One model, one plane repo, no ambiguity about which pipeline a
+    repo uses — this is the deterministic plane of the agent harness. Ruled by
+    Joel 2026-08-25 (session decision record in the initiative plan):
+
+      1. TRIGGER IS A TAG. `v<semver>` (monorepos: `<module>/v<semver>`)
+         pushed to the default branch's history. No release PRs.
+      2. ONE PLANE REPO: lightwave-media/pipelines-workflows hosts every
+         shared workflow — release, CI, and Terragrunt. The org .github repo
+         keeps only profile/templates.
+      3. NO EXEMPTIONS. lightwave-sys is in scope (phased; see repos:).
+      4. VERSION IS COMPUTED, OVERRIDABLE. Next SemVer derives from
+         conventional commits since the last matching tag; an explicit
+         version overrides. The tag IS the version — package manifests are
+         stamped from it at publish time; no version-bump commits, no
+         committed CHANGELOG.md. GitHub Releases are the canonical changelog
+         (git-cliff notes).
+
+    WHY RELEASE-PLEASE WAS RETIRED
+    A bot-created release PR must pass required checks that GITHUB_TOKEN
+    events structurally cannot trigger (branch_protection.yaml recorded this
+    as a known gap; live casualty: lightwave-ui#170, which could never merge).
+    Every repo grew hand-posted statuses to compensate, and the two repos
+    running release-please each called their mutually-incompatible workflow
+    "the canonical Lightwave release workflow". Tag-driven releases have no
+    PR and no required-context coupling — the failure class does not exist.
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier for the release contract."
+  - name: plane
+    type: object
+    description: "The single plane repo, its consumption rule (SHA-pinned), and its self-versioning."
+  - name: tag_grammar
+    type: object
+    description: "Tag shapes: single_artifact `v<semver>`, monorepo_module `<module>/v<semver>`."
+  - name: caller_contract
+    type: str
+    description: "The thin-caller rule: one release.yml per repo, nothing but the plane call."
+  - name: artifact_types
+    type: object
+    description: "Closed set of artifact types, each mapped 1:1 to a plane release-<type>.yml."
+  - name: repos
+    type: "list[RepoReleaseRef]"
+    description: |
+      Per-repo rows. Sub-schema RepoRelease: repo (str), artifact_type (str —
+      one of artifact_types, or `none`), tag_prefix (str), environment
+      (str, optional gate), note (str, optional).
+  - name: status
+    type: str
+    description: "Lifecycle (conforms to document_statuses)."
+
+optional_fields:
+  - name: feedback_loop
+    type: str
+    description: "The closed loop: issue -> PR -> merge -> tag -> release -> shipped-in notification back to the issue."
+  - name: ci_parity
+    type: str
+    description: "The local=remote CI contract: GitHub runs the repo's `mise run ci`, nothing else."
+  - name: approval_gates
+    type: str
+    description: "How GitHub Environment reviewer gates compose with the pipeline."
+  - name: front_door
+    type: object
+    description: "How releases are initiated: interim (git tag) and target (lw release tag)."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-release-plane"
+  plane:
+    repo: lightwave-media/pipelines-workflows
+    consumption: |
+      Repos call reusable workflows pinned by full commit SHA with a trailing
+      `# vX.Y.Z` comment naming the plane release the SHA belongs to. Floating
+      refs (@main, @v1) are forbidden — determinism requires that a re-run of
+      the same tag executes the same pipeline bytes.
+    versioning: |
+      The plane releases itself through its own release-only path (dogfood).
+      Plane tags are plain `v<semver>`.
+  tag_grammar:
+    single_artifact: "v<semver>"            # v3.0.1
+    monorepo_module: "<module>/v<semver>"   # nulltickets/v2026.5.29 style path stays
+  caller_contract: |
+    Each repo owns exactly ONE release workflow: .github/workflows/release.yml,
+    a thin caller (~20 lines) triggered by its tag grammar, that does nothing
+    but `uses:` the plane's release-<artifact_type>.yml with repo-specific
+    inputs. Scaffolded by `lw scaffold repo-release`. Anything beyond the thin
+    caller in that file is drift.
+  artifact_types:
+    node-package: "npm publish to GitHub Packages; version stamped from tag"
+    go-binary: "GoReleaser (+ homebrew-tap App-token push); Release mode keep-existing"
+    container: "ECR push + ECS deploy (lightwave-platform pattern)"
+    static-site: "build + Cloudflare Pages deploy (joelschaeffer-site pattern)"
+    tauri-app: "Tauri bundles attached to the GitHub Release"
+    release-only: "GitHub Release + git-cliff notes, no artifact publish"
+  feedback_loop: |
+    THE ROUND TRIP (implemented plane v1.2.1, proven on its own release):
+      1. An agent files an issue in the target repo (the org's cross-repo
+         mechanism; `ready-for-agent` labels queue it for dispatch).
+      2. The owning agent implements on a branch, opens a PR whose body
+         carries `Closes #N`.
+      3. Merge auto-closes the issue and auto-deletes the head branch
+         (delete_branch_on_merge is ON org-wide).
+      4. A releasable tag is pushed — by a human, or unattended by the
+         release-conductor routine via `lw release tag` once shipped.
+      5. The plane releases, then comments "shipped in <tag>" on every PR
+         in the release range (squash `(#N)` suffixes); GitHub threads the
+         comment to linked issues. Idempotent via a shipped-in:<tag> marker.
+      6. The requesting agent sees its issue close AND the shipped-in
+         notification with the release URL — it knows the fix is
+         consumable and bumps its dependency/pin.
+    Callers enable step 5 by granting issues:write + pull-requests:write
+    in the thin caller (blueprint emits this); a caller that does not
+    degrades to a workflow warning, never a failure.
+  ci_parity: |
+    LOCAL CI IS THE CONTRACT. GitHub CI executes the repo's own `mise run ci`
+    — the exact command a developer or agent runs locally — via the plane's
+    ci-mise.yml. Toolchain versions come from the repo's mise.toml, so local
+    and remote resolve identical tools by construction. GitHub-side CI MUST
+    NOT define checks that `mise run ci` does not run: any check that exists
+    only remotely makes local green meaningless as a bounce board, and any
+    check that exists only locally is unenforced. The one sanctioned remote
+    extra is infrastructure the runner alone provides (e.g. a browser matrix),
+    and it must be listed in the repo's row here when used.
+    Known violation class this retires: pre-commit hooks scoped to changed
+    files remotely while local runs full-tree (the oxlint 1.79 incident,
+    lightwave-ui#188) — the two bars silently diverge until main breaks.
+  approval_gates: |
+    Optional per repo: the caller binds its publish job to a GitHub
+    Environment with required reviewers (lightwave-core keeps its
+    `production` gate). The gate pauses the pipeline; it does not change it.
+  front_door:
+    interim: "git tag v<semver> && git push origin v<semver> — byte-identical input to the plane"
+    target: |
+      `lw release tag` — computes next SemVer from conventional commits since
+      the last matching tag; --version overrides; --dry-run; --module for
+      monorepos. NOT yet declared in interfaces/cli/commands.yaml: the
+      dispatcher stamp requires declaration and handler to land in lockstep
+      (paired PRs), so the declaration ships with the lightwave-cli
+      implementation, tracked by the issue filed against that repo. The six
+      existing `lw release` subcommands (cut/flag/merge/prepare/ship/sign-off)
+      are PR-flow tooling from the retired train era and are audited in the
+      same issue.
+  repos:
+    - repo: lightwave-ui
+      artifact_type: node-package
+      tag_prefix: "v"
+      note: "Pilot. Tag series resumes at v3.0.1 (> legacy v2.2.0); ui-v* series ends with release-please."
+    - repo: lightwave-cli
+      artifact_type: go-binary
+      tag_prefix: "v"
+      note: "GoReleaser + sign-macos stay as build steps driven by the caller; nightly train retired."
+    - repo: lightwave-core
+      artifact_type: release-only
+      tag_prefix: "v"
+      environment: production
+    - repo: lightwave-platform
+      artifact_type: container
+      tag_prefix: "v"
+    - repo: joelschaeffer-site
+      artifact_type: static-site
+      tag_prefix: "v"
+    - repo: createOS
+      artifact_type: tauri-app
+      tag_prefix: "v"
+      note: "First release path for this repo; bundle signing validated on first run."
+    - repo: lightwave-ai
+      artifact_type: release-only
+      tag_prefix: "<module>/v"
+    - repo: lightwave-infrastructure-catalog
+      artifact_type: release-only
+      tag_prefix: "v"
+    - repo: lightwave-infrastructure-live
+      artifact_type: none
+      note: "Deploys via the plane's Terragrunt workflows; no releases."
+    - repo: homebrew-tap
+      artifact_type: none
+      note: "Receives GoReleaser formula pushes; no pipeline of its own."
+    - repo: lightwave-sys
+      artifact_type: release-only
+      tag_prefix: "v"
+      note: |
+        Phased by design, not exempted (Joel overrode the exemption): Phase A —
+        the plane's release-core owns tag validation, changelog, and the
+        GitHub Release; the inherited Ghostty build/sign machinery
+        (release-tag.yml: Sparkle, notarization) keeps building on the same
+        tag and attaches artifacts to the existing Release. Phase B — fold
+        those jobs behind the thin caller, scheduled with the repo owner
+        around upstream rebases.
+  status: active

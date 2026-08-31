@@ -1,0 +1,97 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/ui/ui_node"
+  title: "UI Node — recursive component-tree node for DB-driven rendering"
+  description: |
+    A single node in a renderable component tree, and the core unit of the
+    DB-driven UI protocol (ADR-0020). It names a component by registry key,
+    carries literal config props, binds content props to data-scope paths,
+    composes children + named slots recursively, and declares interaction via
+    events->actions plus an optional visibility condition.
+
+    An entire UI is a tree of these nodes — DB-stored and streamed from the
+    backend as JSON (web websocket / desktop Tauri events), never HTML on the
+    wire (ADR-0018: React renders both surfaces for motion animation parity).
+    The exhaustive lightwave-ui sweep (2026-06-16, ~180 components) proved every
+    component decomposes into the same five prop kinds this node expresses:
+      content  -> bind (data-scope paths)
+      config   -> props (variants; iconKey strings for icon-typed props)
+      icons    -> a component_contract prop of type `icon` carries a string key
+                  resolved via the package icon registry (NOT a node field —
+                  JS component refs cannot serialize)
+      slots    -> slots (named) + children (default), recursive
+      handlers -> on (event -> action id, resolved by the action registry)
+
+    Recursion: `children` and `slots` reference UiNode; the Run-2 typescript
+    emitter wraps both in z.lazy() to break the cycle (the first recursive shape
+    in the data/ui family).
+  # No go: target by design — TypeScript-facing render contract with no Go
+  # consumer yet; lw reads this schema only to emit the TS binding. Add go: when
+  # the platform layer first validates tree payloads server-side.
+  generates:
+    - "typescript:UiNode"
+    - "json_schema:ui_node"
+  depends_on: []
+
+required_fields:
+  - name: component
+    type: str
+    description: "Component registry key '<family>/<variant>' (or a primitive component name) resolved against the surface's component registry at render time"
+
+optional_fields:
+  - name: props
+    type: dict
+    nullable: true
+    description: "Literal config props: variants (size, color, type, placement, …) and iconKey strings for props the component_contract types as `icon`. Untyped at schema time by design; validated at render against the component_contract registered under `component` (the renderer boundary). null/absent is the empty bag {}. Data drives, components serve."
+  - name: bind
+    type: "dict[str, str]"
+    nullable: true
+    description: "Content bindings — prop name -> data-scope path. Scopes: record.* (current collection record), collection.<slug>.* (a collection query/featured), config.* (tenant nav/menus/brand/copy), session.* (auth/user/presence), analytics.* (chart data), state.* (client reactive store; two-way for form values). The renderer resolves each path against the active scope and merges the result over `props`."
+  # `slots` and `children` are self-referential: their type names UiNode, this
+  # schema's own generated type. SST has no inline recursive sub_schema form, so
+  # there is intentionally no `sub_schemas:` block; the Run-2 TS emitter resolves
+  # both as z.lazy(() => UiNodeSchema) to break the cycle.
+  - name: slots
+    type: "dict[str, list[UiNode]]"
+    nullable: true
+    description: "Named child slots (e.g. header / footer / actions / trigger) beyond the default `children` slot. Recursive (references UiNode; z.lazy at emit). Which slot names a component accepts is declared in its component_contract."
+  - name: children
+    type: "list[UiNode]"
+    nullable: true
+    description: "Default-slot children, rendered in order. Recursive self-reference to UiNode; the emitter wraps it in z.lazy() for arbitrary depth."
+  - name: on
+    type: "dict[str, str]"
+    nullable: true
+    description: "Interaction: event name -> action id (e.g. { press: 'session.signOut', select: 'ui.setTheme' }). Action ids resolve against the surface's ACTION REGISTRY — named handlers registered in the runtime (navigation, mutation, api-call, setState). The JSON references ids only; no handler code crosses the wire, preserving the JSON-not-HTML invariant."
+  - name: visible
+    type: str
+    nullable: true
+    description: "Optional visibility condition evaluated against the data scopes. BOUNDED grammar (not arbitrary JS): a truthy path ('session.isAuthed'), a comparison ('record.status == published'), unary negation ('!state.collapsed'), or &&/|| of these. Absent = always visible. The renderer ships a small safe evaluator, never eval()."
+  - name: key
+    type: str
+    nullable: true
+    description: "Stable node id, used for React keys and for targeting content/state patches at a single node when deltas stream over the wire"
+
+example:
+  component: "base/dropdown/dropdown-avatar"
+  bind:
+    account: "session.user"          # { name, email, avatarSrc, status }
+    items: "config.accountMenu"      # [ { id, label, iconKey, addon?, href? } ]
+  on:
+    select: "ui.setTheme"
+  visible: "session.isAuthed"
+  slots:
+    footer:
+      - component: "base/buttons/button"
+        props:
+          color: "secondary"
+          iconLeading: "log-out-01"  # iconKey -> package icon registry
+        bind:
+          children: "config.signOutLabel"
+        on:
+          press: "session.signOut"
+  children:
+    - component: "content/content-section-split-image-02"
+      bind:
+        title: "record.title"
+        paragraphs: "record.logline"

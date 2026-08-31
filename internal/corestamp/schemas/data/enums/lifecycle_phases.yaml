@@ -1,0 +1,273 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/lifecycle_phases"
+  title: "Software Lifecycle Phase Enum — SWEBOK v4 Mapped"
+  description: |
+    The 5 lifecycle phases of the Lightwave Harness, each mapped to the
+    IEEE/ISO TR 19759 (SWEBOK v4) Knowledge Areas it governs. Each phase
+    is a legal, auditable state that gates agent tool access, persona
+    activation, and environment constraints.
+
+    Creative OS analogy: these 5 phases mirror the creative process:
+    discovery (ideation/exploration), planning (structuring/design),
+    execution (making/building), review (critique/refinement),
+    maintenance (stewardship/ongoing care).
+
+    SWEBOK v4 has 18 chapters. This lifecycle maps all 18 to phases,
+    achieving 100% KA coverage (Ch 1-16,18 enumerated; Ch 17 Mathematical
+    Foundations is implicit — consumed by CI logic, token estimation,
+    and R-rule formalization). See docs/references/swebok-lifecycle-alignment.md.
+
+  generates:
+    - "go:LifecyclePhase"
+  depends_on:
+    - "lightwave://schemas/workflows/sops/software_lifecycle"
+
+name: lifecycle_phases
+description: "5-phase software lifecycle with SWEBOK v4 KA mapping"
+default: discovery
+closed: true
+options:
+  - value: discovery
+    label: "Discovery"
+    description: |
+      Exploration, ideation, requirements gathering. No code written.
+    creative_os_phase: "ideation"
+    swebok_kas:
+      - "Ch 1: Software Requirements"
+      - "Ch 9 §1: Initiation and Scope Definition"
+      - "Ch 14 §3: Communication Skills"
+      - "Ch 15: Software Engineering Economics"
+      - "Ch 18 §6: Modeling, Simulation, and Prototyping"
+    active_personas:
+      - v_product-owner
+      - v_ux-researcher
+    allowed_tools: [Read, Glob, Grep, lw, fetch]
+    denied_tools: [Write, Edit, Bash_write, git_commit, git_push, deploy]
+    environment_constraints:
+      - "No file creation — research only"
+      - "Output: PRD, market_analysis, product_vision artifacts"
+      - "Database: read-only on existing tenants"
+    hooks:
+      - id: "discovery-entry"
+        trigger: "phase_transition"
+        action: "activate v_product-owner and v_ux-researcher instances"
+      - id: "discovery-exit"
+        trigger: "v_product-owner approval"
+        action: "validate PRD and market_analysis artifacts exist"
+    is_active: true
+
+  - value: planning
+    label: "Planning"
+    description: |
+      Architecture, design fundamentals, sprint planning, token budgeting.
+    creative_os_phase: "structuring"
+    swebok_kas:
+      - "Ch 2: Software Architecture"
+      - "Ch 3: Software Design Fundamentals"
+      - "Ch 9 §2: Software Project Planning"
+      - "Ch 10 §2: Life Cycles"
+      - "Ch 11 §1: Modeling"
+      - "Ch 15 §8: Estimation"
+      - "Ch 18 §3: Abstraction and Encapsulation"
+    active_personas:
+      - v_product-owner
+      - v_scrum-manager
+      - v_cfo
+      - v_staff-engineer
+    allowed_tools: [Read, Glob, Grep, lw, fetch, Write]
+    denied_tools: [Edit, Bash_write, git_commit, git_push, deploy]
+    environment_constraints:
+      - "Write allowed for planning documents only"
+      - "Output: sprint plan, task assignments, token budget"
+      - "Database: read/write on agile_orchestrations and token_budgets"
+    hooks:
+      - id: "planning-entry"
+        trigger: "phase_transition"
+        action: "activate v_scrum-manager and v_cfo; v_product-owner remains active"
+      - id: "planning-cfo-gate"
+        trigger: "v_cfo review"
+        action: "validate token budget within resource constraints"
+      - id: "planning-exit"
+        trigger: "v_scrum-manager approval"
+        action: "validate sprint plan and task assignments; lock budget"
+    is_active: true
+
+  - value: execution
+    label: "Execution"
+    description: |
+      Construction, configuration management, detailed design. All developer
+      personas active, sandboxed per repo. CI runs every 15 minutes.
+    creative_os_phase: "making"
+    swebok_kas:
+      - "Ch 4: Software Construction"
+      - "Ch 8: Software Configuration Management"
+      - "Ch 3 §2: Detailed Design"
+      - "Ch 9 §3: Software Project Execution"
+      - "Ch 11 §2: Types of Models"
+      - "Ch 16: Computing Foundations"
+      - "Ch 18 §2: Engineering Design"
+    active_personas:
+      - v_core-package-developer
+      - v_cli-developer
+      - v_frontend-developer
+      - v_platform-developer
+      - v_sys-developer
+      - v_infra-developer
+      - v_nullclaw-developer
+      - v_nullhub-developer
+      - v_nulltickets-developer
+      - v_nullwatch-developer
+      - v_nullbuilder-developer
+      - v_staff-engineer
+    allowed_tools: [Read, Glob, Grep, Write, Edit, Bash, lw, test]
+    denied_tools: [deploy, git_push]
+    environment_constraints:
+      - "Repo-scoped sandbox: developer can only touch files in assigned repo"
+      - "Boilerplate-first: new files from lw scaffold, not raw Write"
+      - "CI-gated: no commit/push unless mise run ci passes"
+      - "Naming conventions: enforced by boilerplate templates"
+      - "Database: full read/write within repo scope"
+    hooks:
+      - id: "execution-entry"
+        trigger: "phase_transition"
+        action: "activate all developer instances with sandbox rules; register CI cron"
+      - id: "execution-ci-loop"
+        trigger: "cron */15 * * * *"
+        action: "mise run ci → ci_to_event.py → nullwatch span → Forgejo discussion → agent dispatch"
+      - id: "execution-ponytail"
+        trigger: "CI green"
+        action: "v_staff-engineer ponytail audit on diff"
+      - id: "execution-exit"
+        trigger: "all sprint tasks status = 'done'"
+        action: "deactivate developer instances; activate review Q-suite"
+    is_active: true
+
+  - value: review
+    label: "Review"
+    description: |
+      Testing, quality assurance, security review, release-train sign-off.
+      Q-suite personas active; developers paused.
+    creative_os_phase: "critique"
+    swebok_kas:
+      - "Ch 5: Software Testing"
+      - "Ch 12: Software Quality"
+      - "Ch 13: Software Security"
+      - "Ch 9 §4: Review and Evaluation"
+      - "Ch 10 §3: Software Process Assessment and Improvement"
+      - "Ch 11 §3: Analysis of Models"
+      - "Ch 18 §9: Root Cause Analysis"
+    active_personas:
+      - v_staff-engineer
+      - v_qa-engineer
+      - v_cto
+    allowed_tools: [Read, Glob, Grep, lw, fetch]
+    denied_tools: [Write, Edit, Bash, git_commit, git_push, deploy]
+    environment_constraints:
+      - "Read-only on all repos — review only"
+      - "v_staff-engineer: ponytail audit on every CI-green commit"
+      - "v_qa-engineer: test coverage, edge cases, regression detection"
+      - "v_cto: release-train compliance, ADR contract, business alignment"
+      - "Database: read-only"
+    hooks:
+      - id: "review-entry"
+        trigger: "phase_transition"
+        action: "activate v_staff-engineer, v_qa-engineer, v_cto; pause all developer instances"
+      - id: "review-ponytail"
+        trigger: "v_staff-engineer dispatch"
+        action: "adversarial architecture audit: necessity, fit, DB-driven, reduction, naming"
+      - id: "review-qa"
+        trigger: "v_qa-engineer dispatch"
+        action: "test strategy verification, edge case detection, regression analysis"
+      - id: "review-cto"
+        trigger: "v_cto dispatch"
+        action: "business alignment, R-rule compliance, release-train contract"
+      - id: "review-fail"
+        trigger: "any Q-suite rejection"
+        action: "transition back to execution with feedback"
+      - id: "review-pass"
+        trigger: "all Q-suite approvals"
+        action: "transition to maintenance; generate release notes"
+    is_active: true
+
+  - value: maintenance
+    label: "Maintenance"
+    description: |
+      Ongoing operations, dependency bumps, security patches, stewardship.
+    creative_os_phase: "stewardship"
+    swebok_kas:
+      - "Ch 6: Software Engineering Operations"
+      - "Ch 7: Software Maintenance"
+      - "Ch 8 §6: Software Release Management and Delivery"
+      - "Ch 9 §5: Closure"
+      - "Ch 10 §2.11: Process Monitoring"
+      - "Ch 12 §2: Quality Management Process"
+      - "Ch 18 §7: Measurement"
+    active_personas:
+      - v_core-package-developer
+      - v_infra-developer
+      - v_nullclaw-developer
+      - v_nullwatch-developer
+    allowed_tools:
+      [Read, Glob, Grep, Write, Edit, Bash, lw, test, deploy, git_push]
+    denied_tools: []
+    environment_constraints:
+      - "Core and infra developers active; feature developers paused"
+      - "CI continues on cron"
+      - "Deploy and git_push allowed (patches, dependency bumps)"
+      - "Database: full access"
+    hooks:
+      - id: "maintenance-entry"
+        trigger: "phase_transition"
+        action: "activate v_core-package-developer and v_infra-developer; deploy release"
+      - id: "maintenance-monitor"
+        trigger: "cron */15 * * * *"
+        action: "CI monitoring; security scan; dependency audit"
+      - id: "maintenance-exit"
+        trigger: "new product initiative"
+        action: "transition to discovery for next cycle"
+    is_active: true
+
+# ── SWEBOK v4 Full Coverage Map ───────────────────────────────────────────────
+#
+# This enum maps all 18 SWEBOK chapters across the 5 phases:
+#
+#   discovery:  Ch 1, 9§1, 14§3, 15, 18§6
+#   planning:   Ch 2, 3, 9§2, 10§2, 11§1, 15§8, 18§3
+#   execution:  Ch 4, 8, 3§2, 9§3, 11§2, 16, 18§2
+#   review:     Ch 5, 12, 13, 9§4, 10§3, 11§3, 18§9
+#   maintenance: Ch 6, 7, 8§6, 9§5, 10§2.11, 12§2, 18§7
+#
+#   Total: 18/18 chapters covered (100%).
+#
+#   See docs/references/swebok-lifecycle-alignment.md for KA-by-KA detail.
+
+# ── Tool Permission Matrix (per-phase summary) ─────────────────────────────────
+
+tool_matrix:
+  discovery: { Read, Glob, Grep, lw, fetch }
+  planning: { Read, Glob, Grep, lw, fetch, Write }
+  execution: { Read, Glob, Grep, Write, Edit, Bash, lw, test }
+  review: { Read, Glob, Grep, lw, fetch }
+  maintenance:
+    { Read, Glob, Grep, Write, Edit, Bash, lw, test, deploy, git_push }
+
+# ── Example ───────────────────────────────────────────────────────────────────
+
+example:
+  current_phase: execution
+  label: "Execution"
+  creative_os_phase: "making"
+  swebok_kas:
+    - "Ch 4: Software Construction"
+    - "Ch 8: Software Configuration Management"
+    - "Ch 3 §2: Detailed Design"
+    - "Ch 9 §3: Software Project Execution"
+    - "Ch 11 §2: Types of Models"
+    - "Ch 16: Computing Foundations"
+    - "Ch 18 §2: Engineering Design"
+  active_personas:
+    - v_core-package-developer
+    - v_cli-developer
+  allowed_tools: [Read, Glob, Grep, Write, Edit, Bash, lw, test]
+  denied_tools: [deploy, git_push]

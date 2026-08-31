@@ -1,0 +1,111 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/integrations/github/pull_request"
+  title: "GitHub Pull Request — projection metadata"
+  description: |
+    PR metadata projected from local tasks. Complements task.pr_url with
+    number/state/milestone/project fields for intimate tracking.
+  generates:
+    - "pydantic:GitHubPullRequest"
+    - "postgres:DDL"
+  table_kind: entity
+  table_name: github_pull_requests
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: composite_key
+  unique: true
+
+required_fields:
+  - name: composite_key
+    type: str
+    description: "repo_full_name#pr_number"
+    storage: db
+  - name: repo_full_name
+    type: str
+    description: "owner/repo"
+    storage: db
+    indexed: true
+  - name: number
+    type: int
+    description: "GitHub pull request number within the repository"
+    storage: db
+  - name: title
+    type: str
+    description: "GitHub pull request title at last sync"
+    storage: db
+  - name: state
+    type: str
+    description: "open | closed | merged"
+    storage: db
+    indexed: true
+  - name: html_url
+    type: str
+    description: "Browser URL"
+    storage: db
+  - name: sync_status
+    type: str
+    description: "pending | synced | drift | error"
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: draft
+    type: bool
+    description: "True when the PR is a draft"
+    storage: db
+  - name: merged_at
+    type: datetime
+    description: "Merge timestamp when state=merged"
+    storage: db
+  - name: milestone_number
+    type: int
+    description: "Linked repo milestone number"
+    storage: db
+  - name: project_item_id
+    type: str
+    description: "Projects v2 item node ID when on a board"
+    storage: db
+  - name: local_task_ref
+    type: str
+    description: "Local task slug this PR implements"
+    storage: db
+    indexed: true
+  - name: head_ref
+    type: str
+    description: "Head branch name"
+    storage: db
+  - name: base_ref
+    type: str
+    description: "Base branch name"
+    storage: db
+  - name: github_node_id
+    type: str
+    description: "GraphQL node ID"
+    storage: db
+
+example:
+  composite_key: "lightwave-media/lightwave-core#420"
+  repo_full_name: lightwave-media/lightwave-core
+  number: 420
+  title: "feat: external sync doctrine stamps"
+  state: open
+  html_url: "https://github.com/lightwave-media/lightwave-core/pull/420"
+  sync_status: synced
+  draft: false
+  milestone_number: 12
+  project_item_id: "PVTI_example"
+  local_task_ref: stamp-external-sync-doctrine
+  head_ref: feature/external-sync-doctrine
+  base_ref: main
+  github_node_id: "PR_kwDOAexample"
+  created_at: "2026-08-12T12:00:00Z"
+  updated_at: "2026-08-12T18:00:00Z"

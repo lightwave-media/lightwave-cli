@@ -1,0 +1,50 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/operator_cli_event
+  title: Operator CLI event
+  description: 'Measured lw command outcome — append-only sink operator-cli.jsonl.
+
+    Failures also emit tool-feedback/lw lessons for agent harness recall.
+
+    '
+  depends_on:
+  - lightwave://schemas/data/meta/failure_record
+required_fields:
+- name: ts
+  type: str
+  description: UTC RFC3339
+- name: surface
+  type: str
+  description: lw | nullhub | harness
+- name: verb
+  type: str
+  description: dotted handler key e.g. home.sync, release.flag
+- name: outcome
+  type: str
+  description: pass | fail | skip
+- name: duration_ms
+  type: int
+  description: Duration of the CLI operation in milliseconds.
+- name: exit_code
+  type: int
+  description: Exit code returned by the CLI command.
+optional_fields:
+- name: session_id
+  type: str
+  description: Session context in which the CLI event occurred.
+- name: measurements
+  type: map[str, any]
+  description: Structured counts — files_updated, pass/fail/skip, flag_key, …
+- name: detail
+  type: str
+  description: Freeform detail string with additional context for the event.
+example:
+  ts: '2026-06-20T16:00:00Z'
+  surface: lw
+  verb: home.sync
+  outcome: pass
+  duration_ms: 12
+  exit_code: 0
+  measurements:
+    files_updated: 1
+  detail: updated 1 file(s)

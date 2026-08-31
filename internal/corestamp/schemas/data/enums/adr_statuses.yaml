@@ -1,0 +1,35 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/adr_statuses"
+  title: "ADR Status Enum"
+  description: |
+    Lifecycle statuses for Architectural Decision Records. Closed enum,
+    distinct from document_statuses (draft|active|archived) — ADRs follow
+    the Michael Nygard standard lifecycle.
+
+    See: https://github.com/joelparkerhenderson/architecture-decision-record
+  generates:
+    - "pydantic:ADRStatus"
+  depends_on: []
+
+name: adr_statuses
+description: "Lifecycle statuses for Architectural Decision Records"
+default: proposed
+closed: true
+options:
+  - value: proposed
+    label: "Proposed"
+    description: "ADR is drafted but not yet decided"
+    is_active: false
+  - value: accepted
+    label: "Accepted"
+    description: "Decision is accepted and in effect"
+    is_active: true
+  - value: deprecated
+    label: "Deprecated"
+    description: "Decision is no longer recommended but not yet replaced"
+    is_active: false
+  - value: superseded
+    label: "Superseded"
+    description: "Decision has been replaced by a later ADR (see supersedes_adr field)"
+    is_active: false

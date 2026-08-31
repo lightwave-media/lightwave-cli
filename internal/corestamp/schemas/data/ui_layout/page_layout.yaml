@@ -1,0 +1,113 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/ui_layout/page_layout
+  title: Database-Driven UI Page Layout
+  description: 'Server-driven UI schema. The Go backend queries this from Postgres and
+
+    returns it as JSON. React renders it dynamically via a component registry.
+
+    Adding a feature = updating layout JSON in the database — no redeploy.
+
+
+    Security: LayoutSection.props is an arbitrary dict. Implementors MUST
+
+    treat prop values as untrusted user content. Props that accept HTML (e.g.
+
+    richText, innerHTML) MUST be sanitized with an allowlist HTML library
+
+    (e.g. bluemonday.UGCPolicy().Sanitize()) before rendering. After
+
+    sanitization, use template.HTML() to emit as markup. Passing unsanitized
+
+    input to template.HTML() is a stored-XSS vector. html.EscapeString
+
+    destroys markup — use it for plain text props only.
+
+    '
+  generates:
+  - go:PageLayout
+  - ts:PageLayout
+  table_kind: entity
+  table_name: page_layouts
+primary_key:
+  column: id
+  type: uuid
+required_fields:
+- name: tenant_id
+  type: uuid
+  storage: db
+  indexed: true
+  description: UUID of the tenant that owns this page layout.
+- name: page_name
+  type: str
+  description: e.g. home, about, contact
+  storage: db
+- name: sections
+  type: list[LayoutSection]
+  storage: db
+  column_type: jsonb
+  description: Ordered list of section configurations on this page.
+- name: version
+  type: str
+  description: Schema version for migration
+  storage: db
+- name: created_at
+  type: datetime
+  storage: db
+  description: ISO 8601 timestamp when this layout was first created.
+- name: updated_at
+  type: datetime
+  storage: db
+  description: ISO 8601 timestamp of the most recent layout update.
+optional_fields:
+- name: seo_title
+  type: str
+  storage: db
+  description: SEO title override for this page layout.
+- name: seo_description
+  type: str
+  storage: db
+  description: SEO meta description override for this page layout.
+- name: is_published
+  type: bool
+  description: Published toggle — false means draft. Extend to a status_enum if scheduled/archived states are needed.
+  storage: db
+sub_schemas:
+  LayoutSection:
+    type: str
+    props: dict
+    children: list[LayoutSection]
+example:
+  tenant_id: 550e8400-e29b-41d4-a716-446655440000
+  page_name: home
+  version: 1.0.0
+  created_at: '2026-06-26T00:00:00Z'
+  updated_at: '2026-06-26T00:00:00Z'
+  sections:
+  - type: hero
+    props:
+      title: Visual Artist
+      subtitle: Photography & Film
+      image: /cdn/hero.jpg
+  - type: grid
+    props:
+      columns: 3
+      gap: 1rem
+    children:
+    - type: card
+      props:
+        title: Portfolio
+        link: /work
+    - type: card
+      props:
+        title: About
+        link: /about
+    - type: card
+      props:
+        title: Shop
+        link: /shop
+  - type: cta
+    props:
+      text: View Portfolio
+      link: /work
+      variant: primary

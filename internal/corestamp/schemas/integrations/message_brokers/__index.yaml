@@ -1,0 +1,22 @@
+# =============================================================================
+# MESSAGE BROKERS SCHEMA REGISTRY (Category G / sub-category: message_brokers)
+# =============================================================================
+# Adapter configs and address registries for outbound/inbound message channels.
+# Channel BINDING (which persona routes to which channel) lives in
+# policy/governance/channel_bindings.yaml. This sub-category holds the
+# adapter layer: the specific addresses, credentials shape, and delivery
+# config each channel needs to actually send.
+#
+# email/   — Outbound SMTP/SES address registry for lightwave-media.ltd
+# slack/   — Slack workspace + channel config (planned)
+# telegram/ — Telegram bot config (planned)
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/integrations/message_brokers/__index"
+  title: "Message Brokers Schema Registry"
+  description: "Adapter-layer schemas for outbound/inbound message channels. Complements policy/governance/channel_bindings.yaml (binding layer) with per-channel delivery config."
+
+schemas:
+  email: email.yaml

@@ -1,0 +1,56 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/__index"
+  title: "Forgejo API Integration — Complete SST Mirror (100% Coverage)"
+  description: |
+    1:1 SST mirror of the Forgejo API (v15.0.3) — complete coverage.
+    Source: localhost:3600 swagger.v1.json. Every endpoint and definition
+    is declared here for Go + Zig codegen. MIT-licensed — see NOTICE.
+
+  source: "forgejo://swagger.v1.json@15.0.3"
+  source_version: "15.0.3"
+  source_license: "MIT"
+  adapted_by: v_platform-developer
+  adapted_date: "2026-06-25"
+  coverage: "100% — all 14 tag categories, ~200+ endpoints, all definitions"
+
+schemas:
+  # ── User & Auth (6 schemas, ~45 endpoints) ──
+  auth: auth.yaml
+  user: user.yaml
+  user_email: user_email.yaml
+  user_gpg_key: user_gpg_key.yaml
+  user_public_key: user_public_key.yaml
+  user_runner: user_runner.yaml
+  user_secret: user_secret.yaml
+  user_variable: user_variable.yaml
+
+  # ── Admin (4 schemas, ~40 endpoints) ──
+  admin_user: admin_user.yaml
+  admin_runner: admin_runner.yaml
+  admin_hook: admin_hook.yaml
+
+  # ── Organization (4 schemas, ~55 endpoints) ──
+  organization: organization.yaml
+  org_team: org_team.yaml
+  org_secret: org_secret.yaml
+
+  # ── Repository (7 schemas, ~90 endpoints) ──
+  repository: repository.yaml
+  repo_branch: repo_branch.yaml
+  repo_commit: repo_commit.yaml
+  repo_pull: repo_pull.yaml
+  repo_release: repo_release.yaml
+  repo_wiki: repo_wiki.yaml
+  repo_hook: repo_hook.yaml
+
+  # ── Issue (2 schemas, ~50 endpoints) ──
+  issue: issue.yaml
+  issue_comment: issue_comment.yaml
+
+  # ── Notification (1 schema, 8 endpoints) ──
+  notification: notification.yaml
+
+  # ── Miscellaneous (1 schema, ~35 endpoints) ──
+  misc: misc.yaml

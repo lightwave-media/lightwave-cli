@@ -1,0 +1,52 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/image"
+  title: "Image"
+  description: |
+    An image — reference photo, storyboard frame, location-scout still, or frame
+    grab — attachable to a Doc or a Shot (ER: DOC ||--o{ IMAGE, SHOT ||--o{ IMAGE).
+    Attachment is polymorphic via optional doc/shot refs (soft cross-refs, not a
+    hard parent), so depends_on is empty. Generates CineImage to avoid colliding
+    with the generic Image symbol downstream.
+  generates:
+    - "go:CineImage"
+    - "typescript:CineImage"
+    - "zig:CineImage"
+    - "json_schema:image"
+  depends_on: []
+
+required_fields:
+  - name: url
+    type: str
+    description: "Path/$ref to the image asset"
+
+optional_fields:
+  - name: kind
+    type: str
+    description: "Image role; values from the cineos_image_kinds enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_image_kinds"
+  - name: caption
+    type: str
+    description: "Caption / alt text"
+  - name: doc_ref
+    type: str
+    description: "Slug/id of the Doc this image attaches to (soft cross-ref)"
+  - name: shot_ref
+    type: str
+    description: "Slug/id of the Shot this image attaches to (soft cross-ref)"
+  - name: width
+    type: int
+    description: "Pixel width"
+  - name: height
+    type: int
+    description: "Pixel height"
+
+relations:
+  parent: null
+  children: []
+
+example:
+  url: "media/project/wet-under-blue-sky/scout/beaus-house-backyard.jpg"
+  kind: "scout"
+  caption: "Backyard at golden hour — heavy bag against the fence"
+  shot_ref: "wet-under-blue-sky-sc-27-27a"

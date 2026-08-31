@@ -1,0 +1,208 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/policy/security/git_conduct"
+  title: "Agent Git Conduct — Autonomous Conflict-Resolution Protocol"
+  description: >
+    Contract that makes agent-driven conflict resolution / rebasing SAFE
+    enough to run unsupervised. The dangerous part of "let the model rebase
+    for me" is NOT the git mechanics (solvable: force-with-lease, isolated
+    worktrees, single-author branches) but SEMANTIC mis-resolution — merging
+    two intents into code that compiles yet is wrong. This contract engineers
+    the irreversible failure modes out and confines the agent to the
+    mechanical conflict class, escalating the semantic class to the author.
+    Author/developer-tier personas (branch owners) MAY resolve under this
+    protocol; gatekeeper personas (v_cto) are EXCLUDED — they route conflicts
+    to the author and never resolve or force-push (separation of duties).
+    Companion to security/shell_tool.yaml (force-push lives in its
+    forbidden_commands_pattern) and the operator lightwave-git skill.
+    Placement: co-located with shell_tool in security/ as its force-push
+    enforcement companion (both gate the same command surface), not governance/.
+  generates:
+    - "pydantic:GitConductPolicy"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    # Runtime coupling: the force-with-lease grant this protocol authorizes is
+    # enforced via shell_tool's forbidden_commands_pattern (operator flips it).
+    - "lightwave://schemas/policy/security/shell_tool"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'author-conflict-resolution')."
+  - name: applies_to_personas
+    type: "list[str]"
+    description: >
+      Persona ids this protocol AUTHORIZES — author/developer tier only
+      (branch owners, e.g. v_platform-developer). Gatekeeper/reviewer
+      personas (v_cto) MUST NOT appear here; their conflict rule stays
+      'route to author, never resolve, never force-push'.
+  - name: scope
+    type: "ConflictScopeRef"
+    description: >
+      Sub-schema ConflictScope: branch_kinds (list — only
+      single_author_feature_branch permitted), forbidden_targets (list of
+      literal names / globs the agent matches STATICALLY — e.g. main,
+      release/*, shared/*), forbidden_target_runtime (list of predicates that
+      need a LIVE check, not a static pattern — e.g. is_base_of_another_open_pr,
+      the real "built-on" guard that cannot be expressed as a glob),
+      forbidden_target_runtime_failure_action (enum: treat_as_forbidden |
+      abort_with_escalation — what to do if a runtime predicate check itself
+      fails: no gh auth, rate limit, network. MUST be fail-SAFE, never
+      fail-open, since auto-resolving a shared branch is irreversible),
+      max_branch_age_days (int — beyond this, re-implement against current main
+      instead of grinding a stale rebase, per lightwave-git Conflict rule 1).
+  - name: isolation
+    type: "IsolationRef"
+    description: >
+      Sub-schema Isolation: mode (enum: dedicated_worktree_required |
+      allow_canonical_checkout — MUST be dedicated_worktree_required),
+      worktree_base (enum: origin_main — branch the worktree off origin/main,
+      never local divergent main), cleanup (enum: remove_after_always —
+      `git worktree remove`; NEVER `rm -rf <path>` for teardown. NB: shell_tool's
+      denylist only catches `^rm -rf /` (root), NOT arbitrary paths, so this is a
+      protocol-level rule here — tightening that pattern to cover worktree paths
+      is a separate hardening, not an existing guarantee),
+      never_touch_operator_checkout
+      (bool, true). Rationale: a throwaway worktree means any failure is
+      `git worktree remove` with zero blast radius.
+  - name: resolution_method
+    type: "ResolutionMethodRef"
+    description: >
+      Sub-schema ResolutionMethod: default (enum: merge_base_into_branch |
+      rebase_onto_base — default merge_base_into_branch, which needs only a
+      normal fast-forward push, NO force and NO history rewrite; PRs are
+      squash-merged so the merge commit never reaches main), rebase_allowed
+      (bool — only when linear history is explicitly wanted), force_push
+      (enum: forbidden | force_with_lease_only | allowed — MUST be at most
+      force_with_lease_only). NOTE: shell_tool's current pattern
+      `^git push.*--force` matches BOTH bare `--force` AND `--force-with-lease`,
+      so today it denies both; operationalizing force_with_lease_only is an
+      operator grant-step = tighten that pattern to an RE2-safe form such as
+      `^git push .*--force([^-]|$)` (Go regexp has no lookahead, so
+      `--force(?!-with-lease)` will NOT compile). force-with-lease aborts if the
+      remote moved since last fetch, so a concurrent author push can never be
+      clobbered.
+  - name: verification_gate
+    type: "VerificationGateRef"
+    description: >
+      Sub-schema VerificationGate: local_gate (str — repo CI gate that MUST
+      pass in the worktree BEFORE push, e.g. 'mise run ci'), push_only_if
+      (enum: local_gate_green), merge_only_if (enum: required_checks_green —
+      server-side branch-protection required checks must also pass). A
+      resolution is just another change; it earns its merge through the same
+      gates, never a bypass (no --no-verify, no LW_SKIP_PRE_PUSH).
+  - name: conflict_classification
+    type: "ConflictClassRef"
+    description: >
+      Sub-schema ConflictClass: auto_resolve (list of MECHANICAL classes the
+      agent may resolve — e.g. both_sides_add_distinct_content,
+      non_overlapping_hunks_git_cannot_textmerge, import_ordering,
+      adjacent_additions; lockfiles via regenerate_not_handmerge), escalate
+      (list of SEMANTIC classes the agent MUST hand back to the author/human
+      — e.g. both_sides_modify_same_logical_lines_different_intent, any case
+      where 'which intent wins' is not mechanically decidable). Default bias:
+      when unsure, escalate. '--ours/--theirs' is a smell (lightwave-git
+      Conflict rule 2) and is NOT a resolution.
+  - name: audit
+    type: "AuditRef"
+    description: >
+      Sub-schema Audit: pr_comment_required (bool, true — every auto-resolution
+      posts a PR comment stating exactly what conflicted and how it was
+      resolved), commit_message_documents (bool, true), log_path (str —
+      e.g. ~/.lightwave/observability/git-conduct.jsonl). Every resolution is
+      reviewable after the fact.
+  - name: separation_of_duties
+    type: "SepDutiesRef"
+    description: >
+      Sub-schema SepDuties: author_resolves_own_branch (bool, true),
+      gatekeeper_resolves (bool — MUST be false; v_cto routes + reviews +
+      squash-merges, never resolves or force-pushes), grant_authority (str —
+      who may flip force_push from forbidden→force_with_lease_only: operator
+      only; per CLAUDE.md §9 an agent MUST NOT self-grant or author the
+      permission relaxation, only propose it).
+  - name: status
+    type: str
+    description: "Lifecycle (conforms to document_statuses)."
+
+optional_fields:
+  - name: rationale
+    type: str
+    description: "Why the contract is shaped this way."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "author-conflict-resolution"
+  applies_to_personas:
+    - "v_platform-developer"
+    - "v_frontend-developer"
+  scope:
+    branch_kinds:
+      - "single_author_feature_branch"
+    forbidden_targets:
+      - "main"
+      - "release/*"
+      - "shared/*"
+    forbidden_target_runtime:
+      - "is_base_of_another_open_pr"
+    forbidden_target_runtime_failure_action: "treat_as_forbidden"
+    max_branch_age_days: 7
+  isolation:
+    mode: "dedicated_worktree_required"
+    worktree_base: "origin_main"
+    worktree_home_policy: "lightwave://schemas/data/meta/worktree_home_policy"
+    cleanup: "remove_after_always"
+    never_touch_operator_checkout: true
+  resolution_method:
+    default: "merge_base_into_branch"
+    rebase_allowed: false
+    force_push: "forbidden"
+  verification_gate:
+    local_gate: "mise run ci"
+    push_only_if: "local_gate_green"
+    merge_only_if: "required_checks_green"
+  conflict_classification:
+    auto_resolve:
+      - "both_sides_add_distinct_content"
+      - "non_overlapping_hunks_git_cannot_textmerge"
+      - "import_ordering"
+      - "adjacent_additions"
+      - "lockfile_regenerate_not_handmerge"
+    escalate:
+      - "both_sides_modify_same_logical_lines_different_intent"
+      - "intent_not_mechanically_decidable"
+      - "conflict_span_over_1000_lines"
+      - "stale_branch_exceeds_max_age"
+  audit:
+    pr_comment_required: true
+    commit_message_documents: true
+    log_path: "~/.lightwave/observability/git-conduct.jsonl"
+  separation_of_duties:
+    author_resolves_own_branch: true
+    gatekeeper_resolves: false
+    grant_authority: "operator_only"
+  rationale: |
+    Two risks, treated differently. MECHANICAL risk (clobbering work,
+    rewriting shared history, half-broken tree) is engineered out: isolated
+    worktree off origin/main, merge-resolve with a normal push by default,
+    force-with-lease never bare --force, never main/shared branches, always
+    clean up the worktree. SEMANTIC risk (a plausible-but-wrong merge) is the
+    one that survives good mechanics, so the agent only auto-resolves the
+    mechanical conflict class and ESCALATES anything where intent isn't
+    mechanically decidable — default to escalate when unsure.
+
+    Separation of duties: the branch's AUTHOR resolves its conflicts (it owns
+    the intent); the gatekeeper (v_cto) routes, reviews, and squash-merges but
+    never resolves or force-pushes. The better long-term fix for the merge
+    backlog is upstream: authors keep their PRs mergeable + don't split one
+    logical change across overlapping/interdependent PRs (the pattern that
+    produced the conflicts this protocol cleans up).
+
+    Grant boundary (CLAUDE.md §9): the agent may PROPOSE this protocol and the
+    force_push relaxation; only the operator flips the deny rule. An agent
+    must not author its own permission expansion.
+  status: "draft"

@@ -1,0 +1,17 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/lightwave_iam_roles"
+  title: "Lightwave IAM Role Enum"
+  description: "Closed set of AWS IAM roles available to Lightwave principals. Used to bind agent_aws_credentials.iam_role to a validated vocabulary — prevents drift between the field description and the iam_policy block keys."
+  depends_on: []
+name: lightwave_iam_roles
+description: "AWS IAM roles for Lightwave agent credential assignments"
+default: "lightwave-agent"
+closed: true
+options:
+  - value: "lightwave-agent"
+    label: "Lightwave Agent"
+    description: "Read-only agent access: SSM parameter reads, ECS describe, ECR pull, CloudWatch log reads. No writes or destructive ops."
+  - value: "lightwave-admin"
+    label: "Lightwave Admin"
+    description: "Elevated operator access for infra management. Requires explicit operator SSO approval — never granted to automated agents."

@@ -1,0 +1,33 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/voice_tone_tags
+  title: Voice Tone Tag Enum
+  description: Tags for persona_voice_profile tone classification; used by v_speak
+    tuning.
+  generates:
+  - rust:VoiceToneTag
+  - pydantic:VoiceToneTag
+  depends_on: []
+name: voice_tone_tags
+description: Tone-of-voice classification tags
+default: neutral
+closed: true
+options:
+- value: formal
+  label: Formal
+  description: Formal option.
+- value: calm
+  label: Calm
+  description: Calm option.
+- value: energetic
+  label: Energetic
+  description: Energetic option.
+- value: neutral
+  label: Neutral
+  description: Neutral option.
+- value: authoritative
+  label: Authoritative
+  description: Authoritative option.
+- value: warm
+  label: Warm
+  description: Warm option.

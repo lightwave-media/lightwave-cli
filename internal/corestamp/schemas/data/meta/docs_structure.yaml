@@ -1,0 +1,67 @@
+# Lightwave Docs Structure
+# Mirrors Tauri v2 docs hierarchy 1:1 — learn from the best-in-class dev docs
+
+_meta:
+  schema_id: lightwave://schemas/data/meta/docs_structure
+  title: Docs Structure Blueprint
+  version: 1.0.0
+  description: Mirrors Tauri v2 docs hierarchy 1:1.
+  generates:
+    - "pydantic:DocsStructure"
+  depends_on: []
+
+required_fields:
+  - name: hierarchy
+    type: object
+    description: "The docs directory hierarchy"
+  - name: generation
+    type: object
+    description: "How docs are generated"
+
+optional_fields:
+  - name: shared_and_unique
+    type: object
+    description: "What's shared vs per-project"
+
+example:
+  hierarchy:
+    root: ~/.lightwave/docs/
+    sections:
+      # Full section catalog in the print at ~/.lightwave/docs/__index.yaml.
+      # Example shows 2 representative sections to demonstrate shape.
+      - path: guides/
+        description: "Getting started, how-tos, concepts, tutorials"
+        mirrors: https://v2.tauri.app/start/
+        pages:
+          - start/lightwave-overview.md
+          - start/prerequisites.md
+
+      - path: reference/
+        description: "API reference, CLI reference, config reference"
+        mirrors: https://v2.tauri.app/reference/cli/
+        pages:
+          - cli/overview.md
+          - cli/init.md
+
+  generation:
+    tool: "lw docs generate --section {section}"
+    registry: "~/.lightwave/docs/__index.yaml"
+    format: "mdx with YAML frontmatter"
+    source_of_truth: "src/schemas/ (SST)"
+    auto_gen: true
+
+  shared_and_unique:
+    shared:
+      - "reference/cli/ — generated from lightwave-core/src/schemas/interfaces/cli/"
+      - "reference/config/ — generated from lightwave-core/src/schemas/data/meta/"
+      - "blog/ — operator-authored, shared across all projects"
+    unique:
+      - "guides/start/ — custom per-project onboarding"
+      - "guides/develop/ — custom per-project developer guides"
+      - "release/ — per-project release notes"
+
+relations:
+  parent: null
+  children: []
+
+status: active

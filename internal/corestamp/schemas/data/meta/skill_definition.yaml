@@ -1,0 +1,138 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/data/meta/skill_definition"
+  title: "Skill Definition"
+  description: |
+    SCHEMA for SKILL.md files at ~/.lightwave/skills/<slug>/SKILL.md.
+    Formalises the YAML frontmatter that R-21 (skill-compliance)
+    validates, extending Anthropic's Agent Skills specification with
+    Lightwave-specific fields.
+
+    A skill is a unit of reusable agent capability — focused instructions
+    + optional helper scripts, references, assets, sub-agents, and eval
+    cases. Skills are LOADED by personas at session spawn time; the persona
+    YAML lists skill slugs under its `skills:` field, and R-21 enforces
+    round-trip (every skill names the personas it serves under `agents:`).
+
+    CANONICAL STORE: ~/.lightwave/skills/<slug>/SKILL.md — single source
+    of truth. LightWave doctrine is ONE skills home; the stamp does NOT
+    endorse mirroring or symlinking content to harness-specific paths.
+
+    HARNESS COMPATIBILITY: Anthropic-format SKILL.md is read identically
+    by Claude Code (~/.claude/skills/), Codex/OpenCode/Gemini CLI, and
+    Zed (~/.agents/skills/ + <worktree>/.agents/skills/). Zed's docs
+    (https://zed.dev/docs/ai/skills#where-skills-live) confirm it has
+    NO configurable skills path — it reads only those two hard-coded
+    locations. Operators wanting to use Zed against the canonical
+    ~/.lightwave/skills/ either (a) accept that gap and use Zed without
+    LightWave skills, OR (b) file a Zed feature request for a
+    configurable path. Symlinking is a Zed-suggested workaround that
+    LightWave doctrine does not endorse (proliferates the home).
+
+    Anthropic Agent Skills base format (frontmatter + markdown body) is
+    preserved intact. Lightwave + Zed extensions:
+      - agents                  — round-trip with persona.skills (R-21)
+      - category                — coarse classification for skill registry
+      - trigger                 — free-form load-when-X description
+      - version                 — semver string (drift detection)
+      - license                 — defaults to MIT
+      - forked_from             — required for non-MIT-licensed forks
+      - disable_model_invocation — Zed-spec field (default false); when
+                                   true, skill is slash-command-only
+                                   (no autonomous agent invocation).
+                                   Other harnesses ignore today but the
+                                   semantic is portable.
+
+    Format constraints (Anthropic + Zed):
+      - name: 1-64 chars, lowercase + digits + single hyphens, no leading/
+        trailing hyphens, no consecutive hyphens. MUST match folder name.
+      - description: max 1024 chars (Zed enforces; Anthropic recommends).
+      - Catalog budget: 50KB total across all (name + description) entries
+        in a single harness's view; oversized skills get dropped with a
+        warning. Encourages tight descriptions.
+
+    Optional sub-directories that the loader recognises:
+      - scripts/      — bash/python/typescript helpers
+      - references/   — deep-reference markdown loaded on-demand
+      - assets/       — files / templates the skill copies into the workspace
+      - agents/       — sub-agent definitions (Anthropic's nested pattern)
+      - evals/        — eval cases for measuring skill efficacy
+
+    Stamped 2026-05-28 — pairs with agent_definition.yaml to provide the
+    DATA contracts that lightwave-sys::compose_system_prompt consumes when
+    rendering <skills_loaded> blocks. Until this schema landed, R-21 only
+    checked presence; now it can validate shape.
+
+    v1.1 (2026-05-29): adds disable_model_invocation optional field
+    (Zed Agent Skills spec) + documents Zed's hard-coded paths as a
+    KNOWN GAP rather than endorsing symlink workarounds. LightWave
+    doctrine: one home, no print-proliferation.
+  generates:
+    - "rust:SkillDefinition"
+    - "pydantic:SkillDefinition"
+  depends_on: []
+
+# Shape of the YAML frontmatter at the top of every SKILL.md file.
+# Body content (markdown after the frontmatter) is free-form prose +
+# any structured sub-sections the author chooses.
+
+required_fields:
+  - name: name
+    type: str
+    description: "kebab-case slug per R-11. MUST match the parent directory name (e.g. ~/.lightwave/skills/code-review/SKILL.md → name: code-review)."
+  - name: description
+    type: str
+    description: "One-line summary of what the skill teaches the agent to do. Surfaced in skill-registry browsing + composer's <skills_loaded_in_order>.why_now field."
+  - name: agents
+    type: "list[str]"
+    description: "Persona slugs (v_*) that load this skill. R-21 round-trip enforces every named persona lists this skill's slug under its `skills:` field. Empty list is forbidden — orphan skills are removed, not retained."
+    min_length: 1
+
+optional_fields:
+  - name: category
+    type: str
+    description: "Coarse classification — testing | review | git | infra | docs | persona | meta. Free-form string; not validated against a closed enum (skill categories evolve faster than enum churn cost allows)."
+  - name: trigger
+    type: str
+    description: "Free-form description of when the agent should load this skill. Example: 'before opening a PR' or 'when authoring tests for a new module'. Surfaced in composer's <skills_loaded_in_order>.trigger field."
+  - name: version
+    type: str
+    description: "Semver string. Increment on substantive changes; the composer logs the loaded version so drift between sessions is auditable."
+  - name: license
+    type: str
+    description: "SPDX license identifier. Defaults to MIT if omitted. Required when the skill is forked from a third-party source with a different license."
+  - name: forked_from
+    type: str
+    description: "URL or repo:path identifying the upstream source if this skill is a fork. Required for attribution when license != MIT."
+  - name: stale_after
+    type: str
+    description: "ISO date (YYYY-MM-DD) after which the skill is considered stale and should be re-reviewed. Optional — most skills don't need a TTL."
+  - name: disable_model_invocation
+    type: bool
+    description: "Zed Agent Skills field (https://zed.dev/docs/ai/skills). Default false. When true, the skill is INVOCABLE ONLY via slash command (`/<name>`) or @-mention — the agent will not autonomously call it. Use for skills with side-effects the operator should always explicitly trigger (data mutations, expensive external calls). Other harnesses (Claude Code, etc.) currently ignore this field but should adopt the same semantic."
+
+# Sub-directories the skill loader recognises. Presence is optional;
+# when present, the directory contents follow the convention below.
+sub_directories:
+  - name: scripts/
+    description: "Executable helpers (bash, python, typescript). Loader does NOT auto-execute; skill body references them by relative path."
+  - name: references/
+    description: "Deep-reference markdown files. Loaded on-demand when the agent reads them, not always-loaded. Use for material too large for the always-on body."
+  - name: assets/
+    description: "Files / templates the skill copies into the workspace (e.g. .editorconfig, CONTRIBUTING.md scaffolds). Loader treats as opaque blobs."
+  - name: agents/
+    description: "Sub-agent definitions following Anthropic's nested-agent pattern. Each file is a sub-SKILL.md scoped to a narrower task."
+  - name: evals/
+    description: "Eval cases for measuring whether the skill achieves its stated outcome. Format TBD per evals contract (lands when testing-efficacy skill + eval harness mature)."
+
+example:
+  name: code-review
+  description: "Multi-tier code-quality review gate run before merge (forked from Cursor's thermo-nuclear + Anthropic Engineering)."
+  agents:
+    - v_staff-engineer
+    - v_cto
+  category: review
+  trigger: "before merge — final consensus gate after CI green"
+  version: "1.2.0"
+  license: MIT
+  forked_from: "https://github.com/cursor/thermo-nuclear-code-quality-review"

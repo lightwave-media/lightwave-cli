@@ -1,0 +1,53 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/docs_gate_failure
+  title: Docs Gate Failure Record
+  description: 'Structured failure emitted by pre-commit docs factory and `lw docs check`.
+
+    Machine sink: ~/.lightwave/observability/docs-gate/<session-id>.last-failure.json
+
+    '
+  generates:
+  - pydantic:DocsGateFailure
+  depends_on:
+  - lightwave://schemas/data/enums/docs_gate_failure_codes
+required_fields:
+- name: code
+  type: str
+  description: Stable enum from docs_gate_failure_codes
+- name: summary
+  type: str
+  description: Human-readable summary of the docs gate failure.
+- name: cure_command
+  type: str
+  description: Ordered shell steps the agent should run
+- name: do_not
+  type: str
+  description: Anti-pattern guidance
+- name: affected_paths
+  type: list[str]
+  description: File paths that triggered the docs gate failure.
+- name: next_verification
+  type: str
+  description: ISO 8601 timestamp of the next scheduled verification.
+optional_fields:
+- name: spec_ref
+  type: str
+  description: Spec file path that the docs gate failure is associated with.
+- name: docs_ref
+  type: str
+  description: Docs file path that triggered the gate failure.
+- name: delta_impact
+  type: str
+  description: Human-readable description of the delta that caused the failure.
+- name: session_id
+  type: str
+  description: Session ID of the session in which the gate failure occurred.
+example:
+  code: docs_drift
+  summary: source_commit stale on docs/contract.yaml
+  cure_command: lw docs sync && lw docs render && git add docs/
+  do_not: hand-edit generated docs kinds
+  affected_paths:
+  - docs/contract.yaml
+  next_verification: lw docs check --strict --hand-edit

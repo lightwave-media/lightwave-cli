@@ -1,0 +1,117 @@
+_meta:
+  version: "1.3.2"
+  schema_id: "lightwave://schemas/data/agile_artifacts/api_spec"
+  title: "API Specification"
+  description: "OpenAPI-shaped contract: endpoints, request/response schemas, auth, error codes. Generates from Go/Huma routers via OpenAPI 3.1. Migrated 2026-05-25 from governance/agile/api_spec.yaml (Phase 4 file #9) — Augusta example replaced with v_core."
+  generates:
+    - "pydantic:OpenAPISpec"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/agile_artifacts/ddd"
+  table_kind: entity
+  table_name: api_specs
+
+status_enum: "document_statuses"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: slug
+  unique: true
+
+required_fields:
+  - name: slug
+    type: str
+    description: "URL-safe unique identifier; lowercase, hyphen-separated"
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+    storage: db
+  - name: name
+    type: str
+    description: "API spec title"
+    storage: db
+  - name: ddd_ref
+    type: str
+    description: "Slug of parent ddd (or user_story_ref if no DDD layer)"
+    storage: db
+    fk_ref: "lightwave://schemas/data/agile_artifacts/ddd"
+    fk_column: slug
+    indexed: true
+  - name: endpoints
+    type: "list[EndpointRef]"
+    description: "Endpoint entries; sub-schema: path, method, request_schema_ref, response_schema_ref"
+    storage: db
+    column_type: jsonb
+  - name: auth_scheme
+    type: str
+    description: "Authentication method; one of: bearer, oauth2, session, none"
+    storage: db
+  - name: error_codes
+    type: "list[ErrorCodeRef]"
+    description: "Error code catalog; sub-schema: code, http_status, message_template"
+    storage: db
+    column_type: jsonb
+  - name: domain
+    type: str
+    description: "LifeDomain slug; validated against life_domains"
+    storage: db
+  - name: created_at
+    type: datetime
+    description: "ISO 8601 timestamp of record creation; auto-populated"
+    storage: db
+  - name: updated_at
+    type: datetime
+    description: "ISO 8601 timestamp of last modification; auto-updated"
+    storage: db
+
+optional_fields:
+  - name: rate_limits
+    type: "list[RateLimitRef]"
+    description: "Rate-limit rules; sub-schema: scope, requests_per_window, window_seconds"
+    storage: db
+    column_type: jsonb
+  - name: webhooks
+    type: "list[WebhookRef]"
+    description: "Outbound webhooks; sub-schema: event, payload_schema, retry_policy"
+    storage: db
+    column_type: jsonb
+  - name: versioning_strategy
+    type: str
+    description: "API versioning approach (URL prefix, header, etc.)"
+    storage: db
+
+relations:
+  parent: ddd
+  parent_fk:
+    column: ddd_ref
+    references: ddds.slug
+    on_delete: CASCADE
+  children:
+    - task
+
+example:
+  slug: "v-core-task-dispatch-api"
+  name: "v_core task-dispatch internal API"
+  ddd_ref: "v-core-poll-loop-ddd"
+  endpoints:
+    - path: "/internal/tasks/ready"
+      method: "GET"
+      request_schema_ref: "ListReadyTasksRequest"
+      response_schema_ref: "ListReadyTasksResponse"
+    - path: "/internal/tasks/{id}/dispatch"
+      method: "POST"
+      request_schema_ref: "DispatchTaskRequest"
+      response_schema_ref: "DispatchTaskResponse"
+  auth_scheme: "bearer"
+  error_codes:
+    - code: "TASK_NOT_READY"
+      http_status: 409
+      message_template: "Task {id} failed Ready-state gate: {reasons}"
+    - code: "TASK_NOT_FOUND"
+      http_status: 404
+      message_template: "Task {id} not found in tenant {schema}"
+  domain: "software-development"
+  created_at: "2026-06-24T12:00:00Z"
+  updated_at: "2026-06-24T12:00:00Z"

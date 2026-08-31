@@ -1,0 +1,67 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/strategies/model_selection"
+  title: "Model Selection Strategy"
+  description: |
+    Behavioral strategy for how the runtime selects a model for a task.
+    This is NOT an enum — it describes EXECUTION RULES: trigger conditions,
+    fallback order, budget impact, and allowed tiers per strategy.
+
+    Consumed by ~/.lightwave/lib/validity/model-matcher.ts at task
+    dispatch time and at session-start.ts for session model assignment.
+    Also referenced by task_intelligence_profile.model_policy.
+
+    Values:
+      - model_match: Use the persona's default model from its YAML config
+      - cheapest_adequate: Select lowest-cost model meeting minimum tier
+      - local_first: Prefer local model if task is local-eligible
+      - local_with_failover: Start local, escalate to cloud on failure
+      - frontier_only: Restrict to frontier tier (for critical architecture)
+  generates:
+    - "rust:ModelSelectionStrategy"
+    - "pydantic:ModelSelectionStrategy"
+  depends_on:
+    - "lightwave://schemas/data/enums/model_tiers"
+
+required_fields:
+  - name: policy
+    type: str
+    description: "Strategy identifier: model_match | cheapest_adequate | local_first | local_with_failover | frontier_only"
+  - name: description
+    type: str
+    description: "Human-readable description of the strategy's behavior"
+  - name: allowed_tiers
+    type: "list[str]"
+    description: "Which model tiers this strategy may select from. References model_tiers enum."
+  - name: fallback_order
+    type: "list[str]"
+    description: "Ordered fallback chain of tiers when primary choice fails or budget is exhausted. Empty = no fallback."
+
+optional_fields:
+  - name: local_failover_config
+    type: "object | null"
+    description: "Configuration for local_with_failover strategy: { max_retries_local: int, fallback_min_tier: str, cost_cap_fallback: float }"
+  - name: budget_impact
+    type: str
+    description: "How this strategy affects sprint budget: prioritize_local | minimize_cost | maximize_quality | balanced"
+  - name: trigger_conditions
+    type: "list[str]"
+    description: "Conditions that activate this strategy: task_type_in | tier_exceeded | budget_exhausted | operator_override"
+
+example:
+  policy: cheapest_adequate
+  description: "Select the lowest-cost model that meets the task's required intelligence tier. Default strategy for developer-tier tasks."
+  allowed_tiers:
+    - frontier
+    - powerful
+    - standard
+    - local
+    - economic
+  fallback_order:
+    - standard
+    - local
+    - economic
+  budget_impact: minimize_cost
+  trigger_conditions:
+    - task_type_in: [bug_fix, refactor, docs, boilerplate]
+    - default: true

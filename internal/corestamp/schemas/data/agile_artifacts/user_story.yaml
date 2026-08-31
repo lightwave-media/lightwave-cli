@@ -1,0 +1,210 @@
+_meta:
+  version: 1.4.0
+  schema_id: lightwave://schemas/data/agile_artifacts/user_story
+  title: User Story
+  description: 'User-facing slice with acceptance_criteria and an optional six-field
+    journey brief (person, trigger, wants, steps, dead_ends, feels_wrong_if). Required
+    parent of every Task. Status=''ready'' is the upstream gate for Task.is_ready().
+    Product-shipping work treats a missing brief as a stop, not a shortcut. Migrated
+    2026-05-25 from governance/agile/user_story.yaml (Phase 4 file #12) — Augusta example
+    replaced with v_core, Postgres-first language updated to local-first per ADR-0002,
+    createos/config dep dropped. v1.4.0 adds the journey-brief fields so the brief
+    is structured data rather than prose in a page body.'
+  generates:
+  - pydantic:UserStory
+  depends_on:
+  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/agile_artifacts/epic
+  table_kind: entity
+  table_name: user_stories
+status_enum: user_story_statuses
+priority_enum: user_story_priorities
+primary_key:
+  column: id
+  type: uuid
+natural_key:
+  column: slug
+  unique: true
+required_fields:
+- name: slug
+  type: str
+  description: URL-safe unique identifier; lowercase, hyphen-separated
+  pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+  storage: db
+- name: name
+  type: str
+  description: Story name
+  storage: db
+- name: description
+  type: str
+  description: Story description
+  storage: db
+- name: epic_ref
+  type: str
+  description: Slug of parent Epic
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/epic
+  fk_column: slug
+  indexed: true
+- name: domain
+  type: str
+  description: LifeDomain slug; validated against life_domains
+  storage: db
+- name: status
+  type: str
+  description: Lifecycle state; validated against user_story_statuses
+  storage: db
+  indexed: true
+- name: acceptance_criteria
+  type: list[AcceptanceCriterion]
+  description: 'Non-empty list; sub-schema: given (str), when (str), then (str). Pydantic enforces min_length=1.'
+  min_length: 1
+  storage: db
+  column_type: jsonb
+- name: priority
+  type: str
+  description: MoSCoW priority; validated against user_story_priorities (must_have/should_have/could_have/wont_have)
+  storage: db
+- name: user_type
+  type: str
+  description: Persona/user-type identifier
+  storage: db
+- name: created_at
+  type: datetime
+  description: ISO 8601 timestamp of record creation; auto-populated
+  storage: db
+- name: updated_at
+  type: datetime
+  description: ISO 8601 timestamp of last modification; auto-updated
+  storage: db
+optional_fields:
+- name: sprint_ref
+  type: str
+  description: Slug of containing Sprint (authoritative for sprint membership)
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/sprint
+  fk_column: slug
+  indexed: true
+- name: story_points
+  type: int
+  storage: db
+  description: Effort estimate in story points for planning purposes.
+- name: discovery_status
+  type: str
+  description: Validated against discovery_statuses
+  storage: db
+- name: current_interview_round
+  type: str
+  description: Validated against interview_rounds
+  storage: db
+- name: personas
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Persona slugs of the target users for this story.
+- name: user_flows
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Step-by-step user flows this story enables or modifies.
+- name: edge_cases
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Edge cases that must be handled in the story's acceptance criteria.
+- name: technical_constraints
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Technical constraints or non-functional requirements for the story.
+- name: rbac_requirements
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Role-based access control requirements for this story.
+- name: person
+  type: str
+  storage: db
+  description: Journey-brief who. Prose ("1st AD on a 4-day short"), not the user_type slug.
+- name: trigger
+  type: str
+  storage: db
+  description: Journey-brief event the person is reacting to — what starts this story.
+- name: wants
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Journey-brief outcomes the person wants from this story.
+- name: steps
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Journey-brief happy-path steps, screen by screen. Distinct from user_flows.
+- name: dead_ends
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Journey-brief named failure branches. A flow with none is unfinished.
+- name: feels_wrong_if
+  type: list[str]
+  storage: db
+  column_type: jsonb
+  description: Journey-brief subjective wrongness signals. Inventing these is product drift.
+- name: maturity_state
+  type: str
+  description: Agentic enrichment maturity (raw/enriching/blocked/ready)
+  storage: db
+- name: naming_review_passed
+  type: bool
+  description: 'Used by the Task Ready-state gate (prerequisite #8)'
+  storage: db
+relations:
+  parent: epic
+  parent_fk:
+    column: epic_ref
+    references: epics.slug
+    on_delete: CASCADE
+  children:
+  - task
+  - ddd
+  - implementation_plan
+sub_schemas:
+  AcceptanceCriterion:
+    given: str
+    when: str
+    then: str
+example:
+  slug: v-core-polls-ready-tasks
+  name: v_core polls Ready Tasks from local SQLite
+  description: As v_core, I want to read every Ready Task from the local SQLite index in <100ms so I can dispatch them without
+    polling Notion or round-tripping to cloud Postgres.
+  epic_ref: v-core-v1-ready-task-dispatch
+  domain: software-development
+  status: ready
+  acceptance_criteria:
+  - given: A Task with status='next_up' and is_ready()=True
+    when: v_core runs its poll loop
+    then: The Task appears in the dispatch queue within 1 poll cycle
+  - given: A Task with status='next_up' and is_ready()=False
+    when: v_core runs its poll loop
+    then: The Task is skipped with reasons logged to observability/dispatch.jsonl
+  priority: must_have
+  user_type: v_core
+  person: v_core dispatching Ready Tasks
+  trigger: A Task becomes is_ready()=True
+  wants:
+  - See every Ready Task without polling Notion
+  - Dispatch within one poll cycle
+  steps:
+  - Polls local SQLite index
+  - Filters is_ready()=True
+  - Enqueues for dispatch
+  dead_ends:
+  - SQLite index missing
+  - Task is next_up but is_ready()=False
+  feels_wrong_if:
+  - I have to round-trip to Notion to know what is ready
+  - Unready tasks silently appear in the dispatch queue
+  naming_review_passed: true
+  created_at: '2026-06-24T12:00:00Z'
+  updated_at: '2026-06-24T12:00:00Z'

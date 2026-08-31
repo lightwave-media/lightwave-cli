@@ -1,0 +1,64 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/audit_event
+  title: Audit Event Base
+  description: 'Base audit row shape for CreateOS command-plane emitters. Gateway,
+
+    runbook, auth inbox, and shell emitters extend with surface-specific fields.
+
+    correlation_id joins control → command → audit (ADR-0037).
+
+    '
+  generates:
+  - pydantic:AuditEvent
+  depends_on:
+  - lightwave://schemas/data/enums/rigor_tiers
+required_fields:
+- name: ts
+  type: str
+  description: ISO 8601 timestamp of the audited event.
+- name: surface
+  type: str
+  description: agent_gateway | auth_inbox | runbook | shell | validity | compliance_fitness
+- name: agent_id
+  type: str
+  description: Agent or human actor id; human for Touch ID events
+- name: action
+  type: str
+  description: The audited action or operation that occurred.
+- name: decision
+  type: str
+  description: allow | deny | pause | complete
+- name: correlation_id
+  type: str
+  description: Correlation ID linking related audit events in a trace.
+optional_fields:
+- name: rigor_tier
+  type: str
+  description: Rigor tier of the audited action (advisory, enforced, blocked).
+- name: blueprint_id
+  type: str
+  description: Blueprint ID associated with the audited event.
+- name: runbook_id
+  type: str
+  description: Runbook ID associated with the audited event.
+- name: outcome
+  type: str
+  description: Outcome of the audited event (allow, deny, skip).
+- name: riverbank_tier
+  type: str
+  description: Alias for rigor_tier in riverbank test fixtures
+- name: metadata
+  type: map[str, str]
+  description: Structured metadata payload attached to the audit record.
+example:
+  ts: '2026-06-20T12:00:00Z'
+  surface: runbook
+  agent_id: v_core
+  action: step_complete
+  decision: complete
+  correlation_id: corr-2026-06-20-001
+  rigor_tier: A
+  blueprint_id: client-deliverable-pack
+  runbook_id: client-deliverable-pack
+  outcome: deliverable_packaged

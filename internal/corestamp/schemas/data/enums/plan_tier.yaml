@@ -1,0 +1,34 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/plan_tier"
+  title: "Plan File Tier Enum"
+  description: |
+    Canonical plan file locations per plan_file.yaml meta schema.
+    Each tier has a deterministic filename grammar (planned R-41 conformance tests).
+  generates:
+    - "pydantic:PlanTier"
+  depends_on: []
+
+name: plan_tier
+description: "Which filesystem tier owns a plan document"
+default: operator_spec
+closed: true
+options:
+  - value: cursor_session
+    label: "Cursor session"
+    description: "~/.cursor/plans/{slug}.plan.md"
+  - value: claude_session
+    label: "Claude session"
+    description: "~/.claude/plans/{YYYY-MM-DD}-{slug}.md"
+  - value: repo_spec
+    label: "Repo spec"
+    description: "{repo}/spec/implementation_plan/{NNNN}-{slug}.md"
+  - value: operator_spec
+    label: "Operator spec"
+    description: "~/.lightwave/specs/implementation_plan/{slug}.md"
+  - value: archive
+    label: "Archive"
+    description: "~/.lightwave/brain/plans-archive/{YYYY-MM-DD}-{slug}/"
+  - value: validity_contract
+    label: "Validity contract"
+    description: "~/.lightwave/config/contracts/{YYYY-MM-DD}-{slug}.yaml"

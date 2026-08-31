@@ -1,0 +1,77 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/data/meta/worktree_home_policy"
+  title: "Worktree home directory policy"
+  description: |
+    Company-wide layout for agent git worktrees (ADR-0037, CORE-0047). Consumed
+    by lw git audit, lw worktree create, lw release propagate, session_spawn,
+    and the Claude Code WorktreeCreate/WorktreeRemove hooks.
+
+    v1.1.0 (CORE-0047): .claude/worktrees is legacy AND forbidden — the harness
+    is redirected to the canonical root via its WorktreeCreate hook, so nothing
+    creates there anymore; existing trees drain under legacy_worktree_layout
+    findings. Repo-relative entries (no leading ~ or /) resolve against each
+    discovered workspace repo root.
+  depends_on:
+    - "lightwave://schemas/data/meta/homedir"
+    - "lightwave://schemas/data/meta/local_setup_profile"
+
+required_fields:
+  - name: canonical_root
+    type: str
+    description: "Canonical worktree mount. Repo-scoped per worktree_policy.yaml: .worktrees (relative to repo root). NOT a ~/.lightwave/ dir."
+  - name: path_layout
+    type: str
+    description: "Relative layout under canonical_root. Locked: {YYYY-MM-DD}-{ticket-slug} per worktree_policy.yaml."
+  - name: marker_file
+    type: str
+    description: "Required metadata file at worktree root (.lw-worktree.yaml)."
+  - name: supplemental_roots
+    type: "list[SupplementalWorktreeRoot]"
+    description: |
+      Sub-schema SupplementalWorktreeRoot: path (str), owner (str), audit_only (bool).
+  - name: forbidden_roots
+    type: "list[str]"
+    description: "Roots that MUST NOT contain linked worktrees."
+  - name: enforcement_surfaces
+    type: "list[str]"
+    description: "Tools that MUST evaluate this policy."
+
+optional_fields:
+  - name: legacy_roots
+    type: "list[str]"
+    description: "Deprecated paths; audit emits legacy_worktree_layout until migrated."
+  - name: branch_prefixes
+    type: "list[str]"
+    description: "Allowed branch prefixes inside worktrees."
+
+example:
+  canonical_root: ".worktrees"
+  path_layout: "{YYYY-MM-DD}-{ticket-slug}"
+  marker_file: ".lw-worktree.yaml"
+  supplemental_roots:
+    - path: "~/.cursor/worktrees"
+      owner: cursor
+      audit_only: true
+  forbidden_roots:
+    - "~/.lightwave/worktrees"
+    - "~/.lightwave/.worktrees"
+    - "~/dev/.worktrees"
+    - ".claude/worktrees"
+  legacy_roots:
+    - "~/.lightwave/worktrees"
+    - "~/.lightwave/.worktrees"
+    - ".claude/worktrees"
+  branch_prefixes:
+    - "feature/"
+    - "fix/"
+    - "hotfix/"
+  enforcement_surfaces:
+    - lw git audit
+    - lw git doctor
+    - lw worktree create
+    - lw release propagate
+    - session_spawn
+    - task_done
+    - WorktreeCreate hook
+    - WorktreeRemove hook

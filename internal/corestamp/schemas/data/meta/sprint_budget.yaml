@@ -1,0 +1,115 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/sprint_budget"
+  title: "Sprint Budget"
+  description: |
+    Per-sprint token and cost budget with tier allocation. Generated at
+    sprint planning time by v_scrum-manager, consumed incrementally by
+    the pre-tool-use cost-track hook, reconciled at sprint end by
+    stop-cost-aggregate.
+
+    Nests within policy/compliance/llm_budgets.yaml (the org-wide budget
+    policy). The sprint budget is an INSTANCE of that policy for one
+    sprint: it allocates from the org daily/monthly caps and applies
+    the escalation rules per tier.
+
+    Token allocation is computed from USD allocation at sprint creation
+    prices (price_snapshot_date). Two cost figures per record:
+      - cost_snapshot_usd: cost at sprint-creation prices (budget compliance)
+      - cost_real_usd: cost at current prices (true accounting)
+  generates:
+    - "pydantic:SprintBudget"
+  depends_on:
+    - "lightwave://schemas/data/agile_artifacts/sprint"
+    - "lightwave://schemas/data/enums/model_tiers"
+    - "lightwave://schemas/policy/compliance/llm_budgets"
+
+required_fields:
+  - name: sprint_ref
+    type: str
+    description: "Slug of the parent sprint from sprint.yaml. Null for ad-hoc budgets (research, emergency)."
+  - name: _schema_version
+    type: int
+    description: "Schema version for evolutionary compatibility. Locked at 1."
+  - name: total_budget_usd
+    type: float
+    description: "Total budget in USD for this sprint. Should comply with llm_budgets.yaml monthly_cap / 4 (per 2-week sprint)."
+  - name: cost_unit
+    type: str
+    description: "Budget denomination: tokens | usd_cents. Tokens recommended (model-independent)."
+  - name: allocation
+    type: "object"
+    description: "Per-tier allocation. Keys are model_tier values. Each allocation has: pct (int, percentage), tokens (int, computed from usd + prices_at_snapshot), usd (float, target spend)."
+  - name: price_snapshot_date
+    type: date
+    description: "When model prices were frozen for this sprint. Token-allocation computation uses this date's prices."
+  - name: rollover_policy
+    type: str
+    description: "What happens to unspent token allocation: carry_forward | forfeit | redistribute_to_lower_tiers"
+  - name: overage_policy
+    type: str
+    description: "What happens when budget exceeded: warn_borrow_from_next | deny_above_100pct | downgrade_to_cheaper_tier | human_escalation"
+
+optional_fields:
+  - name: created_at
+    type: date
+    description: "When this budget was created."
+  - name: created_by
+    type: str
+    description: "Persona slug that created this budget (usually v_scrum-manager)."
+  - name: version
+    type: int
+    description: "Increments on allocation changes mid-sprint. Useful for audit."
+  - name: per_agent_caps
+    type: "object | null"
+    description: "Per-agent limits within each tier to prevent starvation. Format: { tier_name: { max_pct_of_tier: int, max_usd: float } }"
+  - name: rollover_max_pct
+    type: int
+    description: "Maximum percentage of unspent allocation that carries forward. Default 150 (can't double next sprint)."
+  - name: buffer_allocation
+    type: "object | null"
+    description: "Reserve for out-of-sprint work (emergencies, research). { pct: int, tokens: int, usd: float }"
+  - name: spent_tokens
+    type: "object | null"
+    description: "Aggregated spend at last reconciliation: { tier_name: { tokens: int, cost_snapshot_usd: float, cost_real_usd: float } }. Updated by stop.ts reconciliation."
+  - name: note
+    type: str
+    description: "Human-readable notes about this budget (carry-over from prior, special circumstances, overrides)."
+
+example:
+  sprint_ref: "sprint-2026-07"
+  _schema_version: 1
+  total_budget_usd: 50.00
+  cost_unit: usd_cents
+  allocation:
+    frontier:
+      pct: 10
+      tokens: 500000
+      usd: 5.00
+    powerful:
+      pct: 30
+      tokens: 3000000
+      usd: 15.00
+    standard:
+      pct: 40
+      tokens: 6000000
+      usd: 20.00
+    local:
+      pct: 20
+      tokens: 10000000
+      usd: 0.00
+  price_snapshot_date: "2026-07-01"
+  rollover_policy: carry_forward
+  overage_policy: warn_borrow_from_next
+  created_at: "2026-07-01"
+  created_by: v_scrum-manager
+  version: 1
+  per_agent_caps:
+    powerful:
+      max_pct_of_tier: 50
+      max_usd: 7.50
+  rollover_max_pct: 150
+  buffer_allocation:
+    pct: 5
+    tokens: 500000
+    usd: 2.50

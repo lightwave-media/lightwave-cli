@@ -1,0 +1,76 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/local_git_audit_report"
+  title: "Local Git Audit Report"
+  description: |
+    Aggregate report from `lw git audit`. Written to
+    ~/.lightwave/reports/git-audit-<timestamp>.json and emitted on stdout
+    with `--json`. The local validation network consumes this shape.
+  generates:
+    - "go:LocalGitAuditReport"
+    - "pydantic:LocalGitAuditReport"
+  depends_on:
+    - "lightwave://schemas/data/meta/local_git_topology"
+    - "lightwave://schemas/data/enums/diagnostic_severities"
+
+required_fields:
+  - name: scanned_roots
+    type: "list[str]"
+    description: "Workspace roots walked during discovery (from local_setup_profile)."
+  - name: scan_time_iso
+    type: str
+    description: "UTC ISO-8601 timestamp when the scan completed."
+  - name: machine_id
+    type: str
+    description: "Hostname or operator-defined machine slug."
+  - name: repos
+    type: "list[LocalGitTopology]"
+    description: "One topology node per discovered checkout."
+  - name: summary
+    type: "object[AuditSummary]"
+    description: |
+      Sub-schema AuditSummary: total_repos (int), total_worktrees (int),
+      strict_repos (int), advisory_repos (int), errors (int), warnings (int), info (int).
+  - name: recommended_actions
+    type: "list[RecommendedAction]"
+    description: |
+      Sub-schema RecommendedAction: id (str), description (str), safe_to_auto_fix (bool),
+      dry_run_command (str), apply_command (str|null).
+
+optional_fields:
+  - name: profile_id
+    type: str
+    description: "local_setup_profile.id that governed this audit."
+  - name: fix_mode
+    type: str
+    description: "Enum: none | dry-run | apply. Reflects --fix flag state."
+
+example:
+  scanned_roots:
+    - "/Users/joelschaeffer/dev"
+  scan_time_iso: "2026-06-18T14:30:00Z"
+  machine_id: "joels-macbook"
+  profile_id: "joelschaeffer-default"
+  fix_mode: "dry-run"
+  repos:
+    - path: "/Users/joelschaeffer/dev/lightwave-core"
+      git_dir: "/Users/joelschaeffer/dev/lightwave-core/.git"
+      common_dir: "/Users/joelschaeffer/dev/lightwave-core/.git"
+      is_worktree: false
+      branch: "main"
+      repo_infra_tier: "strict"
+      violations: []
+  summary:
+    total_repos: 1
+    total_worktrees: 1
+    strict_repos: 1
+    advisory_repos: 0
+    errors: 0
+    warnings: 0
+    info: 0
+  recommended_actions:
+    - id: "prune-stale-worktrees"
+      description: "Run git worktree prune on repos with stale registrations"
+      safe_to_auto_fix: true
+      dry_run_command: "lw git audit --fix --dry-run"
+      apply_command: "lw git audit --fix --apply"

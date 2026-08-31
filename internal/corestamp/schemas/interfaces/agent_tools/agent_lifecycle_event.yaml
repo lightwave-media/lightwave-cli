@@ -1,0 +1,49 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/interfaces/agent_tools/agent_lifecycle_event
+  title: Agent Lifecycle Event — Protocol
+  description: 'Lifecycle protocol events: create, activate, suspend, archive, rename,
+
+    session refresh, session revoke. Each event is a database record with
+
+    agent_id, timestamp, triggered_by, and state change details.
+
+    '
+required_fields:
+- name: agent_id
+  type: str
+  description: Identifier of the agent emitting the lifecycle event.
+- name: event
+  type: enum
+  options:
+  - created
+  - activated
+  - suspended
+  - archived
+  - renamed
+  - session_refreshed
+  - session_revoked
+  description: Lifecycle event name (e.g. spawn, stop, error, complete).
+- name: timestamp
+  type: str
+  description: ISO 8601 timestamp when the lifecycle event was emitted.
+- name: triggered_by
+  type: str
+  description: agent_id, 'system', or 'operator'
+optional_fields:
+- name: previous_state
+  type: str
+  description: Agent state before the lifecycle transition.
+- name: new_state
+  type: str
+  description: Agent state after the lifecycle transition.
+- name: reason
+  type: str
+  description: Human-readable reason for the lifecycle state change.
+example:
+  agent_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  event: activated
+  timestamp: '2026-06-23T10:00:00Z'
+  triggered_by: system
+  previous_state: provisioning
+  new_state: active

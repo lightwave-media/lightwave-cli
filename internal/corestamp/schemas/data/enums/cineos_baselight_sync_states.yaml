@@ -1,0 +1,35 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_baselight_sync_states"
+  title: "CineOS Baselight Sync State Enum"
+  description: |
+    State of a baselight_link (baselight_link.sync_state). CLOSED. needs_upgrade
+    is first-class: Baselight refuses to open scenes written by an older build
+    until upgraded — the study established this must be a state, not an error.
+  generates:
+    - "go:CineBaselightSyncState"
+    - "typescript:CineBaselightSyncState"
+    - "zig:CineBaselightSyncState"
+    - "json_schema:cineos_baselight_sync_states"
+  depends_on: []
+
+name: cineos_baselight_sync_states
+description: "Baselight link lifecycle states"
+default: unlinked
+closed: true
+options:
+  - value: unlinked
+    label: "Unlinked"
+    description: "No Baselight counterpart yet"
+  - value: linked
+    label: "Linked"
+    description: "Counterpart exists; last sync succeeded"
+  - value: stale
+    label: "Stale"
+    description: "Counterpart changed since last sync (pull recommended)"
+  - value: needs_upgrade
+    label: "Needs upgrade"
+    description: "Baselight scene written by an older build; open in Baselight to upgrade before syncing"
+  - value: error
+    label: "Error"
+    description: "Last sync failed; detail in notes"

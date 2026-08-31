@@ -1,0 +1,31 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/discovery_statuses
+  title: Discovery Status Enum
+  description: 'Discovery process statuses for UserStory entities (used in
+
+    UserStory.discovery_status field). Closed enum.
+
+    Extracted 2026-05-25 from legacy products/createos/config.yaml.
+
+    '
+  generates:
+  - pydantic:DiscoveryStatus
+  depends_on: []
+name: discovery_statuses
+description: Discovery process statuses for UserStory entities
+default: not_started
+closed: true
+options:
+- value: not_started
+  label: Not Started
+  description: Not Started option.
+- value: in_progress
+  label: In Progress
+  description: In Progress option.
+- value: completed
+  label: Completed
+  description: Completed option.
+- value: blocked
+  label: Blocked
+  description: Blocked option.

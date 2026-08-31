@@ -1,0 +1,76 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/lightwave-settings"
+  title: ".lightwave/settings.yaml shape"
+  description: |
+    Per-repo LightWave metadata. Declares which agents work in this repo,
+    which integration surfaces are wired (AGENTS.md vs CLAUDE.md, CI runner,
+    language-specific hooks), and which downstream consumers depend on the
+    repo. Lives at <repo>/.lightwave/settings.yaml.
+
+    The settings file is the per-repo MANIFEST that says "I'm a LightWave
+    repo, here's how I'm wired up." `lw repo conform <path>` reads this
+    to validate the repo matches the canonical infra (see
+    lightwave://schemas/policy/governance/repo-infra).
+  generates:
+    - "pydantic:LightwaveSettings"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: repo_name
+    type: str
+    description: "Canonical repo slug (matches the GitHub repo name)."
+  - name: repo_kind
+    type: str
+    description: "What kind of LightWave repo: package | binary | workspace | docs."
+  - name: languages
+    type: "list[str]"
+    description: "Primary language(s): rust, python, typescript, go, none (for YAML-only stamp packages)."
+  - name: agents
+    type: "dict[str, str]"
+    description: "Agent integration declaration. Keys: primary (single AI), also (comma-sep list), agent_doc (canonical instruction file, typically AGENTS.md)."
+  - name: ci
+    type: "dict[str, str]"
+    description: "CI surface declaration. Keys: local (path to ./dev/ci.sh or similar), github (path to .github/workflows/*-ci.yml)."
+
+optional_fields:
+  - name: consumers
+    type: "list[str]"
+    description: |
+      Downstream LightWave repos that consume this one. Use slugs only:
+      lightwave-platform, lightwave-cli, lightwave-sys, lightwave-ui.
+  - name: depends_on
+    type: "list[str]"
+    description: "LightWave repos this one depends on (e.g. lightwave-core)."
+  - name: release
+    type: "dict[str, str]"
+    description: "Release surface: registry (PyPI, npm, crates, git-tag), package_name, current_version."
+  - name: docs_kind
+    type: str
+    description: "lean | mdbook | none — which docs/ layout this repo follows."
+
+example:
+  repo_name: "lightwave-core"
+  repo_kind: "package"
+  languages: ["none"]
+  agents:
+    primary: "claude-code"
+    also: "pi, codex"
+    agent_doc: "AGENTS.md"
+  ci:
+    local: "./dev/ci.sh"
+    github: ".github/workflows/ci.yml"
+  consumers:
+    - "lightwave-platform"
+    - "lightwave-cli"
+    - "lightwave-sys"
+    - "lightwave-ui"
+  depends_on: []
+  release:
+    registry: "PyPI planned (Wave 1 Python) + git-tag active (Wave 1 Go)"
+    package_name: "lightwave-core"
+    current_version: "0.5.0"
+  docs_kind: "lean"

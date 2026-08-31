@@ -1,0 +1,75 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/interview_export
+  title: Interview Export Bundle
+  description: 'Typed export from living-interview or kickoff interview. Dual job:
+
+    agent enrichment payload + user_instance materialization deltas (ADR-0041).
+
+    '
+  generates:
+  - pydantic:InterviewExport
+  depends_on:
+  - lightwave://schemas/data/meta/kickoff_interview
+  - lightwave://schemas/data/meta/user_instance
+  - lightwave://schemas/data/meta/scaffold_manifest
+required_fields:
+- name: session_id
+  type: str
+  description: Session ID of the interview that was exported.
+- name: exported_at
+  type: str
+  description: ISO 8601 timestamp when the export was generated.
+- name: interview_transcript_ref
+  type: str
+  description: File path or URI to the raw interview transcript.
+- name: operator_handle
+  type: str
+  description: Handle of the human operator who conducted the interview.
+- name: status
+  type: str
+  description: draft | approved | materialized
+optional_fields:
+- name: agent_enrichment
+  type: object<AgentEnrichment>
+  description: Agent-generated enrichment data appended after the interview.
+- name: instance_deltas
+  type: object<UserInstanceDelta>
+  description: Instance delta records derived from the interview.
+- name: scaffold_manifest_ref
+  type: str
+  description: Path to the scaffold manifest generated from this export.
+- name: uli_terms_added
+  type: list[str]
+  description: New ULI terms introduced during this interview.
+sub_schemas:
+  AgentEnrichment:
+    vocabulary:
+      type: list[str]
+    vendor_names:
+      type: list[str]
+    rigor_preferences:
+      type: map[str, str]
+    decisions:
+      type: list[str]
+  UserInstanceDelta:
+    enable_domains:
+      type: list[str]
+    integrations:
+      type: map[str, str]
+    vendor_registry:
+      type: list[str]
+example:
+  session_id: 2026-06-20-createos
+  exported_at: '2026-06-20T12:00:00Z'
+  interview_transcript_ref: .tasks/2026-06-20-createos/kickoff/interview_transcript.yaml
+  operator_handle: joel
+  status: approved
+  agent_enrichment:
+    vocabulary:
+    - Seed
+    - CraftBlock
+    - IdealState
+    decisions:
+    - voice-first P0
+    - CineOS first App Store app

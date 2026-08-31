@@ -3,7 +3,6 @@ package sst
 import (
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"gopkg.in/yaml.v3"
@@ -18,13 +17,6 @@ func CLIConfigPath(lightwaveRoot string) string {
 	)
 }
 
-func cliSchemaDir(lightwaveRoot string) string {
-	return filepath.Join(
-		lightwaveRoot,
-		"lightwave-core", "src", "schemas", "interfaces", "cli",
-	)
-}
-
 type domainFragment struct {
 	Domain      string       `yaml:"domain"`
 	Description string       `yaml:"description"`
@@ -35,11 +27,9 @@ type domainFragment struct {
 // LoadCLIConfig reads commands.yaml, merges domain fragments (e.g. voice_domain.yaml, release_domain.yaml),
 // and returns the validated CLIConfig.
 func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
-	path := CLIConfigPath(lightwaveRoot)
-
-	data, err := os.ReadFile(path)
+	data, err := SchemaBytes(lightwaveRoot, "interfaces/cli/commands")
 	if err != nil {
-		return nil, fmt.Errorf("read CLI config %s: %w", path, err)
+		return nil, fmt.Errorf("read CLI config: %w", err)
 	}
 
 	var raw rawCLIConfig
@@ -52,7 +42,7 @@ func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 		return nil, fmt.Errorf("decode CLI config: %w", err)
 	}
 
-	if err := mergeDomainFragments(cfg, cliSchemaDir(lightwaveRoot)); err != nil {
+	if err := mergeDomainFragments(cfg, lightwaveRoot); err != nil {
 		return nil, err
 	}
 
@@ -63,19 +53,21 @@ func LoadCLIConfig(lightwaveRoot string) (*CLIConfig, error) {
 	return cfg, nil
 }
 
-func mergeDomainFragments(cfg *CLIConfig, dir string) error {
-	fragments := []string{"voice_domain.yaml", "release_domain.yaml"}
+// mergeDomainFragments folds the sibling per-domain files into cfg.
+//
+// These go through SchemaBytes like commands.yaml does. Reading them straight
+// from disk was the bug that made `release` and `voice` vanish whenever the
+// stamp came from the embedded snapshot: the main file resolved, the fragments
+// did not, and the surface silently lost two domains.
+func mergeDomainFragments(cfg *CLIConfig, lightwaveRoot string) error {
+	fragments := []string{"voice_domain", "release_domain"}
 
 	for _, name := range fragments {
-		path := filepath.Join(dir, name)
-
-		data, err := os.ReadFile(path)
+		data, err := SchemaBytes(lightwaveRoot, "interfaces/cli/"+name)
 		if err != nil {
-			if os.IsNotExist(err) {
-				continue
-			}
-
-			return fmt.Errorf("read domain fragment %s: %w", path, err)
+			// A fragment is optional: absent from both the checkout and the
+			// snapshot simply means that domain is not published yet.
+			continue
 		}
 
 		var frag domainFragment

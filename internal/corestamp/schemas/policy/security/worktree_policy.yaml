@@ -1,0 +1,183 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/policy/security/worktree_policy"
+  title: "Worktree Lifecycle Policy — creation, flip, cleanup, main-lock"
+  description: >
+    Governance contract for agent worktree operations. Defines which persona
+    tiers may create/remove/flip worktrees, mandatory naming conventions,
+    auto-cleanup on session close, main-branch write lock, and self-healing
+    maintenance integration with the release pipeline.
+
+    Rooted in the hard-learned lesson of 2026-06-22 — 60+ stale worktrees
+    scattered across 5 directory schemes, 33 [gone] branches, and agent
+    sessions whose mutations leaked into the canonical checkout. This policy
+    makes the cleanup automatic and the enforcement structural.
+  generates:
+    - "pydantic:WorktreePolicy"
+  depends_on:
+    - "lightwave://schemas/data/enums/persona_tiers"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'worktree-lifecycle-v1')."
+  - name: repo_structure
+    type: "RepoStructureRef"
+    description: >
+      Where worktrees live and how they're named. All repos under ~/dev
+      MUST conform.
+  - name: persona_permissions
+    type: "PersonaPermissionsRef"
+    description: >
+      Maps persona tiers to worktree capabilities (create, remove, flip, write).
+      Developer-tier personas create and mutate; all others read only.
+  - name: main_lock
+    type: "MainLockRef"
+    description: >
+      Multi-layer main branch write protection. No persona tier may commit
+      directly to main or push to origin/main.
+  - name: enforcement
+    type: "EnforcementRef"
+    description: >
+      Where and how the policy is enforced: hooks, bash-guard, maintenance cron.
+  - name: status
+    type: str
+    description: "Lifecycle (conforms to document_statuses)."
+
+optional_fields:
+  - name: rationale
+    type: str
+    description: "Why the policy is shaped this way."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "worktree-lifecycle-v1"
+  repo_structure:
+    worktree_root: ".worktrees/"
+    naming: "<YYYY-MM-DD>-<ticket-slug>"
+    max_age_hours: 72
+    claim:
+      marker_file: ".lw-worktree.yaml"
+      fields: [session_id, agent_id, pid, heartbeat_at, holders, stale_after_minutes]
+      stale_after_minutes: 30
+      lock_on_claim: true
+      rules:
+        - "A worktree with a live claim (heartbeat within stale_after_minutes) is single-writer; a second session may join only by appending to holders."
+        - "A stale heartbeat auto-releases the claim — a crashed session cannot wedge a tree."
+        - "Reaping (max_age_hours) MUST run the save_gate before removal: dirty tree → commit to wip/<name> first. Removal without the save_gate is a policy violation, not an option."
+  persona_permissions:
+    developer:
+      can_create: true
+      can_remove: true
+      can_flip: true
+      can_write: true
+      auto_cleanup: true
+      persona_suffixes: ["-developer"]
+      persona_ids:
+        - "v_core"
+        - "v_scrum-manager"
+        - "v_operator-mirror"
+    reader:
+      can_create: false
+      can_remove: false
+      can_flip: false
+      can_write: false
+      auto_cleanup: false
+      persona_suffixes: ["-engineer"]
+      persona_ids:
+        - "v_cto"
+        - "v_qa-engineer"
+        - "v_architect"
+        - "v_release-engineer"
+        - "v_lightwave-ai-engineer"
+  main_lock:
+    enforce: true
+    layers:
+      - layer: pre_commit
+        mechanism: "refs/heads/main → reject commit"
+        fail_message: "Commits to main are blocked. Create a feature branch off origin/main."
+      - layer: bash_guard
+        mechanism: "git push origin main → deny"
+        fail_message: "Direct push to origin/main is blocked. Use PR workflow."
+      - layer: github_protection
+        mechanism: "branch protection rules require PR + approved review + status checks"
+      - layer: pre_push
+        mechanism: "push refs/heads/main → reject at push time"
+  enforcement:
+    naming_validation:
+      hook: pre_commit
+      regex: '^.worktrees/\\d{4}-\\d{2}-\\d{2}-[a-z0-9-]+$$'
+      fail_message: "Worktree name must match .worktrees/YYYY-MM-DD-<ticket-slug>"
+    session_lifecycle:
+      # Realized by the Claude Code harness worktree hooks (CORE-0047), which
+      # take precedence over native worktree creation for --worktree sessions,
+      # --spawn=worktree, and Agent(isolation:"worktree") alike. Contract:
+      # interfaces/hooks/worktree_lifecycle_hook.yaml.
+      worktree_create:
+        hook: WorktreeCreate
+        developer:
+          - "git worktree add <repo-root>/.worktrees/<YYYY-MM-DD>-<slug> -b <branch> origin/main"
+          - "Write .lw-worktree.yaml marker (claim block) at birth"
+          - "git worktree lock <path>"
+          - "Echo absolute worktree path to stdout (harness consumes it)"
+        reader:
+          - "Set cwd to repo root (read-only)"
+          - "Export LW_READONLY=1"
+      worktree_remove:
+        hook: WorktreeRemove
+        developer:
+          - "save_gate: if dirty → git add -u && git commit to wip/<name> (NEVER add -A; untracked junk is not session work)"
+          - "Release claim in .lw-worktree.yaml; git worktree unlock"
+          - "git worktree remove .worktrees/<name>"
+          - "git worktree prune"
+          - "Append event to ~/.lightwave/observability/worktree_maintenance.jsonl"
+        reader:
+          - "No-op (never wrote anything)"
+    maintenance:
+      trigger: "cron (hourly) + WorktreeRemove hook + release pipeline post-ship"
+      operations:
+        - op: git_worktree_prune
+          description: "Remove stale git worktree metadata"
+        - op: delete_gone_branches
+          description: "Delete local branches whose upstream is [gone]"
+        - op: remove_expired_worktrees
+          description: "Remove worktrees older than max_age_hours"
+          save_gate: "If dirty → git add -u && commit to wip/<name> before removing (NEVER add -A)"
+          audit_log: "~/.lightwave/observability/worktree_maintenance.jsonl"
+    release_pipeline_integration:
+      pre_ship:
+        gate: "Verify no .worktrees/ with uncommitted changes"
+        action_on_dirty: "Block release (dirty = unfinished work)"
+      post_ship:
+        action: "Run full maintenance pass (prune + gone branches + expired worktrees)"
+        signal: "Broadcast main-advanced event so agents rebase/re-create their worktrees"
+  rationale: >
+    Five directory schemes (~/.codex, ~/dev/.worktrees, ~/dev-worktrees,
+    ~/.claude/worktrees, /private/tmp) produced 60+ orphaned worktrees that
+    surfaced only when `git worktree list` was manually run. Repo-scoped
+    `.worktrees/` fixes discovery (one `ls`), ownership (dies with the repo),
+    and tooling (no collisions across Codex/Claude/custom). Naming convention
+    makes sessions self-documenting and sortable.
+
+    Main branch lock at three layers (pre-commit, bash-guard, GitHub) means
+    no persona tier — not even developer — can bypass PR workflow. The lock
+    is structural, not a convention.
+
+    Auto-cleanup on session close eliminates the manual pruning that
+    accumulated 60+ stale worktrees. The maintenance cron is defense in
+    depth for sessions that crash without running the remove hook.
+
+    v1.1.0 (2026-08-09, CORE-0047): the 2026-08-08 fleet audit found 27
+    worktrees across 8 repos under two competing roots, 23/26 naming
+    violations, zero markers, zero locks, and nine trees 40+ days past the
+    72h max — v1.0.0 was stamped but unenforced. The claim block makes
+    multi-agent coordination explicit (the audit caught two agents in one
+    object store mid-scan), the save_gate is now normative, and the
+    session lifecycle is realized by the harness WorktreeCreate/
+    WorktreeRemove hooks so conformance requires zero agent discipline.
+  status: "active"

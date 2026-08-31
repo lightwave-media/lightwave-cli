@@ -1,0 +1,88 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/notification"
+  title: "Forgejo Notification — 1:1 SST Mirror"
+  description: |
+    1:1 mirror of Forgejo's notification system.
+    Source: swagger.v1.json #/paths/~1notifications
+
+    Connects Forgejo's notification system to Lightwave's event bus (nullwatch).
+    Agents receive notifications for assigned tasks, review requests, CI
+    failures — all routed through the same thread model.
+
+  source_ref: "forgejo://swagger.v1.json#/paths/~1notifications"
+  table_kind: entity
+  table_name: notification_threads
+  generates:
+    - "go:ForgejoNotification"
+
+primary_key:
+  column: id
+  type: uuid
+
+required_fields:
+  - name: user_ref
+    type: str
+    description: "Username this notification is for"
+    storage: db
+    indexed: true
+  - name: subject_type
+    type: str
+    description: "Issue | Pull | Repository | Commit"
+    storage: db
+  - name: subject_title
+    type: str
+    storage: db
+  - name: subject_url
+    type: str
+    storage: db
+  - name: unread
+    type: bool
+    storage: db
+    indexed: true
+  - name: pinned
+    type: bool
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: repo_ref
+    type: str
+    description: "Repository full_name"
+    storage: db
+    indexed: true
+  - name: latest_comment_url
+    type: str
+    storage: db
+  - name: subject_state
+    type: str
+    description: "State of the subject (open/closed/merged)"
+    storage: db
+
+sub_schemas:
+  NotificationCount:
+    new: int
+
+  NotificationSubject:
+    title: str
+    url: str
+    latest_comment_url: str
+    state: str
+    type: str
+
+example:
+  user_ref: "v-platform-developer"
+  subject_type: "Issue"
+  subject_title: "Implement agent runner registration API"
+  subject_url: "http://localhost:3600/lightwave-media/lightwave-platform/issues/42"
+  unread: true
+  pinned: false
+  repo_ref: "lightwave-media/lightwave-platform"
+  created_at: "2026-06-25T00:00:00Z"
+  updated_at: "2026-06-25T00:00:00Z"

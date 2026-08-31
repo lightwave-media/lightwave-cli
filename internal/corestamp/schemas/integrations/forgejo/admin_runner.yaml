@@ -1,0 +1,111 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/admin_runner"
+  title: "Forgejo Admin Runner Management — 1:1 SST Mirror"
+  description: |
+    1:1 mirror of Forgejo's admin runner management API — global + org + repo level.
+    Source: swagger.v1.json #/paths/~1admin~1actions~1runners,
+                             #/paths/~1orgs~1{org}~1actions~1runners,
+                             #/paths/~1repos~1{owner}~1{repo}~1actions~1runners
+
+    Runners at three scopes: instance (admin), organization, and repository.
+    Each scope represents a different trust boundary. Instance runners can
+    execute any job. Org runners are scoped to the org. Repo runners to a
+    single repository. Runners have labels for job matching.
+
+  source_ref: "forgejo://swagger.v1.json#/paths/~1admin~1actions~1runners"
+  table_kind: entity
+  table_name: action_runners
+  generates:
+    - "go:ForgejoActionRunner"
+  depends_on:
+    - "lightwave://schemas/data/enums/runner_statuses"
+
+status_enum: "runner_statuses"
+
+primary_key:
+  column: id
+  type: uuid
+
+required_fields:
+  - name: uuid
+    type: str
+    description: "Unique runner UUID"
+    storage: db
+    indexed: true
+  - name: name
+    type: str
+    storage: db
+  - name: status
+    type: str
+    description: "offline | idle | active"
+    storage: db
+    indexed: true
+  - name: version
+    type: str
+    description: "Self-reported Forgejo Runner version"
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: description
+    type: str
+    storage: db
+  - name: labels
+    type: "list[str]"
+    description: "Labels for job matching (runs-on)"
+    storage: db
+    column_type: jsonb
+  - name: owner_id
+    type: uuid
+    description: "User or org ID. 0 = instance-level"
+    storage: db
+    indexed: true
+  - name: repo_id
+    type: uuid
+    description: "Repo ID. 0 = not repo-scoped"
+    storage: db
+    indexed: true
+  - name: ephemeral
+    type: bool
+    storage: db
+
+sub_schemas:
+  RegisterRunnerOptions:
+    name: str
+    description: str
+    ephemeral: bool
+
+  RegisterRunnerResponse:
+    id: int
+    token: str
+    uuid: str
+
+  DispatchWorkflowOption:
+    ref: str
+    inputs: dict
+    return_run_info: bool
+
+  DispatchWorkflowRun:
+    id: int
+    run_number: int
+    jobs: "list[str]"
+
+example:
+  name: "platform-builder-01"
+  uuid: "550e8400-e29b-41d4-a716-446655440000"
+  description: "Lightwave platform CI runner"
+  status: "active"
+  version: "4.0.0"
+  labels: ["go", "postgres", "docker"]
+  owner_id: "00000000-0000-0000-0000-000000000001"
+  repo_id: "00000000-0000-0000-0000-000000000000"
+  ephemeral: false
+  created_at: "2026-06-25T00:00:00Z"
+  updated_at: "2026-06-25T00:00:00Z"

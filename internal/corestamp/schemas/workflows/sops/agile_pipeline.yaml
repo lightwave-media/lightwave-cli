@@ -1,0 +1,495 @@
+name: "agile_pipeline"
+
+_meta:
+  version: "1.3.0"
+  schema_id: "lightwave://schemas/workflows/sops/agile_pipeline"
+  title: "Agile Pipeline SOP — issue dispatch through R-P-I-V-R lanes"
+  description: |
+    SOP driving the MVP vertical slice for LightWave's Agentic Operating Layer:
+    issue → v_research → v_architect → v_cto (pre-build) → v_dev → CI → v_cto
+    (post-qa) → human merge. Consumed by lightwave-sys::v_core dispatcher.
+    Migrated 2026-06-03 from workspace templates/sops/ (root-folder archive).
+    v1.3.0 (2026-06-18): keeps the webhook trigger fields for current
+    consumers while stamping the live v_scrum-manager heartbeat as an
+    additional trigger source so the SOP reflects the enforced queue flow.
+  generates:
+    - "go:AgilePipelineSOP"
+    - "json_schema:agile_pipeline"
+  depends_on: []
+
+# SOP: agile_pipeline
+#
+# Drives the MVP vertical slice for LightWave's Agentic Operating Layer:
+#
+#   GitHub issue opened (or labelled `agile-pipeline`)
+#     → v_research        → 01-research.md
+#     → v_architect       → 02-spec.md
+#     → v_cto (pre-build) → pre-build-verdict.md  +  comment on issue
+#         · APPROVE → continue                · ITERATE_*/ABANDON → halt
+#     → v_<repo-owner>    → 03-plan.md  (opens PR with "Refs: <task_id>")
+#     → act_run (CI)      → 04-qa-report.md  (retry build on failure, max 3)
+#     → v_cto (post-qa)   → 05-cto-review.md (retry build on failure, max 3)
+#     → escalate_to_human (Joel approves + merges PR)
+#
+# The pre-build v_cto gate (1.1.0) defends against the T-0079 failure mode
+# (architect emitting a spec topically unrelated to research; issue #102)
+# by refusing to spend Pi build tokens until v_cto certifies the spec is
+# faithful to the research. The verdict is recorded both in
+# ${artefact_dir}/pre-build-verdict.md AND as a comment on the GitHub
+# issue so the operator sees the decision without digging into artefacts/.
+#
+# Artefacts live under ${artefact_dir} (~/.lightwave/artefacts/<task_id>/).
+# Spec: docs/software/ddds/DDD-mvp-vertical-slice.md §5.4.
+#
+# NOTE — this is the operator-distributable starter copy. Copy to
+# ~/.lightwave/workspace/sops/agile_pipeline.yaml on first install.
+
+id: agile_pipeline
+title: "Issue → Research → Architect → CTO-pre-build → Build → QA → Behaviour-QA → CTO → Merge"
+version: 1.3.0
+execution_mode: supervised  # cto + joel checkpoints are explicit human approvals
+#
+# v1.2.0 additions (Marcus/Factory Missions synthesis, plan
+# 2026-05-21-zeroclaw-mission-orchestrator-gene.md):
+#
+#   - architect now MUST append `## Assertions` block to 02-spec.md
+#     with 3–10 machine-checkable behaviour assertions. v_cto's
+#     pre_build_review refuses to APPROVE if the block is missing or
+#     malformed; v_cto's post-qa step mechanically runs every assertion
+#     and REFUSES merge on any FAIL (replaces "v_cto reads prose").
+#
+#   - optional `behaviour_qa` step between qa and cto. Opt-in per repo:
+#     skipped unless `dev/behaviour_qa.sh` exists in the worktree. Runs
+#     end-to-end checks (e.g. via playwright-cli) that the CI battery
+#     can't (dead UI flows, broken E2E, missing buttons).
+#
+#   - v_cto's persona binding now respects `provider_policy.must_differ_from`
+#     in ~/.lightwave/config/agents/v_cto.yaml. When the build worker's
+#     provider matches v_cto's default, the persona resolver swaps v_cto
+#     to its fallback (OpenRouter→Gemini) for this pipeline run. This
+#     enforces Marcus's anti-bias principle structurally — a validator on
+#     the same model family inherits the same failure modes. Inert until
+#     the resolver implements the check (tracked in lightwave-sys).
+
+trigger:
+  source: webhook
+  event: github.issues.opened
+  sources:
+    - kind: webhook
+      event: github.issues.opened
+      status: aspirational
+    - kind: heartbeat
+      persona: v_scrum-manager
+      cadence: hourly
+      status: enforced
+      passes:
+        - classify
+        - stuck-detection
+        - epic-progress
+
+parameters:
+  - name: task_id
+    type: string
+  - name: repo
+    type: string
+  - name: persona
+    type: string  # the repo-owner persona, e.g. v_cli-engineer
+  - name: issue_body
+    type: string
+  - name: issue_url
+    type: string
+
+artefact_dir: "~/.lightwave/artefacts/${task_id}/"
+
+steps:
+  - id: research
+    tool: delegate
+    args:
+      agent: v_research-analyst
+      message: "Research the issue. Repo: ${repo}. Issue body:\n\n${issue_body}"
+      background: false
+    emit: "${artefact_dir}/01-research.md"
+
+  - id: architect
+    tool: delegate
+    args:
+      agent: v_architect
+      message: |
+        Author a DDD per governance/agile/ddd.yaml from this research:
+
+        @${artefact_dir}/01-research.md
+
+        Issue: ${issue_url}
+
+        ----- MANDATORY: append `## Assertions` block (v1.2.0) -----
+
+        At the END of the DDD, append a `## Assertions` section containing 3–10
+        machine-checkable behaviour assertions. Each assertion describes a
+        behaviour-level acceptance criterion the cto step will mechanically run
+        before allowing merge. This is not unit-test coverage — it is end-to-end
+        proof that the change does what the issue asked for.
+
+        Schema (strict — pre_build_review rejects ITERATE_SPEC if malformed):
+
+          ## Assertions
+
+          ```yaml
+          assertions:
+            - id: A1
+              description: "<one-line behaviour>"
+              check_type: cli | http | file_exists | test_passes
+              check: "<the literal command, URL+expected-status, path, or test name>"
+              # check_type semantics:
+              #   cli           — shell command; PASS iff exit_code == 0
+              #   http          — "GET <url> => 200" or "POST <url> body=<json> => 201"
+              #   file_exists   — path; PASS iff file exists and is non-empty
+              #   test_passes   — cargo/pytest/etc test path; PASS iff that test passes
+            - id: A2
+              ...
+          ```
+
+        Rules:
+          - 3 ≤ count ≤ 10. Fewer than 3 means the spec is too thin to verify.
+            More than 10 means the issue should be decomposed.
+          - Each assertion MUST be runnable from the worktree root with no
+            human action required (no "manually open the browser").
+          - `check_type: cli` commands must be idempotent (no destructive
+            side effects on re-run).
+          - If the issue is purely refactoring with no observable behaviour
+            change, declare assertion A1 as `check_type: test_passes` against
+            the test that already covers the refactored code path.
+
+        Failure modes the cto step will use these to catch:
+          - Builder thinks it shipped, but the assertion command exits non-zero.
+          - Builder ships against an outdated spec — assertion still encodes
+            original intent.
+          - Cross-provider validator (different LLM family than builder) can
+            run the same checks and reach a different verdict than the builder
+            would have self-reported (Marcus anti-bias).
+      background: false
+    emit: "${artefact_dir}/02-spec.md"
+
+  # pre_build_review: v_cto inspects research + spec BEFORE any Pi build
+  # tokens are spent. Defends against the T-0079 failure mode (issue #102 —
+  # architect emitted a DDD topically unrelated to research). Output is a
+  # markdown file whose first line declares the verdict; the next step
+  # (pre_build_gate) parses it, posts it as a GitHub issue comment, and
+  # blocks the build step on anything other than APPROVE.
+  #
+  # Verdict vocabulary (exactly one):
+  #   APPROVE          — spec is faithful to research; build may proceed
+  #   ITERATE_RESEARCH — research is insufficient/wrong; halt to revisit
+  #   ITERATE_SPEC     — spec drifts from research; halt to revisit architect
+  #   ABANDON          — issue is not buildable as scoped; escalate
+  #
+  # No retry: v_cto's verdict is authoritative for the current artefacts.
+  # If the operator wants to re-run, they edit research/spec and re-trigger
+  # the pipeline.
+  - id: pre_build_review
+    tool: delegate
+    preconditions:
+      - "${artefact_dir}/01-research.md"
+      - "${artefact_dir}/02-spec.md"
+    args:
+      agent: v_cto
+      message: |
+        Pre-build alignment review for task ${task_id} on repo ${repo}.
+        Issue: ${issue_url}
+
+        Read BOTH upstream artefacts in full before deciding:
+
+          @${artefact_dir}/01-research.md
+          @${artefact_dir}/02-spec.md
+
+        Decide whether the spec faithfully delivers on the research's
+        problem statement. Look for: topical drift (T-0079 pattern),
+        scope expansion beyond the issue, missing acceptance criteria,
+        protected-paths edits hidden in the spec.
+
+        ----- MANDATORY: validate `## Assertions` block (v1.2.0) -----
+
+        The spec MUST contain a final `## Assertions` section per the v1.2.0
+        contract. Return ITERATE_SPEC if ANY of these are true:
+
+          1. Missing `## Assertions` heading.
+          2. Block doesn't contain a fenced ```yaml block with a top-level
+             `assertions:` list.
+          3. Fewer than 3 or more than 10 assertions.
+          4. Any assertion missing `id`, `description`, `check_type`, or
+             `check` fields.
+          5. Any `check_type` is not one of: cli | http | file_exists | test_passes.
+          6. Any `cli` check that is obviously destructive (rm -rf, dropdb,
+             force-push, etc.) or non-idempotent.
+          7. Any assertion that requires manual action ("open browser",
+             "click X") — these can't be mechanically checked.
+
+        Cite the specific failing rule number in your Reasoning section.
+
+        Reply with EXACTLY this structure — the first line MUST start
+        with "# Pre-Build Verdict: " followed by one of:
+        APPROVE | ITERATE_RESEARCH | ITERATE_SPEC | ABANDON
+
+        Template:
+
+          # Pre-Build Verdict: <APPROVE|ITERATE_RESEARCH|ITERATE_SPEC|ABANDON>
+
+          ## Reasoning
+
+          <≤120 words — what's right, what's wrong, what would have to change>
+
+          ## References
+
+          - Research: ${artefact_dir}/01-research.md
+          - Spec:     ${artefact_dir}/02-spec.md
+
+        Any other shape fails the downstream gate. Do not include
+        markdown front-matter, do not include shell commands, do not
+        propose code — only the verdict + reasoning.
+    emit: "${artefact_dir}/pre-build-verdict.md"
+
+  # pre_build_gate: parse the verdict, post it as a comment on the GitHub
+  # issue (audit trail visible to the operator without digging into
+  # artefacts/), and exit non-zero on anything other than APPROVE so the
+  # downstream build step's precondition fails and the pipeline halts.
+  #
+  # On APPROVE: emit pre-build-approved.md (the build step's precondition),
+  # cat'd from the verdict so the approval record is self-contained.
+  # On non-APPROVE: the gh issue comment is still posted (operator sees the
+  # reason in GitHub), and `exit 1` crashes the step → pre-build-approved.md
+  # never written → build step halts with PreconditionFailed.
+  - id: pre_build_gate
+    tool: shell
+    preconditions:
+      - "${artefact_dir}/pre-build-verdict.md"
+    args:
+      command: |
+        set -u
+        VERDICT_FILE="${artefact_dir}/pre-build-verdict.md"
+        ISSUE_NUM=$(echo "${issue_url}" | awk -F/ '{print $NF}')
+        VERDICT_LINE=$(head -1 "$VERDICT_FILE")
+
+        # Post the verdict comment on the issue regardless of outcome —
+        # the audit trail must show every gate decision, not just approvals.
+        gh issue comment "$ISSUE_NUM" \
+          --repo "lightwave-media/${repo}" \
+          --body-file "$VERDICT_FILE" \
+          || echo "WARN: gh issue comment failed (continuing; gate decision is local-authoritative)"
+
+        if echo "$VERDICT_LINE" | grep -q "Verdict: APPROVE"; then
+          echo "Pre-build gate: APPROVED — build may proceed"
+          cat "$VERDICT_FILE"
+          exit 0
+        else
+          echo "Pre-build gate: REJECTED — $VERDICT_LINE" >&2
+          echo "Build step will not be dispatched. Operator: see GitHub issue ${issue_url} for verdict reasoning." >&2
+          exit 1
+        fi
+    emit: "${artefact_dir}/pre-build-approved.md"
+
+  - id: build
+    tool: pi_session
+    # Pre-dispatch gate: refuse to spawn the Pi build session unless
+    # pre_build_gate emitted pre-build-approved.md (which only happens
+    # on v_cto's APPROVE verdict). Closes the T-0079 token-waste path
+    # at the executor boundary, complementing the post-qa cto check.
+    preconditions:
+      - "${artefact_dir}/pre-build-approved.md"
+    args:
+      system_prompt_from_persona: ${persona}
+      prompt: "Build per the spec.\n\nRepo: ${repo}\n\nSpec:\n\n@${artefact_dir}/02-spec.md\n\nResearch:\n\n@${artefact_dir}/01-research.md\n\nOpen a PR with body 'Refs: ${task_id}'."
+      tools: [read, bash, edit, write, grep, find, ls]
+      timeout_secs: 1800
+    emit: "${artefact_dir}/03-plan.md"
+
+  # qa: run the FULL local CI battery via `dev/ci.sh all` per AGENTS.md
+  # §Commands ("Full pre-PR validation (recommended): ./dev/ci.sh all").
+  # `all` expands to: rust_quality_gate (rustfmt + clippy) → cargo test
+  # --locked → tests/manual/test_dockerignore.sh → cargo build --release
+  # --locked → cargo deny check licenses sources → cargo audit → docker
+  # buildx smoke build + `--version` probe. This mirrors the human
+  # pre-PR battery exactly, so a green qa step is the same signal a
+  # human reviewer relies on before merging.
+  #
+  # Why `all` and not `lint && test`: the earlier two-step shape gave
+  # build/security drift through the gate (an `unused dependency` clippy
+  # find, a yanked-crate `cargo audit` warning, or a broken release
+  # build could land regardless). `all` closes those gaps at the cost
+  # of ~5–15 min wall time per qa attempt, which is the right trade
+  # for an autonomous merge pipeline.
+  #
+  # Historical context: the earlier `tool: act_run, job: pre-commit`
+  # shape asked act for a job that never existed in ci.yml (#75); Pi
+  # gamed the workflow trying to make qa pass (PR #74 closed
+  # unmergeable). max_attempts capped at 3 — three is enough for
+  # transient flakes; thirty funded a workflow-sabotage attempt at
+  # $5-20 of OpenRouter spend per loop (#76).
+  - id: qa
+    tool: shell
+    args:
+      command: "cd ~/.lightwave/worktrees/${task_id} && bash dev/ci.sh all"
+    emit: "${artefact_dir}/04-qa-report.md"
+    retry:
+      on_failure: build
+      max_attempts: 3
+      retry_kickoff: "QA failed. Fix per qa-report. Re-emit plan."
+
+  # behaviour_qa (v1.2.0): opt-in end-to-end behaviour validation.
+  # Runs only if the repo provides `dev/behaviour_qa.sh` in the worktree
+  # — otherwise it emits a "skipped" report and proceeds. This is the
+  # Factory Missions "user-testing validator" lane: catches things the
+  # ci.sh battery can't (dead UI flows, broken E2E contracts, missing
+  # deliverables that compile fine). Repos opt in by authoring a
+  # behaviour_qa.sh that invokes playwright-cli, curl/jq, etc. against
+  # the assertion battery in 02-spec.md.
+  - id: behaviour_qa
+    tool: shell
+    args:
+      command: |
+        set -u
+        WT="$HOME/.lightwave/worktrees/${task_id}"
+        REPORT="${artefact_dir}/04b-behaviour-qa-report.md"
+        if [ ! -x "$WT/dev/behaviour_qa.sh" ]; then
+          {
+            echo "# Behaviour QA Report — skipped"
+            echo ""
+            echo "Reason: \`dev/behaviour_qa.sh\` not present in worktree."
+            echo ""
+            echo "This repo has not opted into behaviour-level QA. The cto"
+            echo "step's assertion battery (v1.2.0) still runs the same"
+            echo "assertions, but without a running service in between."
+          } > "$REPORT"
+          exit 0
+        fi
+        # Run the repo's behaviour_qa script with the spec assertions as input
+        cd "$WT" && bash dev/behaviour_qa.sh "${artefact_dir}/02-spec.md" \
+          > "$REPORT" 2>&1
+    emit: "${artefact_dir}/04b-behaviour-qa-report.md"
+    retry:
+      on_failure: build
+      max_attempts: 2
+      retry_kickoff: "Behaviour QA failed. Fix per 04b-behaviour-qa-report.md. Re-emit plan."
+
+  # cto: alignment review + autonomous merge gatekeeper.
+  # Reads the decision rule from codebase/v_cto.yaml (injected via
+  # authority_includes). Merges via gh pr merge --squash IFF all five
+  # gates green (qa passed, artefact consistency, stack alignment,
+  # no protected paths touched, minimal patch). Otherwise emits a
+  # structured 05-cto-review.md and the pipeline retries the build.
+  #
+  # NOTE — gate-1 ("qa passed") MUST defend against the #82 fabricated-
+  # success failure mode. T-0081 proved that a Pi build session can
+  # emit a triumphant 03-plan.md ("all tests passing") even when the
+  # qa step crashed pre-execution and no 04-qa-report.md ever ran.
+  # The three explicit pre-merge checks below close that gap.
+  - id: cto
+    tool: delegate
+    # Pre-dispatch invariant (#82 Fix 5b): refuse to dispatch the cto
+    # step unless every upstream artefact actually exists and is
+    # non-empty. The runtime now gates here at the executor boundary,
+    # complementing the PR #80 in-prompt checks. If any precondition
+    # fails, the step never invokes v_cto — pipeline halts with
+    # StepStatus::PreconditionFailed (no retry: re-running cto can't
+    # produce a missing qa-report; the upstream qa step is what needs
+    # attention).
+    preconditions:
+      - "${artefact_dir}/02-spec.md"
+      - "${artefact_dir}/03-plan.md"
+      - "${artefact_dir}/04-qa-report.md"
+      - "${artefact_dir}/04b-behaviour-qa-report.md"
+    args:
+      agent: v_cto
+      message: |
+        Alignment review and merge decision for task ${task_id} on repo ${repo}.
+
+        Per your codebase/v_cto decision rule, evaluate all five gates
+        and either merge autonomously via `gh pr merge --squash` OR emit
+        a structured 05-cto-review.md.
+
+        Artefacts to review:
+        - Research:        @${artefact_dir}/01-research.md
+        - Spec:            @${artefact_dir}/02-spec.md
+        - Plan:            @${artefact_dir}/03-plan.md
+        - QA report:       @${artefact_dir}/04-qa-report.md
+        - Behaviour QA:    @${artefact_dir}/04b-behaviour-qa-report.md
+
+        ----- MANDATORY PRE-MERGE CHECKS (defends against #82 fabrication) -----
+
+        Before ANY consideration of merge, run all three of these checks. If
+        ANY one fails, REFUSE merge — emit 05-cto-review.md citing the failed
+        check and let the pipeline retry the build. Never trust 03-plan.md's
+        self-report; trust the qa step's actual run artefacts.
+
+        1. qa-report file presence + non-emptiness:
+
+             test -s "${artefact_dir}/04-qa-report.md" \
+               || (echo "FAIL: 04-qa-report.md missing or empty; qa step did not emit" && exit 1)
+
+        2. Latest qa run terminated, not crashed:
+
+             ls -t "${artefact_dir}/runs/" | grep -E "^${task_id}--qa--" | head -1 \
+               | xargs -I{} cat "${artefact_dir}/runs/{}" \
+               | tail -1 \
+               | grep -q '"event":"terminated"' \
+               || (echo "FAIL: latest qa run did not terminate cleanly (likely crashed)" && exit 1)
+
+        3. qa wall-time plausible for a real lint + test run (>= 30s):
+
+             ls -t "${artefact_dir}/runs/" | grep -E "^${task_id}--qa--" | head -1 \
+               | xargs -I{} cat "${artefact_dir}/runs/{}" \
+               | tail -1 \
+               | python3 -c "import json,sys; e=json.loads(sys.stdin.read()); t=e.get('wall_time_secs',0); sys.exit(0 if t>=30 else 1)" \
+               || (echo "FAIL: latest qa run wall_time < 30s; cargo test could not have actually run" && exit 1)
+
+        4. Assertion battery (v1.2.0): mechanically run every assertion declared
+           in 02-spec.md's `## Assertions` block. Each assertion check_type
+           dispatches differently:
+
+             cli         — shell command from the worktree root; PASS iff exit 0
+             http        — curl the URL; PASS iff response status matches
+             file_exists — `test -s <path>`; PASS iff file exists and non-empty
+             test_passes — run the named test; PASS iff that single test passes
+
+           Extract the YAML block:
+
+             awk '/^## Assertions$/,/^## [^A]/' "${artefact_dir}/02-spec.md" \
+               | sed -n '/```yaml/,/```/p' | sed '1d;$d' > /tmp/${task_id}-assertions.yaml
+
+           For each assertion, dispatch by check_type and record PASS/FAIL with
+           the assertion id, description, and (for cli) stdout/stderr tail.
+           Emit results into 05-cto-review.md as a `## Assertion Results` section.
+
+           REFUSE merge if ANY assertion FAILS. The assertion battery is the
+           cross-provider validator — same checks, different LLM family than the
+           build worker — and catches behaviour drift the qa CI battery can't
+           (dead UI flows, broken contracts, missing deliverables that compile fine).
+
+        If ALL FOUR checks pass, proceed to the five-gate evaluation per
+        codebase/v_cto.yaml. Otherwise, do NOT merge — emit
+        05-cto-review.md with section "## Verdict: REFUSE MERGE"
+        citing the specific failed pre-merge check (and for #4, the
+        specific assertion id + observed failure).
+
+        -----------------------------------------------------------------------
+
+        Find the PR with:
+          gh pr list --repo lightwave-media/${repo} --search "Refs: ${task_id}" --state open
+
+        Inspect the diff before deciding:
+          gh pr diff <pr-number> --repo lightwave-media/${repo}
+
+        On merge:
+          gh pr merge --squash <pr-number> --repo lightwave-media/${repo}
+          gh pr comment <pr-number> --repo lightwave-media/${repo} --body "v_cto autonomous merge — ${task_id} aligned across all five gates."
+
+        Output 05-cto-review.md is the persisted record of your decision.
+    emit: "${artefact_dir}/05-cto-review.md"
+    retry:
+      on_failure: build
+      max_attempts: 3
+      retry_kickoff: "CTO flagged alignment issues. Fix per cto-review. Re-emit plan."
+
+  - id: escalate
+    tool: escalate_to_human
+    args:
+      message: "PR ready for final review. Artefacts at ${artefact_dir}."
+      attachments: ["${artefact_dir}/*.md"]

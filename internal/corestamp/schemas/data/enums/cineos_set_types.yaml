@@ -1,0 +1,30 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_set_types"
+  title: "CineOS Set Type Enum"
+  description: |
+    Kind of dressed Set a scene plays on (set.set_type). Closed.
+  generates:
+    - "go:CineSetType"
+    - "typescript:CineSetType"
+    - "zig:CineSetType"
+    - "json_schema:cineos_set_types"
+  depends_on: []
+
+name: cineos_set_types
+description: "Kind of dressed set"
+default: interior
+closed: true
+options:
+  - value: interior
+    label: "Interior"
+    description: "Interior set"
+  - value: exterior
+    label: "Exterior"
+    description: "Exterior set"
+  - value: partial_build
+    label: "Partial Build"
+    description: "Partially constructed set"
+  - value: greenscreen
+    label: "Greenscreen"
+    description: "Greenscreen / virtual set"

@@ -1,0 +1,32 @@
+# =============================================================================
+# DATA SCHEMA REGISTRY (Category A — Declarative shape)
+# =============================================================================
+# Entities, enums, constraints, DDL source. The noun-form of the SST.
+#
+# Sub-families (R-14):
+#   agile_artifacts/   — 12 R-P-I-V-R lifecycle schemas
+#   enums/             — 15 canonical enum stamps (R-15: values in stamp)
+#   reference_documents/ — adr, agent_handoff, domain_charter, ubiquitous_language
+# HomeDir migrates here when its kind-family lands.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/__index"
+  title: "Data Schema Registry"
+  description: "Sub-registry for declarative data schemas (entities, enums, constraints, DDL source). Holds R-P-I-V-R artifact schemas, lifecycle enums, field options, and the HomeDir structure."
+
+schemas:
+  # Sub-index references (R-14: kind-family sub-folders). Each kind family
+  # has its own __index that registers its schemas; this top-level data index
+  # only points at the family sub-indexes.
+  agile_artifacts: agile_artifacts/__index.yaml
+  enums: enums/__index.yaml
+  reference_documents: reference_documents/__index.yaml
+  meta: meta/__index.yaml
+  emails: emails/__index.yaml
+  ui: ui/__index.yaml
+  cineos: cineos/__index.yaml
+  agents: agents/__index.yaml
+  tenancy: tenancy/__index.yaml
+  ui_layout: ui_layout/__index.yaml

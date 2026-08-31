@@ -1,0 +1,130 @@
+_meta:
+  version: "1.4.0"
+  schema_id: "lightwave://schemas/data/agile_artifacts/sad"
+  title: "System Architecture Document"
+  description: "How the system is structured: components, data flow, technology decisions, integration points. Migrated 2026-05-25 from governance/agile/sad.yaml (Phase 4 file #6). Example refreshed 2026-08-14 for CORE-0049: the ~/.lightwave/specs file print is truth and local Postgres is the queryable projection rebuilt from it (was: SQLite index + PowerSync)."
+  generates:
+    - "pydantic:SAD"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/agile_artifacts/prd"
+  table_kind: entity
+  table_name: sads
+
+status_enum: "document_statuses"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: slug
+  unique: true
+
+required_fields:
+  - name: slug
+    type: str
+    description: "URL-safe unique identifier; lowercase, hyphen-separated"
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+    storage: db
+  - name: name
+    type: str
+    description: "SAD artifact title (short label)"
+    storage: db
+  - name: prd_ref
+    type: str
+    description: "Slug of parent prd"
+    storage: db
+    fk_ref: "lightwave://schemas/data/agile_artifacts/prd"
+    fk_column: slug
+    indexed: true
+  - name: components
+    type: "list[ComponentRef]"
+    description: "Component entries; sub-schema: name, responsibility, tech_stack"
+    storage: db
+    column_type: jsonb
+  - name: data_flows
+    type: "list[DataFlowRef]"
+    description: "Data flow entries; sub-schema: from, to, payload, transport"
+    storage: db
+    column_type: jsonb
+  - name: tech_decisions
+    type: "list[TechDecisionRef]"
+    description: "ADR-style decisions; sub-schema: decision, rationale, alternatives"
+    storage: db
+    column_type: jsonb
+  - name: domain
+    type: str
+    description: "LifeDomain slug; validated against life_domains"
+    storage: db
+  - name: created_at
+    type: datetime
+    description: "ISO 8601 timestamp of record creation; auto-populated"
+    storage: db
+  - name: updated_at
+    type: datetime
+    description: "ISO 8601 timestamp of last modification; auto-updated"
+    storage: db
+
+optional_fields:
+  - name: diagrams
+    type: "list[DiagramRef]"
+    description: "Paths to mermaid/image diagram files in repo"
+    storage: db
+    column_type: jsonb
+  - name: non_functional_summary
+    type: str
+    description: "One-paragraph summary of NFR posture (full detail in nfr.yaml)"
+    storage: db
+  - name: migration_strategy
+    type: str
+    description: "How we migrate from current system to target architecture"
+    storage: db
+
+relations:
+  parent: prd
+  parent_fk:
+    column: prd_ref
+    references: prds.slug
+    on_delete: RESTRICT
+  children:
+    - epic
+    - ddd
+
+example:
+  slug: "createos-architecture-v1"
+  name: "createOS architecture v1"
+  prd_ref: "createos-inbox-agent-dispatch"
+  components:
+    - name: "lightwave-core"
+      responsibility: "SST schemas (YAML + markdown stamps); language-agnostic; thin bindings per consumer language"
+      tech_stack: ["yaml", "markdown"]
+    - name: "lightwave-platform"
+      responsibility: "Go/Huma monolith, REST API, shell injector, Postgres"
+      tech_stack: ["go", "huma", "postgres", "gocrud"]
+    - name: "v_core"
+      responsibility: "Resident orchestrator daemon: agent dispatch, tool-context composition (compose_*), cron, SOP execution"
+      tech_stack: ["rust", "tokio", "sqlx", "axum"]
+  data_flows:
+    - from: "~/.lightwave/specs/ (canonical truth)"
+      to: "local Postgres (queryable projection)"
+      payload: "R-P-I-V-R artifacts indexed"
+      transport: "lw brain sync — reindex; store is rebuildable (CORE-0049)"
+    - from: "local Postgres"
+      to: "lightwave-platform cloud RDS"
+      payload: "indexed artifacts (downstream cloud mirror)"
+      transport: "Postgres replication (same major version both ends)"
+    - from: "local Postgres"
+      to: "v_core"
+      payload: "Ready Tasks for dispatch"
+      transport: "pgx SELECT against the local store"
+  tech_decisions:
+    - decision: "Local-first: the ~/.lightwave/specs file print is truth; local Postgres is the queryable projection rebuilt from it"
+      rationale: "Operator machine is authoritative; cloud is a mirror. Because the store is rebuildable, a write that reaches only the DB is discarded on reindex — so it can never become a second truth. Per CORE-0049 + ADR-0002."
+      alternatives:
+        - "Cloud-first Postgres (rejected: violates local-first principle; couples agent dispatch to network reachability)"
+        - "SQLite index as canonical + PowerSync to cloud (rejected in CORE-0049: needs a replication fabric to reach a store the generator already emits directly)"
+  domain: "software-development"
+  created_at: "2026-06-24T12:00:00Z"
+  updated_at: "2026-06-24T12:00:00Z"

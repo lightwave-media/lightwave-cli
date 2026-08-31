@@ -1,0 +1,77 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/deliverable"
+  title: "Deliverable"
+  description: |
+    A named output specification for a Timeline — what gets rendered, in what
+    format, colour space, and naming. Filename templates use the {token}
+    grammar owned by naming_profile (the one place filename grammar lives).
+    Mirrors the Baselight RenderSetup deliverables model.
+  generates:
+    - "go:Deliverable"
+    - "typescript:Deliverable"
+    - "zig:Deliverable"
+    - "json_schema:deliverable"
+  depends_on:
+    - "lightwave://schemas/data/cineos/timeline"
+
+required_fields:
+  - name: name
+    type: str
+    description: "Deliverable name (e.g. 'EXR 4K graded', 'H264 review')"
+  - name: timeline_ref
+    type: str
+    description: "Slug/id of the Timeline this deliverable renders"
+
+optional_fields:
+  - name: file_type
+    type: str
+    description: "Output type (e.g. 'EXR', 'JPEG', 'ProRes movie', 'H.264 movie')"
+  - name: codec
+    type: str
+    description: "Codec/profile when file_type is a movie (e.g. 'ProRes 4444')"
+  - name: colour_space
+    type: str
+    description: "Output colour space; suggested values from the cineos_colour_spaces enum (open)."
+    values_ref: "lightwave://schemas/data/enums/cineos_colour_spaces"
+  - name: width
+    type: int
+    description: "Output pixel width"
+  - name: height
+    type: int
+    description: "Output pixel height"
+  - name: mask
+    type: str
+    description: "Aspect mask name applied on output (resolves against the camera_format masks)"
+  - name: directory
+    type: str
+    description: "Output directory root"
+  - name: filename_template
+    type: str
+    description: "Filename pattern in the naming_profile {token} grammar (e.g. '{project_slug}/{clip}_{frame}')"
+  - name: enabled
+    type: bool
+    description: "Whether this deliverable renders in the next submission"
+  - name: audio_channels
+    type: int
+    description: "Audio channel count (0 = no audio)"
+  - name: notes
+    type: str
+    description: "Delivery notes"
+
+relations:
+  parent: timeline
+  children:
+    - render_op
+
+example:
+  name: "H264 review"
+  timeline_ref: "winter-time"
+  file_type: "H.264 movie"
+  colour_space: "sRGB_Display"
+  width: 1920
+  height: 1080
+  directory: "/Volumes/raid/wubs/deliveries"
+  filename_template: "{project_slug}/{timeline}_{date}_review"
+  enabled: true
+  audio_channels: 2

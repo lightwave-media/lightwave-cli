@@ -1,0 +1,46 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/related_spec_ref"
+  title: "Related Spec Reference"
+  description: |
+    Element shape for items in user_prompt's <related_specs> list. Each
+    entry is a {kind, ref, title} tuple identifying an agile artifact
+    that bears on the current task (PRD, SAD, NFR, API spec, DDD, etc.)
+    so the agent can read it for design context.
+
+    Composer assembles this list by following the task's parent chain
+    (user_story → epic → prd) AND any explicit cross-references in
+    task.description or implementation_plan. The agent isn't expected
+    to read every referenced spec, but the references are surfaced so
+    the agent can decide what to consult.
+
+    DISTINCT from attachment.yaml — related_specs are composer-fetched
+    from the agile-artifact graph; attachments are operator-attached.
+
+    Stamped 2026-05-28 as part of Phase B.
+  generates:
+    - "rust:RelatedSpecRef"
+    - "pydantic:RelatedSpecRef"
+  depends_on: []
+
+required_fields:
+  - name: kind
+    type: str
+    description: "Agile artifact kind — prd | sad | nfr | api_spec | ddd | implementation_plan | market_analysis | product_vision | epic | user_story | task | adr. Mirrors the slugs under src/schemas/data/agile_artifacts/ + data/reference_documents/."
+  - name: ref
+    type: str
+    description: "Slug of the referenced artifact (e.g. 'prd-v_core-v1', 'adr-0004-pure-function-composition'). Matches the artifact's primary identifier."
+  - name: title
+    type: str
+    description: "Human-readable title for the agent's quick scan. Composer fills from the referenced artifact's name / title field."
+
+optional_fields:
+  - name: relevance
+    type: str
+    description: "One-line note from the composer explaining WHY this spec was surfaced — 'parent of task.user_story_ref', 'cross-referenced in task.description', 'sibling spec under epic'."
+
+example:
+  kind: sad
+  ref: "sad-v_core-v1"
+  title: "v_core Software Architecture Description"
+  relevance: "parent of task.user_story_ref"

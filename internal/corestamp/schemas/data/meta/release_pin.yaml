@@ -1,0 +1,46 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/release_pin"
+  title: "Release Pin"
+  description: |
+    Per-repo stable-release pin for the mise release train (ADR-0032). Records
+    the last GREEN release each repo's worktrees should spawn from, so the swarm
+    develops from a stable point instead of a moving main. lw release pin
+    advances an entry after a green release; lw worktree new reads it to branch
+    off the stable tag. Stamp = this shape; the live pins (releases.toml) are a
+    PRINT maintained by lw, never committed to the stamp repo.
+  generates: []
+  depends_on: []
+
+required_fields:
+  - name: repo
+    type: str
+    description: "Repo slug, e.g. lightwave-cli"
+  - name: stable_tag
+    type: str
+    description: "Last green release tag worktrees spawn from, e.g. v3.6.0"
+  - name: release_tool
+    type: str
+    description: "release-please | goreleaser | ghostty-tag-tip | schema-train — the wrapped publisher. Free-form for now (the publisher set churns as repos are added); a future release_tools enum will close it."
+
+optional_fields:
+  - name: stable_sha
+    type: str
+    description: "Commit SHA the stable_tag points at"
+  - name: bindings_tag
+    type: str
+    description: "Subdir-prefixed tag for repos with a Go binding module (e.g. bindings/go/v0.5.0), per ADR-0003 dual-tag"
+  - name: channel
+    type: str
+    description: "stable | beta — which channel this pin tracks. Free-form for now; a future release_channels enum will close this 2-value set."
+  - name: updated_at
+    type: str
+    description: "ISO-8601 timestamp lw release pin last advanced this entry"
+
+example:
+  repo: lightwave-cli
+  stable_tag: v3.6.0
+  release_tool: goreleaser
+  stable_sha: 1651c26a0e3f4b5c8d9a0b1c2d3e4f5a6b7c8d9e # full 40-char SHA
+  channel: stable
+  updated_at: "2026-06-19T00:00:00Z"

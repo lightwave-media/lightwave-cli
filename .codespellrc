@@ -3,7 +3,11 @@
 # Skip generated/snapshot files + project-specific abbreviations and
 # domain terms that look like misspellings to codespell's default lexicon.
 
-skip = ./go.sum,./internal/audits/golangci-baseline.json,./.git,./vendor
+# internal/corestamp/schemas is a vendored mirror of lightwave-core's stamp.
+# Its wording is upstream's to own — correcting it here would be reverted by the
+# next scripts/sync-core-stamp.sh, and several hits are domain terms anyway
+# (SOM = Serviceable Obtainable Market, preemptable, Implementors).
+skip = ./go.sum,./internal/audits/golangci-baseline.json,./.git,./vendor,./internal/corestamp/schemas
 
 # Project terms + intentional abbreviations.
 # - isTS, ans: existing in-code abbreviations (audit.go, sst.go) flagged

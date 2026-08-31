@@ -1,0 +1,40 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_scene_statuses"
+  title: "CineOS Scene Status Enum"
+  description: |
+    Production lifecycle states for a CineOS Scene (scene.os_status) — the scene
+    breakdown→schedule→shoot state machine surfaced on the dashboard board. Closed.
+  generates:
+    - "go:CineSceneStatus"
+    - "typescript:CineSceneStatus"
+    - "zig:CineSceneStatus"
+    - "json_schema:cineos_scene_statuses"
+  depends_on: []
+
+name: cineos_scene_statuses
+description: "Production lifecycle states for a Scene"
+default: not_broken_down
+closed: true
+options:
+  - value: not_broken_down
+    label: "Not Broken Down"
+    description: "Scene not yet broken down for elements"
+    is_active: false
+  - value: broken_down
+    label: "Broken Down"
+    description: "Elements tagged; ready to schedule"
+    is_active: true
+  - value: scheduled
+    label: "Scheduled"
+    description: "Assigned to a shoot day"
+    is_active: true
+  - value: shot
+    label: "Shot"
+    description: "Principal photography complete for the scene"
+    is_active: false
+    is_completed: true
+  - value: omitted
+    label: "Omitted"
+    description: "Cut from the shooting script"
+    is_active: false

@@ -1,0 +1,31 @@
+branch_protection: branch_protection.yaml
+channel_bindings: channel_bindings.yaml
+config_cli_contract: config_cli_contract.yaml
+developer_sandbox: developer_sandbox.yaml
+doc_artifact_kinds: doc_artifact_kinds.yaml
+doc_render_targets: doc_render_targets.yaml
+factory_floor: factory_floor.yaml
+harness_change_request: harness_change_request.yaml
+harness_configuration_plane: harness_configuration_plane.yaml
+instance_lifecycle: instance_lifecycle.yaml
+release_pipeline: release_pipeline.yaml
+repo_infra: repo-infra.yaml
+repo_doc_manifest: repo_doc_manifest.yaml
+spec_artifact_kinds: spec_artifact_kinds.yaml
+template_kinds: template_kinds.yaml
+schemas:
+  branch_protection: branch_protection.yaml
+  channel_bindings: channel_bindings.yaml
+  config_cli_contract: config_cli_contract.yaml
+  developer_sandbox: developer_sandbox.yaml
+  doc_artifact_kinds: doc_artifact_kinds.yaml
+  doc_render_targets: doc_render_targets.yaml
+  factory_floor: factory_floor.yaml
+  harness_change_request: harness_change_request.yaml
+  harness_configuration_plane: harness_configuration_plane.yaml
+  instance_lifecycle: instance_lifecycle.yaml
+  release_pipeline: release_pipeline.yaml
+  repo_infra: repo-infra.yaml
+  repo_doc_manifest: repo_doc_manifest.yaml
+  spec_artifact_kinds: spec_artifact_kinds.yaml
+  template_kinds: template_kinds.yaml

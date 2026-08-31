@@ -1,0 +1,60 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/hooks/worktree_lifecycle_hook"
+  title: "Worktree Lifecycle Hook Contract — WorktreeCreate / WorktreeRemove"
+  description: |
+    Contract for the Claude Code harness worktree hooks (CORE-0047). When a
+    WorktreeCreate hook is registered it takes precedence over native git
+    worktree creation for --worktree sessions, --spawn=worktree, and
+    Agent(isolation:"worktree") alike — the hook decides WHERE worktrees
+    live, so this contract is what pins the canonical root, naming, marker,
+    and lock invariants. Print implementations live in ~/.claude/hooks/
+    (worktree-create.ts, worktree-remove.ts) registered in settings.json.
+
+    Companion to git_doctor.yaml (fleet validation) and the policy pair
+    worktree_policy.yaml + worktree_home_policy.yaml. Per lightwave-core#357:
+    hook-enforced invariants belong in the stamp — a print-only contract
+    lets the hook drift from policy with no schema gate to catch it.
+  generates:
+    - "json_schema:worktree_lifecycle_hook"
+  depends_on:
+    - "lightwave://schemas/policy/security/worktree_policy"
+    - "lightwave://schemas/data/meta/worktree_home_policy"
+
+required_fields:
+  - name: hook_event
+    type: str
+    description: "Enum: WorktreeCreate | WorktreeRemove"
+  - name: worktree_root
+    type: str
+    description: "Repo-relative canonical root the hook creates under. Locked: .worktrees/ per worktree_home_policy.canonical_root."
+  - name: naming_regex
+    type: str
+    description: "Directory-name regex the created worktree must match. Locked: ^\\d{4}-\\d{2}-\\d{2}-[a-z0-9-]+$ per worktree_policy.repo_structure.naming."
+  - name: marker_file
+    type: str
+    description: "Claim marker written at creation. Locked: .lw-worktree.yaml per worktree_policy.repo_structure.claim."
+  - name: lock_on_create
+    type: bool
+    description: "When true, `git worktree lock` runs at creation so ambient prune/cleanup cannot remove a claimed tree."
+  - name: save_gate
+    type: str
+    description: "Enum: wip_branch_commit | refuse_dirty. WorktreeRemove behavior for a dirty tree — wip_branch_commit stages TRACKED files only (git add -u, never -A) and commits to wip/<name> before removal."
+
+optional_fields:
+  - name: observability_channel
+    type: str
+    description: "JSONL channel receiving one event per create/remove (default ~/.lightwave/observability/worktree_maintenance.jsonl)."
+  - name: fallback_on_error
+    type: str
+    description: "Enum: fail_closed | native. Locked to fail_closed: a hook error must surface as a creation failure, never fall through to an unstamped root."
+
+example:
+  hook_event: WorktreeCreate
+  worktree_root: ".worktrees/"
+  naming_regex: "^\\d{4}-\\d{2}-\\d{2}-[a-z0-9-]+$"
+  marker_file: ".lw-worktree.yaml"
+  lock_on_create: true
+  save_gate: wip_branch_commit
+  observability_channel: "~/.lightwave/observability/worktree_maintenance.jsonl"
+  fallback_on_error: fail_closed

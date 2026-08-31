@@ -1,0 +1,55 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/interaction_types"
+  title: "Operator Interaction Types"
+  description: |
+    Closed taxonomy of operator → agent interaction shapes within a
+    running session. Consumed by `operator_interaction.yaml#/required_fields/type`
+    and by `compose_user_prompt` (per ADR-0004), which branches rendering
+    on the interaction type (KICKOFF vs CONTINUATION).
+
+    Semantics:
+      - kickoff     — FIRST message of a new session. Carries the full
+                      task definition, parent context, DoD, testing
+                      strategy. Heavy — lands once per session.
+      - post        — operator drops new content (text, attachments,
+                      requirements). Continuation; lighter than kickoff.
+      - comment     — operator clarifies / annotates prior agent output.
+      - instruction — operator gives a directive ("do X next").
+      - poke        — operator nudges an idle/blocked agent.
+      - answer      — operator responds to an agent's pending question.
+      - kick        — operator forcibly resets or unblocks (escalation).
+
+    Wire encoding lowercase. Stamped 2026-05-28 as part of Phase B (the
+    schemas that drain user_prompt.md composer_injected_roots).
+  generates:
+    - "rust:InteractionType"
+    - "pydantic:InteractionType"
+  depends_on: []
+
+name: interaction_types
+description: "Operator → agent interaction shapes — kickoff | post | comment | instruction | poke | answer | kick"
+default: "post"
+closed: true
+options:
+  - value: kickoff
+    label: "Kickoff"
+    description: "First message of a new session. Carries full task definition + context."
+  - value: post
+    label: "Post"
+    description: "Operator drops new content / requirements within an active session."
+  - value: comment
+    label: "Comment"
+    description: "Operator clarifies or annotates prior agent output."
+  - value: instruction
+    label: "Instruction"
+    description: "Operator gives a directive — do X next."
+  - value: poke
+    label: "Poke"
+    description: "Operator nudges an idle or blocked agent."
+  - value: answer
+    label: "Answer"
+    description: "Operator responds to a pending question from the agent."
+  - value: kick
+    label: "Kick"
+    description: "Operator forcibly resets or unblocks — escalation."

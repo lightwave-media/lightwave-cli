@@ -1,0 +1,755 @@
+# =============================================================================
+# lw CLI COMMAND SURFACE (the stamp)
+# =============================================================================
+# Single source of truth for the `lw` dispatcher (lightwave-cli). The Go loader
+# `internal/sst/cli_loader.go::LoadCLIConfig` reads this file from
+#   <lightwave_root>/src/schemas/interfaces/cli/commands.yaml
+# and the dispatcher (`internal/cli/dispatcher.go::BuildDispatched`) attaches a
+# cobra subcommand for every (domain, command) that has a registered handler.
+#
+# Drift gate: `LW_CHECK_SCHEMA_STRICT=1 lw check schema` compares the keys
+# declared here against the RegisterHandler() set. Every command below maps to a
+# live handler; adding a verb here without a handler (or vice-versa) is drift and
+# fails the gate. Keep this file and the handler set in lockstep across paired
+# lightwave-core / lightwave-cli PRs.
+#
+# Shape (decoded by internal/sst/cli_schema.go):
+#   _meta.version            required, non-empty
+#   domains:                 MAPPING of domain-name -> { description, commands }
+#     <domain>.description   required
+#     <domain>.commands[]    list of { name, args?, flags?, description }
+#       name                 required, unique within domain
+#       description          required, non-empty
+#       args                 optional positional args -> cobra.MinimumNArgs(len)
+#       flags                optional --flags; types resolved by the dispatcher's
+#                            booleanFlags / stringArrayFlags tables (R6 deferred:
+#                            flag types are not yet encoded here).
+# =============================================================================
+
+required_fields:
+  - name: id
+    type: str
+    description: "Configuration identifier"
+
+example:
+  id: "commands-example"
+
+name: "commands"
+
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/interfaces/cli/commands"
+  title: "lw CLI Command Surface"
+  description: >-
+    The command-surface stamp consumed by lightwave-cli's schema-driven
+    dispatcher. Declares the live `lw` domains and their subcommands so that
+    `lw check schema` has a real baseline. v1.0.0 stands up the keeper set
+    currently migrated off hardcoded cobra (check, hooks, local, compose,
+    context, db, deploy, epic, infra, mcp, plan, scaffold, schema, sprint,
+    story, task) plus the legacy `spec` domain (still hardcoded in root.go,
+    declared here for drift parity). Flag types are not yet encoded (R6
+    deferred); the dispatcher's booleanFlags/stringArrayFlags tables remain
+    the type source.
+
+    v1.1.0 wires the domain-level `_status` field the loader has supported
+    since it was built (internal/sst/cli_schema.go StatusInDevelopment) but
+    which no domain ever declared — the surface claimed 25 verbs it could not
+    run. `_status: in_development` means: the dispatcher hides the domain
+    (unless LW_CLI_DEV_DOMAINS=1) and the strict drift gate excludes it via
+    KeysPublished. Every in_development domain MUST carry a comment naming
+    the tracking ref that builds it — an unreferenced aspiration is
+    decoration, and 18 quietly became 25 exactly that way. Domains lacking
+    `_status` are published: strict REQUIRES their handlers to exist.
+
+domains:
+  check:
+    description: "Code quality and drift checks"
+    commands:
+      - name: ci
+        flags: [--skip-tests, --staged]
+        description: "Run CI checks locally (Make ci-local; --skip-tests → ci-local-fast)"
+      - name: ruff
+        flags: [--fix, --staged]
+        description: "Run ruff on backend Python (--staged scopes to git diff --cached)"
+      - name: types
+        flags: [--staged]
+        description: "Run TypeScript type-check on the platform workspace"
+      - name: domains
+        flags: [--staged]
+        description: "Lint API domain usage (Make lint-api-domains)"
+      - name: schema
+        flags: [--json]
+        description: "Report schema↔handler drift (missing handlers, orphaned handlers)"
+      - name: locks
+        flags: [--staged]
+        description: "Verify uv.lock and pnpm-lock.yaml have no uncommitted changes"
+      - name: deps
+        flags: [--staged]
+        description: "Verify workspace dependency consistency (Make deps-check)"
+      - name: git
+        description: "Ensure no uncommitted changes to tracked files"
+      - name: aws
+        description: "Verify AWS credentials resolve via STS"
+      - name: docker
+        description: "Verify the Docker daemon is reachable"
+      - name: ecs
+        args: [service]
+        flags: [--environment]
+        description: "Check ECS service health (status, desired vs running counts)"
+      - name: smoke
+        args: [target]
+        flags: [--env, --staged]
+        description: "Run a smoke test target (Make smoke TARGET=<target>)"
+      - name: compose
+        flags: [--env]
+        description: "Verify docker-compose.yml in sync with SST (delegates to compose.verify)"
+      - name: repo-infra
+        flags: [--all, --repo, --fix, --json]
+        description: "Check repo conforms to the repo-infra policy schema (required files + dirs)"
+
+  hooks:
+    description: "Manage pre-commit / pre-push gates across LightWave repos"
+    commands:
+      - name: install
+        flags: [--dry-run]
+        description: "Install hooks"
+      - name: doctor
+        flags: [--json]
+        description: "Hook install audit"
+      - name: sync
+        flags: [--dry-run]
+        description: "Re-install hooks fleet-wide"
+      - name: circuit-breaker.check
+        flags: [--branch]
+        description: "Push circuit breaker gate"
+
+  local:
+    description: "Local Docker development environment"
+    commands:
+      - name: up
+        flags: [--bg, --build, --service, --skip-preflight]
+        description: "Start the compose stack (preflight-gated; --bg detaches and waits for health)"
+      - name: down
+        flags: [--volumes]
+        description: "Stop the compose stack (--volumes also removes named volumes)"
+      - name: restart
+        flags: [--build, --service]
+        description: "Restart services (--build recreates containers so code changes land)"
+      - name: logs
+        flags: [--follow, --service, --tail]
+        description: "Stream compose logs (--follow to tail, --service to scope)"
+      - name: health
+        flags: [--json, --watch]
+        description: "Show per-service state and healthcheck status (--watch to poll)"
+      - name: preflight
+        flags: [--fix, --json]
+        description: "Check Docker daemon, compose file, ports, and env before up"
+      - name: setup
+        flags: [--dry-run]
+        description: "Verify the local environment is provisioned (thin wrapper over preflight)"
+      - name: clean
+        flags: [--volumes, --images, --confirm]
+        description: "Tear down containers/networks (gated; --volumes/--images widen the blast radius)"
+      - name: exec
+        args: [service]
+        description: "Run a command in any compose service (default cmd: bash). exec when running, run --rm when not."
+      - name: install-frontend
+        flags: [--force, --yes]
+        description: "Refresh the frontend container's node_modules from pnpm-lock. --force removes the named volume first (gated on --yes)."
+
+  compose:
+    description: "Docker Compose generation and verification against SST"
+    commands:
+      - name: generate
+        flags: [--dry-run]
+        description: "Generate compose file"
+      - name: verify
+        description: "Verify compose sync"
+
+  codegen:
+    description: "Generate code from lightwave-core YAML schemas"
+    # in_development for the REGISTRY contract only: both verbs are live via
+    # hardcoded cobra (internal/cli/codegen_go.go), not RegisterHandler, so
+    # handler-lockstep genuinely does not hold yet. Hiding is a no-op — the
+    # dispatcher skips attaching, but hardcoded cobra attaches regardless.
+    # Tracking: registry migration is the same pattern spec.* already did.
+    _status: in_development
+    commands:
+      - name: go
+        flags: [--check, --only, --out]
+        description: "Generate Go structs + a multi-tenant SQL migration from SST entity schemas. --check exits 1 if the output is stale (drift gate)."
+      - name: types
+        flags: [--out]
+        description: "Generate Zod TypeScript from the data/ui schema family"
+
+  config:
+    description: "Manage CLI configuration"
+    # No handler exists for any verb (declared ahead of implementation by the
+    # config command-domain stamp, PR #471). Tracking: lightwave-cli
+    # config_cli_contract consumer work.
+    _status: in_development
+    commands:
+      - name: get
+        args: [key]
+        description: "Get the resolved value of a config key"
+      - name: set
+        args: [key, value]
+        description: "Set a config key in ~/.config/lw/config.yaml"
+      - name: show
+        description: "Show current configuration"
+
+  context:
+    description: "AI agent context management"
+    commands:
+      - name: init
+        description: "Init context"
+      - name: refresh
+        description: "Refresh context"
+      - name: show
+        description: "Show context"
+
+  create:
+    description: "Create a new LightWave project from a blueprint"
+    commands:
+      - name: website
+        args: [project-name]
+        flags: [--domain, --output, --dry-run]
+        description: "Scaffold a website project starter from the website blueprint"
+      - name: repo
+        args: [name]
+        flags: [--org, --private, --clone, --dry-run, --kind]
+        description: "Create GitHub repo and render repo-bootstrap blueprint"
+      - name: webapp
+        args: [domain]
+        flags: [--blueprint, --dry-run, --yes, --json]
+        description: "ASPIRATIONAL — Scaffold webapp-v1 for <domain>: mise.toml today; Vite + lightwave-ui slots in Sprint 2"
+      - name: desktop-app
+        args: [domain]
+        flags: [--blueprint, --dry-run, --yes, --json]
+        description: "ASPIRATIONAL — Scaffold desktop-app-v1 for <domain>: mise.toml + sidecar stub today; src-tauri/ in Sprint 2"
+
+  db:
+    description: "Database operations and migrations"
+    commands:
+      - name: shell
+        flags: [--env]
+        description: "Open a psql shell against the target database"
+      - name: dump
+        args: [env]
+        flags: [--output, --tables]
+        description: "Dump a database to a SQL file"
+      - name: restore
+        args: [file]
+        flags: [--confirm]
+        description: "Restore a database from a SQL dump (destructive; gated on --confirm)"
+      - name: reset
+        flags: [--confirm]
+        description: "Drop and recreate the local database (destructive; gated on --confirm)"
+      - name: migrate
+        flags: [--app, --fake, --plan]
+        description: "Run Django migrations"
+      - name: makemigrations
+        flags: [--app, --empty, --name]
+        description: "Create new Django migrations"
+      - name: check
+        flags: [--deploy, --fail-level]
+        description: "Run Django system checks"
+      - name: schema-init
+        args: [schema-name]
+        flags: [--skip-migrate]
+        description: "Initialize a new Postgres schema"
+      - name: schema-list
+        flags: [--json]
+        description: "List Postgres schemas"
+      - name: schema-drop
+        args: [schema-name]
+        flags: [--force]
+        description: "Drop a Postgres schema (destructive; gated on --force)"
+      - name: migrate-schemas
+        flags: [--schema]
+        description: "Migrate schemas to the current version"
+
+  deploy:
+    description: "ECS deployment and rollback"
+    commands:
+      - name: run
+        args: [env]
+        flags: [--dry-run, --service]
+        description: "Deploy ECS"
+      - name: status
+        args: [env]
+        flags: [--json, --service]
+        description: "ECS status"
+      - name: logs
+        args: [service]
+        flags: [--follow]
+        description: "ECS logs"
+      - name: rollback
+        description: "ECS rollback"
+
+  epic:
+    description: "Epic lifecycle management"
+    commands:
+      - name: list
+        flags: [--json]
+        description: "List epics"
+      - name: info
+        args: [id]
+        flags: [--json]
+        description: "Epic info"
+      - name: tasks
+        args: [id]
+        flags: [--json]
+        description: "Epic tasks"
+
+  infra:
+    description: "Terragrunt infrastructure management"
+    commands:
+      - name: list
+        flags: [--json]
+        description: "List units"
+      - name: plan
+        args: [path]
+        description: "Plan unit"
+      - name: apply
+        args: [path]
+        flags: [--auto-approve]
+        description: "Apply unit"
+      - name: validate
+        args: [path]
+        description: "Validate unit"
+      - name: output
+        args: [path]
+        flags: [--json]
+        description: "Unit outputs"
+      - name: run-all
+        args: [command]
+        description: "Run-all"
+      - name: status
+        description: "Infra status"
+
+  issue:
+    description: "Compliant GitHub issue filing (template fields, labels, project, milestone, cross-links)"
+    commands:
+      - name: create
+        args: [title]
+        flags:
+          [
+            --kind,
+            --motivation,
+            --proposed-change,
+            --scope,
+            --kind-detail,
+            --repo,
+            --org,
+            --label,
+            --refs,
+            --closes,
+            --origin,
+            --milestone,
+            --project,
+            --dry-run,
+          ]
+        description: "Create compliant GitHub issue (not raw gh issue create). Kinds: feature_request, bug_report, tool_gap."
+
+  plan:
+    description: "Plan sync and generation"
+    commands:
+      - name: sync
+        flags: [--pull, --push, --task]
+        description: "Sync plans"
+      - name: generate
+        args: [task-id]
+        flags: [--from-prelim]
+        description: "Generate plan"
+  scaffold:
+    description: "Code generation (Django/Go skeleton templates)"
+    commands:
+      - name: app
+        flags: [--name, --tier]
+        description: "Scaffold app"
+      - name: model
+        flags: [--app, --name]
+        description: "Scaffold model"
+      - name: api
+        flags: [--app, --model]
+        description: "Scaffold API"
+      - name: test
+        flags: [--app, --model]
+        description: "Scaffold test"
+      - name: from-delta
+        flags: [--item, --dry-run]
+        description: "Scaffold from delta"
+
+  schema:
+    description: "Schema validation and code generation"
+    commands:
+      - name: validate
+        flags: [--fix, --json, --strict]
+        description: "Validate YAML schema structure"
+      - name: drift
+        flags: [--json, --output]
+        description: "Report schema ↔ codebase drift"
+      - name: reconcile
+        flags: [--dry-run, --yes]
+        description: "Reconcile the database to the YAML ideal state"
+      - name: generate
+        args: [lang]
+        description: "Generate code from the schema (go|python)"
+      - name: coverage
+        flags: [--json]
+        description: "Show schema coverage metrics"
+
+  spec:
+    description: "Specification management"
+    commands:
+      - name: list
+        flags: [--compliance, --domain, --type]
+        description: "List specifications"
+      - name: show
+        description: "Show specification details"
+      - name: generate-tasks
+        args: [spec-path]
+        flags: [--dry-run, --epic, --story, --with-goal-tests]
+        description: "Generate tasks from a specification"
+      - name: coverage
+        description: "Show domain coverage metrics"
+      - name: delta
+        flags: [--task, --release-gate, --json]
+        description: "Compute spec/delta/report.yaml"
+      - name: history
+        description: "Show a specification's change history"
+
+  sprint:
+    description: "Sprint management"
+    commands:
+      - name: list
+        flags: [--json]
+        description: "List sprints"
+      - name: current
+        flags: [--json]
+        description: "Current sprint"
+      - name: tasks
+        args: [id]
+        flags: [--json]
+        description: "Sprint tasks"
+
+  story:
+    description: "Story lifecycle management"
+    commands:
+      - name: list
+        flags: [--json]
+        description: "List stories"
+      - name: show
+        args: [id]
+        flags: [--json]
+        description: "Show story"
+      - name: link
+        args: [story-id, task-id]
+        description: "Link task"
+
+  # ---------------------------------------------------------------------------
+  # task — task management (task_handlers.go)
+  # ---------------------------------------------------------------------------
+  task:
+    description: "Task management"
+    commands:
+      - name: list
+        flags:
+          [
+            --status,
+            --priority,
+            --type,
+            --epic,
+            --sprint,
+            --limit,
+            --all,
+            --json,
+          ]
+        description: "List tasks"
+      - name: info
+        args: [id]
+        flags: [--json]
+        description: "Show task details"
+      - name: create
+        args: [title]
+        flags:
+          [
+            --description,
+            --description-file,
+            --priority,
+            --type,
+            --category,
+            --epic,
+            --sprint,
+            --story,
+            --prd,
+            --plan,
+            --doc,
+            --attach,
+            --label,
+            --parent,
+            --assign,
+            --blocks,
+            --blocked-by,
+            --billing-code,
+            --project,
+            --project-workspace,
+            --json,
+            --dry-run,
+            --skip-github,
+          ]
+        description: "Create a task (atomic: createOS + GitHub). --skip-github lets creation succeed when the downstream is offline."
+      - name: start
+        args: [id]
+        description: "Start a task and create its feature branch"
+      - name: status
+        args: [id, status]
+        description: "Update a task's status"
+      - name: pr
+        args: [id]
+        description: "Open a PR for a task and record its URL"
+      - name: fetch-context
+        args: [id]
+        flags: [--domain, --json]
+        description: "Fetch the assembled agent context for a task"
+      - name: done
+        args: [id]
+        flags: [--dry-run, --issue, --repo, --yes]
+        description: "Manual fallback for v_core task_done SOP (archive, worktree remove, issue close)."
+
+  home:
+    description: "Render ~/.lightwave operator home baseline"
+    commands:
+      - name: sync
+        description: "Sync policy stamps (flags registry, …) stamp→print without full render"
+      - name: render
+        flags: [--var-file, --output]
+        description: "Render lightwave-home blueprint"
+      - name: validate
+        description: "Assert print matches home_baseline"
+      - name: diff
+        description: "Show drift vs expected baseline"
+      - name: pin
+        flags: [--write]
+        description: "Write baseline.lock + home/pin.yaml"
+      - name: reset
+        flags: [--tier, --i-mean-it]
+        description: "Archive runtime, wipe zones, re-render"
+      - name: reboot
+        description: "Stop daemons, reset runtime, render, validate"
+      - name: doctor
+        description: "Read-only slop/drift scan of the rendered print (no writes)"
+
+  kickoff:
+    description: "Kickoff interview FSM (shared with createOS)"
+    commands:
+      - name: start
+        flags: [--runbook, --task, --session]
+        description: "Start kickoff; bind .tasks/<session>/kickoff/"
+      - name: status
+        flags: [--session, --require-finalized]
+        description: "Show interview state and kickoff_ok gate"
+      - name: answer
+        flags: [--round, --json, --session]
+        description: "Append turn to interview_transcript.yaml"
+      - name: finalize
+        flags: [--session]
+        description: "Set kickoff_ok after manifest approval"
+
+  factory:
+    description: "Execute approved scaffold manifests"
+    commands:
+      - name: plan
+        flags: [--manifest, --session]
+        description: "Plan manifest"
+      - name: apply
+        flags: [--manifest, --session, --dry-run]
+        description: "Apply manifest"
+
+  session:
+    description: "Agent session lifecycle with kickoff gate"
+    commands:
+      - name: spawn
+        flags: [--persona, --task, --session]
+        description: "Spawn session; requires kickoff_ok"
+      - name: shutdown
+        flags: [--session, --task]
+        description: "Run shutdown SOP"
+      - name: verify
+        flags: [--require-bookends, --session]
+        description: "Verify spawn/shutdown bookends"
+      - name: promote
+        flags: [--session]
+        description: "Promote .tasks runtime to spec/agile/tasks/"
+
+  runbook:
+    description: "Agent runbook apply in worktrees (ADR-0039)"
+    # Published: lightwave-cli#335 shipped the five verbs. No _status means
+    # the dispatcher will attach them when RegisterHandler is wired. Until
+    # that follow-up, `lw runbook` is the hardcoded cobra tree from #335.
+    commands:
+      - {
+          name: start,
+          flags:
+            [--slug, --agent, --task, --repo, --branch, --dry-run, --session],
+          description: "Worktree + instance print",
+        }
+      - {
+          name: status,
+          flags: [--task, --instance, --require],
+          description: "Read/gate instance state",
+        }
+      - {
+          name: apply,
+          flags: [--task, --instance, --cwd],
+          description: "Apply Check/Command steps",
+        }
+      - {
+          name: step-complete,
+          flags: [--task, --instance, --step, --signoff-tier],
+          description: "Complete step",
+        }
+      - {
+          name: cancel,
+          flags: [--task, --instance, --reason],
+          description: "Cancel instance",
+        }
+
+  failure:
+    description: "Record and triage deterministic failures"
+    commands:
+      - name: record
+        flags: [--kind, --summary, --session, --repo, --exit-code, --signal-class, --invariant, --expected-structure, --cure-command, --do-not, --next-verification, --source, --affected-path, --bypass-reason]
+        description: "Append a schema-complete development-signal failure_record"
+      - name: file
+        flags: [--kind, --dedupe, --session]
+        description: "Create triage ticket at status:triage"
+      - name: status
+        flags: [--id, --transition]
+        description: "Show or transition failure FSM"
+
+  docs:
+    description: "Documentation factory (partially hardcoded in docs.go)"
+    commands:
+      - name: spec-lint
+        flags: [--repo]
+        description: "Validate spec/ shapes"
+      - name: check
+        flags: [--repo, --strict, --hand-edit, --json]
+        description: "Validate docs/ drift"
+      - name: sync
+        flags: [--repo, --dry-run]
+        description: "Regenerate generated docs"
+      - name: render
+        flags: [--repo, --dry-run]
+        description: "Render docs/site/ HTML"
+      - name: serve
+        flags: [--repo, --port]
+        description: "Serve docs/site/ over HTTP"
+
+  scrum:
+    description: "Scrum queue hygiene"
+    commands:
+      - name: sync
+        flags: [--org, --repo, --full-org, --dry-run, --json]
+        description: "Reconcile Swarm project, labels, milestones, board items"
+
+  knowledge:
+    description: "Local knowledge mirror hygiene (Notion projection; CORE-0048/0049)"
+    # knowledge.sync is the Notion adapter — declared, never implemented.
+    # Tracking: EPIC-SYNC-001 M3b (lightwave-cli#289); blocked on the
+    # credential decision (LWAI-0003 §8 SSM token vs WS-05 per-user OAuth).
+    _status: in_development
+    commands:
+      - name: sync
+        flags: [--database, --full, --dry-run, --json]
+        description: "Reconcile Notion databases/pages into the knowledge domain via external_ref bindings"
+  git:
+    description: "Fleet git audit"
+    commands:
+      - name: audit
+        flags: [--fix, --dry-run, --apply, --remote, --json]
+        description: "Fleet scan → local_git_audit_report; --remote compares live required checks"
+      - name: map
+        flags: [--json, --repo]
+        description: "Topology map"
+      - name: doctor
+        flags: [--json, --repo]
+        description: "Hooks + profile check"
+      - name: worktree
+        args: [list]
+        flags: [--json]
+        description: "Worktree table across discovered fleet"
+
+  lineage:
+    description: "R-P-I-V-R lineage integrity for an epic's artifact tree"
+    commands:
+      - name: check
+        args: [epic-id]
+        flags: [--json]
+        description: "Report lineage gaps in an epic's story/task tree (read-only)"
+      - name: fix
+        args: [epic-id]
+        flags: [--dry-run, --yes]
+        description: "Repair lineage gaps for an epic (destructive; --dry-run previews, --yes skips the prompt)"
+
+  process:
+    description: "Host process inventory (read-only) for v_core monitoring"
+    commands:
+      - name: list
+        flags: [--top, --json]
+        description: "List host processes (pid/cpu/mem/name); --top sorts by CPU descending, --json emits machine-readable output"
+
+  # ---------------------------------------------------------------------------
+  # cineos — dramatized screenplay audiobook (EPIC-CINE-AUDIO-001, CA-01).
+  # Declared ahead of the handlers per stamp discipline; the paired
+  # lightwave-cli PR registers them (core stamp lands first, never after).
+  # Local-first (decision A): verbs operate on the on-device createOS store —
+  # no platform endpoints, no S3. All verbs emit structured output via --json.
+  # ---------------------------------------------------------------------------
+  cineos:
+    description: "CineOS dramatized screenplay audiobook (local-first)"
+    # All eight verbs declared ahead of handlers per stamp discipline.
+    # Tracking: EPIC-CINE-AUDIO-001 (CA-01); paired lightwave-cli PR registers.
+    _status: in_development
+    commands:
+      - name: audiobook.import
+        args: [file]
+        flags: [--format, --json]
+        description: "Parse FDX/Fountain/text-layer-PDF into screenplay_scene records (local, LLM-free; scanned PDFs fail with a clear message)"
+      - name: audiobook.scenes
+        args: [script]
+        flags: [--json]
+        description: "List parsed scenes with parse confidence and per-scene audio status"
+      - name: audiobook.cast
+        args: [script]
+        flags: [--assign, --json]
+        description: "List or assign the character → voice → provider cast (stable across sessions and revisions)"
+      - name: audiobook.estimate
+        args: [script]
+        flags: [--provider, --scenes, --json]
+        description: "Pre-generation cost estimate (characters, per-scene breakdown, provider, total USD); required before any cloud generate"
+      - name: audiobook.generate
+        args: [script]
+        flags: [--provider, --scenes, --yes, --json]
+        description: "Generate scene audio via the local resumable sidecar job (per-scene content-hash cache); cloud providers require a prior estimate + explicit confirm"
+      - name: audiobook.status
+        args: [script]
+        flags: [--json]
+        description: "Show generation state per scene and the manifest-derived running spend"
+      - name: audiobook.retry-scene
+        args: [script, scene-id]
+        flags: [--json]
+        description: "Regenerate exactly one scene, preserving all completed scenes"
+      - name: audiobook.export
+        args: [script]
+        flags: [--format, --output, --json]
+        description: "Export generated audio (MP3 for MVP)"
+
+  mcp:
+    description: "Model Context Protocol server for IDE inbound access (Claude Code, Cursor, Codex)"
+    commands:
+      - name: serve
+        flags: [--persona]
+        description: "Serve Lightwave MCP tools over stdio (default persona tier: engineer)"

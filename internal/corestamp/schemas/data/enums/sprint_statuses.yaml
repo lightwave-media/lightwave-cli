@@ -1,0 +1,35 @@
+_meta:
+  version: "2.0.0"
+  schema_id: "lightwave://schemas/data/enums/sprint_statuses"
+  title: "Sprint Status Enum"
+  description: |
+    Lifecycle statuses for Sprint entities. Closed enum.
+
+    v2.0: values merged from print back into stamp per revised R-15.
+    Originally extracted from legacy products/createos/config.yaml.
+  generates:
+    - "pydantic:SprintStatus"
+  depends_on: []
+
+name: sprint_statuses
+description: "Lifecycle statuses for Sprint entities"
+default: not_started
+closed: true
+options:
+  - value: not_started
+    label: "Not Started"
+    description: "Sprint not yet begun"
+    is_active: false
+  - value: active
+    label: "Active"
+    description: "Sprint currently in progress"
+    is_active: true
+  - value: completed
+    label: "Completed"
+    description: "Sprint finished"
+    is_active: false
+    is_completed: true
+  - value: cancelled
+    label: "Cancelled"
+    description: "Sprint was cancelled"
+    is_active: false

@@ -1,0 +1,140 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/agent_tools/tool_filter_groups"
+  title: "Tool Filter Groups Contract"
+  description: |
+    Filter tool catalog exposed to LLM by context. Named groups → tool subsets,
+    bound per-channel / per-cron-class / per-agent-role. Forensic root cause
+    of prompt-bloat captured 2026-05-25 in ZeroClaw operation: a "Hi" chat
+    exchange took 108s prompt processing + 25s generation on the local 26B
+    because the full tool catalog (~34k tokens) was loaded into every call.
+    Filtering by context drops chat prompts to ~10k tokens — same lever fixes
+    latency, context-overflow, and cloud-failover cost.
+
+    Per handoff 2026-05-25-zeroclaw-runtime-ergonomics R1 (must).
+  generates:
+    - "pydantic:ToolFilterGroups"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default', 'cineos-production')"
+  - name: groups
+    type: "list[ToolGroupRef]"
+    description: |
+      Named tool subsets. Sub-schema ToolGroup:
+        name (str, slug — e.g. 'chat', 'dev', 'ops', 'analyst', 'maintenance'),
+        description (str, what context this group is for),
+        tool_refs (list[str], $refs to interfaces/cli/<verb> or interfaces/mcp/<name>),
+        extends (list[str], slugs of parent groups — composability: 'dev' extends 'chat'),
+        notes (str, when/why to apply).
+  - name: context_bindings
+    type: "list[ContextBindingRef]"
+    description: |
+      Per-context assignment of a group. Sub-schema ContextBinding:
+        context_kind (enum: channel | cron_class | agent_role | sop | manual),
+        context_value (str, e.g. 'telegram' | 'housekeeping' | 'v_research'),
+        group_slug (str, references a group's name above),
+        priority (int, when multiple bindings match, highest priority wins),
+        notes (str).
+
+optional_fields:
+  - name: per_runtime_overrides
+    type: "dict[str, str]"
+    description: "Map runtime name (claude-code | pi | zeroclaw | v_core-daemon) to a group override that takes precedence over context_bindings."
+  - name: emergency_fallback_group
+    type: str
+    description: "Group slug to fall back to if context resolution fails (e.g. 'minimal')."
+  - name: telemetry
+    type: "TelemetryRef"
+    description: "Sub-schema Telemetry: emit_per_call (bool), record_prompt_tokens (bool), record_group_resolution (bool)."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default"
+  groups:
+    - name: "minimal"
+      description: "Emergency fallback — read-only ops, no edit/write, no network"
+      tool_refs:
+        - "lightwave://schemas/interfaces/cli/file_read"
+        - "lightwave://schemas/interfaces/cli/memory_recall"
+      extends: []
+      notes: "When context resolution fails or as the agent dispatch failure mode."
+    - name: "chat"
+      description: "Minimal conversational tools — file read, memory recall, web search; no edit/write"
+      tool_refs:
+        - "lightwave://schemas/interfaces/cli/web_search"
+      extends: ["minimal"]
+      notes: "For Telegram chat with v_core. Keeps prompt < 10k tokens."
+    - name: "dev"
+      description: "Development tools — edit, write, run tests, git, build"
+      tool_refs:
+        - "lightwave://schemas/interfaces/cli/edit"
+        - "lightwave://schemas/interfaces/cli/write"
+        - "lightwave://schemas/interfaces/cli/run_tests"
+        - "lightwave://schemas/interfaces/cli/git"
+      extends: ["chat"]
+      notes: "For v_dev sessions writing code. Builds on chat tools."
+    - name: "ops"
+      description: "Operations tools — deploy, monitor, alert, log access"
+      tool_refs:
+        - "lightwave://schemas/interfaces/cli/deploy"
+        - "lightwave://schemas/interfaces/cli/log_query"
+      extends: ["chat"]
+      notes: "For housekeeping crons and v_core sysadmin operations."
+    - name: "analyst"
+      description: "Research/analysis tools — brain query, web research, data fetch"
+      tool_refs:
+        - "lightwave://schemas/interfaces/cli/brain_query"
+        - "lightwave://schemas/interfaces/cli/local_research"
+      extends: ["chat"]
+      notes: "For v_research sessions doing analysis without code changes."
+    - name: "maintenance"
+      description: "Heartbeat/watchdog tools — file_read, memory_recall, http_request, alert; no recursive delegation"
+      tool_refs:
+        - "lightwave://schemas/interfaces/cli/http_request"
+        - "lightwave://schemas/interfaces/cli/alert_emit"
+      extends: ["minimal"]
+      notes: "For heartbeat tasks per R9 heartbeat_budget contract. Explicitly excludes delegate-spawning tools."
+  context_bindings:
+    - context_kind: channel
+      context_value: telegram
+      group_slug: chat
+      priority: 100
+      notes: "Joel's primary chat channel; v_core sysadmin focus."
+    - context_kind: channel
+      context_value: whatsapp
+      group_slug: chat
+      priority: 100
+      notes: "v_gm personal assistant context."
+    - context_kind: cron_class
+      context_value: housekeeping
+      group_slug: ops
+      priority: 100
+    - context_kind: agent_role
+      context_value: v_dev
+      group_slug: dev
+      priority: 200
+    - context_kind: agent_role
+      context_value: v_research
+      group_slug: analyst
+      priority: 200
+    - context_kind: agent_role
+      context_value: heartbeat-watcher
+      group_slug: maintenance
+      priority: 200
+  per_runtime_overrides:
+    claude-code: dev # claude-code sessions always get dev tools
+    zeroclaw-daemon: minimal # daemon itself only needs minimal
+  emergency_fallback_group: minimal
+  telemetry:
+    emit_per_call: true
+    record_prompt_tokens: true
+    record_group_resolution: true

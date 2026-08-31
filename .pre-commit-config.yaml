@@ -108,7 +108,13 @@ repos:
         exclude: (\.lock$|go\.sum$|internal/audits/golangci-baseline\.json$)
       - id: end-of-file-fixer
         exclude: (\.lock$|go\.sum$|internal/audits/golangci-baseline\.json$)
+      # internal/corestamp/schemas is a vendored mirror of lightwave-core's
+      # stamp; core validates it in its own CI. Excluded here because this
+      # repo cannot fix upstream YAML — a duplicate key in
+      # workflows/skills/__index.yaml (journey-first, declared twice) would
+      # otherwise block every commit that refreshes the mirror.
       - id: check-yaml
+        exclude: ^internal/corestamp/schemas/
       - id: check-json
       - id: check-added-large-files
         args: [--maxkb=1100]

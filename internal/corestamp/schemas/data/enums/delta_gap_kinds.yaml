@@ -1,0 +1,28 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/delta_gap_kinds
+  title: Delta Gap Kinds
+  description: Closed enum for spec_docs_delta items[].kind
+  generates:
+  - pydantic:DeltaGapKind
+  depends_on: []
+name: delta_gap_kinds
+description: Kinds of gaps between spec intent and docs reality
+default: missing_surface
+closed: true
+options:
+- value: missing_surface
+  label: Missing surface
+  description: Missing surface option.
+- value: missing_flow
+  label: Missing flow
+  description: Missing flow option.
+- value: missing_auth_tuple
+  label: Missing auth tuple
+  description: Missing auth tuple option.
+- value: shape_mismatch
+  label: Shape mismatch
+  description: Shape mismatch option.
+- value: assertion_unmet
+  label: Assertion unmet
+  description: Assertion unmet option.

@@ -1,0 +1,60 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/camera_format"
+  title: "Camera Format"
+  description: |
+    The SHAPE of a capture format definition: resolution ladder, named aspect
+    masks, output mappings, pixel aspect — framing as data, not code (the
+    Baselight Formats lesson). Format INSTANCES (ARRI/Sony/BMD records,
+    extracted or hand-defined) are prints under ~/.lightwave or the
+    per-project store — never committed to lightwave-core (stamp defines
+    shapes, not data).
+  generates:
+    - "go:CameraFormat"
+    - "typescript:CameraFormat"
+    - "zig:CameraFormat"
+    - "json_schema:camera_format"
+  depends_on: []
+
+required_fields:
+  - name: name
+    type: str
+    description: "Format name (e.g. 'ARRI Alexa Mini OpenGate 3.4K')"
+
+optional_fields:
+  - name: resolutions
+    type: "list[FormatResolution]"
+    description: "Resolution ladder, largest first; sub-schema: width (int), height (int)"
+  - name: masks
+    type: "list[AspectMask]"
+    description: "Named aspect masks; sub-schema: name (str, e.g. '1.85'), xmin (float), xmax (float), ymin (float), ymax (float)"
+  - name: mappings
+    type: "list[FormatMapping]"
+    description: "Per-output-format framing; sub-schema: dest_format (str), src_mask (str), inside (bool), sx (float), sy (float), tx (float), ty (float)"
+  - name: pixel_aspect
+    type: float
+    default: 1.0
+    description: "Pixel aspect ratio (1.0 spherical; 2.0 full anamorphic)"
+  - name: projection
+    type: str
+    nullable: true
+    description: "Projection/lens model (null for standard spherical)"
+  - name: description
+    type: str
+    description: "Notes on the format's provenance/use"
+
+relations:
+  parent: null
+  children: []
+
+example:
+  name: "ARRI Alexa XT ARRIRAW 4:3 2.8K"
+  resolutions:
+    - { width: 2880, height: 2160 }
+    - { width: 1440, height: 1080 }
+    - { width: 720, height: 540 }
+  masks:
+    - { name: "1.85", xmin: 0, xmax: 2880, ymin: 301.6, ymax: 1858.4 }
+    - { name: "2.39", xmin: 0, xmax: 2880, ymin: 477.5, ymax: 1682.5 }
+  mappings:
+    - { dest_format: "HD 1920x1080", src_mask: "1.85", inside: true, sx: 0.667, sy: 0.667, tx: 0, ty: -180 }

@@ -1,0 +1,32 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/scaffold_manifest
+  title: Scaffold Manifest
+  description: 'Factory execution plan produced at kickoff finalize.
+
+    .tasks/<session-id>/kickoff/scaffold_manifest.yaml
+
+    '
+  generates:
+  - pydantic:ScaffoldManifest
+  depends_on: []
+required_fields:
+- name: _meta
+  type: map[str, str]
+  description: initiative, approved_at, kickoff_interview_ref
+- name: steps
+  type: list[ManifestStepRef]
+  description: 'ManifestStep: id, kind (scaffold|blueprint|manual|runbook),
+
+    slug, repo, depends_on, optional, vars, action, path
+
+    '
+optional_fields:
+- name: approved_at
+  type: str
+  description: ISO 8601 timestamp when this scaffold manifest was approved.
+example:
+  _meta:
+    initiative: 2026-06-18-session
+    kickoff_interview_ref: interview_transcript.yaml
+  steps: []

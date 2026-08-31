@@ -1,0 +1,31 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/agent_session_cap
+  title: Agent Session Cap
+  description: 'Mitchell mayor model caps for CreateOS concurrent agent runbooks and harness
+
+    sessions. Complements llm_concurrency.yaml GPU/LLM slots.
+
+    '
+  generates:
+  - pydantic:AgentSessionCap
+  depends_on: []
+required_fields:
+- name: concurrent_runbooks_max
+  type: int
+  description: CreateOS runbook lanes; Mitchell default 2
+- name: concurrent_agent_sessions_max
+  type: int
+  description: Harness agent sessions; dogfood default 2
+optional_fields:
+- name: coaching_runbooks_spawn_agents
+  type: bool
+  description: Rubin coaching runbooks default false unless user opts in
+- name: source
+  type: str
+  description: Source or trigger that set this session capability.
+example:
+  concurrent_runbooks_max: 2
+  concurrent_agent_sessions_max: 2
+  coaching_runbooks_spawn_agents: false
+  source: mitchell_mayor_model

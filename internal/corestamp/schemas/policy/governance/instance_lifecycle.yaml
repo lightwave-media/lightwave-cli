@@ -1,0 +1,243 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/governance/instance_lifecycle"
+  title: "NullClaw Instance Lifecycle — Spin-Up / Spin-Down Rules"
+  description: |
+    Declares which nullclaw instances exist, how they map to software lifecycle
+    phases, and the API calls to activate/deactivate them. The harness reads
+    the current software lifecycle phase from the database and calls the
+    nullhub API to spin up/down instances accordingly.
+
+    Instances are ephemeral by design: activation generates an API key,
+    deactivation revokes it. Every action is recorded in agent_sessions for
+    audit traceability (legal compliance for agent identity tracking).
+
+  generates:
+    - "go:InstanceLifecycle"
+  depends_on:
+    - "lightwave://schemas/workflows/sops/software_lifecycle"
+    - "lightwave://schemas/data/meta/agent_identity"
+    - "lightwave://schemas/data/meta/agent_session"
+
+required_fields:
+  - name: instance_name
+    type: str
+    description: "Nullclaw instance name (e.g. v_core-package-developer)"
+  - name: component
+    type: str
+    description: "nullhub component (e.g. nullclaw)"
+  - name: lifecycle_phase
+    type: str
+    description: "Software lifecycle phase this instance belongs to"
+
+optional_fields:
+  - name: role
+    type: str
+    description: "Functional role of this instance (e.g. developer, q_suite, orchestrator)."
+  - name: sandboxed
+    type: bool
+    description: "Whether this instance is sandboxed to a single repository."
+  - name: repo_scope
+    type: str
+    description: "Repo this developer instance is sandboxed to."
+  - name: api_key_ssm_path
+    type: str
+    description: "AWS SSM parameter path for this instance's API key."
+
+# ── Instance Registry ─────────────────────────────────────────────────────────
+
+instances:
+  # ── Q-Suite (Review Personas) ───────────────────────────────────────────────
+  - instance_name: v_product-owner
+    component: nullclaw
+    lifecycle_phase: discovery
+    role: q_suite
+    gates: [discovery_exit]
+    sandboxed: false
+
+  - instance_name: v_scrum-manager
+    component: nullclaw
+    lifecycle_phase: planning
+    role: orchestrator
+    gates: [planning_entry, planning_exit]
+    sandboxed: false
+
+  - instance_name: v_ux-researcher
+    component: nullclaw
+    lifecycle_phase: discovery
+    role: q_suite
+    gates: []
+    sandboxed: false
+
+  - instance_name: v_cfo
+    component: nullclaw
+    lifecycle_phase: planning
+    role: q_suite
+    gates: [budget]
+    sandboxed: false
+
+  - instance_name: v_staff-engineer
+    component: nullclaw
+    lifecycle_phase: review
+    role: q_suite
+    gates: [scaffold, review_entry]
+    sandboxed: false
+    skills: [ponytail-audit]
+
+  - instance_name: v_qa-engineer
+    component: nullclaw
+    lifecycle_phase: review
+    role: q_suite
+    gates: [verify]
+    sandboxed: false
+
+  - instance_name: v_cto
+    component: nullclaw
+    lifecycle_phase: review
+    role: q_suite
+    gates: [complete, review_exit]
+    sandboxed: false
+
+  # ── Developer Personas (Sandboxed per Repo) ─────────────────────────────────
+  - instance_name: v_core-package-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: lightwave-core
+    sandboxed: true
+    sandbox_rules: developer_sandbox
+
+  - instance_name: v_cli-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: lightwave-cli
+    sandboxed: true
+    sandbox_rules: developer_sandbox
+
+  - instance_name: v_frontend-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: lightwave-ui
+    sandboxed: true
+    sandbox_rules: developer_sandbox
+
+  - instance_name: v_platform-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: lightwave-platform
+    sandboxed: true
+    sandbox_rules: developer_sandbox
+
+  - instance_name: v_sys-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: lightwave-sys
+    sandboxed: true
+    sandbox_rules: developer_sandbox
+
+  - instance_name: v_infra-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: lightwave-infrastructure-catalog
+    sandboxed: true
+    sandbox_rules: developer_sandbox
+
+  # ── Infrastructure Personas ─────────────────────────────────────────────────
+  - instance_name: v_nullclaw-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: nullclaw
+    sandboxed: true
+
+  - instance_name: v_nullhub-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: nullhub
+    sandboxed: true
+
+  - instance_name: v_nulltickets-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: nulltickets
+    sandboxed: true
+
+  - instance_name: v_nullwatch-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: nullwatch
+    sandboxed: true
+
+  - instance_name: v_nullbuilder-developer
+    component: nullclaw
+    lifecycle_phase: execution
+    role: developer
+    repo_scope: nullbuilder
+    sandboxed: true
+
+# ── Lifecycle API ─────────────────────────────────────────────────────────────
+
+api_actions:
+  spin_up:
+    method: POST
+    endpoint: "/api/wizard/nullclaw"
+    description: "Provision a new nullclaw instance or start an existing one"
+  spin_down:
+    method: POST
+    endpoint: "/api/instances/{component}/{name}/pause"
+    description: "Pause an instance (preserves config, stops cron)"
+  set_cron:
+    method: POST
+    endpoint: "/api/instances/{component}/{name}/cron"
+    description: "Register or update cron schedule"
+  pause_cron:
+    method: POST
+    endpoint: "/api/instances/{component}/{name}/cron/{id}/pause"
+    description: "Pause cron without destroying the job"
+  resume_cron:
+    method: POST
+    endpoint: "/api/instances/{component}/{name}/cron/{id}/resume"
+    description: "Resume a paused cron job"
+  generate_key:
+    method: POST
+    endpoint: "/api/instances/{component}/{name}/key"
+    description: "Generate ephemeral API key for this instance"
+  revoke_key:
+    method: DELETE
+    endpoint: "/api/instances/{component}/{name}/key"
+    description: "Revoke API key on instance deactivation"
+
+# ── Ephemeral Key Policy ──────────────────────────────────────────────────────
+
+key_policy:
+  description: |
+    Agent API keys are ephemeral. On instance activation, the harness generates
+    a new key and stores it in AWS SSM. On deactivation, the key is revoked
+    and the SSM parameter is deleted. Every key generation and revocation is
+    recorded in agent_actions for audit traceability.
+
+    This satisfies legal requirements for agent identity — every action can be
+    traced to a specific instance with a time-bounded API key.
+
+  key_lifetime: "instance_uptime"
+  storage: "aws_ssm"
+  ssm_path_template: "/lightwave/agents/{instance_name}/api_key"
+  audit_table: "agent_actions"
+
+# ── Example ───────────────────────────────────────────────────────────────────
+
+example:
+  instance_name: v_core-package-developer
+  component: nullclaw
+  lifecycle_phase: execution
+  role: developer
+  repo_scope: lightwave-core
+  sandboxed: true

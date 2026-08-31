@@ -1,0 +1,52 @@
+# =============================================================================
+# AGILE ARTIFACTS SCHEMA REGISTRY (Category A / kind family: agile_artifacts)
+# =============================================================================
+# The R-P-I-V-R artifact schemas + the Goal/Project work-spine tiers. Each
+# defines what a filled artifact print must contain. Migrated from lightwave/schema/definitions/governance/agile/
+# one file at a time during Phase 4 (per joel's directive: audit each before
+# move, no batch copy).
+#
+# Document-subtype kinds (stored as Document with matching category):
+#   product_vision, market_analysis, prd, sad, nfr, ddd, api_spec
+# Dedicated-model kinds (1:1 SST entity):
+#   goal, project, epic, sprint, user_story, task, implementation_plan
+# (goal + project are the work-spine tiers above epic — Goal → Project → Epic →
+#  Sprint → Task; orthogonal to the R-P-I-V-R doc lineage.)
+# =============================================================================
+
+_meta:
+  version: "0.3.0"
+  schema_id: "lightwave://schemas/data/agile_artifacts/__index"
+  title: "Agile Artifacts Schema Registry"
+  description: |
+    Maps R-P-I-V-R artifact kind names to their schema files. Each kind's
+    filled-instance prints live at ~/.lightwave/specs/<kind>/ per HomeDir
+    kind_to_dir_map.
+  changelog:
+    - version: "0.3.0"
+      date: "2026-06-19"
+      summary: "adds goal + project — the Goal/Project work-spine tiers above epic (createOS decision interview); epic gains optional project_ref"
+    - version: "0.2.0"
+      date: "2026-05-29"
+      summary: "adds qa_handoff per ADR-0005 — structured code-review→qa payload"
+    - version: "0.1.0"
+      date: "2026-05-25"
+      summary: "initial registry with the 12 R-P-I-V-R kinds"
+
+schemas:
+  product_vision: product_vision.yaml
+  market_analysis: market_analysis.yaml
+  prd: prd.yaml
+  sad: sad.yaml
+  nfr: nfr.yaml
+  ddd: ddd.yaml
+  api_spec: api_spec.yaml
+  goal: goal.yaml
+  project: project.yaml
+  epic: epic.yaml
+  sprint: sprint.yaml
+  user_story: user_story.yaml
+  task: task.yaml
+  implementation_plan: implementation_plan.yaml
+  qa_handoff: qa_handoff.yaml
+  scrum_hierarchy: scrum_hierarchy.yaml

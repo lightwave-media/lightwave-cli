@@ -1,0 +1,112 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/data/reference_documents/domain_charter"
+  title: "Domain Charter"
+  description: "Bounded-context charter for a domain in the LightWave ecosystem. Defines what's in scope, what's NOT in scope (boundary clarity), ubiquitous language, owners, entities owned, and cross-domain relationships. Modeled after Eric Evans' DDD bounded-context pattern. Migrated 2026-05-25 from governance/reference/domain_charter.yaml (Phase 4 file #16)."
+  generates:
+    - "pydantic:DomainCharter"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: slug
+    type: str
+    description: "Kebab-case identifier; for life-domains, matches a value in life_domains enum. For sub-domains, slug carries the hierarchy (e.g., software-development.tooling)."
+  - name: name
+    type: str
+    description: "Human-readable domain name."
+  - name: bounded_context
+    type: str
+    description: "One paragraph: what is IN this domain. The scope statement that anchors every other field."
+  - name: non_scope
+    type: "list[str]"
+    description: "What is NOT in this domain. Boundary clarity — each item names a thing this domain explicitly delegates elsewhere."
+  - name: owners
+    type: "list[str]"
+    description: "Role references that own this domain (e.g., v_core, v_cto, joel). At least one human is required for accountability."
+  - name: ubiquitous_language
+    type: "list[UbiquitousLanguageTermRef]"
+    description: "Terms used inside this domain; sub-schema: term, definition, aliases (list[str]), anti_terms (list[str] of words to AVOID for this concept). The shared vocabulary."
+  - name: entities
+    type: "list[str]"
+    description: "$refs to data/ schemas owned by this domain (e.g., lightwave://schemas/data/agile_artifacts/epic). Empty list is valid for purely-relational domains."
+  - name: cross_domain_relationships
+    type: "list[CrossDomainRefRef]"
+    description: "Relationships to other domains; sub-schema: related_domain_slug, kind (enum: depends_on|provides_to|conflicts_with|adjacent), note (str)."
+
+optional_fields:
+  - name: conventions
+    type: "list[str]"
+    description: "Domain-specific conventions or patterns (e.g., 'all CLI commands go through lw')."
+  - name: anti_patterns
+    type: "list[str]"
+    description: "Patterns to AVOID in this domain (paired counterpoint to conventions)."
+  - name: reference_artifacts
+    type: "list[str]"
+    description: "$refs to PRDs, SADs, ADRs that are anchored in this domain."
+  - name: status
+    type: str
+    description: "Lifecycle status; validated against document_statuses."
+
+relations:
+  parent: null # Domain Charters are top-level — no agile parent
+  children:
+    - glossary # a domain may have a dedicated ubiquitous-language glossary
+    - adr # ADRs may be anchored to a domain
+
+example:
+  slug: software-development
+  name: "Software Development"
+  bounded_context: "Building and maintaining software for the LightWave Media ecosystem — all five lightwave-* repos across Python, Go, Rust, and TypeScript. Covers schemas, runtime, CLI, desktop, web frontend, and CI/CD infrastructure. Joel is the sole operator; the v_* agent fleet handles execution within this domain."
+  non_scope:
+    - "Cinematography production workflows (lives in creative-strategy / content-creation)"
+    - "Financial bookkeeping and tax (lives in finance)"
+    - "Personal admin (lives in personal-admin)"
+    - "Legal and entity-formation work (lives in legal)"
+  owners:
+    - "joel"
+    - "v_core"
+    - "v_cto"
+  ubiquitous_language:
+    - term: "Stamp"
+      definition: "The declarative source-of-truth package (lightwave-core). Holds shape; never holds content."
+      aliases: ["SST", "schema package"]
+      anti_terms: ["spec library (too narrow)", "type system (too narrow)"]
+    - term: "Print"
+      definition: "Runtime artifacts and filled instances produced by code reading the stamp. Lives at ~/.lightwave/*."
+      aliases: ["runtime data", "instance"]
+      anti_terms: ["output (too vague)"]
+    - term: "Blueprint"
+      definition: "Ordered composition of actions executed by lw cli. Declared as YAML in lightwave-core."
+      aliases: ["workflow", "recipe"]
+      anti_terms: ["script (implies imperative)"]
+  entities:
+    - "lightwave://schemas/data/agile_artifacts/epic"
+    - "lightwave://schemas/data/agile_artifacts/sprint"
+    - "lightwave://schemas/data/agile_artifacts/task"
+    - "lightwave://schemas/data/agile_artifacts/user_story"
+  cross_domain_relationships:
+    - related_domain_slug: "creative-strategy"
+      kind: "provides_to"
+      note: "Software domain ships tools (CineOS, etc.) that creative-strategy domain consumes"
+    - related_domain_slug: "personal-admin"
+      kind: "adjacent"
+      note: "Both rely on the same agent fleet but operate independently"
+    - related_domain_slug: "finance"
+      kind: "depends_on"
+      note: "Software work depends on finance for budget/cost gates"
+  conventions:
+    - "All CLI commands go through lw — no raw bash in agent execution"
+    - "Schemas live in lightwave-core only; never duplicate field definitions in consumer code"
+    - "Secrets via AWS SSM; never .env files"
+  anti_patterns:
+    - "Hand-mirroring schema fields in consumer code instead of using bindings"
+    - "Mixing print content (filled specs) into the stamp (lightwave-core)"
+    - "Defining new roles outside governance/access/rbac.yaml"
+  reference_artifacts:
+    - "lightwave://specs/prd/lightwave-core"
+    - "lightwave://specs/sad/lightwave-core"
+    - "lightwave://specs/nfr/lightwave-core"
+  status: "draft"

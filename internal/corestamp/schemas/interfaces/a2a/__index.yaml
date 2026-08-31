@@ -1,0 +1,13 @@
+# A2A Protocol Registry
+# Agent-to-Agent communication schemas for the Lightwave Harness.
+# Schemas registered here define the message shapes, routing tables,
+# and delivery surfaces for inter-agent communication.
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/interfaces/a2a/__index"
+  title: "A2A Protocol Registry"
+  description: "Maps A2A schema slugs to their files. Agent-to-agent communication protocol definitions."
+
+schemas:
+  event: event.yaml

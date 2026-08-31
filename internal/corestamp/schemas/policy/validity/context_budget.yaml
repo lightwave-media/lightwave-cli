@@ -1,0 +1,103 @@
+_meta:
+  version: "1.1.0"
+  schema_id: "lightwave://schemas/policy/validity/context_budget"
+  title: "Agent Context Budget Contract"
+  description: "Contract governing how an agent session manages its context window — system prompt caps, max tokens per model (must respect native ctx), history pruning policy, compression triggers, and trimming order. Prevents the failure mode where a 96k budget is set against a 32k-ctx model, producing silent failures. Stamps the discipline so every runtime configuring an agent applies the same gates. Migrated 2026-05-25 from ai/contracts/context_budget.yaml (Phase 4 follow-up to handoff #1)."
+  generates:
+    - "pydantic:ContextBudgetContract"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'v_core-default', 'v_dev-heavy', 'pi-research-session')"
+  - name: applies_to
+    type: "list[str]"
+    description: "Which roles or runtimes this budget applies to (e.g. ['v_core'], ['claude-code:*'])"
+  - name: max_system_prompt_chars
+    type: int
+    description: "Hard cap on system prompt size in characters. Prevents prompt sprawl. -1 = no cap (rare; flagged)."
+  - name: max_context_tokens
+    type: int
+    description: "Hard cap on total context tokens for any session under this budget. MUST be ≤ the bound model's native context window per max_context_token_safety below."
+  - name: max_context_token_safety
+    type: "MaxContextSafetyRef"
+    description: "Sub-schema MaxContextSafety: enforce_against_model_ctx (bool, MUST be true), fail_action (enum: error_at_session_spawn|warn_only|silent — locked to error_at_session_spawn per the failure mode this contract prevents), default_safety_margin_pct (int, 0-25, default 10 — keep some headroom)"
+  - name: history_pruning_policy
+    type: "HistoryPruningRef"
+    description: "Sub-schema HistoryPruning: keep_recent_messages (int, last N turns preserved), collapse_tool_results (bool, replace tool results with summary after N turns), collapse_threshold_turns (int, when to start collapsing), preserve_first_n_messages (int, system + early grounding stays untouched)"
+  - name: context_compression
+    type: "CompressionPolicyRef"
+    description: "Sub-schema CompressionPolicy: trigger_pct (int 0-100, % of max_context_tokens at which compression fires), target_pct (int, % to compress down to), ratio_target (float, e.g. 0.4 for 60% reduction), protected_ranges (list[str], message patterns NEVER compressed — e.g. 'tool:edit*', 'role:system')"
+  - name: trimming_order
+    type: "list[str]"
+    description: "Ordered list of what to trim FIRST when over budget. Suggested order: tool_results_oldest → tool_results_all → user_messages_oldest → assistant_messages_oldest → never_system_prompt"
+  - name: status
+    type: str
+    description: "Lifecycle status"
+
+optional_fields:
+  - name: per_model_overrides
+    type: "list[ModelOverrideRef]"
+    description: "Per-model override caps. Sub-schema ModelOverride: model_id ($ref), max_context_tokens (int), max_system_prompt_chars (int|null, null = inherit), notes (str)"
+  - name: telemetry_emit
+    type: bool
+    description: "Whether to emit context-budget telemetry per turn to ~/.lightwave/observability/context.jsonl. Default true."
+  - name: rationale
+    type: str
+    description: "Why these caps — typically references the failure mode they prevent"
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "v_core-default"
+  applies_to:
+    - "v_core"
+    - "v_research"
+    - "v_dev"
+  max_system_prompt_chars: 80000
+  max_context_tokens: 100000
+  max_context_token_safety:
+    enforce_against_model_ctx: true
+    fail_action: "error_at_session_spawn"
+    default_safety_margin_pct: 10
+  history_pruning_policy:
+    keep_recent_messages: 20
+    collapse_tool_results: true
+    collapse_threshold_turns: 10
+    preserve_first_n_messages: 5
+  context_compression:
+    trigger_pct: 80
+    target_pct: 60
+    ratio_target: 0.4
+    protected_ranges:
+      - "role:system"
+      - "tool:edit*"
+      - "tool:write*"
+  trimming_order:
+    - "tool_results_oldest"
+    - "tool_results_all"
+    - "user_messages_oldest"
+    - "assistant_messages_oldest"
+  per_model_overrides:
+    - model_id: "lightwave://schemas/integrations/llm_providers/models/gemma_4_e4b"
+      max_context_tokens: 120000
+      max_system_prompt_chars: null
+      notes: "Gemma 4 E4B ships 128k ctx; budget set to 120k to leave 8k safety margin."
+    - model_id: "lightwave://schemas/integrations/llm_providers/models/gemma_4_26b_a4b"
+      max_context_tokens: 240000
+      max_system_prompt_chars: null
+      notes: "Gemma 4 26B ships 262k ctx; 240k cap leaves 22k margin."
+  telemetry_emit: true
+  rationale: |
+    Failure mode this prevents: budget set higher than model native ctx
+    produces SILENT failures (model truncates or returns garbage). Always
+    enforce_against_model_ctx + error_at_session_spawn so the operator
+    learns at startup, not mid-session. Discovered in lightwave-sys
+    morning-briefing session, 2026-05-25.
+  status: "draft"

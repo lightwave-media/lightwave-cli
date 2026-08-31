@@ -1,0 +1,165 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/governance/developer_sandbox"
+  title: "Developer Sandbox — Per-Repo Tool Grants"
+  description: |
+    Developer personas are sandboxed to their assigned repo. They can only
+    create files through the boilerplate system. Every file creation is gated
+    by a phase transition in runbook_executions. This is the same RBAC model
+    as user access control — just for automated agent workflows.
+
+    The sandbox enforces:
+    1. Repo scope: developer can only touch files in their assigned repo.
+    2. Boilerplate-first: new files come from `lw scaffold`, not raw Write.
+    3. Phase-gated: edits allowed only after scaffold phase passes review.
+    4. CI-gated: no push/commit unless local CI is green.
+    5. Naming conventions: enforced by boilerplate templates, not regex.
+
+  generates:
+    - "go:DeveloperSandbox"
+  depends_on:
+    - "lightwave://schemas/policy/governance/harness_configuration_plane"
+    - "lightwave://schemas/workflows/sops/runbook_execution"
+
+required_fields:
+  - name: repo
+    type: str
+    description: "Target repository path relative to ~/dev/"
+  - name: developer_instance
+    type: str
+    description: "Nullclaw instance name (e.g. v_core-package-developer)"
+
+optional_fields:
+  - name: allowed_blueprints
+    type: "list[str]"
+    description: "Boilerplate blueprints this developer can scaffold"
+  - name: allowed_runbooks
+    type: "list[str]"
+    description: "Runbooks this developer can execute"
+
+# ── Sandbox Rules ─────────────────────────────────────────────────────────────
+
+sandbox_rules:
+  file_creation:
+    rule: "boilerplate_only"
+    description: |
+      New files MUST come from `lw scaffold <blueprint>` or `boilerplate --template-url`.
+      Raw Write/Edit on new files is denied. The agent can Edit existing files
+      (after scaffold phase) but cannot create novel files from scratch.
+    enforcement: |
+      Harness hook: on Write/Edit to a file not in boilerplate output dir,
+      check if file exists. If it doesn't exist and isn't in a boilerplate
+      template, deny. If it exists and current_phase >= scaffold, allow.
+
+  repo_scope:
+    rule: "single_repo"
+    description: |
+      Developer can only Read/Write/Edit within ~/dev/<repo_scope>/.
+      Cross-repo reads are allowed (Read, Glob, Grep on sibling repos).
+      Cross-repo writes are denied.
+    enforcement: |
+      Harness hook: resolve all Write/Edit paths. If path is outside
+      ~/dev/<repo_scope>/, deny. Read-only tools (Read, Glob, Grep) are
+      unrestricted to allow consuming SST schemas from lightwave-core.
+
+  naming_conventions:
+    rule: "boilerplate_enforced"
+    description: |
+      Naming conventions are enforced by boilerplate templates, not by regex
+      hooks. If a file doesn't match conventions, the boilerplate template
+      is wrong — fix the template, not the file.
+    enforcement: |
+      Boilerplate tests (test_boilerplate_catalog.py) validate that all
+      generated files follow naming conventions. CI fails if they don't.
+
+  ci_gate:
+    rule: "local_ci_before_push"
+    description: |
+      No git push unless `mise run ci` passes. No commit unless local CI
+      passes (pre-commit hooks enforce this).
+    enforcement: |
+      Pre-commit hooks run CI. Pre-push hooks run CI again. Both are hard
+      gates. Bypass requires LW_OVERRIDE_REVIEW_BLOCK=1.
+
+# ── Per-Repo Sandbox Configuration ────────────────────────────────────────────
+
+repo_sandboxes:
+  lightwave-core:
+    developer: v_core-package-developer
+    allowed_blueprints:
+      - domain
+      - platform-frontend
+      - react-component
+      - spec-agile
+      - spec-repo
+      - repo-bootstrap
+      - repo-release
+      - docs-repo
+      - agent-harness-config
+    allowed_runbooks:
+      - bootstrap-platform-domain
+      - teardown-platform-domain
+      - ci-gate
+      - lsp-gate
+    description: "SST constitution package — schema, boilerplate, runbook definitions"
+
+  lightwave-cli:
+    developer: v_cli-developer
+    allowed_blueprints:
+      - repo-bootstrap
+      - repo-release
+    allowed_runbooks:
+      - ci-gate
+    description: "Go CLI — lw command, boilerplate engine wrapper"
+
+  lightwave-ui:
+    developer: v_frontend-developer
+    allowed_blueprints:
+      - react-component
+      - platform-frontend
+      - site-section
+    allowed_runbooks:
+      - ci-gate
+    description: "TypeScript/React component library — untitled-ui fork"
+
+  lightwave-platform:
+    developer: v_platform-developer
+    allowed_blueprints:
+      - platform-frontend
+      - website
+      - webapp-v1
+      - desktop-app-v1
+    allowed_runbooks:
+      - bootstrap-platform-domain
+      - teardown-platform-domain
+      - ci-gate
+    description: "Go/Huma platform backend — serves tenant websites from database"
+
+  lightwave-sys:
+    developer: v_sys-developer
+    allowed_blueprints:
+      - repo-bootstrap
+    allowed_runbooks:
+      - ci-gate
+    description: "Rust systems library — libLightwave kernel interface"
+
+  lightwave-infrastructure-catalog:
+    developer: v_infra-developer
+    allowed_blueprints:
+      - repo-bootstrap
+    allowed_runbooks:
+      - ci-gate
+      - bootstrap-aws-account
+      - bootstrap-aws-network
+    description: "Terragrunt/OpenTofu module catalog — infrastructure-as-code"
+
+# ── Example ───────────────────────────────────────────────────────────────────
+
+example:
+  repo: lightwave-core
+  developer_instance: v_core-package-developer
+  allowed_blueprints:
+    - domain
+    - platform-frontend
+    - react-component
+    - spec-agile

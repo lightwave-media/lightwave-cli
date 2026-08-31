@@ -1,0 +1,68 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/voice_session_kinds
+  title: Voice Session Kind Enum
+  description: 'Human-led voice ceremony types — interviews, agile ceremonies, guru
+    coaching.
+
+    '
+  generates:
+  - rust:VoiceSessionKind
+  - pydantic:VoiceSessionKind
+  depends_on: []
+name: voice_session_kinds
+description: Human voice session / ceremony kind
+default: guru
+closed: true
+options:
+- value: interview
+  label: Interview
+  description: Interview option.
+- value: values_interview
+  label: Values interview
+  description: Values interview option.
+- value: brain_dump
+  label: Brain dump
+  description: Brain dump option.
+- value: guru
+  label: Guru / mentorship
+  description: Guru / mentorship option.
+- value: kickoff
+  label: Kickoff interview
+  description: Kickoff interview option.
+- value: standup
+  label: Stand-up
+  description: Stand-up option.
+- value: daily_scrum
+  label: Daily scrum
+  description: Daily scrum option.
+- value: sprint_planning
+  label: Sprint planning
+  description: Sprint planning option.
+- value: retrospective
+  label: Retrospective
+  description: Retrospective option.
+- value: review
+  label: Review
+  description: Review option.
+- value: board_meeting
+  label: Board meeting
+  description: Board meeting option.
+- value: panel_interview
+  label: Panel interview
+  description: Multiple personas; turn-taking advice
+- value: department_review
+  label: Department review
+  description: Swarm slice — e.g. marketing department personas
+- value: c_suite
+  label: C-suite advisory
+  description: CTO + staff engineer + scrum strategic panel
+- value: wellness_guru
+  label: Wellness guru
+  description: Mental health / reflection; distinct from technical guru
+- value: persona_authoring
+  label: Persona authoring
+  description: Voice interview to create custom persona from template
+- value: ux_research
+  label: UX research
+  description: Voice + screen + draw capture; delta-driven spec session (PRD-0008)

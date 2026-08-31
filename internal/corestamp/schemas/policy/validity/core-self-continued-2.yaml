@@ -1,0 +1,500 @@
+# =============================================================================
+# core-self contract — continuation 2 (rules R-47+)
+# =============================================================================
+# PART THREE of lightwave-core's self-validity contract. The head file
+# (core-self.yaml) holds _meta, scope, and rules R-1..R-17; the first
+# continuation (core-self-continued.yaml) holds R-18..R-46; this file holds
+# R-47 and later. Split 2026-06-25 to keep each file under the R-12 500-line
+# cap (core-self-continued.yaml reached 547 lines after R-47+R-48 addition).
+#
+# The three files compose ONE logical contract:
+#   - R-23's rule-ID loader unions rules[].id across policy/validity/core-self*.yaml.
+#   - pydantic:CoreSelfValidityContract codegen (Phase 6) unions the same way.
+# Add new rules to whichever part has headroom; keep all under the R-12 cap.
+# =============================================================================
+name: "core-self-continued-2"
+
+_meta:
+  version: "1.14.0"
+  schema_id: "lightwave://schemas/policy/validity/core-self-continued-2"
+  title: "lightwave-core self-validity contract — rules R-47+"
+  description: |
+    Second continuation of the lightwave-core self-validity contract.
+    Holds R-47 and later. Split 2026-06-25 from core-self-continued.yaml
+    (which reached 547 lines). R-23 unions rules across all
+    policy/validity/core-self*.yaml files.
+  generates:
+    - "pydantic:CoreSelfValidityContract"
+  depends_on:
+    - "lightwave://schemas/policy/validity/core-self-continued"
+
+rules:
+  - id: R-47
+    name: "infrastructure-test-real-resources"
+    severity: error
+    description: |
+      Infrastructure tests MUST use real resources (testcontainers, httptest,
+      live Postgres/OpenFGA), not mocks. Mocks are permitted ONLY for:
+      1. Pure functions with no I/O side effects
+      2. External API rate-limit avoidance (with documented retry fallback)
+      3. Non-deterministic time (time.Now mock for timestamp assertions)
+
+      Violation: any test asserting infrastructure behavior against a mock
+      Postgres, mock HTTP server, or mock auth provider without a
+      real-resource fallback path.
+
+      Source: Gruntwork Terratest doctrine — "Test against real infrastructure,
+      in real clouds, with real retries, then destroy."
+      See docs/references/testing/terratest-knowledge-intake.md.
+    enforced_by: "tests/validation/test_r47_real_resources.py"
+    enforces: ["bindings/go/**/*_test.go"]
+    rationale: |
+      Mocks paper over infrastructure failures: IAM propagation delays,
+      resource naming collisions, quota exhaustion, API rate limits, and
+      idempotency violations that only surface against real resources.
+      Mitchell Hashimoto: "We test at every layer — if someone removes a
+      test, they still get caught." Real resources are the safety net.
+    locked: 2026-06-25
+  - id: R-48
+    name: "test-helper-calls-t-helper"
+    severity: error
+    description: |
+      Every exported test helper function in foundation/testutil/ (and any
+      package-level test helper) MUST call t.Helper() as its FIRST statement.
+      Without t.Helper(), Go reports the helper's line number in failures,
+      not the caller's — making debugging table-driven tests with shared
+      helpers effectively impossible.
+
+      Mitchell Hashimoto: "ALWAYS call t.Helper() first. It's critical."
+      Source: docs/references/testing/mitchell-hashimoto-go-testing.md
+    enforced_by: "tests/validation/test_r48_t_helper.py"
+    enforces: ["bindings/go/**/*.go", "foundation/testutil/**/*.go"]
+    rationale: |
+      Without t.Helper(), a table-driven test with 100 cases and a shared
+      assertion helper reports all failures at the helper's line — the
+      developer has no idea which case failed. t.Helper() makes the stack
+      trace point to the right t.Run() scope.
+    locked: 2026-06-25
+  - id: R-49
+    name: "example-field-completeness"
+    severity: error
+    description: |
+      For every schema that declares both `required_fields:` AND `example:`,
+      every field name listed in `required_fields[].name` MUST appear as a
+      top-level key in the `example` block.
+
+      R-6 proves an example EXISTS. R-49 proves it is COMPLETE — every
+      required field has a sample value. Incomplete examples produce
+      gap-filled binding test inputs and mislead readers about required shape.
+    enforced_by: "tests/validation/test_r49_example_completeness.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: |
+      The example block is the human contract and the binding smoke-test
+      input. A required field absent from the example means consumers learn
+      the shape from the field list, not from seeing it rendered — exactly
+      the fragility examples exist to prevent.
+    locked: 2026-06-26
+  - id: R-50
+    name: "field-description-quality"
+    severity: error
+    description: |
+      Every `description:` string on a `required_fields[]` or
+      `optional_fields[]` entry MUST satisfy a minimum quality floor:
+        1. Length ≥ 10 characters (empty or trivially short descriptions are banned).
+        2. Value is not a case-insensitive placeholder: "TODO", "TBD", "FIXME",
+           "PLACEHOLDER", "N/A", "none".
+        3. Value does not start with "The <field_name> field" (template residue).
+
+      Descriptions are the first line of documentation for downstream consumers
+      and codegen. Placeholder text silently enters generated docs and SDK
+      comments if not caught at stamp time.
+    enforced_by: "tests/validation/test_r50_field_description_quality.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: |
+      Readability is untestable until it is gated. Enforcing a minimum bar at
+      CI time prevents placeholder rot from accumulating — the same discipline
+      applied to code comments but for schema field descriptions.
+    locked: 2026-06-26
+  - id: R-51
+    name: "persona-slug-format"
+    severity: error
+    description: |
+      Any string value in a schema's `example:` block, `assigned_persona:`,
+      `allowed_outbound_emitters:`, or `example_personas:` field that begins
+      with "v_" or "v-" MUST conform to the canonical persona slug format:
+        ^v_[a-z][a-z0-9]*(-[a-z0-9]+)*$
+      (underscore separator after "v", then lowercase kebab).
+
+      Rationale: persona slug format is the cross-schema identity contract.
+      A misspelled slug in one schema (e.g. `v-cinematographer`, `v_general_manager`)
+      won't resolve to a live persona in nullhub/nullclaw and fails silently.
+    enforced_by: "tests/validation/test_r51_persona_slug_format.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: |
+      Identity resolution in nullhub, channel_bindings, and rbac all key off
+      persona slug. Inconsistent format means a schema example claims a persona
+      exists that the live fleet can't route to. CI catches the mismatch before
+      it propagates into generated code.
+    locked: 2026-06-26
+  - id: R-52
+    name: "values-ref-example-conformance"
+    severity: error
+    description: |
+      For every field in `required_fields` or `optional_fields` that declares
+      `values_ref: "lightwave://schemas/data/enums/<name>"`, if the `example`
+      block includes a value for that field, the value MUST be a member of
+      `options[].value` in the referenced enum YAML.
+
+      R-17 covers the special case of `status_enum` + `example.status`.
+      R-52 extends that pattern to the full `values_ref:` surface declared
+      by R-41, closing the blind spot for non-status enum-keyed fields.
+    enforced_by: "tests/validation/test_r52_values_ref_conformance.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: |
+      Enum values in examples are the most visible stamp contract — they
+      are what downstream consumers import into generated types. An example
+      value outside the enum's options list means the generated code references
+      a non-existent constant, caught only at runtime without this gate.
+    locked: 2026-06-26
+  - id: R-53
+    name: "schema-id-path-consistency"
+    severity: error
+    description: |
+      Every schema whose `_meta.schema_id` starts with
+      `lightwave://schemas/` MUST have that URI match the schema's actual
+      file path. The URI `lightwave://schemas/<rel>` must resolve to
+      `src/schemas/<rel>.yaml` — exactly where the file lives on disk.
+
+      Catches copy-paste errors where the schema_id was written with a
+      missing or wrong path segment (e.g. a schema in `interfaces/cli/`
+      declaring `lightwave://schemas/interfaces/foo` instead of
+      `lightwave://schemas/interfaces/cli/foo`).
+
+      Schema_id is the cross-schema identity contract used by `depends_on`
+      references, tooling, and bindings. A mismatch breaks resolution
+      silently since the file still loads — only cross-schema lookups fail.
+    enforced_by: "tests/validation/test_r53_schema_id_path.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: |
+      R-4 verifies that `lightwave://` URIs in `depends_on` resolve.
+      R-53 is the complementary check: the schema's OWN declared id must
+      match its own location. Without this gate, a schema can be a valid
+      file but an invalid node in the schema graph.
+    locked: 2026-06-26
+  - id: R-54
+    name: "required-field-description-presence"
+    severity: error
+    description: |
+      Every entry in `required_fields[]` for first-party schemas (i.e. schemas
+      NOT under `src/schemas/integrations/`) MUST include a `description:` key.
+      A missing description (key absent entirely) is a different failure from
+      R-50 (description present but too short or placeholder) — this rule
+      catches the gap where the key is omitted entirely.
+
+      Third-party integration mirrors (`src/schemas/integrations/`) are excluded:
+      those schemas mirror external API shapes we do not control and their
+      description coverage is governed by upstream vendors.
+    enforced_by: "tests/validation/test_r54_required_field_description_presence.py"
+    enforces: ["src/schemas/**/*.yaml", "!src/schemas/integrations/**"]
+    rationale: |
+      R-50 can only check description quality when a description exists.
+      Without R-54, new schemas can ship with zero field documentation and
+      pass CI while R-50 is satisfied (nothing to check). R-54 closes that
+      bootstrap gap: every required field must at minimum have a description
+      before quality can be measured.
+    locked: 2026-06-26
+  - id: R-55
+    name: "optional-field-description-presence"
+    severity: error
+    description: |
+      Every entry in `optional_fields[]` for first-party schemas (schemas NOT
+      under `src/schemas/integrations/`) MUST include a `description:` key.
+
+      Mirrors R-54 (which covers `required_fields[]`). Optional fields are
+      equally part of the schema contract — a consumer reading the schema to
+      understand what they can send must not encounter undocumented optional
+      fields. The integrations/ exclusion applies for the same reason as R-54:
+      those schemas mirror external APIs we do not control.
+    enforced_by: "tests/validation/test_r55_optional_field_description_presence.py"
+    enforces: ["src/schemas/**/*.yaml", "!src/schemas/integrations/**"]
+    rationale: |
+      Optional fields without descriptions are the most common source of
+      "magic field" confusion in generated SDK clients and codegen outputs.
+      A consumer who encounters an undocumented optional field has no way to
+      know its purpose without reading source code. R-55 closes this gap at
+      stamp time so every public-facing field ships with at least a summary.
+    locked: 2026-06-26
+  - id: R-56
+    name: "example-key-field-consistency"
+    severity: error
+    description: |
+      For any schema that declares at least one `required_fields` or
+      `optional_fields` entry AND also ships an `example:` block, every
+      top-level key in the example MUST be declared as either a
+      `required_fields[].name` or an `optional_fields[].name`, with two
+      documented exceptions:
+
+        1. The key `status` is allowed when `status_enum:` is declared on
+           the schema (R-17 governs its value; R-6 governs example presence).
+        2. Keys whose names begin with `_` are reserved meta / shape markers
+           (e.g. `_shape`, `_version`) and are exempted.
+
+      Any other key in the example that lacks a corresponding field
+      declaration is an undeclared property — it documents a field that is
+      invisible to codegen, binding smoke tests, and consumers reading the
+      schema. Either declare the field or remove it from the example.
+    enforced_by: "tests/validation/test_r56_example_key_field_consistency.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: |
+      Example blocks are the human-readable contract AND the binding
+      smoke-test input. An example key without a declared field means the
+      key exists in generated client code with no name, type, or description
+      — it is invisible to documentation generators and codegen emitters.
+      R-49 proves the inverse (every declared field appears in the example);
+      R-56 proves the converse (every example key is declared as a field).
+      Together they enforce a bidirectional contract.
+    locked: 2026-06-26
+  - id: R-57
+    name: "mermaid-diagram-type-valid"
+    severity: error
+    description: |
+      Every Mermaid diagram in the repository MUST declare a recognized Mermaid
+      diagram type on its first non-comment, non-empty line. Two sources are
+      validated:
+
+        1. Standalone `.mmd` files — the file body (after stripping any leading
+           YAML frontmatter) is the diagram, whether raw or wrapped in a fence.
+        2. Inline fenced blocks in `.md` files — both ` ```mermaid ``` ` and
+           `~~~mermaid` (tilde) fences per CommonMark.
+
+      Recognized types: flowchart, graph, sequenceDiagram, classDiagram,
+      stateDiagram, stateDiagram-v2, erDiagram, gantt, pie, journey, gitGraph,
+      mindmap, timeline, xychart-beta, block-beta, sankey-beta, quadrantChart,
+      requirementDiagram, c4Context, c4Container, c4Component, c4Dynamic,
+      c4Deployment, zenuml, packet-beta, architecture-beta, kanban.
+
+      Matching is CASE-SENSITIVE: Mermaid's parser rejects wrong-case keywords
+      (e.g. `ClassDiagram` instead of `classDiagram`), which render blank — so
+      a wrong-case keyword is flagged distinctly from a truly unknown one.
+
+      Scope: `docs/**` and `spec/**` only. `src/boilerplate/**` template
+      placeholders and `.claude/worktrees/**` ephemeral checkouts are excluded.
+    enforced_by: "tests/validation/test_r57_mermaid_syntax_valid.py"
+    enforces: ["docs/**/*.mmd", "docs/**/*.md", "spec/**/*.mmd", "spec/**/*.md"]
+    rationale: |
+      Mermaid diagrams with an unrecognized diagram type silently produce
+      blank renders in Hugo, GitHub Markdown, and VS Code preview. Authors
+      see a working file locally (the renderer shows nothing rather than an
+      error), but the rendered documentation is empty. R-57 catches this at
+      CI time so broken diagrams never land on main.
+
+      Level 1 (this rule): diagram type keyword detection — fast, no external
+      tooling required. Level 2 (future): semantic drift via `diagram_subject`
+      frontmatter field — deferred until the frontmatter convention matures.
+    locked: 2026-06-27
+  - id: R-58
+    name: "adr-id-unique"
+    severity: error
+    description: |
+      Every ADR file under spec/adr/ MUST claim a unique numeric ID — the
+      leading 4-digit number of the filename (NNNN-kebab.md). No two files may
+      share a number. Scope: the in-repo spec/adr/ tree only; the cross-cutting
+      host tree (~/.lightwave/specs/adr/) is OUT-OF-REPO and not scanned here —
+      it carries its own ADR-NNNN namespace (see ADR-0044).
+
+      Grandfathered collisions: 12 pre-existing duplicate numbers
+      (0001 0002 0003 0004 0005 0028 0031 0032 0033 0036 0037 0038) are
+      allow-listed in the detector pending the focused dedupe pass. The
+      allow-list enforces uniqueness for every NEW ADR while the historical
+      collisions are renumbered out of band — the TOLERANCE-sunset pattern R-28
+      uses.
+    enforced_by: "tests/validation/test_r58_adr_id_unique.py"
+    enforces: ["spec/adr/*.md"]
+    rationale: |
+      ADR IDs are referenced as "ADR-NNNN" across specs, schemas, and docs.
+      When two files claim one number the reference is ambiguous — it resolves
+      to either decision, silently. The collisions arose because ADR numbers
+      were hand-allocated by reading the directory (no `lw adr new` allocator,
+      no gate); parallel sessions each grabbed "the next number" and merged.
+      R-58 is the merge-time backstop: even once an allocator exists, two
+      branches can each reserve max+1 and both merge — only a CI rule catches
+      that. Filename-based (not frontmatter) so it holds before adr_id
+      frontmatter is added tree-wide (deferred to the dedupe pass).
+    locked: 2026-06-28
+  - id: R-59
+    name: "persona-compliance"
+    severity: error
+    description: |
+      Every persona print at ~/.lightwave/config/agents/v_*.yaml MUST conform to
+      the agent_definition stamp (src/schemas/data/meta/agent_definition.yaml):
+      all required top-level fields present, `name` equal to the filename stem,
+      and `tier` a declared persona_tiers value. The required-field set is read
+      from the stamp at test time (not hardcoded) so the rule follows the schema.
+
+      OUT-OF-REPO enforcement (the R-21 pattern): it checks the operator's home,
+      not src/. In CI (no operator home) the test gracefully skips. Personas are
+      prints of the lightwave-home blueprint, so the fix for any drift lives in
+      src/boilerplate/blueprints/lightwave-home/ + `lw home render`, never a
+      hand-edit of the print. The `enforces` path below is home-relative
+      (~/.lightwave/...), following the R-21 convention — consumers must
+      expanduser; it is not a CWD-relative glob.
+
+      Grandfathered drift: 8 personas (v_cfo v_core-maintenance
+      v_lightwave-ai-engineer + the 5 null* developers) are allow-listed pending
+      full authoring in the home blueprint — TOLERANCE-sunset per R-28.
+
+      Closes the dormant forward-reference in agent_definition.yaml: the stamp
+      originally reserved "R-22 (persona-compliance, future)", but R-22 was
+      reassigned to template↔stamp lockstep — so persona-compliance lands here
+      as R-59.
+    enforced_by: "tests/validation/test_r59_persona_compliance.py"
+    enforces: ["~/.lightwave/config/agents/v_*.yaml"]
+    rationale: |
+      agent_definition.yaml is the shape compose_system_prompt (ADR-0004) and
+      the Pi persona-loader read at session spawn to render an agent's operating
+      envelope — system prompt, tool list, permission set, hook shape, data
+      scope. A persona that drifts from the stamp renders a malformed envelope:
+      a missing rbac_role or data_access silently degrades the authority
+      boundary. R-59 makes the stamp the enforced contract, not a hand-maintained
+      convention — the precondition for treating agents as first-class principals
+      whose envelope can be composed reliably because its shape cannot drift.
+    locked: 2026-06-28
+  - id: R-60
+    name: "adr-xref-resolves"
+    severity: error
+    description: |
+      Every in-repo `CORE-NNNN` reference (anywhere under spec/, src/schemas/, or
+      docs/) MUST resolve to an existing ADR file under spec/adr/ whose name begins
+      with that number (NNNN-kebab.md). Scope: the in-repo CORE-NNNN namespace
+      only; host-tree `ADR-NNNN` references point OUT-OF-REPO
+      (~/.lightwave/specs/adr/, see the numbering ADR 0044) and are not scanned.
+
+      No grandfather list: at lock time every CORE-NNNN reference resolves. The
+      one prior dangling ref (in CORE-0045, citing a 0044 ADR not yet present in
+      the tree) was inlined before this rule landed. A new dangling reference
+      fails CI immediately.
+    enforced_by: "tests/validation/test_r60_adr_xref_resolves.py"
+    enforces: ["spec/**/*.md", "spec/**/*.yaml", "src/schemas/**/*.yaml", "docs/**/*.md"]
+    rationale: |
+      CORE-NNNN is the repo-tree ADR reference form (the numbering ADR 0044). A
+      reference that resolves to no file is silent doc-rot: a reader following the
+      citation hits a dead end, and the cited decision may exist only on an
+      unmerged branch — exactly what a cloud review caught on CORE-0045, which had
+      cited the 0044 numbering ADR while it was absent from main. R-58 guarantees
+      ADR numbers are UNIQUE; R-60 is its dual — every cited number EXISTS.
+      Together they make CORE-NNNN references trustworthy in CI rather than by
+      reviewer vigilance.
+    locked: 2026-06-28
+  - id: R-61
+    name: "testing-assurance-development-signals"
+    severity: error
+    description: |
+      The testing assurance contract family MUST preserve the fields that turn
+      a failure into an actionable development signal. The test contract
+      declares negative-fixture, determinism, precision, runtime, promotion,
+      and failure-guidance evidence. Universal failure records declare the
+      violated invariant, expected structure, cure, forbidden workarounds, next
+      verification, and fingerprint. CI gate events declare run identity,
+      source, phase, duration, bypass state, and the same per-failure guidance.
+
+      A schema missing any of these fields is a false-green regression: agents
+      receive a block without a defined correct response and can learn to
+      silence the detector instead of improving production code.
+    enforced_by: "tests/validation/test_r61_testing_assurance_contract.py"
+    enforces:
+      - "src/schemas/policy/testing/test_contract.yaml"
+      - "src/schemas/data/meta/failure_record.yaml"
+      - "src/schemas/interfaces/hooks/ci_gate_event.yaml"
+    rationale: |
+      CORE-0050 makes failure output an agent interface. R-61 prevents later
+      schema cleanup from deleting the fields that distinguish remediation
+      from circumvention. Its negative fixture removes one guidance field and
+      proves CI becomes red rather than trusting a permanently-green detector.
+    locked: 2026-08-26
+  - id: R-62
+    name: "pii-field-governed"
+    severity: error
+    description: |
+      Every schema field annotated `pii` (data/meta/field_annotations
+      vocabulary) MUST also carry at least one access-governance annotation:
+      `api_excluded`, `hash_before_store`, or `sanitization`. A bare pii
+      field is declared-but-ungoverned data — the exact state ADR-0046
+      exists to make impossible. `secret` does not satisfy governance: it
+      names a credential, not a handling rule for personal data.
+    enforced_by: "tests/validation/test_r62_r63_gdpr_fitness.py"
+    enforces:
+      - "src/schemas/**/*.yaml"
+    rationale: |
+      ADR-0033 stood up the compliance-fitness control plane; ADR-0046
+      (accepted this sprint) decides field-level declarative governance,
+      enforced downstream. Originally proposed as R-41 in plan 0009 —
+      renumbered because R-41/R-42 were taken by field-enum-binding and
+      enum-schema-validity before this landed. Detection walks every field
+      list and nested sub_schema for `annotations:` membership, so nesting
+      cannot hide a pii field.
+    locked: 2026-08-26
+  - id: R-63
+    name: "pii-export-fitness"
+    severity: error
+    description: |
+      Any schema containing at least one `pii`-annotated field MUST declare a
+      top-level `data_subject_rights` block naming its erase and export
+      support (booleans at minimum). PII the system cannot erase or export on
+      request is a GDPR data-subject-rights failure regardless of how well
+      the field is governed in transit.
+    enforced_by: "tests/validation/test_r62_r63_gdpr_fitness.py"
+    enforces:
+      - "src/schemas/**/*.yaml"
+    rationale: |
+      Companion to R-62 per ADR-0046: R-62 governs the field, R-63 proves the
+      schema holding it can honour data-subject rights. Originally proposed
+      as R-42; renumbered for the same collision. Enforcement of the actual
+      erase/export behaviour is lightwave-platform's; the stamp asserts the
+      declaration exists so the platform has a contract to implement.
+    locked: 2026-08-26
+  - id: R-64
+    name: "verifier-immutability-declared"
+    severity: error
+    description: |
+      interfaces/hooks/verifier_protection.yaml MUST exist and declare all
+      three verifier surfaces immutable to agent edits: the executable review
+      checks (dev/development/checks/*.sh), the review prompt template
+      (review_prompt*.tpl), and the persona configs
+      (~/.lightwave/config/agents/v_*.yaml) — with on_violation: deny. The
+      host hook is the enforcement; this rule guarantees the SST keeps
+      declaring it, so the protection cannot silently vanish from the stamp
+      while remaining only in an out-of-repo hook nobody audits.
+    enforced_by: "tests/meta/test_r64_verifier_immutability.py"
+    enforces:
+      - "src/schemas/interfaces/hooks/verifier_protection.yaml"
+    rationale: |
+      ADR-0043 (Ornith L2): an agent must not edit the thing that judges it,
+      and the invariant belongs in the stamp, not only in ~/.claude/hooks/
+      (#368). Scope is agent edits only — operator edits stay allowed, which
+      is what lets this surface (including the declaration itself) remain
+      maintainable. Plan 0010 proposed R-61 for this; renumbered after R-61
+      was taken by testing-assurance-development-signals.
+    locked: 2026-08-26
+  - id: R-65
+    name: "qa-handoff-classification-consistency"
+    severity: error
+    description: |
+      The qa_handoff routing triple MUST stay mutually consistent: every
+      flaw_classes option declares a boolean sync_required; the qa_handoff
+      example's sync_required equals the mapping its flaw_class declares in
+      the enum; and its blocks_pr equals sync_required — because "sync
+      required" IS the block-the-PR path, and an example where they diverge
+      teaches downstream consumers (fail-handler, qa-followup queue) the
+      wrong routing.
+    enforced_by: "tests/validation/test_r65_qa_handoff_classification.py"
+    enforces:
+      - "src/schemas/data/agile_artifacts/qa_handoff.yaml"
+      - "src/schemas/data/enums/flaw_classes.yaml"
+    rationale: |
+      qa_handoff.yaml has promised this rule since it was authored — its
+      flaw_class description reads "Future R-rule (qa_handoff_classification)
+      will assert sync_required matches the flaw_class default" (#104). The
+      security/correctness/contract → sync, performance/style/coverage →
+      async split is doctrine the enum encodes; this rule keeps schema
+      cleanup from ever splitting the example from the mapping.
+    locked: 2026-08-26

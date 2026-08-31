@@ -1,0 +1,40 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/ui_section_families"
+  title: "UI Section Family Enum"
+  description: |
+    Marketing section families — the '<family>' half of a section contract's
+    '<family>/<variant>' key and the folder the consuming site's glob loader
+    scans. Closed enum; extend here first, then add variants.
+  generates:
+    # No go: target by design — consumed only by section_contract, a
+    # TypeScript-facing contract with no Go consumer.
+    - "typescript:SectionFamily"
+  depends_on: []
+
+name: ui_section_families
+description: "Marketing section family folders"
+default: content
+closed: true
+options:
+  - value: header-section
+    label: "Header Section"
+    description: "Page-opening heroes and intros"
+  - value: header-navigation
+    label: "Header Navigation"
+    description: "Site navigation headers"
+  - value: content
+    label: "Content"
+    description: "Body content sections (split images, prose, features)"
+  - value: footers
+    label: "Footers"
+    description: "Page and site footers"
+  - value: blog
+    label: "Blog"
+    description: "Blog listing and post sections"
+  - value: store
+    label: "Store"
+    description: "Commerce sections"
+  - value: photography
+    label: "Photography"
+    description: "Gallery and portfolio sections"

@@ -1,0 +1,55 @@
+# =============================================================================
+# REPO REGISTRY — the LightWave estate
+# =============================================================================
+# Authoritative list of LightWave repos. Each entry declares its tier (which
+# drives the docs manifest via repo_doc_manifest.yaml) and its git remote.
+#
+# Consumers:
+#   - nullclaw `refresh-docs` iterates `repos` to know what to refresh
+#   - `lw docs check --cross-repo` (rare) reads tier per repo
+#
+# Adding a repo: PR this file + add `.lwdocs.yaml` to the target repo (or
+# accept the tier default).
+# =============================================================================
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/meta/repo_registry"
+  title: "Repo Registry"
+  description: |
+    Estate-level inventory of LightWave repos. Stamp; the print materializes
+    at ~/.lightwave/repos.yaml on first read by nullclaw.
+  generates:
+    - "go:RepoRegistry"
+    - "json_schema:repo_registry"
+
+name: "repo_registry"
+
+# Mirrors repo_doc_manifest.tiers — keep in sync.
+tiers_enum: [cli, service, library, agent, infra, docs]
+
+repos:
+  - name: lightwave-cli
+    tier: cli
+    remote: github.com/lightwave-media/lightwave-cli
+    docs_overrides_path: ".lwdocs.yaml"
+
+  - name: lightwave-core
+    tier: library
+    remote: github.com/lightwave-media/lightwave-core
+
+  # nullclaw and nullhub are deliberately absent. Both standalone repos were
+  # folded into lightwave-ai/src/<module>/ with full history and archived
+  # read-only on 2026-08-10 (epic lightwave-ai#44). An archived remote still
+  # reads, but `refresh-docs` iterating it can never push a docs refresh back.
+  # The modules are covered by the lightwave-ai entry below — do not re-add.
+
+  - name: lightwave-ai
+    tier: agent
+    remote: github.com/lightwave-media/lightwave-ai
+    docs_overrides_path: ".lwdocs.yaml"
+
+  - name: createOS
+    tier: library
+    remote: github.com/lightwave-media/createOS
+
+  # Stamp additional repos as the estate grows. Tier drives the docs/ contract.

@@ -1,0 +1,40 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/hooks/git_doctor"
+  title: "Git Doctor Hook Contract"
+  description: |
+    Hook interface for git fleet validation at session boundaries and pre-push.
+    Source implementations live in print (~/.lightwave/config/hooks/, dev/hooks/)
+    and lightwave-cli (`lw git doctor`). Invoked by session-start agent hooks
+    and dev/hooks/pre-push Phase 0.5.
+  generates:
+    - "json_schema:git_doctor_hook"
+  depends_on:
+    - "lightwave://schemas/data/meta/diagnostic_result"
+    - "lightwave://schemas/data/meta/local_git_topology"
+
+required_fields:
+  - name: hook_event
+    type: str
+    description: "Enum: SessionStart | PrePush | CronAudit"
+  - name: repo_path
+    type: str
+    description: "Absolute path to the checkout under test."
+  - name: invoke
+    type: str
+    description: "Shell command to run — typically `lw git doctor --repo <path>`."
+
+optional_fields:
+  - name: inject_map
+    type: bool
+    description: "When true (SessionStart), also run `lw git map --repo` and inject summary into agent context."
+  - name: skip_env
+    type: str
+    description: "Env var that bypasses the hook (e.g. LW_SKIP_GIT_DOCTOR)."
+
+example:
+  hook_event: SessionStart
+  repo_path: "/Users/joelschaeffer/dev/lightwave-core"
+  invoke: "lw git doctor --repo /Users/joelschaeffer/dev/lightwave-core"
+  inject_map: true
+  skip_env: LW_SKIP_GIT_DOCTOR

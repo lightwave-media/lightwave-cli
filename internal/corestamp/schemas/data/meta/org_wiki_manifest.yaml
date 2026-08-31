@@ -1,0 +1,43 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/org_wiki_manifest
+  title: Org Wiki Manifest
+  description: 'Declares stamp→print pages for the org-wide wiki rendered by lightwave-home.
+
+    Enables lw home validate and scripting to depend on stable paths/terms.
+
+    '
+  generates:
+  - pydantic:OrgWikiManifest
+  depends_on:
+  - lightwave://schemas/data/reference_documents/ubiquitous_language
+required_fields:
+- name: version
+  type: str
+  description: SemVer version of this org wiki manifest.
+- name: stamp_root
+  type: str
+  description: Path within lightwave-home blueprint (e.g. docs/wiki)
+- name: print_root
+  type: str
+  description: Path under ~/.lightwave (e.g. docs/wiki)
+- name: pages
+  type: list[WikiPageEntry]
+  description: 'Sub-schema: slug, stamp_file, kind (glossary|guide|index), schema_ref optional'
+optional_fields:
+- name: glossary_ref
+  type: str
+  description: $ref to primary ubiquitous-language instance slug
+example:
+  version: 1.0.0
+  stamp_root: docs/wiki
+  print_root: docs/wiki
+  glossary_ref: glossary/org-wide
+  pages:
+  - slug: index
+    stamp_file: index.md
+    kind: index
+  - slug: glossary/org-wide
+    stamp_file: glossary/org-wide.yaml
+    kind: glossary
+    schema_ref: lightwave://schemas/data/reference_documents/ubiquitous_language

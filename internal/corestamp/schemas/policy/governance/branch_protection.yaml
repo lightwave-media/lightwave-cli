@@ -1,0 +1,205 @@
+_meta:
+  version: "1.2.1"
+  schema_id: "lightwave://schemas/policy/governance/branch_protection"
+  title: "Branch Protection — server-side enforcement of the merge gate"
+  description: |
+    Declares the branch-protection contract for every first-party repo's default
+    branch. This is the SERVER-SIDE half of the gate that
+    policy/security/git_conduct declares in prose:
+
+      verification_gate.push_only_if  : local_gate_green      (pre-push hook)
+      verification_gate.merge_only_if : required_checks_green (THIS schema)
+
+    Applied 2026-08-14. Before that, `required_status_checks.checks` was EMPTY on
+    every repo — CI ran, reported, and blocked nothing. lightwave-cli's
+    `CI Required Gate` job computed `contains(needs.*.result, 'failure')` and no
+    branch protection referenced it.
+
+    THE FAILURE MODE THIS SCHEMA EXISTS TO PREVENT
+    A required check that does not report on every PR does not "skip" — GitHub
+    blocks the PR forever waiting for a status that never arrives. Three real
+    instances found while applying this:
+      1. lightwave-ui required `Tests`, which reports on ~4/10 PRs. That repo was
+         already partly unmergeable before this schema existed.
+      2. lightwave-core's ci.yml carried a `paths:` filter covering only
+         src/docs/tests/bindings, so a PR touching just spec/, AGENTS.md or
+         another workflow ran NO CI. Six of the ten PRs before 2026-08-14 merged
+         with zero CI. The filter was removed rather than the checks unrequired.
+      3. lightwave-cli declares a required check named `Tests` while the job sets
+         `name: Tests` then applies an OS matrix, so the contexts are actually
+         `Tests (ubuntu-latest)` / `Tests (macos-latest)`. The bare name can
+         never match.
+
+    RULES FOR EDITING THIS FILE
+    - Never require a check that is path-filtered, conditional, or matrix-named.
+      Prefer an aggregate job with `if: always()` that needs every other job.
+    - Never require a bot context (Cursor Bugbot, Mermaid Diagram Sync
+      Assistant, claude-review). They do not run on every PR.
+    - Derive the list from observed check-run names on recent PRs; do not guess.
+    - Adding a `paths:` filter to a workflow whose jobs are listed here silently
+      bricks the repo. Drop the required check FIRST.
+  generates:
+    - "pydantic:BranchProtection"
+  depends_on:
+    - "lightwave://schemas/policy/security/git_conduct"
+    - "lightwave://schemas/policy/governance/repo-infra"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier for the protection profile."
+  - name: baseline
+    type: object
+    description: |
+      Settings applied to EVERY listed repo's default branch. Sub-schema Baseline:
+      required_approving_review_count (int — MUST be 0; any higher deadlocks a
+      solo maintainer, who cannot approve their own PR, while still requiring a
+      PR), enforce_admins (bool — MUST be false; git_conduct.separation_of_duties
+      grants relaxation authority to the operator ONLY, so the operator keeps an
+      escape hatch and an agent never sets this), allow_force_pushes (bool, false
+      — git_conduct.resolution_method.force_push is `forbidden`), allow_deletions
+      (bool, false), required_conversation_resolution (bool, true),
+      required_linear_history (bool — false; some repos merge-commit and PRs are
+      squash-merged anyway), strict (bool — false; requiring branches be up to
+      date re-runs CI on every merge for no correctness gain here).
+  - name: repos
+    type: "list[RepoProtectionRef]"
+    description: |
+      Per-repo required-check sets. Sub-schema RepoProtection: repo (str),
+      required_checks (list[str] — exact check-run context names; empty means
+      protection without checks), rationale (str — why this set, or why empty).
+  - name: excluded
+    type: "list[ExclusionRef]"
+    description: |
+      Repos deliberately NOT covered, each with a reason. Sub-schema Exclusion:
+      repo (str), reason (str). Archived repos, upstream forks, and
+      uncommissioned repos are excluded — an unexplained absence is drift.
+  - name: status
+    type: str
+    description: "Lifecycle (conforms to document_statuses)."
+
+optional_fields:
+  - name: organization
+    type: str
+    description: "GitHub organization that owns the listed repositories."
+  - name: known_gaps
+    type: "list[str]"
+    description: "Accepted gaps with the fix each one needs."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default-branch-protection"
+  organization: "lightwave-media"
+  baseline:
+    required_approving_review_count: 0
+    enforce_admins: false
+    allow_force_pushes: false
+    allow_deletions: false
+    required_conversation_resolution: true
+    required_linear_history: false
+    strict: false
+  repos:
+    - repo: lightwave-core
+      required_checks:
+        - "Verify canonical dir structure"
+        - "mise run ci (yaml + R-rules + ruff + runbook lint + shellcheck)"
+        - "Go binding (loader + drift + version lockstep)"
+      rationale: "All three report on every PR once ci.yml's paths filter was removed."
+    - repo: lightwave-cli
+      required_checks:
+        - "CI Required Gate"
+      rationale: |
+        The designed aggregate — `if: always()`, needs every job. Requiring the
+        matrix legs individually is unsafe: the repo currently emits BOTH
+        `Tests / ubuntu-latest` and `Tests (ubuntu-latest) / Tests (ubuntu-latest)`
+        from a rename, so either name alone is fragile.
+    - repo: lightwave-ui
+      required_checks:
+        - "Pre-commit Checks"
+        - "Build + Test / CI"
+      rationale: "Replaces the previous `Tests` requirement, which reported on ~4/10 PRs."
+    - repo: createOS
+      required_checks: ["Tests"]
+      rationale: |
+        Stable aggregate job with `if: always()` and `needs: [web, rust]`.
+        The workflow self-checks that every sibling job is included before
+        asserting every dependency succeeded. Live GitHub already requires
+        `Tests` (verified 2026-08-27 on createOS#68).
+    - repo: lightwave-ai
+      required_checks:
+        - "Required Checks: CI"
+      rationale: |
+        Aggregate only (`if: always()`, needs repo-gates + zig). The zig
+        matrix legs are named `zig / linux-x86_64` etc.; requiring them
+        bricks the tree if a target is added or renamed. Live GitHub still
+        lists the four checks until the operator drops the matrix legs
+        (lightwave-core#467).
+    - repo: joelschaeffer-site
+      required_checks: ["Build & unit tests", "E2E (Playwright)"]
+      rationale: "Both report on every sampled PR."
+    - repo: lightwave-infrastructure-catalog
+      required_checks: ["Module hygiene (pinned providers)", "Analyze (go)"]
+      rationale: "`Analyze (javascript-typescript)` is conditional (~4/10) and excluded."
+    - repo: lightwave-infrastructure-live
+      required_checks:
+        - "Plan Summary"
+        - "plan-prod / Preflight"
+        - "plan-prod / Plan Summary"
+        - "plan-prod-usw2 / Preflight"
+        - "plan-prod-usw2 / Plan Summary"
+      rationale: |
+        Aggregates only. The per-unit `Plan — <unit>` contexts change whenever a
+        unit is added or removed, so requiring them would break the tree on every
+        new unit.
+    - repo: lightwave-sys
+      required_checks: []
+      rationale: |
+        Gate authored in lightwave-sys#172 (`Lightwave Required Gate`,
+        `if: always()`, needs `mise run ci` on ubuntu-latest). Ghostty's
+        Test/Nix matrix still SKIP/CANCEL (Namespace runners) and cannot be
+        required. Fill this list with that exact context after it reports;
+        then the operator applies GitHub (lightwave-core#467).
+    - repo: lightwave-platform
+      required_checks: []
+      rationale: |
+        Gate job `Lightwave Required Gate` (`if: always()`, needs unit +
+        integration + e2e) is landing so the check can report. Do not require
+        it until (1) it reports on a PR and (2) unit/e2e are green on main —
+        main has been red since #669. Previous `Pre-commit Checks` reported
+        on only 5/10 PRs.
+    - repo: pipelines-workflows
+      required_checks: ["ci / CI (mise)"]
+      rationale: "Commissioned release plane; the aggregate mise job reports on every PR."
+  excluded:
+    - repo: "nullboiler, nullbuilder, nullclaw, nullhub, nulltickets, nullwatch"
+      reason: "Archived tombstones — folded into lightwave-ai/src/, read-only."
+    - repo: "excalidraw, hugo, opencode"
+      reason: "Upstream forks; their CI contract is not ours to define."
+    - repo: "homebrew-tap"
+      reason: "GoReleaser pushes the formula directly; a PR requirement would break the release train."
+    - repo: ".github"
+      reason: "Org profile + reusable workflows; no CI surface of its own."
+  known_gaps:
+    - |
+      RESOLVED BY DESIGN 2026-08-25: release-please PRs run NO CI (GITHUB_TOKEN
+      events raise no workflows), so `chore(main): release …` PRs sat blocked
+      forever — live example lightwave-ui#170. Rather than the PAT workaround,
+      release-please is RETIRED org-wide: releases are tag-driven through the
+      pipelines-workflows plane (release_pipeline.yaml), so no release PR
+      exists to be blocked. The gap stays recorded here until the last
+      release-please config leaves the org (ui + cli migrations).
+    - |
+      lightwave-cli's schema-drift-check.yml is written and tested but commented
+      out of ci.yml and absent from the gate's `needs:` — it awaits
+      LIGHTWAVE_CORE_TOKEN, which does not exist. Until then `CI Required Gate`
+      passes without a stamp-drift check.
+    - |
+      lightwave-ai has a .pre-commit-config.yaml (added 2026-08-14) but GitHub
+      CI does not run it — `ci.yml` needs only repo-gates + zig. Local hook
+      only until a pre-commit job is listed in the aggregate's `needs:`.
+  status: active

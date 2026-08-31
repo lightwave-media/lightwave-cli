@@ -1,0 +1,46 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/production_company"
+  title: "Production Company"
+  description: |
+    A production company / studio associated with a Project — producer, financier,
+    distributor, or rental house (ER: PROJECT ||--o{ PRODUCTION_COMPANY). The
+    ProductionCompany symbol is specific enough to ship un-prefixed.
+  generates:
+    - "go:ProductionCompany"
+    - "typescript:ProductionCompany"
+    - "zig:ProductionCompany"
+    - "json_schema:production_company"
+  depends_on:
+    - "lightwave://schemas/data/cineos/project"
+
+required_fields:
+  - name: name
+    type: str
+    description: "Company name (e.g. 'WRS Studio')"
+  - name: project_ref
+    type: str
+    description: "Slug/id of the parent Project"
+
+optional_fields:
+  - name: role
+    type: str
+    description: "Role on the project. Suggested set (not yet a stamped enum): producer | co_producer | financier | distributor | rental_house."
+  - name: contact_name
+    type: str
+    description: "Primary contact at the company"
+  - name: contact_email
+    type: str
+    description: "Primary contact email"
+  - name: website
+    type: str
+    description: "Company website URL"
+
+relations:
+  parent: project
+  children: []
+
+example:
+  name: "WRS Studio"
+  project_ref: "wet-under-blue-sky"
+  role: "producer"

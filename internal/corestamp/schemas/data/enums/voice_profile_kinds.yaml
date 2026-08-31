@@ -1,0 +1,28 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/voice_profile_kinds"
+  title: "Voice Profile Kind Enum"
+  description: |
+    Lifecycle kind for persona_voice_profile records in v_speak registry.
+  generates:
+    - "rust:VoiceProfileKind"
+    - "pydantic:VoiceProfileKind"
+  depends_on: []
+
+name: voice_profile_kinds
+description: "Voice profile authoring lifecycle"
+default: persona_default
+closed: true
+options:
+  - value: persona_default
+    label: "Persona default"
+    description: "Fleet-bound profile for a persona id"
+  - value: operator_override
+    label: "Operator override"
+    description: "Joel or v_speak session override; wins on precedence"
+  - value: preview
+    label: "Preview"
+    description: "Temporary profile for audition before fleet bind"
+  - value: handoff
+    label: "Handoff"
+    description: "Profile for merge/authority handoff contexts"

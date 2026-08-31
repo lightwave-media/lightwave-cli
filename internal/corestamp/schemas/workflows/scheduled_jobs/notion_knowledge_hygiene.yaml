@@ -1,0 +1,27 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/scheduled_jobs/notion_knowledge_hygiene"
+  title: "Notion Knowledge Hygiene — v_scrum-manager heartbeat"
+  description: |
+    Reconciles Notion databases/pages marked sync_enabled into the local
+    knowledge domain via external_ref bindings. Sibling to
+    project_board_hygiene (GitHub). Invoked by nullclaw/v_core cron.
+
+    Owner persona: v_scrum-manager (daemon-class). CLI surface: lw knowledge sync.
+    Observability: ~/.lightwave/observability/notion-sync.jsonl
+    Authority: local last-write-wins on structured fields (CORE-0048).
+
+name: "notion_knowledge_hygiene"
+
+id: notion_knowledge_hygiene
+title: "Notion knowledge mirror hygiene"
+job_class: maintenance
+schedule: "*/30 * * * *"
+handler:
+  transport: cli
+  command: "lw knowledge sync --json"
+budget_ref: heartbeat_budget.per_heartbeat_task_budgets.queue_depth_probe
+persona: v_scrum-manager
+invariants:
+  - no_recursive_strategic_delegation
+  - tool_group_compliance

@@ -1,0 +1,20 @@
+# Security policy schemas index — consumed by policy/__index.yaml
+# Each entry maps a policy schema slug to its file path relative to this directory.
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/policy/security/__index"
+  title: "Security Policy Schemas Index"
+  description: "Registry of security policy schemas (git conduct, shell tool, skill policy, secrets, worktree lifecycle)."
+
+schemas:
+  git_conduct: git_conduct.yaml
+  shell_tool: shell_tool.yaml
+  daemon_secrets: daemon_secrets.yaml
+  provider_identity_invariant: provider_identity_invariant.yaml
+  skill_policy: skill_policy.yaml
+  worktree_policy: worktree_policy.yaml
+  developer_sandbox_policy: developer_sandbox.yaml
+  developer_sandbox: developer_sandbox.yaml  # deprecated alias — use developer_sandbox_policy
+  agent_aws_credentials: agent_aws_credentials.yaml
+  rbac: rbac.yaml

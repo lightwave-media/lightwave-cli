@@ -1,0 +1,58 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/meta/field_annotations"
+  title: "Field Annotation Vocabulary"
+  description: |
+    Controlled vocabulary for per-field governance annotations. Any schema may
+    mark a field with `annotations: [<term>, ...]`; the terms are defined here
+    and only here, so governance language cannot fork per-schema.
+
+    This is the vocabulary layer of ADR-0046 (privacy-governed data access):
+    the stamp declares which fields are PII and how they are governed; the
+    platform enforces it at runtime (response filtering, hashing, DSR
+    endpoints). lightwave-core ships zero enforcement code.
+
+    Terms are orthogonal on purpose — `secret` is not `pii` is not
+    `api_excluded` — and a field may carry several. The pii term is
+    load-bearing: R-62 (pii-field-governed) requires every pii field to also
+    carry a governance annotation, and R-63 (pii-export-fitness) requires any
+    schema holding pii to declare a data_subject_rights block.
+  generates:
+    - "pydantic:FieldAnnotation"
+    - "json_schema:field_annotations"
+  depends_on: []
+
+name: field_annotations
+
+annotations:
+  - name: pii
+    description: "Field carries personally identifiable information. Declaring it is what makes the GDPR fitness rules bind: a pii field must also be governed (R-62) and its schema must support erase/export (R-63)."
+    applies_to: [str, object]
+    drives_rule: R-62
+  - name: sanitization
+    description: "Field value must be sanitized on ingress with a named strategy before it is stored or echoed. Counts as a governance annotation for R-62."
+    applies_to: [str]
+    drives_rule: null
+  - name: api_excluded
+    description: "Field must never appear in any HTTP or A2A response payload. Counts as a governance annotation for R-62; per ADR-0046 it is sufficient governance on its own for non-stored transit fields."
+    applies_to: [str, object]
+    drives_rule: null
+  - name: hash_before_store
+    description: "Field must be one-way hashed before persistence; the plaintext never reaches the store. Counts as a governance annotation for R-62."
+    applies_to: [str]
+    drives_rule: null
+  - name: secret
+    description: "Field is a credential — lives in SSM or a secret store, never in logs or fixtures. Distinct from pii: a credential identifies a system, not a person. Does not satisfy R-62 on its own."
+    applies_to: [str]
+    drives_rule: null
+  - name: min_length
+    description: "Minimum length constraint on the value, enforced downstream at validation time. Included so length rules ride the same annotation channel instead of inventing a parallel one."
+    applies_to: [str]
+    drives_rule: null
+
+example:
+  annotations:
+    - name: pii
+      description: "Field carries personally identifiable information."
+      applies_to: [str]
+      drives_rule: R-62

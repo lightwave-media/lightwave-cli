@@ -1,0 +1,118 @@
+# =============================================================================
+# ENUMS SCHEMA REGISTRY (Category A / kind family: enums)
+# =============================================================================
+# One enum per file. Each enum schema declares _meta + description + default
+# + options list (value, label, description triples). Consumed via $ref by
+# other schemas (e.g. agile artifact `status_enum: document_statuses`).
+#
+# Migrated one-at-a-time from legacy config/constraints/{statuses,
+# field_options, ...}.yaml during Phase 4. Each legacy file is a kitchen-sink
+# of mixed enums; extraction is surgical and audited — many enums are
+# downstream-subsystem concerns that won't migrate at all (CMS, equipment,
+# executive reporting, etc.).
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/__index"
+  title: "Enums Schema Registry"
+  description: "Maps enum names to their schema files. One enum per file per R-14 (kind-family sub-folders). Slug naming per R-11 (snake_case OR kebab-case)."
+
+schemas:
+  document_statuses: document_statuses.yaml
+  life_domains: life_domains.yaml
+  task_statuses: task_statuses.yaml
+  sprint_statuses: sprint_statuses.yaml
+  epic_statuses: epic_statuses.yaml
+  user_story_statuses: user_story_statuses.yaml
+  plan_statuses: plan_statuses.yaml
+  task_priorities: task_priorities.yaml
+  user_story_priorities: user_story_priorities.yaml
+  epic_priorities: epic_priorities.yaml
+  task_types: task_types.yaml
+  task_categories: task_categories.yaml
+  discovery_statuses: discovery_statuses.yaml
+  diagnostic_categories: diagnostic_categories.yaml
+  diagnostic_severities: diagnostic_severities.yaml
+  interview_rounds: interview_rounds.yaml
+  agent_statuses: agent_statuses.yaml
+  runner_statuses: runner_statuses.yaml
+  adr_statuses: adr_statuses.yaml
+  handoff_statuses: handoff_statuses.yaml
+  persona_tiers: persona_tiers.yaml
+  interaction_types: interaction_types.yaml
+  testing_harnesses: testing_harnesses.yaml
+  validity_gate_actions: validity_gate_actions.yaml
+  goal_statuses: goal_statuses.yaml
+  project_statuses: project_statuses.yaml
+  # CineOS controlled vocabularies (data/cineos family, bound via R-41 values_ref)
+  cineos_scene_statuses: cineos_scene_statuses.yaml
+  cineos_scene_shoot_statuses: cineos_scene_shoot_statuses.yaml
+  cineos_revision_colors: cineos_revision_colors.yaml
+  cineos_location_types: cineos_location_types.yaml
+  cineos_set_types: cineos_set_types.yaml
+  cineos_team_departments: cineos_team_departments.yaml
+  cineos_doc_types: cineos_doc_types.yaml
+  cineos_image_kinds: cineos_image_kinds.yaml
+  cineos_element_category_types: cineos_element_category_types.yaml
+  cineos_publish_surfaces: cineos_publish_surfaces.yaml
+  # CineOS dramatized audiobook (EPIC-CINE-AUDIO-001)
+  cineos_screenplay_element_types: cineos_screenplay_element_types.yaml
+  cineos_audio_statuses: cineos_audio_statuses.yaml
+  cineos_tts_providers: cineos_tts_providers.yaml
+  # CineOS shot craft vocab (open, closed: false — advisory suggestions)
+  cineos_shot_sizes: cineos_shot_sizes.yaml
+  cineos_shot_types: cineos_shot_types.yaml
+  cineos_camera_angles: cineos_camera_angles.yaml
+  cineos_lighting_types: cineos_lighting_types.yaml
+  # CineOS Slice 3 — post-production vocab (epic cineos-slice3-stamp)
+  cineos_colour_spaces: cineos_colour_spaces.yaml  # GENERATED — scripts/extract-baselight-colour-spaces.py
+  cineos_grade_kinds: cineos_grade_kinds.yaml
+  cineos_render_op_statuses: cineos_render_op_statuses.yaml
+  cineos_baselight_sync_states: cineos_baselight_sync_states.yaml
+  cineos_metadata_value_types: cineos_metadata_value_types.yaml
+  cineos_ale_metadata_keys: cineos_ale_metadata_keys.yaml
+  # Agile enum extraction from products/createos/config.yaml — COMPLETE.
+  # Remaining enums to migrate from other legacy locations: budget_tiers,
+  # plus anything from field_options.yaml that downstream consumers need.
+  runbook_statuses: runbook_statuses.yaml
+  delta_gap_kinds: delta_gap_kinds.yaml
+  docs_gate_failure_codes: docs_gate_failure_codes.yaml
+  failure_kinds: failure_kinds.yaml
+  flaw_classes: flaw_classes.yaml
+  handoff_block_kinds: handoff_block_kinds.yaml
+  model_tiers: model_tiers.yaml
+  plan_tier: plan_tier.yaml
+  proposed_test_kinds: proposed_test_kinds.yaml
+  test_patterns: test_patterns.yaml
+  test_component_kinds: test_component_kinds.yaml
+  review_dispatch_transports: review_dispatch_transports.yaml
+  review_executors: review_executors.yaml
+  rigor_tiers: rigor_tiers.yaml
+  ui_app_shell_kinds: ui_app_shell_kinds.yaml
+  ui_collection_types: ui_collection_types.yaml
+  ui_component_categories: ui_component_categories.yaml
+  ui_component_maturities: ui_component_maturities.yaml
+  ui_field_types: ui_field_types.yaml
+  ui_page_types: ui_page_types.yaml
+  ui_section_families: ui_section_families.yaml
+  uli_term_statuses: uli_term_statuses.yaml
+  uli_word_classes: uli_word_classes.yaml
+  visual_block_kinds: visual_block_kinds.yaml
+  voice_engines: voice_engines.yaml
+  voice_output_formats: voice_output_formats.yaml
+  voice_profile_kinds: voice_profile_kinds.yaml
+  voice_session_kinds: voice_session_kinds.yaml
+  voice_synthesis_goals: voice_synthesis_goals.yaml
+  voice_tone_tags: voice_tone_tags.yaml
+  lifecycle_phases: lifecycle_phases.yaml
+  # Agent supervision enums (agent_watch_session / agent_aws_credentials)
+  watch_session_states: watch_session_states.yaml
+  watch_modes: watch_modes.yaml
+  lightwave_iam_roles: lightwave_iam_roles.yaml
+  # Harness change request controlled vocabularies (CORE-0045, bound via R-41 values_ref)
+  harness_target_kinds: harness_target_kinds.yaml
+  harness_change_request_statuses: harness_change_request_statuses.yaml
+  # createOS shell promoted-product / domain-registry row (bound via R-41 values_ref)
+  promoted_product_states: promoted_product_states.yaml
+  promoted_product_publish_states: promoted_product_publish_states.yaml

@@ -1,0 +1,110 @@
+_meta:
+  version: 1.2.2
+  schema_id: lightwave://schemas/data/agile_artifacts/project
+  title: Project
+  description: 'The middle tier of the createOS work spine (Goal → Project → Epic → Sprint →
+
+    Task). A bounded body of work that advances a Goal and groups Epics. The
+
+    Goal/Project tier is the operator-facing work hierarchy; Epics additionally
+
+    anchor to a PRD (the R-P-I-V-R doc lineage) — the two axes are orthogonal.
+
+    New 2026-06-19 from the createOS decision interview.
+
+    '
+  generates:
+  - pydantic:Project
+  depends_on:
+  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/enums/project_statuses
+  - lightwave://schemas/data/enums/epic_priorities
+  - lightwave://schemas/data/agile_artifacts/goal
+  table_kind: entity
+  table_name: projects
+status_enum: project_statuses
+priority_enum: epic_priorities
+primary_key:
+  column: id
+  type: uuid
+natural_key:
+  column: slug
+  unique: true
+required_fields:
+- name: slug
+  type: str
+  description: URL-safe unique identifier; lowercase, hyphen-separated
+  pattern: ^[a-z0-9]+(-[a-z0-9]+)*$
+  storage: db
+- name: name
+  type: str
+  description: Project name
+  storage: db
+- name: goal_ref
+  type: str
+  description: Slug of the parent Goal this project advances
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/goal
+  fk_column: slug
+  indexed: true
+- name: domain
+  type: str
+  description: LifeDomain slug; validated against life_domains
+  storage: db
+- name: status
+  type: str
+  description: Lifecycle state; validated against project_statuses
+  storage: db
+  indexed: true
+- name: created_at
+  type: datetime
+  description: ISO 8601 timestamp of record creation; auto-populated
+  storage: db
+- name: updated_at
+  type: datetime
+  description: ISO 8601 timestamp of last modification; auto-updated
+  storage: db
+optional_fields:
+- name: log_line
+  type: str
+  description: One-sentence description of the project
+  storage: db
+- name: priority
+  type: str
+  description: Priority; validated against the platform-wide P-tier priority enum (epic_priorities)
+  storage: db
+- name: start_date
+  type: date
+  storage: db
+  description: ISO 8601 date when work on this project begins.
+- name: target_date
+  type: date
+  description: Target completion date
+  storage: db
+- name: client
+  type: str
+  description: External client name (for production work)
+  storage: db
+- name: production_company
+  type: str
+  description: Production company / vendor name
+  storage: db
+relations:
+  parent: goal
+  parent_fk:
+    column: goal_ref
+    references: goals.slug
+    on_delete: CASCADE
+  children:
+  - epic
+example:
+  slug: createos-spine-knowledge-ingestion-v1
+  name: createOS spine + knowledge ingestion v1
+  goal_ref: reclaim-creative-time
+  domain: software-development
+  status: in_progress
+  log_line: Stand up the shared Goal/Project/Epic spine and the YouTube knowledge-ingestion harness.
+  priority: p1
+  target_date: '2026-07-31'
+  created_at: '2026-06-24T12:00:00Z'
+  updated_at: '2026-06-24T12:00:00Z'

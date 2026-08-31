@@ -1,0 +1,99 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/reference_documents/architectural_fit"
+  title: "Architectural Fit"
+  description: |
+    Comparative audit of an external system's surface against a canonical
+    Lightwave surface — which members subsume cleanly into ours, which stay
+    theirs, which expose gaps we should fill. The document core-self's own
+    taxonomy has always listed for data/reference_documents/ and homedir
+    routes to specs/architectural_fit, but whose schema was never authored —
+    so member inventories drifted unchecked (#463).
+
+    Distinct from technical_study: a study reports what an external system IS;
+    a fit audit maps its members onto OUR surface and dispositions each one.
+    The live prints (~/.lightwave/specs/architectural-fit/, the routa-cli /
+    gruntwork / hashicorp cherry-pick audits) are the shape source.
+  generates:
+    - "pydantic:ArchitecturalFit"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+natural_key:
+  column: slug
+  unique: true
+
+required_fields:
+  - name: slug
+    type: str
+    description: "URL-safe unique identifier; lowercase, hyphen-separated."
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+  - name: title
+    type: str
+    description: "Names both sides of the comparison and the direction (e.g. 'lw CLI cherry-pick from routa-cli')."
+  - name: status
+    type: str
+    description: "Lifecycle status; one of: draft | active | archived."
+  - name: created_at
+    type: date
+    description: "ISO date of the audit. Fit findings expire when either surface moves."
+  - name: subject
+    type: str
+    description: "The external system audited, named precisely enough to re-observe (repo plus ref, or product plus version)."
+  - name: canonical
+    type: str
+    description: "The Lightwave surface it is compared against (e.g. 'lw CLI command tree', 'lightwave-ui component set'). The audit's frame: canonical wins by default."
+  - name: inventory
+    type: "list[FitMemberRef]"
+    description: |
+      The member-by-member comparison — the part that drifts unchecked without
+      a schema. Sub-schema FitMember:
+        member (str, the external member audited — verb, module, component),
+        theirs (str, what it does in the subject system),
+        ours (str, the canonical counterpart, or 'none'),
+        disposition (str, one of: subsume | gap | keep_theirs | reject —
+          subsume: folds into the canonical surface; gap: canonical lacks it
+          and should gain it; keep_theirs: stays subject-only by design;
+          reject: not wanted),
+        note (str, optional rationale for the disposition).
+
+optional_fields:
+  - name: informs
+    type: "list[str]"
+    description: "Slugs of the ADRs, PRDs or issues the dispositions fed. An audit nothing cites is either premature or finished."
+  - name: gaps_filed
+    type: "list[str]"
+    description: "Issue refs filed for gap dispositions (e.g. lightwave-cli#320). Keeps 'gap' from meaning 'noted and forgotten'."
+  - name: sources
+    type: "list[str]"
+    description: "What was actually read — READMEs, --help output, source paths. The audit's credibility field."
+
+relations:
+  parent: null # An audit is atomic — it feeds decisions without sitting in the lineage
+  children: []
+
+example:
+  slug: "cli-cherry-pick-routa"
+  title: "lw CLI cherry-pick from routa-cli"
+  status: "active"
+  created_at: "2026-07-14"
+  subject: "phodal/routa routa-cli @ main"
+  canonical: "lw CLI command tree (interfaces/cli/commands.yaml)"
+  inventory:
+    - member: "workflow"
+      theirs: "YAML-defined workflow execution + validation"
+      ours: "lw runbook (declared; handlers pending lightwave-cli#327)"
+      disposition: "subsume"
+      note: "Runbook surface is the sanctioned home for declarative execution."
+    - member: "kanban"
+      theirs: "Board/card/column manipulation"
+      ours: "none"
+      disposition: "reject"
+      note: "Agile artifacts are PostgreSQL records via lw task/story/sprint, not boards."
+  informs:
+    - "adr-0001"
+  sources:
+    - "routa-cli/README.md @ phodal/routa main"
+    - "lw --help tree (binary /opt/homebrew/bin/lw)"

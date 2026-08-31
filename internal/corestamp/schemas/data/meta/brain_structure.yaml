@@ -1,0 +1,287 @@
+_meta:
+  version: "2.0.0"
+  schema_id: "lightwave://schemas/data/meta/brain_structure"
+  title: "Brain Structure — DB Domains + File Zones + Sync"
+  description: |
+    Declares the LightWave brain architecture — the local-first knowledge layer
+    for agents. Three layers, not two (CORE-0049):
+
+    1. **File print** (`~/.lightwave/specs/`) — the CANONICAL TRUTH for every
+       schema-shaped artifact. One YAML/MD file per row, git-trackable and
+       reviewable as a diff. Inbound external writes land here first.
+
+    2. **DB domains** (Postgres, one schema namespace per domain) — the
+       queryable projection agents actually read. Tables derived from SST
+       schemas and REBUILT from the file print; a domain can be dropped and
+       reindexed without data loss. Carries tenant_id + RLS from the generator,
+       so the same shape serves local, platform and the cloud mirror.
+
+    3. **File zones** (`~/.lightwave/brain/`) — unstructured or semi-structured
+       operator-authored files: raw research, memos, ADR drafts, lessons, cortex
+       context layers. NOT schema-shaped, so never indexed.
+
+    The boundary: **if it has a schema in src/schemas/, it has a file in the
+    print AND a table in Postgres. If it's raw synthesis-in-progress, it lives
+    in brain/ only.** Schemas are the promotion gate — when content crystallizes
+    enough to declare required_fields, it gets a schema, a print file, and a table.
+
+    Because the DB is derived, it can never silently become a second truth: any
+    write that reaches only the DB is discarded on the next reindex. This is the
+    property that makes external adapters safe (CORE-0049 §2).
+
+    Notion and GitHub are external projections linked by
+    integrations/sync/external_ref and reconciled by adapters
+    (`lw scrum sync`, `lw knowledge sync`) — never replication peers (CORE-0048,
+    projection doctrine retained). The knowledge domain holds Notion-mirrored
+    rows; scrum holds GitHub issue/milestone/project/PR links on agile artifacts.
+
+    v1.0.0: Initial brain architecture — 7 knowledge domains, DB-first boundary,
+    PowerSync configuration, print rules.
+    v1.1.0: Document knowledge-domain Notion mirror + external projection hop.
+    v2.0.0: CORE-0049 — Postgres replaces per-domain SQLite as the queryable
+    store; `~/.lightwave/specs/` named as canonical truth; PowerSync removed.
+  generates:
+    - "pydantic:BrainStructure"
+    - "postgres:DDL" # PostgreSQL CREATE TABLE statements (tenant_id + RLS)
+    - "go:ORM" # Go ORM models (sqlc or GORM)
+    - "zig:ORM" # Zig ORM models (lightwave-sys)
+    - "huma:API" # HUMA API routes at localhost:7700/v1/*
+  depends_on:
+    - "lightwave://schemas/data/meta/homedir"
+    - "lightwave://schemas/data/agile_artifacts/scrum_hierarchy"
+
+required_fields:
+  - name: db
+    type: object
+    description: "DB layer configuration — domain enumeration, file paths, schema references."
+  - name: files
+    type: object
+    description: "File-based brain zones — complement to DB domains."
+  - name: sync
+    type: object
+    description: "Reindex + cloud-mirror configuration (CORE-0049; not PowerSync)."
+
+optional_fields:
+  - name: print_rules
+    type: object
+    description: "Rules for what gets printed from core→~/.lightwave/."
+
+# =============================================================================
+# Sub-schemas
+# =============================================================================
+sub_schemas:
+  db_domain:
+    description: |
+      A knowledge domain occupying one Postgres schema namespace. Name is the
+      namespace and the print sub-directory (e.g., "scrum" → schema `scrum`,
+      print `~/.lightwave/specs/{task,epic,sprint,…}`).
+    required_fields:
+      - name: name
+        type: str
+        description: "Domain slug. Used as Postgres schema namespace and API path segment."
+      - name: description
+        type: str
+        description: "What knowledge this domain holds."
+      - name: sst_schemas
+        type: "list[str]"
+        description: |
+          SST schema URIs that define this domain's table shapes.
+          Each referenced schema's required_fields become DB columns.
+      - name: sync_to_cloud
+        type: bool
+        description: "Whether this domain syncs to cloud PostgreSQL. True for most; false for local-only secrets."
+      - name: api_path
+        type: str
+        description: "REST API path segment (e.g., /v1/scrum). Derived from domain name."
+    optional_fields:
+      - name: sync_priority
+        type: str
+        description: "Sync priority: critical | normal | background."
+      - name: local_only
+        type: bool
+        description: "If true, never syncs. Overrides sync_to_cloud."
+      - name: retention_days
+        type: int
+        description: "Auto-purge records older than N days (0 = never)."
+
+  sync_config:
+    description: |
+      Reindex (print→local Postgres) and cloud-mirror (local→RDS) configuration.
+      PowerSync was removed in CORE-0049 §4: with Postgres on both ends the
+      homogeneous-replication problem it solved does not arise, and the cloud hop
+      is ordinary Postgres replication.
+    required_fields:
+      - name: print_root
+        type: str
+        description: "Canonical file print the store is rebuilt from (~/.lightwave/specs)."
+      - name: postgres_major
+        type: int
+        description: "Postgres major version. One value across local, compose and RDS (CORE-0049 §5)."
+      - name: cloud_db_connection
+        type: str
+        description: "AWS RDS PostgreSQL connection string (loaded from SSM at runtime, NEVER hardcoded)."
+    optional_fields:
+      - name: reindex_trigger
+        type: str
+        description: "What rebuilds the store from the print: on_write | scheduled | manual."
+      - name: batch_size
+        type: int
+        description: "Max rows per reindex batch."
+
+  print_rules:
+    description: "What gets printed from core SST → ~/.lightwave/."
+    required_fields:
+      - name: specs_dir
+        type: str
+        description: "Canonical file print — the truth the store is rebuilt from."
+      - name: brain_dir
+        type: str
+        description: "Print location for file-based brain zones."
+      - name: print_authority
+        type: str
+        description: "Who writes the print: lw-cli | lightwave-sys."
+    optional_fields:
+      - name: forbidden_dirs
+        type: "list[str]"
+        description: "Paths under ~/.lightwave/ that MUST NOT hold schema-shaped rows."
+
+# =============================================================================
+# Example — the canonical brain layout
+# =============================================================================
+example:
+  db:
+    # Postgres, not a directory of SQLite files (CORE-0049 §1). Each domain is a
+    # schema namespace in the local instance; the rows are rebuilt from the file
+    # print at ~/.lightwave/specs/.
+    engine: postgres
+    root: "postgres://localhost/platform"
+    # Full domain catalog printed at ~/.lightwave/db/__domains.yaml (catalog
+    # metadata only — no .db files live there since CORE-0049).
+    # Example shows 2 representative domains to demonstrate shape.
+    domains:
+      - name: scrum
+        description: |
+          Agile process state — projects, epics, sprints, user stories, tasks.
+          Drives the worktree/branch git model.
+        sst_schemas:
+          - "lightwave://schemas/data/agile_artifacts/scrum_hierarchy"
+          - "lightwave://schemas/data/agile_artifacts/epic"
+          - "lightwave://schemas/data/agile_artifacts/sprint"
+          - "lightwave://schemas/data/agile_artifacts/task"
+          - "lightwave://schemas/integrations/sync/external_ref"
+        sync_to_cloud: true
+        sync_priority: critical
+        api_path: "/v1/scrum"
+        retention_days: 0
+
+      - name: agents
+        description: |
+          Agent runtime state — sessions, actions, identities, audit events.
+          Local agent memory. High churn; session events auto-purge.
+        sst_schemas:
+          - "lightwave://schemas/data/meta/agent_session"
+          - "lightwave://schemas/data/meta/agent_action"
+          - "lightwave://schemas/data/meta/agent_identity"
+          - "lightwave://schemas/data/meta/audit_event"
+        sync_to_cloud: true
+        sync_priority: normal
+        api_path: "/v1/agents"
+        retention_days: 90
+
+      - name: knowledge
+        description: |
+          Mirrored Notion pages/databases + crystallized knowledge rows.
+          Structured columns are local-authoritative; Notion is the human
+          collaboration projection (CORE-0048). Unstructured synthesis stays
+          in files/ until promoted through the schema gate.
+        sst_schemas:
+          - "lightwave://schemas/integrations/notion/page"
+          - "lightwave://schemas/integrations/notion/database"
+          - "lightwave://schemas/integrations/sync/external_ref"
+        sync_to_cloud: true
+        sync_priority: normal
+        api_path: "/v1/knowledge"
+        retention_days: 0
+
+  files:
+    root: "~/.lightwave/brain"
+    # Full zone catalog in homedir.yaml nested_dirs.
+    # Example shows 2 representative zones.
+    zones:
+      - name: memory
+        description: |
+          Long-form operator memory — plans archive, audits, research outputs,
+          feedback, lessons-learned. File-based because it's raw synthesis.
+          The promotion gate: when a memory pattern recurs enough to declare
+          required_fields, it gets a schema, a print file, and a table in the
+          knowledge domain.
+        sub_zones:
+          - plans-archive
+          - lessons
+        write_authority: operator
+        read_consumers: [agent-harness, brain-query-tool]
+
+      - name: cortex
+        description: |
+          Agent context layers — per-role inputs consumed by v_core's compose_*
+          functions at session spawn. File-based because compose reads them as
+          raw text/markdown; not structured enough for DB.
+        sub_zones: []
+        write_authority: operator
+        read_consumers: [agent-harness, lightwave-sys]
+
+  sync:
+    print_root: "~/.lightwave/specs"
+    postgres_major: 17
+    cloud_db_connection: "aws-ssm://lightwave/platform/database/cloud/postgres-url"
+    reindex_trigger: on_write
+    batch_size: 500
+    note: |
+      Two hops, both ordinary Postgres operations (CORE-0049):
+
+      1. print → local Postgres. The store is REBUILT from ~/.lightwave/specs/.
+         A row that exists only in the DB is discarded on reindex — that is the
+         property that keeps the DB from becoming a second truth, and it is why
+         inbound adapter writes must land in the print first.
+      2. local → cloud RDS. Plain Postgres replication. Cloud is a mirror; the
+         tenant_id + RLS columns come from the generator, so local and cloud
+         share one shape and local agents never think about multi-tenancy.
+
+      PowerSync was removed in CORE-0049 §4. It solved SQLite↔Postgres
+      replication; with Postgres on both ends that problem does not arise.
+
+      One Postgres major across local, compose and RDS (CORE-0049 §5). Notion
+      and GitHub are NOT replication peers — those hops use projection adapters
+      + reconcile jobs (docs/references/architecture/external-sync-hops.md,
+      CORE-0048).
+
+  print_rules:
+    specs_dir: "~/.lightwave/specs"
+    brain_dir: "~/.lightwave/brain"
+    print_authority: lw-cli
+    note: |
+      Print is the ACTUAL filesystem under ~/.lightwave/. The SST declares
+      shape; `lw brain init` creates the directory tree and applies the
+      generated Postgres DDL. `lw brain sync` reindexes the print into the
+      store. `lw home reset` wipes GENERATED dirs but preserves specs/
+      (AUTHORED zone — it is the truth, not a cache).
+
+      What's printed vs what stays in core:
+      - Schema-shaped rows → printed as files under ~/.lightwave/specs/
+      - DB schemas (CREATE TABLE DDL) → applied to Postgres, not printed
+      - File zone structure → printed as directory tree
+      - Domain enumeration → printed as ~/.lightwave/db/__domains.yaml
+      - SST schemas → STAY in core (not printed — agents read them via MCP)
+      - Boilerplate templates → STAY in core (not printed — they're the source)
+
+    forbidden_dirs:
+      # The store is Postgres; no .db files belong anywhere under ~/.lightwave/.
+      # ~/.lightwave/index/ holds the legacy SQLite index, retired per CORE-0049.
+      - "~/.lightwave/specs/.cache" # derived artefacts — never authoritative
+      - "~/.lightwave/brain" # unstructured zone — never holds schema-shaped rows
+
+relations:
+  parent: null
+  children: []
+
+status: active

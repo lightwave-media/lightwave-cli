@@ -1,0 +1,96 @@
+_meta:
+  version: "0.2.0"
+  schema_id: "lightwave://schemas/data/enums/test_patterns"
+  title: "Test Pattern Enum"
+  description: |
+    Closed set of test PATTERNS (the HOW axis — implementation technique) a
+    test_contract may require of a component. Derived from Mitchell Hashimoto's
+    "Advanced Testing with Go" (NewStore TechTalk, 2016) — the verbatim
+    transcript at ~/.lightwave/sources/youtube/yszygk1cpEc.md.
+
+    ORTHOGONAL to proposed_test_kinds (the WHAT-KIND axis — SWEBOK Ch5): a
+    single test is one KIND (e.g. unit) realised with one or more PATTERNS
+    (e.g. table_driven + interface_mocking). The two enums compose; they do
+    not overlap. This is the company-wide vocabulary every downstream CI gate
+    (`lw check test-contract`) reads — one stamped source, no per-repo drift.
+
+    SST shape claims add two patterns that Hashimoto did not name: stamp_bound
+    (the expected shape is the YAML stamp or generated types, never a copied
+    array) and print_census (every current record, never a named instance).
+  generates:
+    - "pydantic:TestPattern"
+  depends_on: []
+
+name: test_patterns
+description: "Test technique a test_contract may require"
+default: table_driven
+closed: true
+options:
+  - value: table_driven
+    label: "Table-driven"
+    description: "Slice of case structs iterated by the test"
+    source_ref: "Hashimoto — table-driven tests"
+  - value: subtests
+    label: "Subtests"
+    description: "t.Run host per case (Go 1.7+); filterable, isolatable"
+    source_ref: "modern evolution of table-driven (post-talk)"
+  - value: fixtures_testdata
+    label: "Fixtures (testdata)"
+    description: "Inputs loaded from the toolchain-ignored testdata/ dir"
+    source_ref: "Hashimoto — test fixtures"
+  - value: golden_files
+    label: "Golden files"
+    description: "Expected output in testdata/*.golden, refreshed by -update"
+    source_ref: "Hashimoto — golden files"
+  - value: cleanup_helpers
+    label: "Cleanup-closure helpers"
+    description: "t.Helper() helper returning func(t)(resource, cleanup)"
+    source_ref: "Hashimoto — test helpers"
+  - value: interface_mocking
+    label: "Interface mocking"
+    description: "Seams injected as interfaces, not globals; mock in tests"
+    source_ref: "Hashimoto — mocking (heaviest theme)"
+  - value: networking_seam
+    label: "Networking seam"
+    description: "httptest / interface for network deps; real network opt-in"
+    source_ref: "Hashimoto — networking"
+  - value: subprocess_exit
+    label: "Subprocess exit"
+    description: "Re-exec the test binary to test os.Exit / CLI behaviour"
+    source_ref: "Hashimoto — subprocessing"
+  - value: parallel_safe
+    label: "Parallel-safe"
+    description: "t.Parallel() with isolated fixtures; no shared-state coupling"
+    source_ref: "Hashimoto — parallelization"
+  - value: acceptance_e2e
+    label: "Acceptance / e2e"
+    description: "In-memory backend harness + a real end-to-end CLI drive"
+    source_ref: "Hashimoto — acceptance testing"
+  - value: hermetic_default
+    label: "Hermetic by default"
+    description: "Default `go test` performs no network/external I/O"
+    source_ref: "Hashimoto — configurability for testability"
+  - value: stamp_bound
+    label: "Stamp-bound"
+    description: >
+      Shape claims load the SST YAML or generated types. A handwritten
+      STAMP_TIERS / DOMAIN_SPINE array in the test is a third print.
+    source_ref: "createOS stamp/print census — 2026-08-25"
+  - value: print_census
+    label: "Print census"
+    description: >
+      Walk every current record (store view, projects tree, generated
+      registry). Naming one production or one path does not scale and
+      hides the class of bug the named instance never hit.
+    source_ref: "createOS stamp/print census — 2026-08-25"
+
+example:
+  name: test_patterns
+  description: "Go test technique a test_contract may require (Hashimoto)"
+  default: table_driven
+  closed: true
+  options:
+    - value: table_driven
+      label: "Table-driven"
+      description: "Slice of case structs iterated by the test"
+      source_ref: "Hashimoto — table-driven tests"

@@ -1,0 +1,174 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/runbooks/runbook_definition"
+  title: "Runbook Definition (The Negative)"
+  description: |
+    What a runbook IS — the stamp (negative) from which all prints
+    (editions, executions) are made. A runbook is an interactive MDX
+    workflow document (Gruntwork Runbooks format) that guides a
+    multi-step procedure with typed blocks: Inputs, Check, Command,
+    Template, Admonition.
+
+    The negative captures the original specification per SWEBOK v4
+    Ch 1 §4 (Requirements Specification): inputs schema, output
+    contract, step sequence, dependencies, and the semantic purpose
+    the runbook serves in the Lightwave ecosystem.
+
+    Cross-domain applicability: any procedure expressible as typed
+    steps — infrastructure provisioning, code scaffolding, agent
+    handoffs, deployment pipelines, onboarding sequences.
+  generates:
+    - "pydantic:RunbookDefinition"
+  depends_on:
+    - "lightwave://schemas/data/enums/runbook_statuses"
+    - "lightwave://schemas/data/enums/handoff_block_kinds"
+
+status_enum: "runbook_statuses"
+
+required_fields:
+  - name: slug
+    type: str
+    description: "Kebab-case identifier — matches the directory name in src/runbooks/<slug>/. Per R-11: ^[a-z][a-z0-9-]*$"
+  - name: name
+    type: str
+    description: "Human-readable title — what this runbook does"
+  - name: summary
+    type: str
+    description: "One-paragraph description of the runbook's purpose and when to use it"
+  - name: domain
+    type: str
+    description: "LifeDomain or knowledge area this runbook belongs to (infrastructure, scaffold, voice, vision, deploy)"
+  - name: inputs
+    type: "list[InputField]"
+    description: "Typed input variables the runbook accepts — mapped from the <Inputs> block in runbook.mdx"
+  - name: output_contract
+    type: "list[OutputField]"
+    description: "Named outputs the runbook produces — mapped from RUNBOOK_OUTPUT key=value semantics in Command blocks"
+  - name: steps
+    type: "list[RunbookStep]"
+    description: "Ordered sequence of typed blocks the runbook executes. Kinds per handoff_block_kinds: check, command, inputs, template, admonition"
+  - name: component_count
+    type: "object[ComponentCounts]"
+    description: "Summary counts by block kind — enables quick scan of runbook complexity"
+
+optional_fields:
+  - name: status
+    type: str
+    description: "Lifecycle state; validated against runbook_statuses. Default: draft"
+  - name: dependencies
+    type: "list[DependencyRef]"
+    description: "External dependencies (other runbooks, CLIs, vendor services) this runbook requires"
+  - name: classification
+    type: "list[str]"
+    description: "Tags for library discovery — directory, purpose, technology, audience"
+  - name: orchestration_ref
+    type: str
+    description: "Slug of the orchestration workflow (workflows/orchestration/) that automates this runbook"
+  - name: parent_prd
+    type: str
+    description: "Slug of the PRD this runbook implements (R-P-I-V-R Plan → Release traceability)"
+  - name: sad_ref
+    type: str
+    description: "Slug of the SAD describing this runbook's architecture"
+
+sub_schemas:
+  InputField:
+    name: "str"
+    type: "str" # string | int | bool | select | multi_select
+    description: "str"
+    required: "bool"
+    default: "str | null"
+    options: "list[str] | null" # for select / multi_select types
+
+  OutputField:
+    name: "str"
+    description: "str"
+    type: "str" # string | file | json | url
+
+  RunbookStep:
+    id: "str"
+    kind: "str" # validated against handoff_block_kinds
+    label: "str"
+    description: "str"
+    depends_on: "list[str] | null" # step IDs that must complete first
+    script_ref: "str | null" # path to checks/<name>.sh or scripts/<name>.sh
+    template_ref: "str | null" # path to templates/<name>/ boilerplate.yml
+    success_message: "str | null"
+    fail_message: "str | null"
+    produces: "list[str] | null" # named outputs this step emits
+    consumes: "list[str] | null" # inputs this step reads
+
+  ComponentCounts:
+    checks: "int"
+    commands: "int"
+    inputs_blocks: "int"
+    templates: "int"
+    admonitions: "int"
+
+  DependencyRef:
+    name: "str"
+    kind: "str" # cli | runbook | vendor_service | library
+    version: "str | null"
+    description: "str"
+
+relations:
+  parent: null
+  children:
+    - runbook_edition
+    - runbook_contact_sheet
+
+example:
+  slug: "deploy-fargate-service"
+  name: "Deploy Fargate Service"
+  summary: "Deploy a containerized service to AWS ECS Fargate with ALB, auto-scaling, and CloudWatch logging"
+  domain: "infrastructure"
+  status: "active"
+  inputs:
+    - name: service_name
+      type: string
+      description: "Name of the service to deploy"
+      required: true
+    - name: cpu
+      type: select
+      description: "CPU units"
+      required: false
+      default: "256"
+      options: ["256", "512", "1024", "2048"]
+  output_contract:
+    - name: service_url
+      description: "ALB DNS name of the deployed service"
+      type: url
+    - name: task_definition_arn
+      description: "ARN of the registered task definition"
+      type: string
+  steps:
+    - id: validate-inputs
+      kind: check
+      label: "Validate inputs"
+      description: "Check that all required inputs are present and valid"
+      script_ref: "checks/validate-inputs.sh"
+    - id: register-task-def
+      kind: command
+      label: "Register task definition"
+      description: "Register the ECS task definition with the service configuration"
+      script_ref: "scripts/register-task-def.sh"
+      depends_on: ["validate-inputs"]
+      produces: ["task_definition_arn"]
+    - id: deploy-service
+      kind: command
+      label: "Deploy Fargate service"
+      description: "Create or update the ECS Fargate service"
+      script_ref: "scripts/deploy-service.sh"
+      depends_on: ["register-task-def"]
+      produces: ["service_url"]
+  component_count:
+    checks: 1
+    commands: 2
+    inputs_blocks: 0
+    templates: 0
+    admonitions: 0
+  classification:
+    - "infrastructure"
+    - "deploy"
+    - "aws"
+    - "fargate"

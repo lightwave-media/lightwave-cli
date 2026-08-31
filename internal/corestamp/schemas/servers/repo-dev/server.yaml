@@ -1,0 +1,73 @@
+# =============================================================================
+# REPO-DEV SERVER — Repository-scoped development server
+# =============================================================================
+# Each repo can declare its own dev server. The SST declares the server
+# configuration; the build system generates the actual server process.
+# Examples: Vite docs app, local API server, MCP bridge, Playground.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/servers/repo-dev/server"
+  title: "Repo Dev Server Configuration"
+  description: |
+    Declares a repo-scoped development server. Unlike the global docs or
+    MCP servers, this is per-repo — each repo can declare its own dev
+    server(s) for local development. The SST declares the contract;
+    the builder generates the server.
+  generates:
+    - "json_schema:RepoDevServerConfig"
+  depends_on:
+    - "lightwave://schemas/data/meta/repo_registry"
+
+required_fields:
+  - name: server
+    type: object
+    description: "Server configuration"
+  - name: repo
+    type: object
+    description: "Repo binding"
+
+optional_fields:
+  - name: build
+    type: object
+    description: "Build configuration"
+  - name: dependencies
+    type: object
+    description: "Runtime dependencies"
+
+example:
+  server:
+    port: 3200
+    host: localhost
+    name: "lightwave-core docs"
+    type: vite
+    template: "src/servers/docs/index.html"
+    blueprint: "src/boilerplate/blueprints/servers/docs"
+
+  repo:
+    slug: lightwave-core
+    category: constitution
+    watch_paths:
+      - "src/schemas/"
+      - "docs/"
+
+  build:
+    command: "bun dev"
+    install: "bun install"
+    generate:
+      - "python3 src/boilerplate/blueprints/servers/docs/generate_context_index.py"
+
+  dependencies:
+    packages:
+      - mermaid
+      - vite
+    design_tokens:
+      source: "lightwave-ui/src/styles/theme.css"
+      mode: import
+
+relations:
+  parent: null
+  children: []
+
+status: active

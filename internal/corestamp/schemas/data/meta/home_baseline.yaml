@@ -1,0 +1,37 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/home_baseline
+  title: Lightwave Home Baseline
+  description: 'Declares BASELINE zone dirs/files rendered by lightwave-home blueprint
+
+    on `lw home render`. OPERATOR and RUNTIME zones defined in homedir.yaml.
+
+    '
+  generates:
+  - pydantic:HomeBaseline
+  depends_on:
+  - lightwave://schemas/data/meta/homedir
+required_fields:
+- name: version
+  type: str
+  description: SemVer version of this home baseline snapshot.
+- name: baseline_dirs
+  type: list[str]
+  description: Paths under ~/.lightwave re-rendered on home reset (soft tier)
+- name: baseline_files
+  type: list[str]
+  description: Single files emitted by baseline render (e.g. baseline.lock)
+example:
+  version: 1.0.0
+  baseline_dirs:
+  - config/lightwave-ai/
+  - config/agents/
+  - config/voice/
+  - config/flags/
+  - docs/wiki/
+  - config/principles/
+  - config/soul/
+  - config/agent-harnesses/
+  - v_core/providers/
+  baseline_files:
+  - baseline.lock

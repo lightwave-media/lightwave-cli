@@ -1,0 +1,61 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/feature_flag"
+  title: "Feature Flag"
+  description: |
+    Declarative shape for a feature flag — the rollback primitive for the
+    autonomous release train (ADR-0035). Every release that introduces risky or
+    new behavior ships it WRAPPED in a flag (default off), so a bad release is
+    killed by flipping the flag instead of a git-revert + rebuild + redeploy.
+
+    v1 is a NAMED BOOLEAN — on or off, single-valued. Progressive rollout
+    (percentage / ring) is deliberately excluded: it has no denominator in a
+    single-operator local-first stack, and a non-single-valued flag cannot be
+    the deterministic rollback the ADR promises ("rollback = `lw release flag
+    <key> --off`, instant"). If progressive delivery is ever needed it gets its
+    own schema with explicit evaluation precedence — not a magic string here.
+
+    Stamp/print split: this schema + each flag's declared `default` are the
+    STAMP; the live on/off STATE is a PRINT (global `~/.lightwave/config/flags.toml`)
+    flipped at runtime by `lw release flag <key> --on|--off`. The daemon
+    (v_release-engineer) registers a flag at `lw release cut`; rollback is
+    `lw release flag <key> --off`, recorded to the release audit trail. An
+    unregistered flag evaluates to its declared `default`. Homegrown (no external
+    flag vendor): fits stamp/print, no new secret, daemon-controllable.
+  generates:
+    - "pydantic:FeatureFlag"
+  depends_on: []
+
+required_fields:
+  - name: flag_key
+    type: str
+    description: "Stable flag identifier (slug — e.g. 'gdpr_retention_enforcement', 'new_merge_gate')."
+  - name: description
+    type: str
+    description: "The behavior this flag gates — what turns on/off when it flips."
+  - name: default
+    type: bool
+    description: "State when no live override exists. New/risky behavior ships false (dark until proven), so the off-state IS the safe rollback target."
+  - name: owner
+    type: str
+    description: "Persona or team accountable for the flag (e.g. v_release-engineer)."
+
+optional_fields:
+  - name: gates_release
+    type: str
+    description: "The release tag this flag wraps (links release_pin.stable_tag). A flag WITH a gates_release is, by definition, that release's rollback switch: flip it off to disable the release's new behavior instantly."
+  - name: notes
+    type: str
+    description: "Free-form notes (intent, linked release, sunset plan once the flag is retired)."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  flag_key: "gdpr_retention_enforcement"
+  description: "Enforce the GDPR retention-declared fitness check as a hard block at merge."
+  default: false
+  owner: "v_release-engineer"
+  gates_release: "v3.7.0"
+  notes: "Ships dark; flip on once the fleet declares data_class. Rollback = lw release flag gdpr_retention_enforcement --off."

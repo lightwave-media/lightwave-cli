@@ -1,0 +1,23 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/voice_output_formats
+  title: Voice Output Format Enum
+  description: Audio artifact format from nullvoice synthesis.
+  generates:
+  - rust:VoiceOutputFormat
+  - pydantic:VoiceOutputFormat
+  depends_on: []
+name: voice_output_formats
+description: Synthesized audio file format
+default: wav
+closed: true
+options:
+- value: wav
+  label: WAV
+  description: WAV option.
+- value: mp3
+  label: MP3
+  description: MP3 option.
+- value: ogg
+  label: OGG
+  description: OGG option.

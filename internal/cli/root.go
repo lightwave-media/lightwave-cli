@@ -8,6 +8,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/lightwave-media/lightwave-cli/internal/sst"
 	"github.com/lightwave-media/lightwave-cli/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -175,6 +176,7 @@ any subsystem, and subsystem APIs can break between patch releases.`,
 				"commit":  version.Commit,
 				"date":    version.Date,
 				"apis":    version.APIs(),
+				"stamp":   sst.EmbeddedStampVersion(),
 			}
 			enc := json.NewEncoder(os.Stdout)
 			enc.SetIndent("", "  ")
@@ -183,6 +185,10 @@ any subsystem, and subsystem APIs can break between patch releases.`,
 		fmt.Printf("lw version %s\n", version.Version)
 		fmt.Printf("  commit: %s\n", version.Commit)
 		fmt.Printf("  built:  %s\n", version.Date)
+		// The embedded stamp answers schema questions whenever no
+		// lightwave-core checkout is present, so which snapshot shipped is
+		// part of what this binary is.
+		fmt.Printf("  stamp:  v%s (embedded snapshot)\n", sst.EmbeddedStampVersion())
 		apis := version.APIs()
 		if len(apis) > 0 {
 			fmt.Println("  apis:")

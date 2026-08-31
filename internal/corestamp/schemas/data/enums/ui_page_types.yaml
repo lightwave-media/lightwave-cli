@@ -1,0 +1,31 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/ui_page_types"
+  title: "UI Page Type Enum"
+  description: |
+    Page-type taxonomy for page_definition instances. Drives factory
+    behaviour: legal pages require LegalMeta (compliance blocks), admin and
+    app pages imply authenticated shells.
+  generates:
+    # No go: target by design — consumed only by page_definition, a
+    # TypeScript-facing contract with no Go consumer.
+    - "typescript:PageType"
+  depends_on: []
+
+name: ui_page_types
+description: "Page types in a site manifest"
+default: marketing
+closed: true
+options:
+  - value: marketing
+    label: "Marketing"
+    description: "Public marketing/content page"
+  - value: legal
+    label: "Legal"
+    description: "Legal/compliance document page; requires LegalMeta"
+  - value: admin
+    label: "Admin"
+    description: "Internal back-office page"
+  - value: app
+    label: "App"
+    description: "Authenticated product-surface page"

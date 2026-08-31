@@ -1,0 +1,51 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/kickoff_interview
+  title: Kickoff Interview Transcript
+  description: 'Shared artifact for createOS Kickoff Hub and `lw kickoff` CLI.
+
+    Lives at .tasks/<session-id>/kickoff/interview_transcript.yaml
+
+    '
+  generates:
+  - pydantic:KickoffInterview
+  depends_on:
+  - lightwave://schemas/data/enums/interview_rounds
+required_fields:
+- name: runbook_slug
+  type: str
+  description: Slug of the runbook used to guide the kickoff interview.
+- name: session_id
+  type: str
+  description: Unique identifier for this kickoff interview session.
+- name: operator_handle
+  type: str
+  description: Handle of the human operator who ran the interview.
+- name: current_round
+  type: str
+  description: interview_rounds enum value
+- name: status
+  type: str
+  description: draft|interview|shelved|approved|running|completed|cancelled
+- name: turns
+  type: list[InterviewTurnRef]
+  description: 'InterviewTurn: round (str), source (operator|agent), summary (str),
+
+    optional questions_answers, decisions, notes, approval, non_goals
+
+    '
+optional_fields:
+- name: scaffold_manifest_ref
+  type: str
+  description: Path to the scaffold manifest produced by this interview.
+- name: approved_at
+  type: str
+  description: ISO 8601 timestamp when the kickoff interview was approved.
+example:
+  runbook_slug: kickoff-initiative
+  session_id: 2026-06-18-session
+  operator_handle: operator
+  current_round: initial
+  status: interview
+  turns: []
+  scaffold_manifest_ref: scaffold_manifest.yaml

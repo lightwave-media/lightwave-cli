@@ -1,0 +1,94 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/agent_tools/claude_code_runner"
+  title: "Claude Code Runner config"
+  description: |
+    Schema for the `[claude_code_runner]` config section. Spawns Claude Code
+    in a tmux session that can be SSH-attached for operator handoff, with
+    runtime-broadcast of tool-execution events back to the runtime's gateway.
+
+    Distinct from `claude_code` (this schema's sibling): claude_code is the
+    one-shot tool invocation (`claude -p` subprocess, output captured to
+    stdout). claude_code_runner is the session-orchestration layer (tmux +
+    SSH + progress-broadcasting hooks) for long-running agentic work
+    where the operator may want to ssh-handoff into the live session.
+
+    **Gateway URL is NOT configured here.** The runtime constructs the
+    hook URL at spawn time as `{gateway_url}/hooks/claude-code`, where
+    `gateway_url` comes from a SEPARATE config section (in lightwave-sys
+    today, `[gateway]` per the `GatewayConfig` struct). When the gateway
+    schema lands in lightwave-core (Phase 6+), this schema's `depends_on`
+    should grow a `lightwave://schemas/interfaces/http/gateway` entry.
+    For now, the runner schema only owns the session-orchestration knobs
+    (tmux + SSH + TTL); gateway plumbing is its own contract.
+
+    Currently implemented (parallel-defined) by lightwave-sys via the
+    `ClaudeCodeRunnerConfig` struct in `crates/zeroclaw-config/src/schema.rs`,
+    consumed by `ClaudeCodeRunnerTool::new()` in
+    `crates/zeroclaw-tools/src/claude_code_runner.rs` (which receives
+    `gateway_url` separately from the config struct).
+
+    Per the stamp/print/code doctrine this YAML is the SST stamp. Per
+    ADR-0003 Wave 2, the Rust BINDING is a thin loader; codegen of the
+    typed `ClaudeCodeRunnerConfig` struct is via `lw codegen rust <schema>`
+    in lightwave-cli (Phase 7+). The `generates:` hint below is metadata
+    for that codegen verb — NOT a claim that the binding does codegen.
+  generates:
+    - "rust:ClaudeCodeRunnerConfig"      # consumed by lw cli `lw codegen rust` (Phase 7+)
+    - "pydantic:ClaudeCodeRunnerConfig"  # consumed by lw cli `lw codegen python` (Phase 7+)
+  depends_on:
+    # Only STRUCTURAL refs ($ref / status_enum) — claude_code (sibling) is
+    # an architectural dependency (runner orchestrates the tool's subprocess)
+    # but the runner schema doesn't $ref any claude_code field, so it's not
+    # a schema-composition dependency. Documented in description prose instead.
+    # When the gateway schema lands (Phase 6+), add it here — the runner
+    # structurally needs `{gateway_url}/hooks/claude-code` at spawn time.
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'lightwave-default')."
+
+optional_fields:
+  - name: enabled
+    type: bool
+    description: "Enable the `claude_code_runner` tool. Default false (opt-in)."
+  - name: ssh_host
+    type: str
+    description: |
+      SSH host for session handoff links (e.g. 'myhost.example.com'). When set,
+      progress messages include `ssh <host> tmux attach -t <session>` so the
+      operator can take over a long-running session. Omit (null) for local-only
+      runners or when SSH access isn't appropriate.
+  - name: tmux_prefix
+    type: str
+    description: |
+      Prefix for tmux session names. Default 'lw-claude-' (vendor-neutral —
+      the SST is consumed by multiple runtimes; lightwave-sys / v_core
+      daemon / Pi all share this contract). Combined with a monotonic suffix
+      per spawn (e.g. 'lw-claude-42'). Choose a per-deployment prefix
+      ('cineos-claude-', 'createos-claude-', or sibling-runtime's own
+      prefix like 'zc-claude-') when multiple runners share a host so
+      sessions don't collide.
+  - name: session_ttl
+    type: int
+    description: |
+      Session time-to-live in seconds before auto-cleanup. Default 3600 (1 hr).
+      A reaper kills tmux sessions older than this. Increase for long
+      multi-step pipelines; decrease for short-lived review runs to free
+      tmux slots faster.
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "lightwave-default"
+  status: "active"
+  enabled: true
+  ssh_host: "runner.example.com"  # generic placeholder; replace with actual host
+  tmux_prefix: "lw-claude-"
+  session_ttl: 3600

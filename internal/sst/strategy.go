@@ -2,8 +2,6 @@ package sst
 
 import (
 	"fmt"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -49,13 +47,7 @@ type strategyFile struct {
 // LoadStrategy reads the strategy YAML from the SST definitions directory.
 // It resolves the path relative to the lightwave root.
 func LoadStrategy(lightwaveRoot string) (*Strategy, error) {
-	path := filepath.Join(
-		lightwaveRoot,
-		"lightwave-core", "src", "schemas",
-		"governance", "strategy", "strategy.yaml",
-	)
-
-	data, err := os.ReadFile(path)
+	data, err := SchemaBytes(lightwaveRoot, "governance/strategy/strategy")
 	if err != nil {
 		return nil, fmt.Errorf("read strategy YAML: %w", err)
 	}

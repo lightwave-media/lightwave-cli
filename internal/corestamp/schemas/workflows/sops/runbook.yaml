@@ -1,0 +1,86 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/workflows/sops/runbook
+  title: Runbook
+  description: Standard Operating Procedure — a Gruntwork-format MDX document with executable verification checks.
+  generates:
+  - pydantic:Runbook
+  depends_on:
+  - lightwave://schemas/data/enums/runbook_statuses
+  table_kind: entity
+  table_name: runbooks
+status_enum: runbook_statuses
+primary_key:
+  column: id
+  type: uuid
+natural_key:
+  column: slug
+  unique: true
+required_fields:
+- name: slug
+  type: str
+  description: URL-safe unique identifier
+  storage: db
+- name: name
+  type: str
+  description: Human-readable runbook name
+  storage: db
+- name: description
+  type: str
+  description: What problem this runbook solves
+  storage: db
+- name: status
+  type: str
+  description: Lifecycle state; validated against runbook_statuses
+  storage: db
+  indexed: true
+- name: version
+  type: str
+  description: Semver string (e.g. 1.0.0)
+  storage: db
+- name: steps
+  type: list[RunbookStep]
+  description: Ordered steps with optional check references
+  storage: db
+  column_type: jsonb
+- name: verification
+  type: list[str]
+  description: Assertions that must be true for the runbook to pass
+  storage: db
+  column_type: jsonb
+optional_fields:
+- name: author
+  type: str
+  storage: db
+  description: Persona slug or operator handle who authored this runbook.
+- name: updated_at
+  type: str
+  description: ISO 8601 date of last meaningful change
+  storage: db
+sub_schemas:
+  RunbookStep:
+    name: str
+    description: str
+    check: str
+relations:
+  parent: null
+  children: []
+example:
+  slug: review-pipeline
+  name: Pre-Push Review Pipeline
+  description: Run the code review pipeline against the current diff
+  status: active
+  version: 1.0.0
+  steps:
+  - name: Run staff engineer review
+    description: Compose prompt from v_staff-engineer config, pipe diff, capture output
+    check: checks/v_staff-engineer.sh
+  - name: Run CTO review
+    description: Compose prompt from v_cto config, pipe diff, capture output
+    check: checks/v_cto.sh
+  verification:
+  - Both review personas return exit 0
+  - CONVERGE-VERDICT line present in output
+  - Review report saved to ~/.lightwave/reviews/
+  author: v_core-package-developer
+  updated_at: '2026-06-24'

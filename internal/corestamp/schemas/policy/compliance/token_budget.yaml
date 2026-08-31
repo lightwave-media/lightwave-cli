@@ -1,0 +1,51 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/policy/compliance/token_budget
+  title: Token Budget — v_cfo budget governance
+  description: "Token budget estimation and tracking for epics, projects, sprints, and tasks.\nv_cfo reviews budgets before\
+    \ scaffold phase. Tokens are the currency of\nagent execution — every agent call has a token cost tracked in nullhub usage\n\
+    aggregates and reported per sprint.\n\nEstimation algorithm:\n  Task complexity is classified by the agent at creation\
+    \ time:\n    simple   (1x)  — single file, known pattern, no new deps\n    moderate (3x)  — multiple files, existing pattern\
+    \ variant\n    complex  (8x)  — new pattern, cross-repo, new deps\n  Base token cost = complexity × 5,000 tokens (per\
+    \ task)\n  Sprint budget = sum of all task estimates in the sprint\n  Remaining budget = sprint budget - consumed tokens\
+    \ (from nullhub usage)\n"
+required_fields:
+- name: budget_id
+  type: str
+  description: Unique budget identifier
+- name: scope
+  type: enum
+  options:
+  - epic
+  - project
+  - sprint
+  - task
+  description: Scope to which this token budget applies (session or task).
+- name: total_tokens
+  type: int
+  description: Total token budget allocated
+- name: consumed_tokens
+  type: int
+  description: Tokens consumed so far
+- name: complexity
+  type: enum
+  options:
+  - simple
+  - moderate
+  - complex
+  description: Task complexity classification
+optional_fields:
+- name: approved_by
+  type: str
+  description: v_cfo approval (null if pending)
+- name: tech_debt_tokens
+  type: int
+  description: Tokens spent on tech debt (compounds at sprint boundaries)
+example:
+  budget_id: sprint-2026-07
+  scope: sprint
+  total_tokens: 500000
+  consumed_tokens: 125000
+  complexity: moderate
+  approved_by: v_cfo
+  tech_debt_tokens: 15000

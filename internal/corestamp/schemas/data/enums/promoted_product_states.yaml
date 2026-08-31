@@ -1,0 +1,31 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/promoted_product_states"
+  title: "Promoted Product State Enum"
+  description: |
+    Lifecycle states for promoted products — domain-registry rows surfaced
+    as launcher tiles in the createOS shell (mission-control AppTile).
+    Machine values are the stamp; `label` carries the display string the
+    tile renders. Closed enum.
+  generates:
+    - "go:PromotedProductState"
+    - "ts:PromotedProductState"
+  depends_on: []
+
+name: promoted_product_states
+description: "Lifecycle states for promoted products in the createOS shell launcher"
+default: planned
+closed: true
+options:
+  - value: live
+    label: "Live"
+    description: "Product is generally available in its zone"
+    is_active: true
+  - value: beta
+    label: "Beta"
+    description: "Product is usable but still stabilizing"
+    is_active: true
+  - value: planned
+    label: "Planned"
+    description: "Product is on the roadmap — zone reserved, nothing launched yet"
+    is_active: false

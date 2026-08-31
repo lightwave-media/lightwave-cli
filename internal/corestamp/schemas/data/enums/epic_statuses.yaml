@@ -1,0 +1,39 @@
+_meta:
+  version: "2.0.0"
+  schema_id: "lightwave://schemas/data/enums/epic_statuses"
+  title: "Epic Status Enum"
+  description: |
+    Lifecycle statuses for Epic entities. Closed enum.
+
+    v2.0: values merged from print back into stamp per revised R-15.
+    Originally extracted from legacy products/createos/config.yaml.
+  generates:
+    - "pydantic:EpicStatus"
+  depends_on: []
+
+name: epic_statuses
+description: "Lifecycle statuses for Epic entities"
+default: not_started
+closed: true
+options:
+  - value: not_started
+    label: "Not Started"
+    description: "Epic not yet started"
+    is_active: false
+  - value: in_progress
+    label: "In Progress"
+    description: "Epic actively being worked on"
+    is_active: true
+  - value: completed
+    label: "Completed"
+    description: "Epic finished"
+    is_active: false
+    is_completed: true
+  - value: on_hold
+    label: "On Hold"
+    description: "Epic paused"
+    is_active: false
+  - value: cancelled
+    label: "Cancelled"
+    description: "Epic was cancelled"
+    is_active: false

@@ -1,0 +1,179 @@
+_meta:
+  version: "0.2.0"
+  schema_id: "lightwave://schemas/policy/governance/template_kinds"
+  title: "Template Kind Conventions"
+  description: |
+    SST declaration of every template kind in lightwave-core + the conventions
+    each kind must satisfy: file extension, variable interpolation syntax,
+    structure layer (the parsing model the consumer applies), validator
+    command, and (for agent prompts) the closed registry of valid XML tags.
+
+    `lw lint <kind>` enforces these conventions. Adding a new XML tag to the
+    agent_prompt registry is a stamp PR — no silent drift.
+
+    Why declare this: the existing tree has templates spread across
+    src/boilerplate/templates/{agents,prompts,agile_artifacts,reports,documents,git_hub}
+    and src/boilerplate/blueprints/, each with implicit conventions. As more
+    kinds get added (email, github assets, blueprint manifests) drift becomes
+    inevitable without a central registry. This schema IS the registry.
+
+    Derived from grill-me-to-spec session 2026-06-02 turn N.
+  generates:
+    - "go:TemplateKind"           # `lw lint <kind>` reads this
+    - "json_schema:template_kinds" # universal IR
+  depends_on: []
+  changelog:
+    - version: "0.2.0"
+      date: "2026-06-13"
+      summary: "Add the agent_handoff kind (rendered .handoff.md, markdown + typed blocks; closed block registry via handoff_block_kinds). The agent-to-agent analogue of agent_prompt."
+    - version: "0.1.0"
+      date: "2026-06-02"
+      summary: "Initial registry (8 kinds): agent_prompt, spec_body, boilerplate_file, github_asset, report_layout, email_template, documents_freeform, persona_scaffold."
+
+name: "template_kinds"
+description: "Per-template-kind conventions enforced by lw lint"
+
+# Each template_kind entry declares the contract every file of that kind must satisfy.
+# Adding a new kind = adding an entry here + implementing its validator.
+template_kinds:
+  - kind: "agent_prompt"
+    description: "XML-tagged skeletons consumed by lightwave-sys::compose_*_prompt at spawn/turn time"
+    lives_in: "lightwave-core/src/boilerplate/templates/prompts/"
+    extension: ".md"
+    variable_syntax: "go-template"
+    structure_layer: "xml-tags"
+    consumer: "lightwave-sys::compose_system_prompt / compose_user_prompt"
+    validator: "lw lint prompt"
+    rationale: |
+      .md keeps files readable in IDEs and frontmatter-compatible.
+      XML tags inside .md are valid markdown (HTML passes through).
+      Anthropic's pattern is XML tags IN prompts, not XML files.
+    # Closed registry of permitted XML tags. Adding a tag = stamp PR.
+    valid_tags:
+      - role
+      - goal
+      - context
+      - input
+      - output_contract
+      - tools
+      - hard_rules
+      - mode
+
+  - kind: "spec_body"
+    description: "Markdown body skeletons for R-P-I-V-R agile artifacts (PRD, SAD, Vision, Epic, Sprint, Story, Task)"
+    lives_in: "lightwave-core/src/boilerplate/templates/agile_artifacts/"
+    extension: ".md"
+    variable_syntax: "go-template"
+    structure_layer: "markdown-headings"
+    frontmatter_required: true
+    frontmatter_must_declare: "kind (per R-7)"
+    validator: "lw lint spec"
+    rationale: |
+      Headings (## Title) are the sections the consumer parses; frontmatter
+      declares which agile_artifact kind the body templates.
+
+  - kind: "boilerplate_file"
+    description: "Templated files inside a Gruntwork-style blueprint or template (Go, Zig, HCL, TS, etc.)"
+    lives_in: "lightwave-core/src/boilerplate/{templates,blueprints}/**/*"
+    extension: "matches-output"
+    variable_syntax: "go-template"
+    structure_layer: "native"
+    manifest: "boilerplate.yml (at blueprint/template root)"
+    validator: "boilerplate render --check"
+    rationale: |
+      Extension matches the output (.go, .zig, .tf, .ts, etc.) so editors
+      apply native syntax highlighting. Variable substitution via Gruntwork
+      boilerplate (Go template syntax + 40+ helper functions).
+
+  - kind: "github_asset"
+    description: "GitHub-specific files (issue templates, discussion templates, dependabot.yml, workflows, etc.)"
+    lives_in: "lightwave-core/src/boilerplate/templates/git_hub/"
+    extension: "matches-target (.yml, .md per GitHub spec)"
+    variable_syntax: "github-native"
+    structure_layer: "github-schema"
+    validator: "actionlint + custom (lw lint github)"
+    rationale: |
+      GitHub enforces structure for its own files (front-matter for issue
+      templates, schema for workflows). Our convention layer is thin: stage
+      the assets here, distribute via sync workflow to each repo's .github/.
+
+  - kind: "report_layout"
+    description: "Validity report layouts, audit log shapes, drift reports"
+    lives_in: "lightwave-core/src/boilerplate/templates/reports/"
+    extension: ".md"
+    variable_syntax: "go-template"
+    structure_layer: "markdown-headings"
+    validator: "lw lint report"
+
+  - kind: "email_template"
+    description: "React Email components (the rendering layer); contracts live in lightwave-core schemas/data/emails/"
+    lives_in: "lightwave-ui/src/emails/ (NOT in lightwave-core)"
+    extension: ".tsx"
+    variable_syntax: "react-props"
+    structure_layer: "jsx"
+    schema_lives_in: "lightwave-core/src/schemas/data/emails/<template>.yaml"
+    validator: "tsc + lw lint email"
+    rationale: |
+      Emails are React code — they live in lightwave-ui. lightwave-core owns
+      ONLY the prop schema (the contract), not the rendering. This kind
+      entry is here so lw lint can cross-check that every TSX file in
+      lightwave-ui/src/emails/ has a corresponding schema in
+      lightwave-core/src/schemas/data/emails/.
+
+  - kind: "documents_freeform"
+    description: "Generic markdown with frontmatter conventions (catch-all for documents that don't fit a stricter kind)"
+    lives_in: "lightwave-core/src/boilerplate/templates/documents/"
+    extension: ".md"
+    variable_syntax: "go-template"
+    structure_layer: "markdown-loose"
+    frontmatter_required: true
+    validator: "lw lint document"
+
+  - kind: "agent_handoff"
+    description: "Rendered markdown handoff PRINT (md prose + typed blocks) an agent reads to execute another agent's handoff. The data SHAPE is the stamp at data/reference_documents/agent_handoff.yaml; this kind governs the rendered .handoff.md file (md + typed step blocks), the agent-to-agent analogue of the runbook MDX format and a sibling of agent_prompt."
+    lives_in: "rendered per-session (no fixed tree); schema is the source of truth"
+    extension: ".handoff.md"
+    variable_syntax: "go-template"
+    structure_layer: "markdown-typed-blocks"
+    schema_lives_in: "lightwave-core/src/schemas/data/reference_documents/agent_handoff.yaml"
+    consumer: "the receiving agent session (read); a renderer projects it from the agent_handoff stamp — and projects the same handoff into templates/prompts/user_prompt.md (KICKOFF) for the LLM"
+    validator: "lw lint handoff"   # ships M3 (spec/implementation_plan/0002); aspirational until then, as with the other lw lint <kind> validators here
+    rationale: |
+      Markdown keeps the prose (sender context) readable; typed blocks carry
+      the verifiable steps. Block kinds are NOT a free vocabulary — they are
+      the closed registry in data/enums/handoff_block_kinds (the runbook
+      component names: check/command/inputs/template/admonition), mirroring
+      the closed valid_tags registry on agent_prompt. Adding a block kind is a
+      stamp PR against that enum. The model is lifted from the runbook MDX
+      format (src/runbooks/) but drops JSX/React — agent-to-agent needs no UI
+      renderer, only the typed step + success/failure contract.
+    # Closed registry of permitted step block kinds (the enum is authoritative).
+    valid_block_kinds_ref: "lightwave://schemas/data/enums/handoff_block_kinds"
+
+  - kind: "persona_scaffold"
+    description: "YAML scaffolds for v_*.yaml persona instances"
+    lives_in: "lightwave-core/src/boilerplate/templates/agents/"
+    extension: ".yaml"
+    variable_syntax: "none"
+    structure_layer: "yaml-meta-example"
+    validator: "lw lint persona"
+    rationale: |
+      Reader-aid scaffold, not a rendered template. The authoritative schema
+      lives at src/schemas/data/meta/agent_definition.yaml; this file pairs
+      prose commentary with a canonical `example:` block. No template engine
+      consumes it. Any `${var}` tokens inside the example: block are SELF-
+      REFERENCES resolved by the persona loader at v_*.yaml read time, NOT
+      template variables substituted at render time. If a template engine
+      ever consumes personas, switch this to "go-template" for consistency
+      with the other kinds in this registry.
+
+  - kind: "coaching_runbook"
+    description: "CreateOS Creative Practice coaching runbooks — Coach lane only; ideal-state dialogue; default Tier D. Distinct from execution runbooks under src/runbooks/."
+    lives_in: "createOS/src/runbooks/creative/"
+    extension: ".mdx"
+    structure_layer: "runbook-mdx"
+    validator: "lw lint runbook"
+    rationale: |
+      Rick Rubin Creative Act derived coaching pack. Reads workspace context;
+      rarely spawns agent lanes unless user opts in. Registered per ADR-0036
+      rigor tier defaults.

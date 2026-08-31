@@ -1,0 +1,243 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/agile_orchestration"
+  title: "Agile Orchestration — Sprint Cycle State Machine"
+  description: |
+    Orchestrates the full agile development pipeline: backlog grooming →
+    sprint planning → execution (with developer sandboxing) → review
+    (Q-suite gates) → retrospective. This is the orchestration layer that
+    sits above the R-P-I-V-R artifact schemas and below the software
+    lifecycle phase state machine.
+
+    The orchestrator (v_scrum-manager) manages sprint cycles. Developers
+    are dispatched tasks from the sprint backlog. Q-suite personas are
+    activated at phase boundaries. Every state transition is recorded in
+    runbook_executions for audit.
+
+    Flow (from user's sprint cycle diagram):
+      Start → Orchestrator → ProductOwner → EngTeam → DevPersona → Repo → CI
+      → CodeReview → MergeReady → Deployment → Retrospective → NextSprint
+
+  generates:
+    - "go:AgileOrchestration"
+  depends_on:
+    - "lightwave://schemas/workflows/sops/software_lifecycle"
+    - "lightwave://schemas/data/agile_artifacts/sprint"
+    - "lightwave://schemas/data/agile_artifacts/task"
+    - "lightwave://schemas/policy/governance/developer_sandbox"
+
+required_fields:
+  - name: sprint_slug
+    type: str
+    description: "Active sprint identifier"
+  - name: orchestration_phase
+    type: str
+    description: "Current orchestration phase"
+  - name: orchestrator
+    type: str
+    description: "Agent persona managing this sprint (v_scrum-manager)"
+
+optional_fields:
+  - name: active_developers
+    type: "list[str]"
+    description: "Developer instances active in this sprint"
+  - name: review_queue
+    type: "list[str]"
+    description: "Q-suite personas queued for review"
+
+# ── Orchestration Phases ──────────────────────────────────────────────────────
+
+phases:
+  backlog_grooming:
+    order: 0
+    lifecycle_phase: planning
+    description: |
+      Product ideas and requests enter the backlog. v_product-owner and
+      v_scrum-manager groom the backlog: Can we do it? Is it worth it?
+      Items move through Open → Considering → Scoping → Prioritized.
+    allowed_transitions:
+      - sprint_planning
+    outputs:
+      - prioritized_backlog
+    personas:
+      - v_product-owner
+      - v_scrum-manager
+
+  sprint_planning:
+    order: 1
+    lifecycle_phase: planning
+    description: |
+      Prioritized items are assigned to a sprint. v_cfo reviews token
+      budget. Tasks are estimated. Developer instances are assigned.
+      Sprint goals are set.
+    allowed_transitions:
+      - sprint_execution
+      - backlog_grooming
+    gates:
+      - v_cfo_token_budget
+    outputs:
+      - sprint_plan
+      - task_assignments
+      - token_budget
+    personas:
+      - v_scrum-manager
+      - v_product-owner
+      - v_cfo
+
+  sprint_execution:
+    order: 2
+    lifecycle_phase: execution
+    description: |
+      Developers work on assigned tasks within their sandboxed repos.
+      CI runs every 15 minutes. Tasks move through In Design → In Dev →
+      In Review → Ready for Deployment. v_staff-engineer ponytail audits
+      CI-green changes. Bugs are triaged through the bug process.
+    allowed_transitions:
+      - sprint_review
+      - sprint_execution
+    gates:
+      - ci_green
+      - code_review
+    personas:
+      - v_core-package-developer
+      - v_cli-developer
+      - v_frontend-developer
+      - v_platform-developer
+      - v_sys-developer
+      - v_infra-developer
+      - v_staff-engineer
+    cron_schedule: "*/15 * * * *"
+
+  sprint_review:
+    order: 3
+    lifecycle_phase: review
+    description: |
+      All sprint tasks are complete. Q-suite review gate: v_staff-engineer
+      runs ponytail audit, v_qa-engineer verifies tests, v_cto signs off
+      on release-train compliance. Release notes are generated.
+    allowed_transitions:
+      - sprint_retrospective
+      - sprint_execution
+    gates:
+      - v_staff-engineer_ponytail
+      - v_qa-engineer_verify
+      - v_cto_signoff
+    personas:
+      - v_staff-engineer
+      - v_qa-engineer
+      - v_cto
+
+  sprint_retrospective:
+    order: 4
+    lifecycle_phase: maintenance
+    description: |
+      Sprint review and retrospective. Capture insights, improvements,
+      quality scores. Feed back into next sprint planning. Continuous
+      improvement loop.
+    allowed_transitions:
+      - backlog_grooming
+    outputs:
+      - retrospective_notes
+      - quality_score
+      - improvements
+    personas:
+      - v_scrum-manager
+      - v_product-owner
+
+# ── Task State Machine (within Sprint Execution) ──────────────────────────────
+
+task_workflow:
+  description: |
+    Within sprint execution, individual tasks follow their own state machine.
+    This is the R-P-I-V-R lifecycle at the task level.
+
+  states:
+    - name: open
+      description: "Task is in the backlog, not yet assigned to a sprint"
+    - name: prioritized
+      description: "Task is in the sprint backlog, ready for dispatch"
+    - name: in_design
+      description: "Developer is designing the solution"
+    - name: in_development
+      description: "Developer is implementing"
+    - name: in_review
+      description: "Code is under review by v_staff-engineer (ponytail audit)"
+    - name: ready_for_deployment
+      description: "All gates passed, ready to merge"
+    - name: done
+      description: "Merged and deployed"
+
+  transitions:
+    - from: open
+      to: prioritized
+      trigger: v_scrum-manager
+      condition: "task added to sprint backlog"
+
+    - from: prioritized
+      to: in_design
+      trigger: automatic
+      condition: "developer instance dispatched"
+
+    - from: in_design
+      to: in_development
+      trigger: developer
+      condition: "design approved, boilerplate scaffolded"
+
+    - from: in_development
+      to: in_review
+      trigger: developer
+      condition: "CI green, code committed"
+
+    - from: in_review
+      to: in_development
+      trigger: v_staff-engineer
+      condition: "ponytail audit found issues"
+
+    - from: in_review
+      to: ready_for_deployment
+      trigger: v_staff-engineer
+      condition: "ponytail audit passed"
+
+    - from: ready_for_deployment
+      to: done
+      trigger: v_cto
+      condition: "release-train sign-off"
+
+# ── Bug Triage Sub-Process ────────────────────────────────────────────────────
+
+bug_process:
+  description: |
+    Defects follow a separate triage flow within sprint execution.
+    Bugs are created as Forgejo discussions first, promoted to issues
+    after triage confirms reproducibility.
+
+  states:
+    - name: defect_detected
+      description: "CI failure or user report"
+    - name: bug_submitted
+      description: "Forgejo discussion created"
+    - name: triage
+      description: "Can we reproduce? Need more info?"
+    - name: awaiting_fix
+      description: "Prioritized in backlog"
+    - name: not_a_bug
+      description: "Closed — not reproducible or by design"
+    - name: fixed
+      description: "Fix merged, verified"
+
+  discussion_first_policy:
+    description: |
+      Every bug starts as a Forgejo discussion. Only after triage confirms
+      it's reproducible does it get promoted to an issue. This prevents
+      issue spam and ensures discussion context is captured before code
+      changes begin.
+
+# ── Example ───────────────────────────────────────────────────────────────────
+
+example:
+  sprint_slug: "v_core-v1-ready-task-dispatch"
+  orchestration_phase: sprint_execution
+  orchestrator: v_scrum-manager
+  active_developers:
+    - v_core-package-developer
+  review_queue: []

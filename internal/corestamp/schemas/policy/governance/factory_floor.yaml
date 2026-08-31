@@ -1,0 +1,204 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/policy/governance/factory_floor"
+  title: "Factory-Floor Rule — structure & codegen go through a door"
+  description: |
+    The constitution-level rule that no agent hand-creates structure or code
+    in a tracked tree when a factory door exists. Everything that can be
+    scaffolded is PRODUCED by the factory (runbook + template + blueprint +
+    `lw` CLI) and ENFORCED by a deny-only gate that routes raw mkdir/codegen
+    to the door. The producer and the enforcer are different things:
+
+      producer  — the factory floor: `lw scaffold`, `lw create`, `lw codegen`,
+                  and the runbooks. It RENDERS a self-standing starting point.
+      enforcer  — a deny-only host hook (+ CI gate) that REFUSES raw creation
+                  of a covered kind and names the verb. It produces nothing.
+
+    Why this exists: months of stamped schemas, runbooks, and codegen already
+    cover most artifact kinds, yet agents still reach for `mkdir -p` and
+    hand-authored Go/YAML — fragmenting the system into parallel shapes (the
+    canonical case: `lw codegen go` emits a faithful per-entity model while the
+    module-huma-router blueprint emits a divergent 6-field skeleton for the same
+    kind). The factory-floor rule kills that fragmentation: one door per kind.
+
+    Coverage before enforcement. A kind cannot be blocked before its door
+    renders a valid, self-standing starting point — blocking an uncovered kind
+    would brick its own development (the bootstrap paradox). So enforcement
+    RATCHETS per kind: uncovered → warn → block, and warn→block requires proof,
+    not assertion. Same soak discipline as the validity gates.
+
+    This schema is the stamp; the deny-only hook + CI gate are the prints. When
+    they drift, this stamp wins — PR the matrix first.
+  generates:
+    - "json_schema:factory_floor"
+  depends_on:
+    - "lightwave://schemas/policy/governance/template_kinds"
+  changelog:
+    - version: "0.1.0"
+      date: "2026-06-28"
+      summary: >
+        Initial factory-floor policy + coverage matrix + warn/block ratchet.
+        go_model_from_entity (lw codegen go) is the first block-ready kind,
+        proven end-to-end on epic. module-huma-router model flagged non-faithful;
+        lw codegen api (routes + reflected OpenAPI = api_spec) recorded as planned.
+
+name: "factory_floor"
+description: "No raw scaffold: structure + codegen go through a factory door, enforced by a per-kind warn/block ratchet."
+
+# ── The rule ──────────────────────────────────────────────────────────────────
+rule: |
+  No hand-creation of a declared-kind artifact in a tracked tree when a factory
+  door exists. Raw `mkdir`, raw codegen, and hand-authored files whose kind has
+  a door are routed to the door instead. Default stance (broad): any structure
+  or codegen in a tracked tree is gated unless it is allowlisted below.
+
+# ── Enforcement scope (broad; allowlist is the only exemption) ──────────────────
+scope:
+  enforced:
+    - "raw directory creation (mkdir) inside a tracked tree"
+    - "raw codegen invoked outside `lw codegen` / a runbook"
+    - "hand-authoring a file whose kind has a factory door"
+  allowlisted:                 # ephemeral / non-tracked / build output — never gated
+    - "scratch/**"
+    - "dist/**"
+    - "build/**"
+    - "target/**"
+    - "node_modules/**"
+    - ".venv/**"
+    - "vendor/**"
+    - "**/testdata/**"
+    - "the session scratchpad directory"
+  bypass:
+    mechanism: 'LW_BYPASS=1  (alias: LW_REUSE_CHECK_BYPASS="filed <repo>#<n>")'
+    discipline: "one command; reason is the issue ref; every use logged to reuse-check.jsonl"
+    rationale: >
+      Bootstrap paradox — building the factory needs raw mkdir/codegen. The
+      escape hatch is file-issue-then-bypass, not a silent loophole. A bypass
+      without an issue ref is a workaround and shows up in the audit.
+
+# ── Ratchet: the state a kind moves through ─────────────────────────────────────
+ratchet:
+  states:
+    - state: "uncovered"
+      behavior: "no door exists; raw creation allowed but logged (a coverage gap to close)"
+    - state: "warn"
+      behavior: "door exists + renders a valid start; raw creation WARNS and names the verb"
+    - state: "block"
+      behavior: "door proven; raw creation is DENIED; bypass requires a filed issue"
+  # The states above apply to kinds IN the coverage matrix. Raw creation of a kind
+  # NOT in the matrix (and not allowlisted) hits the broad net below — kept distinct
+  # from `warn` because there is no door to name.
+  unlisted_default:
+    posture: "gate"
+    redirect: >
+      Deny with bypass: direct to an existing factory verb if the kind later
+      registers one, else to LW_BYPASS="filed <repo>#<n>". Never name a verb that
+      does not exist — that is the `warn` state's job.
+  promotion_gate: >
+    A kind moves warn→block only when its door renders a self-standing, CI-green
+    starting point — proven (a dry-run / rendered artifact), not asserted.
+
+# ── Enforcement status (the print — not yet built) ──────────────────────────────
+enforcement:
+  hook: "pre-tool-use-factory-floor (deny-only host hook) — NOT YET BUILT"
+  ci_gate: "a CI step that reads this matrix — NOT YET BUILT"
+  status: >
+    Policy is stamped; the enforcer (print) is pending. Until the hook lands the
+    block ratchet (e.g. go_model_from_entity) is advisory, not enforced. Tracked
+    as a follow-on to the PR that introduced this schema.
+
+# ── Coverage matrix: kind → door → status → ratchet ─────────────────────────────
+# door values are the literal `lw` verb or blueprint slug (null when none exists).
+# status reflects the verified state on origin/main as of the changelog date.
+coverage:
+  - kind: "go_model_from_entity"
+    artifact: "Go struct + multi-tenant SQL migration from an SST entity schema"
+    door: "lw codegen go --only <entity>"
+    produces: ["{table}.go (id, tenant_id, then schema fields)", "schema.sql (tenant_id + RLS + FORCE, ADR-0010)"]
+    status: "shipped"
+    ratchet: "block"
+    proof: "lw codegen go --only epic --dry-run emits the faithful Epic struct (2026-06-28)"
+
+  - kind: "huma_routes_and_api_spec"
+    artifact: "Huma CRUD routes + reflected OpenAPI 3.1 (= the api_spec contract)"
+    door: "lw scaffold module-huma-router (stopgap — non-faithful)"
+    target_door: "lw codegen api (planned — the faithful door)"
+    produces: ["{table}_routes.go", "openapi:api_spec"]
+    status: "planned"
+    ratchet: "warn"
+    note: >
+      A door exists but is a STOPGAP: module-huma-router emits a routes-only
+      skeleton (package PackageName, default store). warn — not uncovered — so the
+      gate flags hand-authoring rather than silently allowing it, while steering to
+      the faithful door. Flip to block once lw codegen api ships and is proven.
+
+  - kind: "ts_types_from_schema"
+    artifact: "Zod / TypeScript types from the data/ui schema family"
+    door: "lw codegen types"
+    status: "shipped"
+    ratchet: "warn"
+
+  - kind: "e2e_journey_test"
+    artifact: "Playwright E2E test from a journey YAML spec"
+    door: "lw codegen journeys <category>/<name>"
+    status: "shipped"
+    ratchet: "warn"
+
+  - kind: "spec_tree"
+    artifact: "<repo>/spec/ scaffold (prd, adr, sad, implementation_plan)"
+    door: "lw scaffold spec-repo"
+    status: "shipped"
+    ratchet: "warn"
+
+  - kind: "docs_tree"
+    artifact: "<repo>/docs/ scaffold (all required doc kinds)"
+    door: "lw scaffold docs-repo"
+    status: "shipped"
+    ratchet: "warn"
+
+  - kind: "ui_component"
+    artifact: "Lightwave UI component skeleton (.tsx + test + story)"
+    door: "lw scaffold react-component"
+    status: "shipped"
+    ratchet: "warn"
+
+  - kind: "release_pipeline"
+    artifact: "Per-repo release / CI pipeline workflow"
+    door: "lw scaffold repo-release | ci-pipeline-delegated"
+    status: "shipped"
+    ratchet: "warn"
+
+  - kind: "repo_bootstrap"
+    artifact: "Repo conformance scaffold (AGENTS.md, mise.toml, .github/, …)"
+    door: "lw scaffold repo-bootstrap"
+    status: "shipped"
+    ratchet: "warn"
+
+  - kind: "agent_skill"
+    artifact: "Agent skill SKILL.md skeleton at ~/.lightwave/skills/<name>/"
+    door: "lw scaffold skill"
+    status: "shipped"
+    ratchet: "warn"
+
+  - kind: "persona"
+    artifact: "v_*.yaml persona scaffold"
+    door: "lw scaffold agents/persona"
+    status: "shipped"
+    ratchet: "warn"
+
+  - kind: "platform_module"
+    artifact: "OpenFGA fragment / Postgres RLS / Zig kernel module"
+    door: "lw scaffold module-openfga-fragment | module-postgres-rls | module-zig-kernel"
+    status: "pending"
+    ratchet: "uncovered"
+    note: "Blocked on Stage 0 PRD; not yet on origin/main."
+
+  - kind: "sst_schema"
+    artifact: "A new SST schema YAML under src/schemas/"
+    door: ~
+    status: "uncovered"
+    ratchet: "uncovered"
+    note: >
+      door is null — no `lw schema new` verb exists, so this file itself was
+      hand-authored with compliant frontmatter. Until a scaffolder lands,
+      new-schema authoring stays uncovered. File the verb gap on lightwave-cli.

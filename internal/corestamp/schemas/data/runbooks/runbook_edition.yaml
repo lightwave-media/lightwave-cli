@@ -1,0 +1,99 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/runbooks/runbook_edition"
+  title: "Runbook Edition (The Print)"
+  description: |
+    A versioned, signed release of a runbook — the PRINT from the
+    negative (runbook_definition). Editions are numbered, carry a
+    changelog, and progress through the exhibition pipeline: proof
+    (contact sheet) → edition (print) → exhibition-ready (published)
+    → archived (superseded).
+
+    An edition is the unit of execution: agents execute a specific
+    edition, not a draft. This ensures reproducibility — the same
+    edition always produces the same exposure.
+
+    Maps to SWEBOK v4 Ch 8 §6 (Software Release Management) and
+    Ch 6 §3.2 (Deployment / Release Engineering). Edition = release.
+  generates:
+    - "pydantic:RunbookEdition"
+  depends_on:
+    - "lightwave://schemas/data/runbooks/runbook_definition"
+    - "lightwave://schemas/data/enums/runbook_statuses"
+
+status_enum: "runbook_statuses"
+
+required_fields:
+  - name: runbook_slug
+    type: str
+    description: "Slug of the parent runbook_definition this edition belongs to"
+  - name: edition_number
+    type: int
+    description: "Monotonic edition number — starting at 1, incrementing per release"
+  - name: semver
+    type: str
+    description: "Semantic version string (MAJOR.MINOR.PATCH) — aligned with the broader release train per ADR-0003"
+  - name: changelog
+    type: "list[ChangelogEntry]"
+    description: "Ordered list of changes in this edition relative to the previous"
+
+optional_fields:
+  - name: status
+    type: str
+    description: "Lifecycle state; validated against runbook_statuses. Default: proof"
+  - name: signed_by
+    type: str
+    description: "Persona slug that signed off on this edition (e.g., v_printer, v_curator)"
+  - name: signed_at
+    type: str
+    description: "ISO 8601 timestamp of sign-off"
+  - name: supersedes
+    type: int
+    description: "Edition number this edition replaces (edition_number of the previous)"
+  - name: superseded_by
+    type: "int | null"
+    description: "Edition number that replaces this one (U-NSET until superseded — R-13 deprecation contract)"
+  - name: contact_sheet_ref
+    type: str
+    description: "Slug of the runbook_contact_sheet that validated this edition"
+  - name: execution_count
+    type: int
+    description: "Number of times this edition has been executed (exposures)"
+  - name: tags
+    type: "list[str]"
+    description: "Arbitrary tags for library discovery and filtering"
+
+sub_schemas:
+  ChangelogEntry:
+    type: "str" # "added | changed | fixed | deprecated | removed | security"
+    description: "str"
+    ref: "str | null" # PR number, issue ref, or commit hash
+
+relations:
+  parent: runbook_definition
+  children: []
+
+example:
+  runbook_slug: "deploy-fargate-service"
+  edition_number: 2
+  semver: "2.1.0"
+  status: "active"
+  changelog:
+    - type: "added"
+      description: "Support for capacity provider strategies"
+      ref: "lightwave-cli#215"
+    - type: "changed"
+      description: "Updated ALB health check defaults to match AWS latest recommendations"
+      ref: "lightwave-core#89"
+    - type: "fixed"
+      description: "IAM policy attachment ordering race condition"
+      ref: "pr#342"
+  signed_by: "v_printer"
+  signed_at: "2026-06-20T14:30:00Z"
+  supersedes: 1
+  contact_sheet_ref: "deploy-fargate-service-v2-cs"
+  execution_count: 47
+  tags:
+    - "stable"
+    - "validated"
+    - "production-ready"

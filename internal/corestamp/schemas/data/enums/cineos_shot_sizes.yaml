@@ -1,0 +1,42 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_shot_sizes"
+  title: "CineOS Shot Size Enum"
+  description: |
+    Framing size of a Shot (shot.shot_size). OPEN (closed: false) — the standard
+    size ladder is the suggested vocabulary, but cinematographers may record a
+    house variant, so values are advisory (R-41 resolves the ref but does not
+    enforce membership).
+  generates:
+    - "go:CineShotSize"
+    - "typescript:CineShotSize"
+    - "zig:CineShotSize"
+    - "json_schema:cineos_shot_sizes"
+  depends_on: []
+
+name: cineos_shot_sizes
+description: "Framing size ladder (suggested)"
+default: ms
+closed: false
+options:
+  - value: ews
+    label: "EWS"
+    description: "Extreme wide shot"
+  - value: ws
+    label: "WS"
+    description: "Wide shot"
+  - value: mws
+    label: "MWS"
+    description: "Medium wide shot"
+  - value: ms
+    label: "MS"
+    description: "Medium shot"
+  - value: mcu
+    label: "MCU"
+    description: "Medium close-up"
+  - value: cu
+    label: "CU"
+    description: "Close-up"
+  - value: ecu
+    label: "ECU"
+    description: "Extreme close-up"

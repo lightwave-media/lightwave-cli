@@ -1,0 +1,45 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/team"
+  title: "Team"
+  description: |
+    A crew/team on a Project — the collaborators grouped by department (ER: PROJECT
+    ||--o{ TEAM). A Project may cache its active team via project.team_ref.
+    Generates CineTeam to avoid colliding with the generic Team symbol downstream.
+  generates:
+    - "go:CineTeam"
+    - "typescript:CineTeam"
+    - "zig:CineTeam"
+    - "json_schema:team"
+  depends_on:
+    - "lightwave://schemas/data/cineos/project"
+
+required_fields:
+  - name: name
+    type: str
+    description: "Team name (e.g. 'Camera Dept', 'Wet Under Blue Sky crew')"
+  - name: project_ref
+    type: str
+    description: "Slug/id of the parent Project"
+
+optional_fields:
+  - name: department
+    type: str
+    description: "Primary department; values from the cineos_team_departments enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_team_departments"
+  - name: description
+    type: str
+    description: "What this team covers"
+  - name: lead_ref
+    type: str
+    description: "User identifier of the team lead"
+
+relations:
+  parent: project
+  children: []
+
+example:
+  name: "Camera Dept"
+  project_ref: "wet-under-blue-sky"
+  department: "camera"
+  lead_ref: "joel"

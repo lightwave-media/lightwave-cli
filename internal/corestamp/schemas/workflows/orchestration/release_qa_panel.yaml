@@ -1,0 +1,24 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/workflows/orchestration/release_qa_panel"
+  title: "Release QA review panel"
+  description: |
+    ReviewPanel instance — v_qa-engineer owns release pass before staff+cto.
+    Conforms to workflows/orchestration/review_panel.yaml shape.
+  depends_on:
+    - "lightwave://schemas/workflows/orchestration/review_panel"
+
+name: "release_qa_panel"
+
+id: release-qa-panel
+personas:
+  - v_qa-engineer
+short_circuit_on_blockers: true
+dispatch_transport: nullhub-agent-invoke
+per_persona_timeout_secs: 600
+total_budget_secs: 1200
+shadow_mode: false
+verdict_contract: lightwave://schemas/data/meta/review_panel_verdict
+notes: |
+  On PASS, chain core-pre-push-panel (v_staff-engineer → v_cto).
+  Driven by workflows/sops/qa_release_pass.yaml.

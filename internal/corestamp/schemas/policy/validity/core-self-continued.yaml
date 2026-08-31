@@ -1,0 +1,499 @@
+# =============================================================================
+# core-self contract — continuation (rules R-18+)
+# =============================================================================
+# PART TWO of lightwave-core's self-validity contract. The head file
+# (core-self.yaml) holds _meta, scope, and rules R-1..R-17; this file holds
+# rules R-18 and later. Split 2026-06-16 so neither file exceeds the R-12
+# 500-line cap (core-self.yaml had reached exactly 500 lines, blocking any
+# further rule or taxonomy edit).
+#
+# The two files compose ONE logical contract:
+#   - R-23's rule-ID loader unions rules[].id across policy/validity/core-self*.yaml.
+#   - pydantic:CoreSelfValidityContract codegen (Phase 6) unions the same way;
+#     both files declaring the same `generates:` target IS the union signal.
+# Add new rules to whichever part has headroom; keep both under the R-12 cap.
+# =============================================================================
+name: "core-self-continued"
+
+_meta:
+  version: "1.14.0"
+  schema_id: "lightwave://schemas/policy/validity/core-self-continued"
+  title: "lightwave-core self-validity contract — rules R-18+"
+  description: |
+    Continuation of the lightwave-core self-validity contract (core-self.yaml).
+    Holds rule definitions R-18 and later. The head file holds _meta, scope, and
+    rules R-1..R-17. Split 2026-06-16 to keep each file under the R-12 500-line
+    cap. The two files compose one logical contract; R-23's rule-ID loader and
+    the pydantic:CoreSelfValidityContract codegen union rules across all
+    policy/validity/core-self*.yaml files. tests/meta/test_core_self_split_invariants.py
+    guards the union (disjoint rule IDs, single scope owner, version/generates agreement).
+  generates:
+    - "pydantic:CoreSelfValidityContract"
+  # Logical dependency on the head part (its _meta + scope complete the contract);
+  # R-4 resolves this URI to core-self.yaml's schema_id.
+  depends_on:
+    - "lightwave://schemas/policy/validity/core-self"
+
+rules:
+  - id: R-18
+    name: "dual-location-supersession"
+    severity: error
+    description: |
+      When a schema YAML in `lightwave/schema/definitions/governance/` shares
+      a filename stem with a schema YAML under `src/schemas/`, the legacy file
+      MUST declare `_meta.superseded_by:` with a `lightwave://schemas/...` URI
+      pointing to the canonical (new) location.
+
+      Phase 5 scope: legacy `governance/` paths only. Other legacy roots
+      (`flows/automation/`, `ui/`, `ai/`, etc.) will get R-18 scope extensions
+      as their migration waves complete. Stem collisions outside governance/
+      are NOT dual-locations.
+    enforced_by: "tests/validation/test_r18_dual_location_supersession.py"
+    enforces: ["lightwave/schema/definitions/governance/**/*.yaml"]
+    rationale: |
+      Prevents silent drift between dual-located schemas during the migration
+      window. Without R-18, legacy and src/ versions can diverge over time and
+      an unguided reader can't tell which is canonical. The structured
+      `_meta.superseded_by:` field is the machine-readable pointer to the
+      successor; R-13 deprecation flow + production-code audit eventually
+      retires the legacy file. Locked 2026-05-26 per Phase 5.
+  - id: R-19
+    name: "kind-family-folder-population"
+    severity: error
+    description: |
+      Every kind-family sub-folder under `src/schemas/<category>/` MUST either
+      contain at least one schema YAML (filename != __index.yaml) OR appear
+      in the test's DEFERRED_FAMILIES allowlist with a `target_phase >
+      current_phase`. When a phase advances past a deferred family's target
+      phase, R-19 fires.
+
+      Inverse of R-14: R-14 catches flat YAMLs at category root; R-19 catches
+      declared-but-empty kind-family folders that quietly rot.
+    enforced_by: "tests/meta/test_r19_kind_family_population.py"
+    enforces: ["src/schemas/**/"]
+    rationale: |
+      Forward-declared empty folders are a known anti-pattern — they "reserve
+      the namespace" then get forgotten. R-19 codifies the phase ownership
+      into a watchdog test. Each phase advance prunes DEFERRED_FAMILIES;
+      anything left empty after its target phase fails CI loudly. Locked
+      2026-05-26 per Phase 5.
+  - id: R-20
+    name: "skip-marker-expiry"
+    severity: error
+    description: |
+      Every `@pytest.mark.skip(reason=...)` decorator in tests/ MUST declare a
+      reason string that references either (a) a Sprint Plan phase strictly
+      greater than CURRENT_PHASE, OR (b) an ISO date strictly after today.
+
+      Conditional `pytest.skip()` calls inside test bodies are NOT in scope —
+      those are runtime guards (e.g. "no schema files present yet") that
+      don't expire. R-20 narrowly polices unconditional `@pytest.mark.skip`
+      decorators that hide deferred work.
+    enforced_by: "tests/meta/test_r20_skip_markers_expire.py"
+    enforces: ["tests/**/*.py"]
+    rationale: |
+      Catches the "stale skip" bug: a phase lands but the skip decorator that
+      gated it is never removed, so the test silently never runs. R-20 makes
+      every deferred test self-announce its sunset condition; the watchdog
+      fires when reality outruns the promise. Locked 2026-05-26 per Phase 5.
+  - id: R-21
+    name: "skill-compliance"
+    severity: error
+    description: |
+      Every skill at ~/.lightwave/skills/<name>/ MUST have a SKILL.md file
+      with YAML frontmatter declaring `name`, `description`, `category`,
+      `agents` (list), `status` (document_statuses enum value), and
+      `last_reviewed_at` (ISO date). Non-empty markdown body required.
+      `authority_includes:` refs MUST resolve to existing files per the
+      doc-ref resolution algorithm. Round-trip consistency: if a SKILL.md
+      declares `agents: [v_cto, v_staff-engineer]`, those agent YAMLs at
+      ~/.lightwave/config/agents/v_*.yaml MUST list this skill in their
+      own `skills:` field.
+
+      Skills are Anthropic SKILL.md format verbatim PLUS lightwave-required
+      frontmatter additions (category, agents, status, last_reviewed_at).
+      See homedir.yaml v3.1 changelog for the canonical skills/ + sops/
+      home declarations.
+
+      Note: R-21 is the first R-rule that enforces OUT-OF-REPO — checks
+      ~/.lightwave/ (operator's home), not src/. The package scope.paths
+      block lists src/**, bindings/**, tests/**; R-21 sits outside that
+      boundary. In CI (no operator home), the test gracefully skips;
+      locally, it fires once ~/.lightwave/skills/ populates.
+    enforced_by: "tests/validation/test_r21_skill_compliance.py"
+    enforces:
+      ["~/.lightwave/skills/**/SKILL.md", "~/.lightwave/config/agents/v_*.yaml"]
+    rationale: |
+      Five+ consumers (Claude Code, v_core daemon, Pi, Cursor, OpenCode CLI,
+      eventually pi_code) all read from the same skills/ dir. The contract
+      must be unambiguous. Drift between what an agent declares (`skills:`)
+      and what skills allow (`agents:`) silently grants/denies skill access —
+      fail-loud at validation time is the cure. R-21 also enforces "no orphan
+      skill" (every skill owned by ≥1 agent). Locked 2026-05-28 per skills
+      consolidation phase.
+    status: pending # awaits ~/.lightwave/skills/ population (skills-consolidation PR-B); test ships ready in PR-A
+  - id: R-22
+    name: "template-placeholders-resolve-against-schema"
+    severity: error
+    description: |
+      Every `{{root.path.to.field}}` placeholder in a markdown template
+      under `src/boilerplate/templates/` MUST either:
+        (a) trace to a real field path in the schema declared under the
+            template's frontmatter `validates_against:` map (root →
+            schema_id), walking required_fields + optional_fields +
+            sub_schemas; OR
+        (b) be rooted in a key listed under `composer_injected_roots:`
+            (runtime data with no schema, typically Phase B work); OR
+        (c) appear verbatim in `composer_injected_paths:` (composer-
+            augmented field within a validated root — e.g. ADR-0004 R6
+            resolved_authority).
+
+      Templates that omit `validates_against:` are unconstrained — R-22
+      doesn't apply to them. Once a template declares any binding,
+      ALL its placeholders rooted in those bindings are checked.
+
+      Handlebars block markers ({{#if X}}, {{#each X}}) are parsed for
+      their path. {{this}}, {{this.X}}, {{@index}}, {{@key}} skipped
+      — list-element context tracking is v2 (intentionally deferred).
+    enforced_by: "tests/validation/test_r22_template_placeholders_resolve.py"
+    enforces: ["src/boilerplate/templates/**/*.md"]
+    rationale: |
+      Catches the drift pattern surfaced 2026-05-28: a template
+      iterates {{persona.prompt.authority_includes}} expecting list[object]
+      while the schema declares list[str]. Without R-22 the mismatch
+      shows up at composer runtime as a render failure — too late, and
+      with no clear trace back to either the schema or the template.
+
+      R-22 makes the stamp/template lockstep self-policing: change a
+      schema field name, every template that references it fails CI
+      until updated. Inverse of R-7 (which checks template presence /
+      frontmatter shape but not field-path validity).
+    locked: 2026-05-28
+  - id: R-23
+    name: "declared-rule-existence"
+    severity: error
+    description: |
+      Every "R-N" reference in schema prose (description, rationale,
+      _meta blocks) or template body MUST resolve to a rule declared
+      in the core-self contract (core-self*.yaml#rules[].id — the
+      contract is split across core-self.yaml + core-self-continued.yaml
+      for the R-12 cap, and the enforcer unions IDs across both). Phantom
+      rule references are forbidden — promising enforcement that doesn't exist.
+
+      Forward-references ("future R-N", "deferred R-N", "planned R-N",
+      "~R-N", "when R-N activates", etc.) are excused via a phrase scan
+      in the 60 chars preceding the match.
+
+      Fenced code blocks (```...```) are excluded; references inside
+      them are illustrative, not contract claims.
+    enforced_by: "tests/validation/test_r23_declared_rules_exist.py"
+    enforces: ["src/schemas/**/*.yaml", "src/boilerplate/templates/**/*.md"]
+    rationale: |
+      Caught by PR #94's cloud review (2026-05-29): agent_definition.yaml
+      and skill_definition.yaml referenced "R-21 round-trip enforces..."
+      but R-21 hadn't been declared on the PR #94 branch. The schemas
+      shipped a CI-enforcement promise that didn't exist. R-23 makes
+      this class of drift impossible — phantom references fail the
+      stamp's own validation rather than waiting for a human reviewer
+      to catch them.
+    locked: 2026-05-29
+  - id: R-24
+    name: "composer-injected-roots-have-no-schema"
+    severity: error
+    description: |
+      No `composer_injected_roots:` entry in a template's frontmatter
+      may collide (by name) with a schema in `src/schemas/data/meta/`.
+      Collision rule: exact match OR schema stem starts with `<root>_`
+      (so `session` collides with `session_context.yaml`).
+
+      Intrinsic projections (tools, skills_ordered, instructions_verbatim)
+      are exempt — they will never have a schema by design.
+
+      Once a schema lands for what was previously composer-injected,
+      the root must migrate from `composer_injected_roots:` to
+      `validates_against:` so R-22 enforces field-path resolution.
+    enforced_by: "tests/validation/test_r24_composer_injected_vs_schema.py"
+    enforces: ["src/boilerplate/templates/**/*.md"]
+    rationale: |
+      PR #94 surfaced this: `session` stayed in composer_injected_roots
+      AFTER Phase B landed session_context.yaml. R-22 silently skipped
+      {{session.*}} placeholders that should have been validated. The
+      schema-vs-declaration drift was caught by cloud review only because
+      a human noticed. R-24 catches it the moment the schema lands.
+    locked: 2026-05-29
+  - id: R-25
+    name: "composer-injected-roots-used-in-body"
+    severity: error
+    description: |
+      Every `composer_injected_roots:` entry MUST be referenced by at
+      least one `{{root...}}` placeholder in the template body. Block
+      markers (`{{#if X}}`, `{{#each X}}`) count. `{{this}}`,
+      `{{this.X}}`, `{{@index}}`, `{{@key}}` are skipped.
+
+      Dead entries are forbidden — declaring a composer-injected root
+      with no body reference is dead code that misleads future readers
+      about what the composer must produce.
+    enforced_by: "tests/validation/test_r25_composer_injected_used_in_body.py"
+    enforces: ["src/boilerplate/templates/**/*.md"]
+    rationale: |
+      PR #94 surfaced this: the legacy `job` alias remained in
+      composer_injected_roots after the template migrated to {{task.*}}.
+      No {{job.*}} placeholder existed anywhere. Cloud review spotted
+      it; R-25 makes it impossible to ship dead injection declarations.
+      Sibling to R-24 (which catches stale "injected" → "validated"
+      migration) and R-22 (which validates the bound roots).
+    locked: 2026-05-29
+  # The R-25 → R-27 gap is intentional, not a dropped rule: the R-rule
+  # roadmap covering this slot is tracked in R-28 below (whose description
+  # names the test-doctrine Epic); no placeholder rule sits in the gap.
+  - id: R-27
+    name: "boilerplate-extensions-match-template-kinds"
+    severity: error
+    description: "Every file under src/boilerplate/ has an extension matching its template_kind. Closes R-1 scope-down gap (PR #110). Deferred to Phase 6; tracked lightwave-core#111."
+    enforced_by: "tests/validation/test_r27_boilerplate_extensions.py"
+    enforces: ["src/boilerplate/**"]
+    rationale: "Extension is the first signal a tool uses to parse a file. A template_kind: markdown file with a .yaml extension confuses editors and the boilerplate renderer; stamp-time enforcement prevents silent mismatches."
+    status: deferred
+    target_phase: 6
+  - id: R-28
+    name: "detector-negative-fixture-floor"
+    severity: error
+    description: |
+      Every R-rule test file at tests/{meta,validation,conformance}/test_r<N>_*.py
+      MUST contain ≥1 pytest.raises call AND ≥1 tmp_path fixture use in
+      its source. The pair proves the detector can DETECT — a synthetic
+      offender exists AND an oracle fires on it.
+
+      Without this floor every R-rule is detector-as-oracle green theater:
+      comment out `offenders.append(path)` in any detector and CI stays
+      green forever. Canonical pattern: R-22 (test_r22:280-436).
+
+      Lands with a TOLERANCE allowlist of currently-non-conforming files
+      (sunset 2026-06-26 per Epic lightwave-core-test-doctrine target_date,
+      following the R-20 expiry pattern). New test files added after lock
+      must conform IMMEDIATELY — the allowlist does not grow. Each planned
+      Epic story (the planned R-26..R-35 roadmap + retrofits) removes
+      entries; CI fires when an expiry passes without retrofit.
+
+      Per ADR-0005 §5. R-28 lands FIRST because it is the meta-rule that
+      makes the planned downstream rules land with the floor pre-built.
+    enforced_by: "tests/meta/test_r28_negative_fixture_floor.py"
+    enforces:
+      [
+        "tests/meta/test_r*.py",
+        "tests/validation/test_r*.py",
+        "tests/conformance/test_r*.py",
+      ]
+    rationale: |
+      The 2026-05-29 adversarial test-surface audit (78/83 confirmed
+      findings) named the detector-as-oracle anti-pattern: every R-rule
+      except R-22 scans src/ and asserts zero offenders, with zero
+      pytest.raises in the entire repo. R-28 converts that finding into
+      a structural gate.
+    locked: 2026-05-29
+  - id: R-29
+    name: "spec-ref-resolution"
+    severity: error
+    description: "Every path-valued .md cross-reference in a spec/ artifact's YAML frontmatter (e.g. `prd_ref`, `vision_ref`) MUST resolve to an existing file in the repo. A path-valued ref is a frontmatter string ending in `.md` that looks like a path (no whitespace, no http(s) scheme); resolution accepts repo-root-relative (`spec/prd/0001-foo.md`) and repo-name-prefixed (`lightwave-core/spec/prd/0001-foo.md`) spellings. Per-kind required keys stay governed by spec_artifact_kinds.yaml — R-29 only adds the orthogonal path-resolution guarantee (the sad kind's required `prd_ref` is the motivator)."
+    enforced_by: "tests/validation/test_r29_spec_ref_resolution.py"
+    enforces: ["spec/**/*.md"]
+    rationale: "Spec-frontmatter analogue of R-4 (which covers $ref + lightwave:// URIs in src/schemas/ YAML, not spec/ markdown). PR #142 renamed a PRD and left a SAD's prd_ref dangling while `mise run ci` stayed green — no check resolved spec frontmatter refs against the filesystem. A broken cross-reference is an immediate authoring failure; R-29 catches it at CI rather than when a reader hits a 404. Like R-21, enforces a path outside scope.paths (spec/, not src/)."
+    locked: 2026-06-13
+  - id: R-30
+    name: "composer-renders-system-prompt"
+    severity: error
+    description: "The persona composer (~/.lightwave/skills/code-review/scripts/compose.py) MUST render the canonical src/boilerplate/templates/prompts/system_prompt.md end-to-end for the real pipeline personas — exit 0, non-empty, containing the template's structural markers (`<operating_frame>` / `<hard_rules>`) and NOT a minimal-fallback signature, with no 'template not found' on stderr. R-24/R-25 only inspect the template statically; R-30 invokes the composer so a path/template drift that makes it silently fall back to a degraded prompt is caught at CI, not at push time. Host-runtime-gated: skips where ~/.lightwave is absent (e.g. GitHub runners), enforced under LW_REQUIRE_COMPOSER=1 (set by dev/hooks/pre-push)."
+    enforced_by: "tests/validation/test_r30_composer_renders.py"
+    enforces: ["src/boilerplate/templates/prompts/system_prompt.md"]
+    rationale: "A composer-path bug (template moved under src/boilerplate/ per ADR-0026 while compose.py still looked at src/templates/) made the review gate silently fall back to a minimal prompt and still stamp 'all personas approve' — the push shipped on degraded reviewers. R-24/R-25 passed because they never invoke compose.py. R-30 is the end-to-end guard; the repo-side guarantee is 'when the composer is present it renders against this repo's real layout'. Same trust boundary as the docs validator (LW_REQUIRE_* host-runtime gate)."
+    locked: 2026-06-14
+  - id: R-34
+    name: "no-hand-writes-to-lightwave-home-dir"
+    severity: error
+    description: "No agent, script, or human shall hand-write files into ~/.lightwave/. The HomeDir (~/.lightwave/) is a PRINT surface — populated exclusively by the boilerplate render pipeline (lw scaffold, lw site init, lw harness render) and the platform backend. Hand-writing to ~/.lightwave/ bypasses the SST source of truth and creates PRINT drift. Files in ~/.lightwave/ MUST be render outputs from src/boilerplate/ templates or database rows."
+    enforced_by: "tests/validation/test_r34_no_hand_writes_to_homedir.py"
+    enforces: ["~/.lightwave/"]
+    rationale: "R-9 enforces that filled R-P-I-V-R prints live at ~/.lightwave/specs/, not in src/. R-34 extends this to the entire HomeDir: nothing in ~/.lightwave/ is hand-authored. The ponytail-audit skill exposed this gap — its SKILL.md referenced ~/.lightwave/brain/context/ files that didn't exist because they were never rendered from SST. The fix: bundle context with the skill (self-contained), create a boilerplate template that renders brain context into ~/.lightwave/, and enforce R-34 at CI."
+    locked: 2026-06-23
+  - id: R-35
+    name: "homedir-completeness"
+    severity: error
+    description: "Every top-level directory in ~/.lightwave/ must have a declared DirSpec in homedir.yaml with a zone classification in homedir_zones.yaml. No undocumented directories, no unzoned declarations, no phantom zone entries. This enables one-command recovery: lw home init can faithfully reproduce the entire HomeDir tree from the SST."
+    enforced_by: "tests/validation/test_r35_homedir_completeness.py"
+    enforces:
+      [
+        "~/.lightwave/",
+        "src/schemas/data/meta/homedir.yaml",
+        "src/schemas/data/meta/homedir_zones.yaml",
+      ]
+    rationale: "The ponytail audit exposed that 10 directories in ~/.lightwave/ had no SST declaration — if ~/.lightwave/ were deleted, they'd be silently lost. R-35 ensures the HomeDir PRINT is fully recoverable from the SST STAMP + Postgres database."
+    locked: 2026-06-23
+  - id: R-36
+    name: "no-gitkeep-only-directories"
+    severity: error
+    description: "No directory may contain ONLY .gitkeep without other visible content. Phantom directories — forward-declared but never populated. R-19 catches kind-family folders; R-36 extends to entire repo."
+    enforced_by: "tests/validation/test_r36_gitkeep_phantoms.py"
+    enforces: ["**/*/.gitkeep"]
+    rationale: "The ponytail audit revealed a2a/ was .gitkeep-only, deferred to Phase 8, while the CI loop needed it. R-36 catches phantom directories at CI time."
+    locked: 2026-06-23
+  - id: R-37
+    name: "security-compliance-schema-coverage"
+    severity: error
+    description: "Every schema in src/schemas/policy/security/ and src/schemas/policy/compliance/ must be referenced by at least one test file. Schemas without tests are aspirational — they declare invariants but provide zero enforcement. R-37 also validates that every schema has required metadata (_meta, required_fields, example)."
+    enforced_by: "tests/validation/test_r37_security_schema_coverage.py"
+    enforces: ["src/schemas/policy/security/", "src/schemas/policy/compliance/"]
+    rationale: "The v_qa-engineer audit found 7 security schemas and 2 compliance schemas with zero test references. daemon_secrets.yaml declares secrets must come from AWS SSM — but nothing tests this. shell_tool.yaml declares path expansion rules — but nothing enforces them. R-37 makes this gap visible at CI time."
+    locked: 2026-06-23
+  - id: R-31
+    name: "generated-docs-not-hand-edited"
+    severity: error
+    description: "Generated doc kinds (docs with a `generator:` frontmatter key) must not be hand-edited. Any edit to a generated doc must be accompanied by a version bump in the generator pipeline that produced it."
+    enforced_by: "tests/validation/test_r31_generated_docs_not_hand_edited.py"
+    enforces: ["docs/**/*.md"]
+    rationale: "Generated docs drift when hand-edited without updating the generator. The generator is the source of truth; the doc is the print."
+    locked: 2026-06-13
+  - id: R-33
+    name: "swebok-lifecycle-coverage"
+    severity: error
+    description: "The lifecycle_phases enum must achieve 100%% SWEBOK v4 chapter coverage. All 18 chapters (1-18) must be accounted for across the 5 lifecycle phases, either enumerated in swebok_kas or documented as implicit (Ch 17). Each phase must declare active_personas, allowed_tools, environment_constraints, and hooks."
+    enforced_by: "tests/validation/test_lifecycle_swebok_coverage.py"
+    enforces: ["src/schemas/data/enums/lifecycle_phases.yaml"]
+    rationale: "SWEBOK alignment is load-bearing for the harness configuration plane. Without 100%% KA coverage, the lifecycle phases have blind spots that agents can exploit. The ponytail audit depends on this coverage to make defensible architecture judgments."
+    locked: 2026-06-23
+  - id: R-38
+    name: "local-setup-profile-defaults"
+    severity: error
+    description: |
+      local_setup_profile.yaml example MUST align with homedir worktree_root,
+      task_done SOP paths, and repo-infra hook expectations (dev/hooks).
+    enforced_by: "tests/local/test_r38_profile_defaults.py"
+    enforces: ["src/schemas/data/meta/local_setup_profile.yaml"]
+    rationale: "The profile is the target state for fleet audit. Drift between profile example and homedir/SOP paths produces false violations or missed ones."
+    locked: 2026-06-18
+  - id: R-39
+    name: "repo-infra-self-conformance"
+    severity: error
+    description: |
+      lightwave-core MUST conform to its own repo-infra.yaml stamp — required
+      dirs and files present at repo root. Caught locally without lw check
+      repo-infra when the Go binary is absent.
+    enforced_by: "tests/local/test_r39_repo_infra_self_conformance.py"
+    enforces: ["AGENTS.md", "mise.toml", "dev/", ".github/"]
+    rationale: "The constitution package must eat its own dogfood. repo-infra declares the pattern; lightwave-core is the reference conformant repo."
+    locked: 2026-06-18
+  - id: R-40
+    name: "integration-surfaces-pre-push-accuracy"
+    severity: error
+    description: |
+      docs/references/architecture/integration-surfaces.md MUST accurately describe
+      dev/hooks/pre-push phases. Stale act-in-pre-push claims are forbidden
+      (removed 2026-06-12 per pre-push hook).
+    enforced_by: "tests/local/test_r40_integration_surfaces_accuracy.py"
+    enforces:
+      [
+        "docs/references/architecture/integration-surfaces.md",
+        "dev/development/hooks/pre-push",
+      ]
+    rationale: "Doc drift misleads agents and operators about the local gate. R-40 keeps the engineer-facing explainer aligned with the hook that actually runs."
+    locked: 2026-06-18
+  - id: R-41
+    name: "field-level-enum-binding"
+    severity: error
+    description: |
+      A required_fields[] or optional_fields[] entry in a data schema MAY declare
+      `values_ref: "lightwave://schemas/data/enums/<enum>"` to bind that field to a
+      stamped enum — the field-level analogue of schema-level `status_enum`, which
+      R-17 covers for the single `status` field. When a field declares `values_ref`:
+        (a) the URI MUST resolve to a registered enum
+            (src/schemas/data/enums/<enum>.yaml, present in enums/__index.yaml); AND
+        (b) if that enum is `closed: true` AND the schema's `example:` block carries
+            the field, the example value MUST be one of the enum's `options[*].value`.
+      Open enums (`closed: false`) bind advisory vocabulary — (a) still applies,
+      (b) does not (a custom value is allowed). Generalizes R-17 from the single
+      status field to N controlled-vocabulary fields per schema.
+    enforced_by: "tests/validation/test_r41_field_enum_binding.py"
+    enforces: ["src/schemas/data/**/*.yaml"]
+    rationale: |
+      The stamp could bind only one controlled field per schema (status_enum →
+      status, R-17). Entities with several controlled-vocabulary fields, or
+      controlled fields not named `status`, left their value space in description
+      prose — stamped content with zero validation (the CineOS data family
+      surfaced ~12 such fields). R-41 makes the field-level binding first-class and
+      enforced, so a typo'd values_ref or an example drifting from its enum fails
+      CI rather than a reader. Foreseen by R-17's own values_ref-generalization
+      note. Tracked lightwave-core#305.
+    locked: 2026-06-19
+  - id: R-42
+    name: "enum-schema-validity"
+    severity: error
+    description: |
+      Every enum schema in src/schemas/data/enums/ MUST have:
+      (a) non-empty `options` list; (b) each option has value, label,
+      description; (c) no duplicate values; (d) default is a member;
+      (e) closed is boolean (default true).
+      Complements R-17 and R-41 by validating the enum schemas themselves.
+    enforced_by: "tests/validation/test_r42_enum_validity.py"
+    enforces: ["src/schemas/data/enums/**/*.yaml"]
+    rationale: |
+      Enum schemas are the controlled-vocabulary substrate for the entire SST.
+      R-17 and R-41 bind fields to enums but assume the enums are well-formed.
+      Without R-42, an enum with a missing option description or a default
+      outside its own values ships in CI — the v_qa-engineer audit found 16
+      enums with missing descriptions and 2 with missing labels. R-42 makes
+      the enum shape itself enforced, closing the loop.
+    locked: 2026-06-24
+  - id: R-43
+    name: "servers-ts-no-bare-imports"
+    severity: error
+    description: |
+      TypeScript files in server blueprints MUST NOT import from bare
+      specifiers (e.g., `from "vite"`) because node_modules are gitignored
+      and CI has no TS toolchain. Use plain .js files or @ts-nocheck.
+    enforced_by: "tests/validation/test_r43_servers_ts_no_bare_imports.py"
+    enforces: ["src/boilerplate/blueprints/servers/**/*.ts"]
+    rationale: |
+      The docs server blueprint's vite.config.ts imported `defineConfig`
+      from "vite", producing LSP errors that Python-only CI never caught.
+      R-43 fails any .ts file with bare imports until converted to .js.
+    locked: 2026-06-24
+  - id: R-44
+    name: "example-cardinality-ceiling"
+    severity: error
+    description: |
+      Schema `example:` blocks must demonstrate shape, not enumerate
+      populations. Detection: arrays with ≥4 dict items and an identifying
+      field (name, path, id, …) whose values are all-unique are classified:
+        - policy/ → ARCHITECTURAL (contracts ARE examples)
+        - data/ in diff → DEVELOPMENT (block PR — trim now)
+        - data/ pre-existing → MAINTENANCE (file chore)
+    enforced_by: "tests/meta/test_r44_example_cardinality.py"
+    enforces: ["src/schemas/**/*.yaml"]
+    rationale: |
+      v_qa-engineer's identifying-field approach proves that an array
+      enumerates instances (all-unique values), not variety. The test
+      emits an actionable signal report via git-diff classification.
+    locked: 2026-06-24
+  - id: R-45
+    name: "structured-io-contract"
+    severity: error
+    description: |
+      All LLM I/O must be structured against an SST schema. Every MCP tool
+      parameter/return, runbook variable/result, and codegen artifact must
+      have a corresponding schema in src/schemas/ declaring its shape.
+    enforced_by: "tests/validation/test_r45_structured_io.py"
+    enforces:
+      - "src/runbooks/**/*.mdx"
+    rationale: |
+      Without structured I/O, agents produce noise that can't be audited
+      or composed. R-45 is the programmatic counterpart to the io_contract
+      in harness_configuration_plane.yaml.
+    locked: 2026-06-24
+  - id: R-46
+    name: "io-imports-resolve"
+    severity: error
+    status: pending
+    description: "Python files in src/io/ MUST have all imports resolvable. Missing io extras show as 'Import could not be resolved' in Zed's LSP. Pending: src/io/ does not yet exist (Phase 6 work)."
+    enforced_by: "tests/local/test_r46_io_imports.py"
+    enforces: ["src/io/**/*.py"]
+    rationale: "src/io/servers/mcp/server.py will require io extras once Phase 6 ships; R-46 is declared now so the rule exists when the path does."
+    locked: 2026-06-24

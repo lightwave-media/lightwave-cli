@@ -1,0 +1,33 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/docs_gate_failure_codes
+  title: Docs Gate Failure Codes
+  description: Closed enum for docs_gate_failure.code
+  generates:
+  - pydantic:DocsGateFailureCode
+  depends_on: []
+name: docs_gate_failure_codes
+default: docs_drift
+closed: true
+options:
+- value: docs_drift
+  description: Docs Drift option.
+  label: Docs Drift
+- value: docs_hand_edit_detected
+  description: Docs Hand Edit Detected option.
+  label: Docs Hand Edit Detected
+- value: docs_render_stale
+  description: Docs Render Stale option.
+  label: Docs Render Stale
+- value: docs_render_failed
+  description: Docs Render Failed option.
+  label: Docs Render Failed
+- value: docs_check_missing_kind
+  description: Docs Check Missing Kind option.
+  label: Docs Check Missing Kind
+- value: docs_unstaged_generated
+  description: Docs Unstaged Generated option.
+  label: Docs Unstaged Generated
+- value: spec_delta_stale
+  description: Spec Delta Stale option.
+  label: Spec Delta Stale

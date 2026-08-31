@@ -1,0 +1,74 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/scene"
+  title: "Scene"
+  description: |
+    A scene in a script — the unit broken down, scheduled, and shot. Parent of
+    Shots; referenced by SceneShoot (scheduling, slice 2) and tagged by
+    ScriptElementsTags (slice 2). os_status tracks its production state.
+  generates:
+    - "go:Scene"
+    - "typescript:Scene"
+    - "zig:Scene"
+    - "json_schema:scene"
+  depends_on:
+    - "lightwave://schemas/data/cineos/script"
+    - "lightwave://schemas/data/cineos/project"
+
+required_fields:
+  - name: scene_number
+    type: int
+    description: "Scene number within the script (e.g. 27)"
+  - name: slugline
+    type: str
+    description: "Heading line, e.g. 'INT. BEAU'S HOUSE - DAY'"
+  - name: script_ref
+    type: str
+    description: "Slug/id of the parent Script"
+  - name: project_ref
+    type: str
+    description: "Slug/id of the owning Project. Denormalized for direct scene→project queries; INVARIANT: MUST equal the project_ref of this scene's script_ref (scene→script→project)."
+
+optional_fields:
+  - name: name
+    type: str
+    description: "Short scene name/label (e.g. 'Beau's dramatic knockout')"
+  - name: description
+    type: str
+    description: "Scene action/summary"
+  - name: page_count
+    type: str
+    description: "Length in eighths of a page (e.g. '2 4/8')"
+  - name: os_status
+    type: str
+    description: "Production status of the scene; values from the cineos_scene_statuses enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_scene_statuses"
+  - name: color
+    type: str
+    description: "UI color tag for the scene on the board (the os_scene_color); a utility-color name, not a hex"
+  - name: cover_photo
+    type: str
+    description: "Path/$ref to a cover/reference image"
+  - name: set_ref
+    type: str
+    description: "Slug/id of the Set this scene plays on (if assigned)"
+  - name: creator_ref
+    type: str
+    description: "User identifier of the scene's creator"
+
+relations:
+  parent: script
+  children:
+    - shot
+    - script_elements_tags
+    - scene_shoot
+
+example:
+  scene_number: 27
+  slugline: "INT. BEAU'S HOUSE - DAY"
+  script_ref: "wet-under-blue-sky"
+  project_ref: "wet-under-blue-sky"
+  name: "Beau prepares"
+  page_count: "1 2/8"
+  os_status: "scheduled"
+  color: "green"

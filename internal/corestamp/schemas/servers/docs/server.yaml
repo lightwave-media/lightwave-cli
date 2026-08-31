@@ -1,0 +1,77 @@
+# =============================================================================
+# DOCS SERVER — Serves the compressed codebase
+# =============================================================================
+# The docs server reads the SST and serves a single-page app that renders
+# the full schema index. Agents and humans browse the SST visually.
+# Built by lightwave-ui; served at localhost:3200; synced to cloud at
+# docs.lightwave-media.ltd/v-x.x.x/*
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/servers/docs/server"
+  title: "Docs Server Configuration"
+  description: |
+    Declares the docs server contract. The SST declares what to serve;
+    lightwave-ui generates the actual Vite app. Design tokens from
+    lightwave-ui/src/styles/theme.css. Mermaid diagrams from the
+    visual_docs_registry. Search across all SST schemas.
+  generates:
+    - "json_schema:DocsServerConfig"
+    - "vite:DocsApp"
+  depends_on:
+    - "lightwave://schemas/data/meta/docs_structure"
+    - "lightwave://schemas/data/meta/visual_docs_registry"
+
+required_fields:
+  - name: server
+    type: object
+    description: "Server configuration"
+  - name: content
+    type: object
+    description: "What content the server exposes"
+
+optional_fields:
+  - name: theme
+    type: object
+    description: "Design tokens override"
+  - name: auth
+    type: object
+    description: "Auth requirements (none for local, API key for cloud)"
+
+example:
+  server:
+    port: 3200
+    host: localhost
+    cloud_sync_url: "docs.lightwave-media.ltd/v-{version}/*"
+    env: development
+
+  content:
+    source: "src/schemas/"
+    index_generator: "src/boilerplate/blueprints/servers/docs/generate_context_index.py"
+    print_location: "src/servers/docs"
+    categories:
+      - data
+      - interfaces
+      - workflows
+      - policy
+      - integrations
+      - servers
+    diagrams:
+      registry: "docs/references/visual_docs_registry.yaml"
+      renderer: mermaid
+
+  theme:
+    brand_family: blue
+    dark_mode_default: true
+    tokens_source: "lightwave-ui/src/styles/theme.css"
+
+  auth:
+    local: none
+    cloud: api_key
+
+relations:
+  parent: null
+  children: []
+
+status: active

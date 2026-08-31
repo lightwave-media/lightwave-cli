@@ -1,0 +1,33 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/review_dispatch_transports"
+  title: "Review Dispatch Transport Enum"
+  description: |
+    Transport a review panel uses to dispatch a persona invocation to the
+    swarm. All three values are real surfaces verified in the 2026-06-12
+    dispatch research (decision record, Phase 3 findings); the default
+    follows the topology decision (spec/adr/0004-topology-nullhub-is-the-hub.md):
+    clients talk to nullhub, never to raw nullclaw ports.
+
+    Closed enum — adding a transport is a stamp change. Wire encoding is
+    kebab-case.
+
+    Consumed by workflows/orchestration/review_panel.yaml#dispatch_transport.
+  generates:
+    - "zig:ReviewDispatchTransport"
+  depends_on: []
+
+name: review_dispatch_transports
+description: "Transport for dispatching a panel persona invocation to the swarm"
+default: nullhub-agent-invoke
+closed: true
+options:
+  - value: nullhub-agent-invoke
+    label: "NullHub agent-invoke proxy"
+    description: "POST /api/instances/nullclaw/{name}/agent via nullhub ({message, session_key, provider, model}). Synchronous; the preferred transport — instance ports and gateway tokens stay behind the hub."
+  - value: a2a
+    label: "NullClaw A2A message/send"
+    description: "JSON-RPC POST /a2a on the nullclaw gateway (Bearer from /pair). Synchronous, returns full agentText. Requires the named-agent routing patch (optional agentId → resolveRoute) on the lightwave fork."
+  - value: webhook
+    label: "NullClaw webhook"
+    description: "POST /webhook with gateway.webhook_sync_for_workers=true; accepts agentId in the body and returns {status, response}. Works today without patches; fallback transport."

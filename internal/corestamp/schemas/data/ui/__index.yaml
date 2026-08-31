@@ -1,0 +1,47 @@
+# =============================================================================
+# UI SCHEMA REGISTRY (data/ui — Declarative shape for the UI factory)
+# =============================================================================
+# Contracts for everything the UI factory stamps: components, marketing
+# sections, page types (incl. legal), whole-site configuration, and app
+# shells. Downstream prints: lightwave-ui components (TypeScript/Zod via
+# `lw codegen types`), site data layers (joelschaeffer-site et al.), and
+# the `lw ui add/sync` provenance manifest.
+#
+# Initiative record: ~/.lightwave/brain/memory/sessions/ui-factory/
+# 2026-06-11-initiative-decisions.md (Run 1).
+# =============================================================================
+
+_meta:
+  version: "0.4.0"
+  schema_id: "lightwave://schemas/data/ui/__index"
+  title: "UI Schema Registry"
+  description: "Sub-registry for UI factory contracts: component contracts, section contracts, page types, site/domain configuration, and app shells. The typescript binding for this family emits Zod schemas via `lw codegen types`."
+  changelog:
+    - version: "0.1.0"
+      date: "2026-06-12"
+      summary: "initial registry — Run 1 UI factory contracts (component_contract, section_contract, page_definition, site_config, app_shell)"
+    - version: "0.2.0"
+      date: "2026-06-15"
+      summary: "site-v1 ground-up: add collection primitive (Payload-style envelope, projects type); extend page_definition Seo (canonical/og_title)"
+    - version: "0.2.1"
+      date: "2026-06-16"
+      summary: "review follow-up: split collection Field.of -> of_type/of_schema (pre-consumer refinement — no emitter ships against Field.of yet) + emitter superRefine notes"
+    - version: "0.2.2"
+      date: "2026-06-16"
+      summary: "ADR-0019: component_contract description reframed to the three-tier consumption model (Tier-1 live-import has no copy-in provenance; copy-in is Tier-2 only); drop stale ADR-0006 binding ref in favour of `lw codegen types`"
+    - version: "0.3.0"
+      date: "2026-06-16"
+      summary: "add ui_node — recursive component-tree node, the core of the DB-driven UI protocol (ADR-0020). Full grammar: props (config+iconKey) / bind (content data-scope paths) / slots+children (recursive composition) / on (event->action id) / visible (bounded condition). First z.lazy recursive shape (children+slots); emitter support is the paired cli change"
+    - version: "0.4.0"
+      date: "2026-06-20"
+      summary: "add tenant — the multi-tenant site/instance entity above site_config: ties slug (RLS org id = app.current_org + /v1/{tenant}/ segment) + domains + lifecycle status to the UI contract it renders. kind enum {control_plane, tenant_site} distinguishes lightwave-media.ltd (backend/admin/CEO) from peer tenant sites. References site_config + app_shell; does not duplicate them"
+
+schemas:
+  component_contract: component_contract.yaml
+  section_contract: section_contract.yaml
+  page_definition: page_definition.yaml
+  site_config: site_config.yaml
+  app_shell: app_shell.yaml
+  collection: collection.yaml
+  ui_node: ui_node.yaml
+  tenant: tenant.yaml

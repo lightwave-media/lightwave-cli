@@ -1,0 +1,51 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/release_session_propagate_report"
+  title: "Release session propagate report"
+  description: |
+    Print artefact from lw release propagate. Written to
+    ~/.lightwave/reports/release-propagate-<timestamp>.json and symlink
+    release-propagate.latest.json.
+  depends_on:
+    - "lightwave://schemas/data/enums/diagnostic_severities"
+
+required_fields:
+  - name: repo
+    type: str
+    description: "Repo slug (e.g. lightwave-core)"
+  - name: main_sha
+    type: str
+    description: "origin/main SHA propagated to"
+  - name: scan_time_iso
+    type: str
+    description: "UTC ISO-8601 completion time"
+  - name: worktrees
+    type: "list[PropagateWorktreeResult]"
+    description: |
+      Sub-schema PropagateWorktreeResult: path (str), branch (str),
+      session_id (str|null), rebased (bool), ci_ok (bool), blocked (bool),
+      detail (str).
+
+optional_fields:
+  - name: status
+    type: str
+    description: "Overall status of the propagation run (e.g. completed, failed)."
+  - name: interrupted_sessions
+    type: "list[str]"
+    description: "Session ids that received propagate-break interrupts."
+
+example:
+  status: completed
+  repo: lightwave-core
+  main_sha: "abc1234"
+  scan_time_iso: "2026-06-20T22:00:00Z"
+  worktrees:
+    - path: "/Users/joelschaeffer/dev/.worktrees/lightwave-core-merge-authority"
+      branch: "feature/operator-control-plane"
+      session_id: "demo-104036"
+      rebased: true
+      ci_ok: false
+      blocked: true
+      detail: "mise run ci failed after rebase — fix before commit"
+  interrupted_sessions:
+    - "demo-104036"

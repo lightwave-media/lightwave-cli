@@ -1,0 +1,227 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/user"
+  title: "Forgejo User — 1:1 SST Mirror"
+  description: |
+    1:1 mirror of Forgejo's User struct and user-scoped API endpoints.
+    Source: swagger.v1.json #/definitions/User, #/paths/~1user, #/paths/~1users
+
+    Users are the root principal. Agents are modeled as users with a persona_ref
+    linking to lightwave://schemas/data/meta/agent_definition. The Forgejo API
+    treats users as the identity primitive; Lightwave extends this with agent
+    principal types per ADR-0012.
+
+  source_ref: "forgejo://swagger.v1.json#/definitions/User"
+  table_kind: entity
+  table_name: users
+  generates:
+    - "go:ForgejoUser"
+    - "zig:ForgejoUser"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: login
+  unique: true
+
+required_fields:
+  - name: login
+    type: str
+    description: "Username — unique across the instance"
+    storage: db
+    pattern: "^[a-zA-Z0-9][a-zA-Z0-9._-]*$"
+    indexed: true
+  - name: email
+    type: str
+    description: "Primary email address"
+    storage: db
+  - name: password_hash
+    type: str
+    api_excluded: true
+    description: "Bcrypt hash of password. MUST NOT appear in any API response or serialized struct. DB-only; codegen must suppress this field from exported response types."
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: full_name
+    type: str
+    description: "Display name"
+    storage: db
+  - name: login_name
+    type: str
+    description: "Authentication sign-in name (may differ from login for SSO)"
+    storage: db
+  - name: description
+    type: str
+    description: "User bio / description"
+    storage: db
+  - name: location
+    type: str
+    description: "User location"
+    storage: db
+  - name: website
+    type: str
+    description: "User website URL"
+    storage: db
+  - name: pronouns
+    type: str
+    description: "User pronouns"
+    storage: db
+  - name: avatar_url
+    type: str
+    description: "URL to avatar image"
+    storage: db
+  - name: language
+    type: str
+    description: "User locale (e.g. en-US)"
+    storage: db
+  - name: is_active
+    type: bool
+    description: "Whether the user account is active"
+    storage: db
+  - name: is_admin
+    type: bool
+    description: "Whether the user is an instance administrator"
+    storage: db
+  - name: is_restricted
+    type: bool
+    description: "Whether the user has restricted visibility"
+    storage: db
+  - name: prohibit_login
+    type: bool
+    description: "Whether login is prohibited for this user"
+    storage: db
+  - name: visibility
+    type: str
+    description: "public | limited | private"
+    storage: db
+  - name: source_id
+    type: int
+    description: "ID of the authentication source (0 = local)"
+    storage: db
+  - name: last_login
+    type: datetime
+    description: "Last login timestamp"
+    storage: db
+  - name: must_change_password
+    type: bool
+    description: "Force password change on next login"
+    storage: db
+  - name: hide_email
+    type: bool
+    description: "Hide email from public profile"
+    storage: db
+  - name: followers_count
+    type: int
+    description: "Cached follower count"
+    storage: db
+  - name: following_count
+    type: int
+    description: "Cached following count"
+    storage: db
+  - name: starred_repos_count
+    type: int
+    description: "Cached starred repo count"
+    storage: db
+  - name: max_repo_creation
+    type: int
+    description: "Maximum repositories this user can create (-1 = unlimited)"
+    storage: db
+
+  # ── Lightwave Extension Fields ──
+  - name: persona_ref
+    type: str
+    description: "If this user is an agent, slug of persona from agent_definition registry"
+    storage: db
+    fk_ref: "lightwave://schemas/data/meta/agent_definition"
+    fk_column: slug
+    indexed: true
+
+# ── API Routes (1:1 Forgejo) ──────────────────────────────────────────────
+sub_schemas:
+  CreateUserOption:
+    name: str
+    email: str
+    password: str
+    full_name: str
+    login_name: str
+    must_change_password: bool
+    restricted: bool
+    send_notify: bool
+    source_id: int
+    visibility: str
+    created_at: datetime
+
+  EditUserOption:
+    active: bool
+    admin: bool
+    allow_create_organization: bool
+    allow_git_hook: bool
+    allow_import_local: bool
+    description: str
+    email: str
+    full_name: str
+    hide_email: bool
+    location: str
+    login_name: str
+    max_repo_creation: int
+    must_change_password: bool
+    password: str
+    prohibit_login: bool
+    pronouns: str
+    restricted: bool
+    source_id: int
+    visibility: str
+    website: str
+
+  UserSettings:
+    description: str
+    diff_view_style: str
+    enable_repo_unit_hints: bool
+    full_name: str
+    hide_activity: bool
+    hide_email: bool
+    hide_pronouns: bool
+    language: str
+    location: str
+    pronouns: str
+    theme: str
+    website: str
+
+  UserSettingsOptions:
+    description: str
+    diff_view_style: str
+    enable_repo_unit_hints: bool
+    full_name: str
+    hide_activity: bool
+    hide_email: bool
+    hide_pronouns: bool
+    language: str
+    location: str
+    pronouns: str
+    theme: str
+    website: str
+
+  UserHeatmapData:
+    contributions: int
+    timestamp: int
+
+example:
+  login: "v-platform-developer"
+  email: "agent@example.com"
+  password_hash: "$2a$12$PLACEHOLDER_SCHEMA_VALIDATION_ONLY_NEVER_RETURNED"
+  full_name: "Platform Developer Agent"
+  is_active: true
+  is_admin: false
+  visibility: "private"
+  persona_ref: "v_platform-developer"
+  created_at: "2026-06-25T00:00:00Z"
+  updated_at: "2026-06-25T00:00:00Z"

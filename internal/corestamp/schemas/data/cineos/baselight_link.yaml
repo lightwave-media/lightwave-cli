@@ -1,0 +1,72 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/baselight_link"
+  title: "Baselight Link"
+  description: |
+    Sync-state record binding a cineOS Project/Timeline to a Baselight scene
+    via the FilmLight universal address triple (host:job:scene). Tracks the
+    writing build and an explicit needs_upgrade state (Baselight refuses
+    scenes older than the running software — a typed sync state, not an
+    error, per the study's version-pinning finding).
+  generates:
+    - "go:BaselightLink"
+    - "typescript:BaselightLink"
+    - "zig:BaselightLink"
+    - "json_schema:baselight_link"
+  depends_on:
+    - "lightwave://schemas/data/cineos/project"
+
+required_fields:
+  - name: project_ref
+    type: str
+    description: "Slug/id of the linked cineOS Project"
+  - name: bl_host
+    type: str
+    description: "Baselight host (address triple part 1, e.g. 'localhost')"
+  - name: bl_job
+    type: str
+    description: "Baselight job name (part 2)"
+  - name: bl_scene
+    type: str
+    description: "Baselight scene name (part 3)"
+  - name: sync_state
+    type: str
+    description: "Link state; values from the cineos_baselight_sync_states enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_baselight_sync_states"
+
+optional_fields:
+  - name: timeline_ref
+    type: str
+    description: "cineOS Timeline mirroring the Baselight scene (when pulled)"
+  - name: baselight_build
+    type: str
+    description: "Software build that last wrote the Baselight scene (e.g. 'Baselight LOOK 7.0.0.24962')"
+  - name: last_sync
+    type: datetime
+    description: "Last successful sync (ISO 8601)"
+  - name: sync_rev
+    type: int
+    description: "Monotonic sync revision counter (mirrored into Scene custom data on the Baselight side)"
+  - name: cineos_id_key
+    type: str
+    default: "cineos_id"
+    description: "Metadata-definition key registered in the Baselight scene for cineOS identity"
+  - name: notes
+    type: str
+    description: "Sync notes / last error detail"
+
+relations:
+  parent: project
+  children: []
+
+example:
+  project_ref: "wet-under-blue-sky"
+  bl_host: "localhost"
+  bl_job: "wet_under_blue_sky"
+  bl_scene: "winter-time"
+  sync_state: "needs_upgrade"
+  baselight_build: "Baselight 6.0.21956"
+  last_sync: "2026-08-12T15:04:00Z"
+  sync_rev: 4
+  cineos_id_key: "cineos_id"
+  notes: "Scene written by 6.0; open in Baselight to upgrade before next push"

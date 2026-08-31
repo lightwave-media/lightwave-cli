@@ -1,0 +1,66 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/workflows/sops/runbook_execution
+  title: Runbook Execution State
+  description: "Deterministic runbook execution phase tracker. Each runbook invocation\nwrites its phase/status to the database.\
+    \ The harness (any agent runtime)\nreads this state to gate tool access: an agent in phase \"scaffold\" may\nnot run phase\
+    \ \"deploy\" commands until the database confirms scaffold is\ncomplete. This is agent RBAC — the same mechanism as user\
+    \ RBAC, but\nfor automated workflows.\n\nPhase machine:\n  pending → migrate → seed → budget → scaffold → verify → complete\n\
+    \                                                               ↓\n                                                  \
+    \          failed (any phase)\n\nTool gates (enforced by harness hooks reading this table):\n  - phase < seed: no boilerplate/write_file\
+    \ allowed\n  - phase < budget: Read, Glob, Grep, lw only (v_cfo token budget gate)\n  - phase < scaffold: no business\
+    \ logic allowed\n  - phase < verify: no deploy/git push allowed\n"
+required_fields:
+- name: runbook_slug
+  type: str
+  description: Runbook identifier (e.g. bootstrap-platform-domain)
+- name: phase
+  type: enum
+  options:
+  - pending
+  - migrate
+  - seed
+  - budget
+  - scaffold
+  - verify
+  - complete
+  - failed
+  description: Current execution phase
+- name: status
+  type: enum
+  options:
+  - running
+  - passed
+  - failed
+  - skipped
+  description: Phase completion status
+- name: agent_id
+  type: str
+  description: Nullclaw instance name executing this runbook
+optional_fields:
+- name: repo
+  type: str
+  description: Target repository
+- name: branch
+  type: str
+  description: Git branch associated with this runbook execution.
+- name: commit
+  type: str
+  description: Git commit SHA associated with this runbook execution.
+- name: error_log
+  type: str
+  description: Error output if phase failed
+- name: vars
+  type: dict[str, str]
+  description: Runbook input variables snapshot
+example:
+  runbook_slug: bootstrap-platform-domain
+  phase: scaffold
+  status: running
+  agent_id: v_core-package-developer
+  repo: lightwave-platform
+  branch: main
+  vars:
+    domain: cineos.io
+    app_name: CineOS
+    tenant_slug: cineos

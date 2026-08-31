@@ -1,0 +1,155 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/audio_manifest"
+  title: "Audio Manifest"
+  description: |
+    The output of dramatized-audiobook generation and the input to the player
+    (EPIC-CINE-AUDIO-001). One manifest per (script_version, mode). Carries the
+    voice cast (so a character sounds identical across sessions and revisions),
+    per-scene entries with generation state and cached-file references, and
+    per-segment timing so playback can map any timestamp back to a scene AND an
+    element — bookmarks depend on that. Character cue names produce no segment;
+    identity is carried entirely by voice (decision D). Per-scene provider and
+    estimated cost make the running spend total derivable from the manifest —
+    it is not tracked separately. The per-scene content_hash MUST key on scene
+    text + script version + voice cast: wrong key and either revisions fail to
+    regenerate or every revision regenerates the whole script at full cost.
+  generates:
+    - "go:AudioManifest"
+    - "typescript:AudioManifest"
+    - "zig:AudioManifest"
+    - "json_schema:audio_manifest"
+  depends_on:
+    - "lightwave://schemas/data/cineos/script_version"
+    - "lightwave://schemas/data/cineos/screenplay_scene"
+
+required_fields:
+  - name: script_version_ref
+    type: str
+    description: "Slug/id of the ScriptVersion this audio was generated from"
+  - name: mode
+    type: str
+    description: "Listening mode: dramatized_read (MVP), cinematic (deferred), study (deferred). 'Table Read Mode' in older docs is the legacy label for dramatized_read"
+  - name: audio_status
+    type: str
+    description: "Whole-script generation state; values from the cineos_audio_statuses enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_audio_statuses"
+  - name: voices
+    type: list[VoiceAssignment]
+    description: "The voice cast — character → voice → provider. NARRATOR is a reserved cast member for sluglines, action, and on-screen text; it must stay clearly distinct from every character voice"
+  - name: scenes
+    type: list[SceneAudio]
+    description: "Per-scene audio entries in scene order; a scene missing here has no audio"
+
+optional_fields:
+  - name: generated_at
+    type: str
+    description: "ISO-8601 timestamp of the last generation run that touched this manifest"
+  - name: earcon_enabled
+    type: bool
+    description: "Whether the scene-change earcon plays before the narrator reads the new slugline (user-disableable; default true)"
+
+sub_schemas:
+  VoiceAssignment:
+    character:
+      type: str
+      description: "Normalized character name as it appears in screenplay_scene elements; NARRATOR reserved"
+    voice_id:
+      type: str
+      description: "Provider-specific voice identifier; stable across sessions and revisions for this screenplay"
+    provider:
+      type: str
+      description: "TTS provider for this voice; values from the cineos_tts_providers enum"
+    role:
+      type: str
+      description: "character or narrator"
+  SceneAudio:
+    scene_id:
+      type: str
+      description: "screenplay_scene.scene_id this entry belongs to"
+    status:
+      type: str
+      description: "Per-scene generation state; values from the cineos_audio_statuses enum"
+    file_ref:
+      type: str
+      description: "Path to the cached on-device audio file for this scene (never a remote URL — audio is generated and cached locally, decision A)"
+    duration_seconds:
+      type: float
+      description: "Scene audio duration"
+    content_hash:
+      type: str
+      description: "Cache key: hash over (scene text, script version, voice cast). Regeneration fires only when this changes"
+    provider:
+      type: str
+      description: "Provider that generated this scene's audio; values from the cineos_tts_providers enum"
+    estimated_cost_usd:
+      type: float
+      description: "Estimated cost of this scene's generation (0 for the local engine); the script's running spend is the sum of these"
+    segments:
+      type: list[AudioSegment]
+      description: "Ordered timed segments within the scene audio; cue names and parentheticals never appear here"
+  AudioSegment:
+    element_index:
+      type: int
+      description: "Index into screenplay_scene.elements this segment performs; earcon segments carry -1 (no source element)"
+    kind:
+      type: str
+      description: "earcon, narration, or dialogue"
+    voice:
+      type: str
+      description: "Cast member performing the segment (VoiceAssignment.character; NARRATOR for narration; empty for earcon)"
+    start_seconds:
+      type: float
+      description: "Segment start within the scene audio"
+    end_seconds:
+      type: float
+      description: "Segment end within the scene audio"
+
+relations:
+  parent: script_version
+  children: []
+
+example:
+  script_version_ref: "iron-dan-white"
+  mode: "dramatized_read"
+  audio_status: "ready"
+  generated_at: "2026-08-11T15:30:00-07:00"
+  earcon_enabled: true
+  voices:
+    - character: "NARRATOR"
+      voice_id: "nv_narrator_01"
+      provider: "nullvoice"
+      role: "narrator"
+    - character: "MARCUS"
+      voice_id: "nv_male_03"
+      provider: "nullvoice"
+      role: "character"
+  scenes:
+    - scene_id: "gym-early-morning-01"
+      status: "ready"
+      file_ref: "cineos/audio/iron-dan-white/dramatized_read/gym-early-morning-01.mp3"
+      duration_seconds: 21.4
+      content_hash: "sha256:c41b77"
+      provider: "nullvoice"
+      estimated_cost_usd: 0
+      segments:
+        - element_index: -1
+          kind: "earcon"
+          voice: ""
+          start_seconds: 0
+          end_seconds: 1.2
+        - element_index: 0
+          kind: "narration"
+          voice: "NARRATOR"
+          start_seconds: 1.2
+          end_seconds: 4.8
+        - element_index: 1
+          kind: "narration"
+          voice: "NARRATOR"
+          start_seconds: 4.8
+          end_seconds: 12.6
+        - element_index: 4
+          kind: "dialogue"
+          voice: "MARCUS"
+          start_seconds: 12.6
+          end_seconds: 21.4

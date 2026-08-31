@@ -1,0 +1,34 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/runbook_statuses"
+  title: "Runbook Statuses"
+  description: "Lifecycle states for runbook documents."
+  generates:
+    - "pydantic:RunbookStatus"
+  depends_on: []
+
+name: runbook_statuses
+description: "Status for runbooks"
+default: draft
+closed: true
+options:
+  - value: draft
+    label: "Draft"
+    description: "Work in progress — not yet ready for use"
+    can_transition_to: [active, deprecated]
+  - value: active
+    label: "Active"
+    description: "Ready for execution — all checks pass"
+    can_transition_to: [deprecated, broken]
+  - value: deprecated
+    label: "Deprecated"
+    description: "No longer maintained — kept for historical reference"
+    can_transition_to: [active, archived]
+  - value: broken
+    label: "Broken"
+    description: "Checks are failing — needs repair before use"
+    can_transition_to: [active, deprecated]
+  - value: archived
+    label: "Archived"
+    description: "Permanently retired — kept for historical reference only"
+    is_completed: true

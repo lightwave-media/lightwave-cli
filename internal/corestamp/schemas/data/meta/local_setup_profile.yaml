@@ -1,0 +1,101 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/local_setup_profile"
+  title: "Local Setup Profile"
+  description: |
+    Target state for the operator's machine — git topology, hook expectations,
+    GPU/session budgets. Print lives at ~/.lightwave/config/workspace.yaml;
+    this schema is the validating stamp.
+
+    Consumed by `lw git audit`, `lw git doctor`, and the local validation
+    network. Aligns with llm_concurrency.yaml (GPU slots) and
+    session_retention.yaml (session caps).
+  generates:
+    - "pydantic:LocalSetupProfile"
+    - "go:LocalSetupProfile"
+  depends_on:
+    - "lightwave://schemas/data/meta/homedir"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable profile identifier (e.g. joelschaeffer-default)."
+  - name: workspace_roots
+    type: "list[str]"
+    description: "Directories recursively scanned for git repos."
+  - name: worktree_root
+    type: str
+    description: "Canonical mount for task worktrees. Repo-scoped per worktree_policy.yaml: {repo-root}/.worktrees/{YYYY-MM-DD}-{ticket-slug}/. NOT a ~/.lightwave/ dir."
+  - name: branch_policy
+    type: "object[BranchPolicy]"
+    description: |
+      Sub-schema BranchPolicy: default_branch (str), feature_prefix (str),
+      release_prefix (str), protected_branches (list[str]).
+  - name: required_hooks
+    type: "dict[str, list[str]]"
+    description: "Hook names required per tier key (strict | advisory)."
+  - name: gpu_profile
+    type: "object[GpuProfile]"
+    description: |
+      Sub-schema GpuProfile: unified_memory_gb (int), max_local_in_flight (int),
+      warn_if_multiple_daemons (bool).
+  - name: session_retention
+    type: "object[SessionRetentionCaps]"
+    description: |
+      Sub-schema SessionRetentionCaps: max_observability_sessions (int),
+      max_v_core_sessions (int).
+
+optional_fields:
+  - name: cursor_worktree_roots
+    type: "list[str]"
+    description: "Additional roots for Cursor/agent worktrees (e.g. ~/.cursor/worktrees)."
+  - name: worktree_home
+    type: "object[WorktreeHomePolicy]"
+    description: |
+      Operator print override for ADR-0037. Sub-fields mirror worktree_home_policy.yaml:
+      canonical_root, path_layout, marker_file, supplemental_roots, forbidden_roots.
+      When absent, defaults from worktree_home_policy example apply.
+  - name: strict_markers
+    type: "list[str]"
+    description: "Filenames that classify a repo as strict tier when present at repo root."
+  - name: notes
+    type: str
+    description: "Operator notes; not consumed by tooling."
+
+example:
+  id: "joelschaeffer-default"
+  workspace_roots:
+    - "~/dev"
+  worktree_root: ".worktrees"
+  cursor_worktree_roots:
+    - "~/.cursor/worktrees"
+  worktree_home:
+    canonical_root: ".worktrees"
+    path_layout: "{YYYY-MM-DD}-{ticket-slug}"
+    marker_file: ".lw-worktree.yaml"
+    supplemental_roots:
+      - path: "~/.cursor/worktrees"
+        owner: cursor
+        audit_only: true
+    forbidden_roots:
+      - "~/.lightwave/worktrees"
+      - "~/.lightwave/.worktrees"
+  strict_markers:
+    - "mise.toml"
+    - "AGENTS.md"
+  branch_policy:
+    default_branch: "main"
+    feature_prefix: "feat/"
+    release_prefix: "release/"
+    protected_branches: ["main", "master"]
+  required_hooks:
+    strict: ["pre-commit", "pre-push", "commit-msg"]
+    advisory: ["pre-commit"]
+  gpu_profile:
+    unified_memory_gb: 64
+    max_local_in_flight: 1
+    warn_if_multiple_daemons: true
+  session_retention:
+    max_observability_sessions: 50
+    max_v_core_sessions: 20
+  notes: "Default profile for Joel's Mac — scan ~/dev/* Lightwave fleet."

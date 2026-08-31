@@ -1,0 +1,81 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/meta/review_panel_verdict"
+  title: "Review Panel Verdict"
+  description: |
+    Structured verdict record produced by ONE persona's review in a review
+    panel run (workflows/orchestration/review_panel.yaml). Formalizes the
+    CONVERGE-VERDICT contract that until now existed only as prose in
+    dev/cli.sh review --converge.
+
+    BYTE-COMPATIBILITY (frozen — shadow comparison depends on it):
+    every reviewer ends its review with EXACTLY one terminal line
+
+        CONVERGE-VERDICT: blockers=<N>
+
+    machine-parsed by the converge gate with
+    grep -oE 'CONVERGE-VERDICT:[[:space:]]*blockers=[0-9]+' taking the
+    LAST match (so a verdict line quoted mid-review can't win), with a
+    heuristic 🔴-count fallback when the line is absent. The `blockers`
+    field of this record IS that N; changing the line format breaks the
+    incumbent gate and the parity comparison, and is out of scope for
+    Run 1 (PRD-0001, Out of Scope).
+
+    Severity taxonomy mirrors the review prompt: 🔴 blocker (must fix
+    before merge), 🟡 concern (should fix or discuss), ✅ pass (what's
+    good). Counts are recorded here; the full findings text lives behind
+    findings_ref (nulltickets is the cross-session sink per
+    spec/adr/0008-verdict-sink-nulltickets-nullwatch.md — raw text is NOT
+    embedded in the record).
+  generates:
+    - "zig:ReviewPanelVerdict"
+  depends_on:
+    - "lightwave://schemas/data/meta/agent_definition"
+    - "lightwave://schemas/data/enums/review_executors"
+
+required_fields:
+  - name: persona
+    type: str
+    description: "Name of the reviewing persona — must match the `name` of a persona instance validated by data/meta/agent_definition.yaml (e.g. v_staff-engineer)."
+  - name: blockers
+    type: int
+    description: "Count of 🔴 findings. The N in the terminal 'CONVERGE-VERDICT: blockers=N' line. blockers > 0 fails the gate (when the producing executor is authoritative) and short-circuits the pipeline."
+  - name: concerns
+    type: int
+    description: "Count of 🟡 findings — should fix or discuss; never blocks."
+  - name: passes
+    type: int
+    description: "Count of ✅ findings — explicit positives; kept honest and short per the review prompt."
+  - name: timestamp
+    type: str
+    description: "ISO-8601 UTC instant the verdict was produced (e.g. 2026-06-12T18:45:00Z)."
+  - name: findings_ref
+    type: str
+    description: "Opaque reference to the full raw findings text — a nulltickets store key, nullwatch trace URI, or file path. Sink-defined format; consumers treat it as a pointer, never parse it."
+  - name: executor
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/review_executors"
+    description: "Which pipeline produced the verdict. Required (not optional): the Run-1 shadow soak (ADR-0005) pairs claude-cli and nullclaw-swarm verdicts on the same diff, and a verdict that omits its executor is silently unpairable."
+  - name: diff_ref
+    type: str
+    description: "Identifier of the reviewed diff: the HEAD commit SHA (40-hex) at review time. Both executors review the same origin/main..HEAD diff of one push event, so (executor, diff_ref) is the shadow-soak pairing key — two verdicts with equal diff_ref and different executor are the comparison pair (ADR-0005)."
+
+optional_fields:
+  - name: panel_id
+    type: str
+    description: "`id` of the review_panel instance that produced this verdict. Correlates the per-persona verdicts of one pipeline run. OPTIONAL by design, not oversight: verdicts from the incumbent claude-cli executor (ADR-0005 shadow soak) are not produced by any review_panel instance and so carry no panel_id — shadow pairing is keyed on (executor, diff_ref), never on panel_id."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  persona: "v_staff-engineer"
+  blockers: 0
+  concerns: 2
+  passes: 3
+  timestamp: "2026-06-12T18:45:00Z"
+  diff_ref: "9477898c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a"
+  findings_ref: "nulltickets://review-panel/core-pre-push-panel/2026-06-12T18-45-00Z/v_staff-engineer"
+  panel_id: "core-pre-push-panel"
+  executor: "nullclaw-swarm"

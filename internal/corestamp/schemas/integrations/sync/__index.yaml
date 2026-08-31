@@ -1,0 +1,20 @@
+# =============================================================================
+# SYNC SCHEMA REGISTRY — external projection bindings
+# =============================================================================
+# This family stamps bindings + authority for SaaS projections (GitHub, Notion).
+# Distinct from the print→Postgres reindex and the local→cloud mirror, both
+# declared on data/meta/brain_structure (CORE-0049). PowerSync was dropped in
+# CORE-0049 §4 and is no longer part of any hop.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/integrations/sync/__index"
+  title: "Sync Integration Schema Registry"
+  description: |
+    External projection binding shapes. Distinct from the print→store reindex
+    and the local→cloud mirror (CORE-0049). Adapters in lightwave-cli consume
+    these stamps.
+
+schemas:
+  external_ref: external_ref.yaml

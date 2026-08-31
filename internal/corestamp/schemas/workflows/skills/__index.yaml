@@ -1,0 +1,121 @@
+_meta:
+  version: 0.1.0
+  schema_id: lightwave://schemas/workflows/skills/__index
+  title: Agent Skills Registry
+  description: Registry of all agent skills in the Lightwave swarm. Each entry references
+    the SKILL.md PRINT location and declares scope/category.
+skills:
+  boilerplate-cli:
+    slug: boilerplate-cli
+    category: tooling
+    print_path: .agents/skills/boilerplate-cli/SKILL.md
+    description: Use lw scaffold and the mise-managed boilerplate engine for Lightwave
+      scaffolding.
+    agents:
+    - v_core-package-developer
+    - v_cli-developer
+    - v_staff-engineer
+  ponytail-audit:
+    slug: ponytail-audit
+    category: governance
+    print_path: .agents/skills/ponytail-audit/SKILL.md
+    description: Adversarial architecture audit from first principles post-CI-green.
+    agents:
+    - v_staff-engineer
+    - v_cto
+  self-healing:
+    slug: self-healing
+    category: tooling
+    print_path: .agents/skills/self-healing/SKILL.md
+    description: Batch-fix pattern — test → identify → script → verify → repeat.
+    agents:
+    - v_core-package-developer
+    - v_cli-developer
+    - v_staff-engineer
+  code-review:
+    slug: code-review
+    category: governance
+    print_path: ~/.lightwave/skills/code-review/SKILL.md
+    description: Primary reviewer doctrine with R-21 round-trip enforcement.
+    agents:
+    - v_staff-engineer
+    - v_cto
+    - v_qa-engineer
+  testing-strategy:
+    slug: testing-strategy
+    category: governance
+    print_path: ~/.lightwave/skills/testing-strategy/SKILL.md
+    description: Test strategy design — wide-tier engineer owns test strategy.
+    agents:
+    - v_qa-engineer
+    - v_staff-engineer
+  testing-efficacy:
+    slug: testing-efficacy
+    category: governance
+    print_path: ~/.lightwave/skills/testing-efficacy/SKILL.md
+    description: Cross-cutting efficacy reviews for test coverage.
+    agents:
+    - v_qa-engineer
+  journey-first:
+    slug: journey-first
+    category: meta
+    print_path: ~/.lightwave/skills/journey-first/SKILL.md
+    description: Joel writes the journey; contracts compile into code. Agents never
+      invent above the contract line.
+    agents:
+    - v_scrum-manager
+    - v_product-manager
+    - v_architect
+  lightwave-git:
+    slug: lightwave-git
+    category: tooling
+    print_path: ~/.lightwave/skills/lightwave-git/SKILL.md
+    description: Git workflow discipline — branching, worktrees, stashes, conflict
+      handling.
+    agents:
+    - v_core-package-developer
+    - v_cli-developer
+    - v_release-engineer
+  lightwave-cli:
+    slug: lightwave-cli
+    category: tooling
+    print_path: ~/.lightwave/skills/lightwave-cli/SKILL.md
+    description: Lightwave CLI command reference and workflow patterns.
+    agents:
+    - v_cli-developer
+    - v_core-package-developer
+    - v_infra-developer
+  token-budget:
+    slug: token-budget
+    category: governance
+    print_path: ~/.lightwave/skills/token-budget/SKILL.md
+    description: Token estimation algorithm and sprint budget tracking.
+    agents:
+    - v_cfo
+    - v_staff-engineer
+  test-author:
+    slug: test-author
+    category: governance
+    print_path: ~/.lightwave/skills/test-author/SKILL.md
+    description: Test authoring patterns — SWEBOK-aligned test design and fixture
+      conventions.
+    agents:
+    - v_qa-engineer
+  voice-profile-author:
+    slug: voice-profile-author
+    category: tooling
+    print_path: ~/.lightwave/skills/voice-profile-author/SKILL.md
+    description: Voice profile authoring for v_speak personas.
+    agents:
+    - v_speak
+  journey-first:
+    slug: journey-first
+    category: meta
+    print_path: ~/.lightwave/skills/journey-first/SKILL.md
+    description: Joel writes the journey; agents own everything below the contract line.
+    agents:
+    - v_product-manager
+    - v_staff-engineer
+    - v_cto
+    - v_platform-developer
+    - v_frontend-developer

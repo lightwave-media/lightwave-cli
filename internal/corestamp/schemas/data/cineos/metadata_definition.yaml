@@ -1,0 +1,56 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/metadata_definition"
+  title: "Metadata Definition"
+  description: |
+    A self-describing field definition for clip/scene capture metadata — the
+    FilmLight lesson: metadata is a typed dictionary (key, display name,
+    value type), user-extensible per project, not a fixed column set. Built-in
+    keys use the verbatim ALE/FilmLight vocabulary (cineos_ale_metadata_keys,
+    open enum); projects may add their own keys (project_ref set). Values
+    live on the owning record's `metadata` object under these keys.
+  generates:
+    - "go:MetadataDefinition"
+    - "typescript:MetadataDefinition"
+    - "zig:MetadataDefinition"
+    - "json_schema:metadata_definition"
+  depends_on: []
+
+required_fields:
+  - name: key
+    type: str
+    description: "Field key; built-ins from the cineos_ale_metadata_keys enum (open — project keys allowed)."
+    values_ref: "lightwave://schemas/data/enums/cineos_ale_metadata_keys"
+  - name: name
+    type: str
+    description: "Display name (e.g. 'Source TC' for srctc)"
+  - name: value_type
+    type: str
+    description: "Value type; values from the cineos_metadata_value_types enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_metadata_value_types"
+
+optional_fields:
+  - name: project_ref
+    type: str
+    nullable: true
+    description: "Owning Project for project-defined keys; null/absent = built-in dictionary"
+  - name: choices
+    type: "list[str]"
+    description: "Allowed values when value_type is choice"
+  - name: read_only
+    type: bool
+    description: "True for derived/indicator fields the operator cannot edit"
+  - name: description
+    type: str
+    description: "What the field means / where it comes from"
+
+relations:
+  parent: null
+  children: []
+
+example:
+  key: "srctc"
+  name: "Source TC"
+  value_type: "timecode_pair"
+  read_only: false
+  description: "Source timecode in/out pair from the camera original (ALE vocabulary)"

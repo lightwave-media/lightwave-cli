@@ -1,0 +1,23 @@
+# =============================================================================
+# INTERFACES SCHEMA REGISTRY (Category B — Interaction shape)
+# =============================================================================
+# HTTP / API / CLI / A2A / MCP / hooks contracts. The verb-form of the SST.
+#
+# Sub-categories: http/, cli/, a2a/, mcp/, hooks/.
+# Currently empty — schemas land here during Phase 4 migration and Phase 8
+# (first 10 lw verbs declared in interfaces/cli/).
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/interfaces/__index"
+  title: "Interfaces Schema Registry"
+  description: "Sub-registry for interaction-shape schemas. Per the locked taxonomy, each `lw <verb>` declared here doubles as a human --help source AND an agent tool definition; per-role filtering is applied by policy/governance/role-tool-permissions/."
+
+schemas:
+  agent_tools: agent_tools/__index.yaml
+  notifications: notifications/__index.yaml
+  cli: cli/__index.yaml
+  hooks: hooks/__index.yaml
+  a2a: a2a/__index.yaml
+  # http, mcp — added as content lands

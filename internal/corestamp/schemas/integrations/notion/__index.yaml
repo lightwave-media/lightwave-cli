@@ -1,0 +1,16 @@
+# =============================================================================
+# NOTION INTEGRATION — projection shapes (not SoT)
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/integrations/notion/__index"
+  title: "Notion Integration Schema Registry"
+  description: |
+    Notion page/database/property_map shapes for local knowledge mirrors.
+    Authority: local (CORE-0048). Adapters in lightwave-cli.
+
+schemas:
+  page: page.yaml
+  database: database.yaml
+  property_map: property_map.yaml

@@ -1,0 +1,126 @@
+_meta:
+  version: "1.0.0"
+  _status: aspirational
+  schema_id: "lightwave://schemas/integrations/forgejo/user_runner"
+  title: "Forgejo User Action Runner — 1:1 SST Mirror"
+  description: |
+    1:1 mirror of Forgejo's user-level action runner API.
+    Source: swagger.v1.json #/paths/~1user~1actions~1runners
+
+    Agents register as runners at the user level. Each persona (v_platform-developer,
+    v_staff-engineer, etc.) registers as an action runner with capability labels
+    for task routing. The registration token is used for subsequent API calls.
+
+    This is the single most important integration schema — it enables the
+    agent swarm to register, receive tasks, and report completion.
+
+  source_ref: "forgejo://swagger.v1.json#/paths/~1user~1actions~1runners"
+  table_kind: entity
+  table_name: user_action_runners
+  generates:
+    - "go:UserActionRunner"
+    - "zig:UserActionRunner"
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: name
+  unique: true
+
+# ── Registration ──────────────────────────────────────────────────────────
+
+required_fields:
+  - name: name
+    type: str
+    description: "Runner name — not required to be unique across all runners"
+    storage: db
+    pattern: "^[a-zA-Z0-9][a-zA-Z0-9._-]*$"
+  - name: uuid
+    type: str
+    description: "Unique identifier for this runner instance"
+    storage: db
+    indexed: true
+  - name: token_hash
+    type: str
+    description: "SHA256 hash of the runner's registration token"
+    storage: db
+  - name: status
+    type: str
+    description: "offline | idle | active"
+    storage: db
+    indexed: true
+  - name: version
+    type: str
+    description: "Self-reported version of the runner runtime"
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: description
+    type: str
+    description: "Optional details about the runner"
+    storage: db
+  - name: ephemeral
+    type: bool
+    description: "Self-destructs after completing one job"
+    storage: db
+  - name: owner_id
+    type: uuid
+    description: "User who owns this runner"
+    storage: db
+    indexed: true
+  - name: labels
+    type: "list[str]"
+    description: "Capability labels for job matching (comma-separated in API)"
+    storage: db
+    column_type: jsonb
+
+# ── API Routes (1:1 Forgejo) ──────────────────────────────────────────────
+
+sub_schemas:
+  RegisterRunnerOptions:
+    name: str
+    description: str
+    ephemeral: bool
+
+  RegisterRunnerResponse:
+    id: int
+    token: str
+    uuid: str
+
+  RegistrationToken:
+    token: str
+
+  RunJobList:
+    type: "list[ActionRunJob]"
+
+  ActionRunJob:
+    id: int
+    name: str
+    status: str
+    needs: "list[str]"
+    runs_on: "list[str]"
+    owner_id: int
+    repo_id: int
+    task_id: int
+    attempt: int
+    handle: str
+
+example:
+  name: "v-platform-developer-002"
+  uuid: "550e8400-e29b-41d4-a716-446655440000"
+  token_hash: "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  status: "active"
+  version: "1.0.0"
+  created_at: "2026-06-26T00:00:00Z"
+  updated_at: "2026-06-26T00:00:00Z"
+  description: "Go monolith build agent"
+  ephemeral: false
+  labels: ["go", "huma", "postgres", "codegen"]

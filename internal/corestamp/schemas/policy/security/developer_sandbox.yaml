@@ -1,0 +1,146 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/security/developer_sandbox"
+  title: "Developer Sandbox Policy — write-restricted tier isolation"
+  description: >
+    Governance contract for source-file writes in lightwave-core. Declares that
+    ONLY developer-tier personas (suffix -developer) may write to repo source
+    files, and that all such writes are sandboxed to
+    {repo-root}/.worktrees/{active-session}/.
+
+    Engineer and singular tiers are read-only on source files. Engineers may
+    still author specifications under spec/. The orchestration tier
+    (v_core, v_scrum-manager) cannot write code at all — they only manage
+    work assignments.
+
+    Enforcement is structural via a pre-commit hook that inspects the
+    LW_PERSONA_TIER environment variable and rejects writes from any
+    non-developer tier. This complements worktree_policy.yaml (which governs
+    worktree lifecycle) by locking down WHO may mutate source inside a
+    worktree.
+
+  generates:
+    - "pydantic:DeveloperSandboxPolicy"
+  depends_on:
+    - "lightwave://schemas/data/enums/persona_tiers"
+    - "lightwave://schemas/policy/security/worktree_policy"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'developer-sandbox-v1')."
+  - name: write_scope
+    type: "WriteScopeRef"
+    description: >
+      The single permitted write root for source files. All developer-tier
+      writes MUST land under {repo-root}/.worktrees/{active-session}/. Writes
+      outside this scope are rejected.
+  - name: persona_permissions
+    type: "PersonaPermissionsRef"
+    description: >
+      Maps persona tiers to source-file write capabilities. Developer-tier
+      personas (suffix -developer) may write; engineer and singular tiers are
+      read-only on source; orchestration tier may not write code at all.
+  - name: spec_authoring
+    type: "SpecAuthoringRef"
+    description: >
+      Carve-out: engineer-tier personas may write to spec/ (they author
+      specifications). This does NOT grant source-file write capability.
+  - name: enforcement
+    type: "EnforcementRef"
+    description: >
+      Where and how the sandbox is enforced: pre-commit hook reading
+      LW_PERSONA_TIER, plus bash-guard and review-gate backstops.
+  - name: status
+    type: str
+    description: "Lifecycle (conforms to document_statuses)."
+
+optional_fields:
+  - name: rationale
+    type: str
+    description: "Why the policy is shaped this way."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "developer-sandbox-v1"
+  write_scope:
+    root: "{repo-root}/.worktrees/{active-session}/"
+    description: >
+      Only path under which source-file writes are permitted. The active
+      session's worktree is the sole legal mutation surface.
+    reject_outside: true
+  persona_permissions:
+    developer:
+      may_write_source: true
+      write_root: "{repo-root}/.worktrees/{active-session}/"
+      persona_suffixes: ["-developer"]
+      persona_ids:
+        - "v_staff-engineer"
+        - "v_lightwave-ai-developer"
+        - "v_platform-developer"
+    engineer:
+      may_write_source: false
+      may_write_specs: true
+      persona_suffixes: ["-engineer"]
+      persona_ids:
+        - "v_cto"
+        - "v_qa-engineer"
+        - "v_architect"
+        - "v_release-engineer"
+        - "v_lightwave-ai-engineer"
+    orchestration:
+      may_write_source: false
+      may_write_specs: false
+      may_manage_assignments: true
+      persona_ids:
+        - "v_core"
+        - "v_scrum-manager"
+  spec_authoring:
+    path: "spec/"
+    permitted_tiers: ["engineer"]
+    description: >
+      Engineer-tier personas author specifications (PRD/SAD/Epic/ADR drafts)
+      under spec/. This is the only non-developer write surface, and it is
+      strictly specification content — never source code.
+  enforcement:
+    pre_commit_hook:
+      name: "dev/hooks/pre-commit"
+      mechanism: >
+        Inspect LW_PERSONA_TIER env var. If the tier is not 'developer',
+        reject the commit with a sandbox-violation message. Engineer-tier
+        commits touching only spec/ are allowed; any source-file change by
+        a non-developer tier is rejected.
+      env_var: "LW_PERSONA_TIER"
+      allowed_write_tier: "developer"
+      spec_only_tier: "engineer"
+      reject_tiers: ["orchestration"]
+      fail_message: >
+        Sandbox violation: only developer-tier personas may write to repo
+        source files, and only under .worktrees/{active-session}/. Set
+        LW_PERSONA_TIER=developer and operate from your session worktree.
+    bash_guard:
+      mechanism: "Block git write operations outside the active worktree path"
+      fail_message: "Write blocked: target path is outside the developer sandbox."
+    review_gate:
+      mechanism: >
+        ./dev/cli.sh review --converge treats non-developer-authored source
+        mutations as a blocker (red) regardless of tier seniority.
+  rationale: >
+    The 2026-06-22 incident showed agent sessions mutating the canonical
+    checkout directly. Even with worktree isolation in place, a persona
+    whose tier is not explicitly 'developer' has no business writing source
+    files — engineers review and specify, orchestrators assign work, neither
+    should be editing code. Encoding the tier check in the pre-commit hook
+    makes the rule structural rather than conventional, so a misconfigured
+    persona cannot quietly bypass it.
+
+    The spec/ carve-out exists because specifications are the legitimate
+    output of engineer-tier work; conflating 'no source writes' with 'no
+    writes at all' would block the spec authoring loop that feeds
+    developer-tier implementation.
+  status: "active"

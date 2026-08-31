@@ -1,0 +1,112 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/scheduled_jobs/cron_job"
+  title: "Cron Job Definition"
+  description: |
+    Declarative shape for a cron job v_core dispatches on schedule. Composes
+    with multiple other contracts: per-job model override (this schema's
+    optional fields), per-job tool_filter_group (refs tool_filter_groups),
+    per-job sink_class (refs channel_bindings).
+
+    Forensic motivation captured 2026-05-25 in ZeroClaw operation:
+    `zeroclaw cron add` / `cron update` today have no `--model` or
+    `--provider` flags — per-job routing happens via global default or by
+    inlining prompt directives the runtime doesn't parse. First-class
+    per-cron declarations are needed for Joel's targeted-models philosophy.
+
+    Per handoff 2026-05-25-zeroclaw-runtime-ergonomics R6 (should).
+    Depends on R1 (tool_filter_groups) which landed 2026-05-25.
+  generates:
+    - "pydantic:CronJob"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/interfaces/agent_tools/tool_filter_groups"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable cron job identifier (slug — e.g. 'morning_standup', 'drift_audit_nightly')"
+  - name: name
+    type: str
+    description: "Human-readable name"
+  - name: schedule
+    type: str
+    description: "Cron expression (standard 5-field or 7-field) OR a friendly alias (e.g. '@hourly', '@daily')"
+  - name: job_class
+    type: str
+    description: |
+      Job class slug — references workflows/orchestration/llm_concurrency
+      job_classes. Determines concurrency cap, preemption priority, wall-clock
+      budget. Enum: chat | tool-heavy | strategic | maintenance | dream-capture
+      | metric-aggregation | housekeeping.
+  - name: dispatch
+    type: "DispatchRef"
+    description: |
+      What this cron actually does on tick. Sub-schema Dispatch:
+        kind (enum: agent_session | blueprint | shell_command | http_request),
+        target (str — agent role for agent_session, blueprint slug for blueprint,
+          command for shell_command, URL for http_request),
+        prompt_template (str|null, for agent_session — Jinja-ish template),
+        args (dict|null, parameters passed to the target).
+
+optional_fields:
+  - name: model_override
+    type: str
+    description: "Override the global default model. References integrations/llm_providers/models/<id>. Resolution order: cron field → job_class default → global default."
+  - name: provider_override
+    type: str
+    description: "Override the global default provider. References integrations/llm_providers/<id>."
+  - name: tool_filter_group_override
+    type: str
+    description: "Override the job_class default tool group. References tool_filter_groups.groups[].name. Defaults to job_class's binding."
+  - name: session_target
+    type: str
+    description: "If this cron should write to a specific session (instead of spawning ephemeral): session id or sink_class slug."
+  - name: sink_class_override
+    type: str
+    description: "Override the default reporting sink. References channel_bindings.sink_classes."
+  - name: enabled
+    type: bool
+    description: "Soft-disable without deleting the cron entry. Default true."
+  - name: max_consecutive_failures
+    type: int
+    description: "Auto-disable after N consecutive failures. Default 3."
+  - name: notes
+    type: str
+    description: "Free-form notes (intent, owner, related artifacts)."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "morning_standup"
+  name: "Morning standup digest"
+  schedule: "0 8 * * *" # 8 AM daily
+  job_class: "strategic"
+  dispatch:
+    kind: "agent_session"
+    target: "v_research"
+    prompt_template: |
+      Summarize yesterday's git activity across all lightwave-* repos.
+      Flag any drift, surface open PRs, propose top 3 priorities for today.
+      Emit to Telegram (sysadmin_alert sink).
+    args:
+      lookback_hours: 24
+      repos:
+        [
+          "lightwave-core",
+          "lightwave-cli",
+          "lightwave-sys",
+          "lightwave-platform",
+        ]
+  model_override: "claude-sonnet-4-6" # strategic work warrants the better model
+  provider_override: "anthropic" # direct Anthropic, not via OpenRouter relay (cheaper for this case)
+  tool_filter_group_override: "analyst" # research tools, no edit/write
+  session_target: null # ephemeral
+  sink_class_override: "sysadmin_alert"
+  enabled: true
+  max_consecutive_failures: 3
+  notes: "Morning rundown. Strategic = preemptable by chat per llm_concurrency. Cost ~$0.05/run."

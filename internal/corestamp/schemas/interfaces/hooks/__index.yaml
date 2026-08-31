@@ -1,0 +1,16 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/interfaces/hooks/__index"
+  title: "Hooks Interface Registry"
+  description: "Agent and git hook contracts — shape in stamp, source in ~/.lightwave/config/hooks/."
+
+schemas:
+  git_doctor: git_doctor.yaml
+  pre_tool_use_git: pre_tool_use_git.yaml
+  verifier_protection: verifier_protection.yaml
+  ci_gate_event: ci_gate_event.yaml
+  discussion_event: discussion_event.yaml
+  issue_automation_event: issue_automation_event.yaml
+  gha_signal_event: gha_signal_event.yaml
+  gh_notif_event: gh_notif_event.yaml
+  worktree_lifecycle_hook: worktree_lifecycle_hook.yaml

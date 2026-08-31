@@ -1,0 +1,40 @@
+name: "voice_profile_tune"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/voice_profile_tune"
+  title: "Voice profile tune SOP"
+  description: |
+    v_speak loop: audit bindings → edit profile → preview → commit registry.
+  depends_on:
+    - "lightwave://schemas/data/meta/voice_tone_registry"
+
+id: voice_profile_tune
+title: "Tune persona voice profile"
+version: 1.0.0
+execution_mode: interactive
+
+trigger:
+  source: operator
+  event: voice_tune_requested
+
+parameters:
+  - name: persona
+    type: string
+
+steps:
+  - id: audit_bindings
+    tool: shell
+    args:
+      command: lw voice profile list
+
+  - id: validate
+    tool: shell
+    args:
+      command: lw voice profile validate
+
+  - id: preview
+    tool: shell
+    args:
+      command: |
+        lw voice speak --persona "${persona}" --text "Preview line for ${persona} tone profile."

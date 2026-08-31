@@ -1,0 +1,38 @@
+# =============================================================================
+# INTEGRATIONS SCHEMA REGISTRY (Category G — Integrations)
+# =============================================================================
+# External service catalogs and SDK definitions: LLM providers, OAuth
+# providers, message brokers, payment gateways, Notion/GitHub projections,
+# external sync bindings, etc. The "what external things does the ecosystem
+# talk to" layer.
+#
+# Sub-categories:
+#   llm_providers/    — LLM provider + model catalog (Phase 1: cost-intelligence alignment, 2026-06-21)
+#   oauth_providers/  — OAuth integration shapes (planned)
+#   message_brokers/  — Email address registry (active); Slack, Telegram, gateway (planned)
+#   payment_gateways/ — Stripe (existing legacy: integrations/stripe/)
+#   storage_providers/ — AWS S3, Google Drive, etc. (planned)
+#   forgejo/          — self-hosted forge API mirror
+#   sync/             — external_ref id map + outbox (CORE-0048/0049)
+#   notion/           — Notion page/database projection shapes
+#   github/           — GitHub milestone / Projects v2 / PR metadata shapes
+#
+# Added 2026-05-25 as Sprint Plan amendment per Phase 1g handoff triage.
+# The locked 4-category collapse (data/interfaces/workflows/policy) didn't
+# accommodate external service catalogs cleanly; integrations/ is the 5th
+# schemas sub-category to close that gap.
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/integrations/__index"
+  title: "Integrations Schema Registry"
+  description: "Sub-registry for external service catalogs and SDK definitions. Schemas land here as integration work progresses; follow-up sprint authors LLM provider catalog (handoff R1) + model catalog (R2) + OAuth lifecycle (R6) + provider loader (R12)."
+
+schemas:
+  llm_providers: llm_providers/__index.yaml
+  forgejo: forgejo/__index.yaml
+  message_brokers: message_brokers/__index.yaml
+  sync: sync/__index.yaml
+  notion: notion/__index.yaml
+  github: github/__index.yaml

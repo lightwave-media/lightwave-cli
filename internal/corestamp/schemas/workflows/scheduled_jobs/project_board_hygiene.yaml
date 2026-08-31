@@ -1,0 +1,26 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/scheduled_jobs/project_board_hygiene"
+  title: "Project Board Hygiene — v_scrum-manager heartbeat"
+  description: |
+    Reconciles Lightwave Swarm (org project #3): labels, milestones, repo links,
+    and open swarm-label issues on the board. Invoked by nullclaw/v_core cron
+    every 30 minutes and by github-org-sync workflow every 6 hours as backstop.
+
+    Owner persona: v_scrum-manager (daemon-class). CLI surface: lw scrum sync.
+    Observability: ~/.lightwave/observability/scrum-sync.jsonl
+
+name: "project_board_hygiene"
+
+id: project_board_hygiene
+title: "Lightwave Swarm board hygiene"
+job_class: maintenance
+schedule: "*/30 * * * *"
+handler:
+  transport: cli
+  command: "lw scrum sync --json"
+budget_ref: heartbeat_budget.per_heartbeat_task_budgets.queue_depth_probe
+persona: v_scrum-manager
+invariants:
+  - no_recursive_strategic_delegation
+  - tool_group_compliance

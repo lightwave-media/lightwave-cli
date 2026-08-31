@@ -1,0 +1,34 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/harness_target_kinds"
+  title: "Harness Target Kinds Enum"
+  description: |
+    Closed set of safety-harness artifact classes an HCR
+    (harness_change_request) may target — the operator-owned surfaces an agent
+    is hard-blocked from self-applying (CLAUDE.md §9). Extracted from
+    harness_change_request.target_kind prose per R-41 (values_ref binding) /
+    R-5 (no hardcoded enums). Authored 2026-06-28 per CORE-0045.
+  generates:
+    - "pydantic:HarnessTargetKind"
+  depends_on: []
+
+name: harness_target_kinds
+description: "Safety-harness artifact class an HCR targets"
+default: claude_hook
+closed: true
+options:
+  - value: claude_settings
+    label: "Claude settings"
+    description: "~/.claude/settings.json — hook/permission registration (§9 hard-blocked from agent edit)"
+  - value: claude_hook
+    label: "Claude hook"
+    description: "A ~/.claude/hooks/*.ts hook script (§9 hard-blocked)"
+  - value: check_script
+    label: "Check script"
+    description: "A checks/*.sh verifier (CORE-0043: currently agent-editable; should not be)"
+  - value: review_prompt
+    label: "Review prompt"
+    description: "review_prompt.tpl — L3 grader input; should not be agent-editable"
+  - value: persona_hard_rules
+    label: "Persona hard rules"
+    description: "v_*.yaml hard_rules — a persona's own grader"

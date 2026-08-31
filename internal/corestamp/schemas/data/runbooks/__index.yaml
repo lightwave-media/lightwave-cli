@@ -1,0 +1,33 @@
+# =============================================================================
+# RUNBOOKS SCHEMA REGISTRY (kind family: runbooks)
+# =============================================================================
+# The runbook system governs interactive, executable workflow documents
+# (Gruntwork-style MDX runbooks). This schema family defines the stamp
+# (what a runbook IS, its editions, its contact sheets, its library).
+#
+# The photographic print-making metaphor governs the naming:
+#   - runbook_definition  = the NEGATIVE (original schema, source of truth)
+#   - runbook_edition     = the PRINT (numbered exhibition copy)
+#   - runbook_contact_sheet = the PROOF (AI analysis preview)
+#   - runbook_library     = the GALLERY (searchable collection)
+#
+# Governs cross-domain: any artifact type (infra, scaffold, voice, vision)
+# that can be expressed as a runbook (MDX + blocks + checks/commands).
+# =============================================================================
+
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/runbooks/__index"
+  title: "Runbook Schema Registry"
+  description: |
+    Maps runbook schema names to their YAML files. This kind-family
+    defines the formal specification structure for runbooks as managed
+    artifacts — distinct from the src/runbooks/ directory (which holds
+    runbook INSTANCES, just as src/schemas/ holds the stamp and
+    ~/.lightwave/ holds the prints).
+
+schemas:
+  runbook_definition: runbook_definition.yaml
+  runbook_edition: runbook_edition.yaml
+  runbook_contact_sheet: runbook_contact_sheet.yaml
+  runbook_library: runbook_library.yaml

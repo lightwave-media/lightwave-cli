@@ -1,0 +1,127 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/governance/channel_bindings"
+  title: "Channel ↔ Persona ↔ Purpose Binding Registry"
+  description: |
+    Declares which agent persona owns which inbound/outbound channel and for
+    what purpose. Cron jobs and SOPs reference sink_classes (e.g.,
+    "sysadmin_alert") instead of hardcoding channels — the binding registry
+    resolves the class to the actual channel + persona.
+
+    Joel's operating model (captured via handoff 2026-05-25-zeroclaw-runtime-
+    ergonomics R2 must):
+      Telegram   → v_core    (sysadmin: health, ZeroClaw state, self-awareness)
+      WhatsApp   → v_gm      (personal: family, calendar, reminders, legal/financial)
+      Slack      → team      (v_research, v_architect, v_cto, v_qa: issues, sprints)
+      Email      → formal    (customer comms, briefings, digests)
+
+    Without this stamped: every cron prompt inlines "Telegram me X" and the
+    channel split is duplicated/inconsistent across N jobs. With it stamped:
+    cron jobs declare sink_class and the runtime resolves to channel+recipient.
+
+    NOTE: channel ADAPTER shapes (Slack API config, Telegram bot config, etc.)
+    are a separate concern that lands in integrations/message_brokers/ when
+    that sub-folder is built. This schema is the operator BINDING layer.
+  generates:
+    - "pydantic:ChannelBindingsRegistry"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable identifier (e.g. 'joel-default', 'team-shared')"
+  - name: channel_bindings
+    type: "list[ChannelBindingRef]"
+    description: |
+      Per-channel persona + purpose mapping. Sub-schema ChannelBinding:
+        channel (str, enum: telegram | whatsapp | slack | email | discord | sms | gateway_http | mcp),
+        persona (str, agent role slug — e.g. v_core, v_gm, v_research, formal),
+        purpose (str, enum: sysadmin | personal_assistant | team_thread | formal | broadcast | inbound_only),
+        allowed_outbound_emitters (list[str], agent-role slugs or 'any' or 'system' — who may write to this channel),
+        inbound_routing_default (str, agent-role slug — where inbound messages route by default),
+        notes (str).
+  - name: sink_classes
+    type: "list[SinkClassRef]"
+    description: |
+      Sink classes that cron jobs / SOPs reference instead of naming channels directly.
+      Sub-schema SinkClass:
+        class_name (str, slug — e.g. sysadmin_alert | personal_assistant | team_thread | formal | dev_broadcast),
+        default_channel (str, channel slug from channel_bindings above),
+        allowed_overrides (list[str], other channel slugs that may override per-job),
+        description (str, when to use this sink class).
+
+optional_fields:
+  - name: per_job_overrides_allowed
+    type: bool
+    description: "Whether individual jobs may override the sink_class default channel. Default true; overrides logged."
+  - name: override_audit_log
+    type: str
+    description: "Path under ~/.lightwave/observability/ where sink overrides are recorded."
+  - name: cross_channel_dedup
+    type: "CrossChannelDedupRef"
+    description: |
+      Sub-schema CrossChannelDedup:
+        enabled (bool, prevent same message firing on multiple channels in N seconds),
+        window_secs (int).
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "joel-default"
+  channel_bindings:
+    - channel: "telegram"
+      persona: "v_core"
+      purpose: "sysadmin"
+      allowed_outbound_emitters: ["v_core", "system", "heartbeat"]
+      inbound_routing_default: "v_core"
+      notes: "Joel's primary sysadmin/ZeroClaw chat. Always-on channel for daemon state, health, and v_core conversational interface."
+    - channel: "whatsapp"
+      persona: "v_gm"
+      purpose: "personal_assistant"
+      allowed_outbound_emitters: ["v_gm", "system"]
+      inbound_routing_default: "v_gm"
+      notes: "Personal life context — family, calendar, reminders. Separate persona keeps sysadmin out of personal conversations."
+    - channel: "slack"
+      persona: "team"
+      purpose: "team_thread"
+      allowed_outbound_emitters:
+        ["v_research", "v_architect", "v_cto", "v_qa", "v_dev"]
+      inbound_routing_default: "v_core"
+      notes: "Team channel — issue triage, sprint sync, professional discussion. v_core triages inbound and re-routes to specific persona."
+    - channel: "email"
+      persona: "formal"
+      purpose: "formal"
+      allowed_outbound_emitters: ["formal", "v_cto"]
+      inbound_routing_default: "v_core"
+      notes: "Customer comms, briefings, digests. v_core triages inbound; only 'formal' persona (or v_cto for exec-level) may send."
+  sink_classes:
+    - class_name: "sysadmin_alert"
+      default_channel: "telegram"
+      allowed_overrides: ["slack"]
+      description: "ZeroClaw daemon health, alerts, dead-man-switch. Default Telegram; may override to Slack for team-visible incidents."
+    - class_name: "personal_assistant"
+      default_channel: "whatsapp"
+      allowed_overrides: []
+      description: "Personal reminders and life-domain pings. Never overrides to professional channels."
+    - class_name: "team_thread"
+      default_channel: "slack"
+      allowed_overrides: ["email"]
+      description: "Team-visible work updates. Override to email for formal/archived threads."
+    - class_name: "formal"
+      default_channel: "email"
+      allowed_overrides: []
+      description: "External-facing comms. Never overrides — formality is the point."
+    - class_name: "dev_broadcast"
+      default_channel: "slack"
+      allowed_overrides: ["telegram"]
+      description: "Dev sprint status, PR pings, CI breaks. Default Slack; Telegram override for solo-context urgency."
+  per_job_overrides_allowed: true
+  override_audit_log: "~/.lightwave/observability/sink_overrides.jsonl"
+  cross_channel_dedup:
+    enabled: true
+    window_secs: 30

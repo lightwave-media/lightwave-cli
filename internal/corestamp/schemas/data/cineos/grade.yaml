@@ -1,0 +1,82 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/grade"
+  title: "Grade"
+  description: |
+    A portable grade attached to a Clip — the look as an exchangeable
+    artifact, not the operator node graph (that stays in the grading tool).
+    kind selects the payload format: blg (full Baselight grade stack), cdl
+    (ASC CDL, optionally inline), lut, look. Provenance records where the
+    grade came from (host:job:scene + build) per the study's addressing
+    convention.
+  generates:
+    - "go:Grade"
+    - "typescript:Grade"
+    - "zig:Grade"
+    - "json_schema:grade"
+  depends_on:
+    - "lightwave://schemas/data/cineos/clip"
+
+required_fields:
+  - name: clip_ref
+    type: str
+    description: "Slug/id of the Clip this grade applies to"
+  - name: kind
+    type: str
+    description: "Payload format; values from the cineos_grade_kinds enum."
+    values_ref: "lightwave://schemas/data/enums/cineos_grade_kinds"
+
+optional_fields:
+  - name: payload_ref
+    type: str
+    description: "Path/$ref to the payload artifact (BLG file, .cdl/.ccc, .cube)"
+  - name: payload_hash
+    type: str
+    description: "SHA-256 of the payload artifact for drift detection"
+  - name: slope
+    type: "list[float]"
+    description: "CDL slope RGB triple (inline CDL; kind=cdl)"
+  - name: offset
+    type: "list[float]"
+    description: "CDL offset RGB triple (inline CDL)"
+  - name: power
+    type: "list[float]"
+    description: "CDL power RGB triple (inline CDL)"
+  - name: saturation
+    type: float
+    description: "CDL saturation (inline CDL)"
+  - name: source_host
+    type: str
+    description: "Origin host (Baselight address triple, part 1)"
+  - name: source_job
+    type: str
+    description: "Origin job (part 2)"
+  - name: source_scene
+    type: str
+    description: "Origin scene/timeline (part 3)"
+  - name: created_by
+    type: str
+    description: "Who authored the grade"
+  - name: source_build
+    type: str
+    description: "Software build that wrote the payload (e.g. 'Baselight LOOK 7.0.0.24962')"
+  - name: notes
+    type: str
+    description: "Grade notes"
+
+relations:
+  parent: clip
+  children: []
+
+example:
+  clip_ref: "a046c028-251219-r1js"
+  kind: "cdl"
+  slope: [1.02, 0.99, 0.97]
+  offset: [0.01, 0.0, -0.01]
+  power: [1.0, 1.0, 1.05]
+  saturation: 0.92
+  source_host: "localhost"
+  source_job: "wet_under_blue_sky"
+  source_scene: "winter-time"
+  created_by: "Joel Schaeffer"
+  source_build: "Baselight LOOK 7.0.0.24962"

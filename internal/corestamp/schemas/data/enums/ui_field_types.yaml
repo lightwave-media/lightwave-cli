@@ -1,0 +1,35 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/ui_field_types"
+  title: "UI Field Types"
+  description: |
+    The lean field kinds a collection record can declare — the set the v1
+    projects collection actually uses. media resolves through mediaUrl();
+    array uses the Field.of element shape. New kinds are added additively when
+    a record needs them.
+  generates:
+    - "typescript:UiFieldType"
+
+name: ui_field_types
+description: "Field kinds for a collection's lean field set"
+default: text
+closed: true
+options:
+  - value: text
+    label: "Text"
+    description: "Single-line or short text"
+  - value: number
+    label: "Number"
+    description: "Numeric value"
+  - value: bool
+    label: "Boolean"
+    description: "True/false toggle"
+  - value: select
+    label: "Select"
+    description: "One value from Field.options"
+  - value: media
+    label: "Media"
+    description: "A media key resolved via mediaUrl()"
+  - value: array
+    label: "Array"
+    description: "Repeated values; element shape in Field.of"

@@ -1,0 +1,43 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_screenplay_element_types"
+  title: "CineOS Screenplay Element Type Enum"
+  description: |
+    The seven element types a parsed screenplay decomposes into
+    (screenplay_scene.elements[].type). Drives the dramatized-audiobook segment
+    planner: cue names select voices but are never audible, parentheticals steer
+    delivery but are never read aloud. Closed — the element taxonomy is the
+    parser contract (EPIC-CINE-AUDIO-001, decisions C/D).
+  generates:
+    - "go:CineScreenplayElementType"
+    - "typescript:CineScreenplayElementType"
+    - "zig:CineScreenplayElementType"
+    - "json_schema:cineos_screenplay_element_types"
+  depends_on: []
+
+name: cineos_screenplay_element_types
+description: "Element types of a parsed screenplay scene"
+default: action
+closed: true
+options:
+  - value: scene_heading
+    label: "Scene Heading"
+    description: "Slugline opening a scene (INT./EXT. + set + time of day); narrator reads it after the scene-change earcon"
+  - value: action
+    label: "Action"
+    description: "Scene direction / description; read by the narrator voice. Unclassified blocks default here (FDX General/Shot map to action)"
+  - value: character
+    label: "Character Cue"
+    description: "Cue naming the next speaker; consumed to select the voice for the following dialogue, never audible in output"
+  - value: dialogue
+    label: "Dialogue"
+    description: "Spoken line, performed in the speaking character's assigned voice"
+  - value: parenthetical
+    label: "Parenthetical"
+    description: "Delivery direction inside a dialogue block; steers TTS delivery where supported, never read aloud, retained for UI display"
+  - value: transition
+    label: "Transition"
+    description: "Editorial transition (CUT TO:, DISSOLVE TO:); produces no audio — the earcon carries the beat — except narrative transitions (e.g. SMASH CUT TO:), which are narrator lines"
+  - value: dual_dialogue
+    label: "Dual Dialogue"
+    description: "A dialogue block simultaneous with a partner block in the script (linked by dual_group); MVP renders sequentially, Cinematic Mode may honour the overlap"

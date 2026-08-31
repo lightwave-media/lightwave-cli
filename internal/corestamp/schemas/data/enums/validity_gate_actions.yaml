@@ -1,0 +1,34 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/validity_gate_actions"
+  title: "Validity Gate Actions"
+  description: |
+    Closed enum of what the host validity gate does when a scored mutation
+    falls below its contract's `min_fidelity_score`. Consumed by
+    `policy/validity/validity_contract.yaml#/required_fields/action`.
+
+    Ordered by increasing severity. The escalation path is deliberate: a new
+    contract starts at `warn` and only moves to `block` once its score
+    distribution has been soaked, because the score is corpus-relative and a
+    threshold that is right for one contract is arbitrary for another.
+
+    Wire encoding lowercase, matching the values already written by
+    ~/.lightwave/lib/validity/ into observability/validity.jsonl.
+  generates:
+    - "pydantic:ValidityGateAction"
+  depends_on: []
+
+name: validity_gate_actions
+description: "Validity gate response below threshold — log | warn | block"
+default: "warn"
+closed: true
+options:
+  - value: log
+    label: "Log"
+    description: "Record the measurement and proceed silently. For contracts still being calibrated, where stderr noise would train the operator to ignore the gate."
+  - value: warn
+    label: "Warn"
+    description: "Record, print to stderr, and proceed. The default for a new contract — visible drift without blocking work on an unproven threshold."
+  - value: block
+    label: "Block"
+    description: "Refuse the tool call. Reserved for contracts whose score distribution has been observed long enough that the threshold is known to separate faithful work from drift."

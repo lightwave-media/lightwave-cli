@@ -1,0 +1,81 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/integrations/github/project"
+  title: "GitHub Projects v2 — projection shape"
+  description: |
+    Org/user Project (Projects v2) and optional project item linkage. Lightwave
+    Swarm is org project #3. Local scrum rows project onto items via
+    external_ref bindings.
+  generates:
+    - "pydantic:GitHubProject"
+    - "postgres:DDL"
+  table_kind: entity
+  table_name: github_projects
+
+primary_key:
+  column: id
+  type: uuid
+
+natural_key:
+  column: composite_key
+  unique: true
+
+required_fields:
+  - name: composite_key
+    type: str
+    description: "owner_login#project_number (e.g. lightwave-media#3)"
+    storage: db
+  - name: owner_login
+    type: str
+    description: "Org or user login that owns the project"
+    storage: db
+    indexed: true
+  - name: number
+    type: int
+    description: "Project number (Lightwave Swarm = 3)"
+    storage: db
+  - name: title
+    type: str
+    description: "Project title"
+    storage: db
+  - name: sync_status
+    type: str
+    description: "pending | synced | drift | error"
+    storage: db
+  - name: created_at
+    type: datetime
+    storage: db
+  - name: updated_at
+    type: datetime
+    storage: db
+
+optional_fields:
+  - name: github_node_id
+    type: str
+    description: "GraphQL ProjectV2 node ID"
+    storage: db
+  - name: url
+    type: str
+    description: "Browser URL"
+    storage: db
+  - name: short_description
+    type: str
+    description: "Project short description"
+    storage: db
+  - name: closed
+    type: bool
+    description: "True when the project is closed"
+    storage: db
+
+example:
+  composite_key: "lightwave-media#3"
+  owner_login: lightwave-media
+  number: 3
+  title: Lightwave Swarm
+  sync_status: synced
+  github_node_id: "PVT_kwDOAexample"
+  url: "https://github.com/orgs/lightwave-media/projects/3"
+  short_description: "Org swarm board"
+  closed: false
+  created_at: "2026-05-01T12:00:00Z"
+  updated_at: "2026-08-12T12:00:00Z"

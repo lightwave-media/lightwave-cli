@@ -1,0 +1,38 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/git_fleet_audit"
+  title: "Git Fleet Audit SOP — weekly topology scan"
+  description: |
+    Scheduled SOP that runs `lw git audit --fix --dry-run` across the operator
+    workspace, writes the report to ~/.lightwave/reports/, and logs summary to
+    observability. Consumed by v_core cron. Copy to ~/.lightwave/sops/ on install.
+  generates:
+    - "go:GitFleetAuditSOP"
+  depends_on:
+    - "lightwave://schemas/data/meta/local_git_audit_report"
+
+
+name: "git_fleet_audit"
+id: git_fleet_audit
+title: "Weekly git fleet audit"
+version: 1.0.0
+execution_mode: auto
+
+trigger:
+  source: cron
+  schedule: "0 9 * * 1"
+
+parameters: []
+
+steps:
+  - id: audit
+    tool: shell
+    args:
+      command: "lw git audit --fix --dry-run --json"
+
+  - id: log_summary
+    tool: memory_store
+    args:
+      namespace: "sessions"
+      key: "git-fleet-audit-$(date +%Y-%m-%d)"
+      value: "Git fleet audit completed at $(date -u +%FT%TZ)"

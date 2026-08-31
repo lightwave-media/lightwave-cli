@@ -1,0 +1,46 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_revision_colors"
+  title: "CineOS Revision Color Enum"
+  description: |
+    The industry-standard script revision color sequence (script_version.revision_color).
+    Each revision of a shooting script is issued on the next color of paper. Closed.
+  generates:
+    - "go:CineRevisionColor"
+    - "typescript:CineRevisionColor"
+    - "zig:CineRevisionColor"
+    - "json_schema:cineos_revision_colors"
+  depends_on: []
+
+name: cineos_revision_colors
+description: "Standard script-revision color sequence"
+default: white
+closed: true
+options:
+  - value: white
+    label: "White"
+    description: "Production draft (first issue)"
+  - value: blue
+    label: "Blue"
+    description: "First revision"
+  - value: pink
+    label: "Pink"
+    description: "Second revision"
+  - value: yellow
+    label: "Yellow"
+    description: "Third revision"
+  - value: green
+    label: "Green"
+    description: "Fourth revision"
+  - value: goldenrod
+    label: "Goldenrod"
+    description: "Fifth revision"
+  - value: buff
+    label: "Buff"
+    description: "Sixth revision"
+  - value: salmon
+    label: "Salmon"
+    description: "Seventh revision"
+  - value: cherry
+    label: "Cherry"
+    description: "Eighth revision"

@@ -1,0 +1,99 @@
+_meta:
+  version: 1.1.0
+  schema_id: lightwave://schemas/data/meta/failure_record
+  title: Universal Failure Record
+  description: |
+    Append-only superset record for any deterministic failure (lw, docs gate,
+    harness, CI). Feeds failure_triage SOP and nulltickets/GitHub transport.
+
+    A failure record is a development signal for the agent that produced it.
+    It says what invariant failed, what correct structure looks like, how to
+    repair and re-verify, and which circumvention techniques are forbidden.
+  generates:
+  - pydantic:FailureRecord
+  depends_on:
+  - lightwave://schemas/data/enums/failure_kinds
+required_fields:
+- name: id
+  type: str
+  description: UUID or slug
+- name: kind
+  type: str
+  description: failure_kinds enum
+- name: summary
+  type: str
+  description: Human-readable summary of the failure event.
+- name: detected_at
+  type: str
+  description: ISO 8601 timestamp when the failure was detected.
+- name: session_id
+  type: str
+  description: Session context in which the failure occurred.
+- name: repo
+  type: str
+  description: Repository where the failure was detected.
+- name: exit_code
+  type: int
+  description: Process exit code associated with the failure.
+- name: signal_class
+  type: str
+  description: DEVELOPMENT, MAINTENANCE, ARCHITECTURAL, or NOISE.
+- name: violated_invariant
+  type: str
+  description: The specific behavioral or structural contract that failed.
+- name: expected_structure
+  type: str
+  description: The implementation shape that satisfies the invariant.
+- name: cure_command
+  type: str
+  description: Deterministic repair steps or command for the agent to follow.
+- name: do_not
+  type: str
+  description: Explicitly forbidden bypass, skip, weakening, or deactivation techniques.
+- name: next_verification
+  type: str
+  description: Exact command that proves the repair satisfies the gate.
+- name: fingerprint
+  type: str
+  description: Stable deduplication key derived from repo, gate, invariant, and evidence.
+optional_fields:
+- name: command
+  type: str
+  description: Shell command or operation that produced the failure.
+- name: ticket_ref
+  type: str
+  description: Issue or ticket reference tracking this failure.
+- name: fsm_state
+  type: str
+  description: triage|research|architect|staff|ready|in_progress|done
+- name: payload_json
+  type: str
+  description: JSON payload with extended failure detail.
+- name: source
+  type: str
+  description: Originating control such as pre-commit, pre-push, local-ci, or github-actions.
+- name: gate_version
+  type: str
+  description: Version or content hash of the detector that emitted the failure.
+- name: affected_paths
+  type: list[str]
+  description: Repository-relative paths associated with the failure.
+- name: bypass_reason
+  type: str
+  description: Operator-supplied reason when an emergency bypass was attempted.
+example:
+  id: fail-1718712000
+  kind: tool-gap
+  summary: lw docs check failed in pre-commit
+  detected_at: '2026-06-18T12:00:00Z'
+  session_id: 2026-06-18-session
+  repo: lightwave-cli
+  exit_code: 1
+  signal_class: DEVELOPMENT
+  violated_invariant: JSON output must preserve the same failing exit status as human output.
+  expected_structure: Serialize the report, then evaluate violations and return nonzero.
+  cure_command: Fix the handler control flow and add known-bad plus known-good fixtures.
+  do_not: Do not ignore the exit code, disable the fixture, or bypass hooks.
+  next_verification: go test ./internal/cli -run TestHooksDoctor
+  fingerprint: lightwave-cli:hooks-doctor:json-false-green
+  fsm_state: triage

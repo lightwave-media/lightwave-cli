@@ -1,0 +1,195 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/scheduled_jobs/scheduled_task_protocol"
+  title: "Scheduled Task Protocol — SKILL.md Body Contract"
+  description: |
+    Canonical SKILL.md body contract every scheduled-task routine MUST
+    conform to so the swarm interoperates cleanly. Distinct from cron_job.yaml
+    (which defines the META — schedule, dispatch, model_override). This stamp
+    defines what the routine ITSELF (the SKILL.md body the dispatcher loads)
+    must contain to participate in handoffs, observability, and the autonomy
+    posture the fleet relies on.
+
+    Conformance is by structure, not by exhaustive prose match — every
+    section in `required_sections` must appear with the semantics described.
+    The protocol's leverage is interop: when v_scrum-manager hands off to
+    v_cto, when v_brain and v_core split brain vs config maintenance, when
+    v_release-engineer reads v_cto's notes — none of that works unless the
+    routines agree on channel naming, record shape, autonomy posture, and
+    failure mode.
+
+    Authored 2026-06-17 after the swarm hit the wall on three patterns the
+    operator kept adding ad-hoc to each new SKILL.md:
+      (a) routines that asked the operator mid-pass instead of acting,
+      (b) routines that leaked human-formatted text into machine handoff
+          channels and triggered downstream §9 refusals,
+      (c) routines with bespoke output channel names that v_core couldn't
+          aggregate across.
+    See CLAUDE.md §7 (stamp/print discipline) and §9 (spawn brake) for the
+    governing context.
+  generates:
+    - "pydantic:ScheduledTaskProtocol"
+  depends_on:
+    - "lightwave://schemas/workflows/scheduled_jobs/cron_job"
+    - "lightwave://schemas/data/enums/document_statuses"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable protocol identifier (matches the SKILL.md routine slug — e.g. 'v_cli-developer_heartbeat')."
+  - name: conforms_to
+    type: str
+    description: "URI of the protocol version this routine conforms to (e.g. 'lightwave://schemas/workflows/scheduled_jobs/scheduled_task_protocol@v1'). Goes in SKILL.md frontmatter."
+  - name: required_sections
+    type: "list[ProtocolSection]"
+    description: |
+      Ordered list of section headers a conforming SKILL.md must contain.
+      Each ProtocolSection: { heading (str), purpose (str), inheritance
+      (enum: persona | protocol | routine — where this section's content
+      originates) }. See `example.required_sections` for the canonical
+      eleven sections. Routines may add sections beyond this set; they
+      may not omit any in it.
+  - name: output_channel_convention
+    type: "ChannelConvention"
+    description: |
+      How the routine names its observability JSONL channels. Sub-schema:
+        per_routine_jsonl (str — fixed shape: '~/.lightwave/observability/<route>-<scope>.jsonl'
+          for high-volume telemetry: 'cto.jsonl', 'janitor.jsonl', 'dev-heartbeat.jsonl', etc.),
+        notes_jsonl (str — fixed shape: '~/.lightwave/observability/<writer>-notes.jsonl'
+          for cross-routine messages, AUDIENCE-KEYED. Each routine writes to ONE
+          notes channel; routing happens via the 'audience' field per record.
+          Reference impl: ~/.lightwave/observability/cto-notes.jsonl — v_cto writes
+          with audience: 'v_release-engineer' to direct messages downstream),
+        broadcast_jsonl (str — fixed: '~/.lightwave/observability/broadcasts.jsonl'),
+        reader_convention (str — e.g. 'reader filters by audience; tail -N --filter
+          .audience==<self> for inbox-style consumption').
+      Joel's existing channels (cto-notes.jsonl, cto.jsonl, janitor.jsonl,
+      release-eng.jsonl, validity.jsonl, spawn-gate.jsonl) all conform —
+      newcomers must match. The audience-keyed notes pattern is load-bearing
+      because it scales: adding a new audience adds a record field, not a new file.
+  - name: handoff_record_shape
+    type: "HandoffShape"
+    description: |
+      Shape of records written to a routine's notes channel for cross-routine
+      messages. Sub-schema:
+        machine_only (bool — MUST be true; never embed human-formatted prose),
+        required_keys (list[str] — at minimum: ts, agent, audience, topic),
+        optional_keys (list[str] — detail, action_proposed, pr_refs, payload),
+        forbidden_keys (list[str] — e.g. 'summary_text', 'human_label', 'attended_only'),
+        ordering (str — e.g. 'append-only; reader filters .audience==<self>
+          and uses windowed tail or jq stream').
+      Reference impl: cto-notes.jsonl — v_cto writes per-message records as
+      {ts, audience, topic, detail, action_proposed, pr_refs}. Human-formatted
+      text in these records triggers §9-style refusals downstream — this rule
+      is load-bearing. NEVER invent a parallel <source>-<sink>-handoff.jsonl
+      file when audience routing on the writer's notes channel covers it.
+  - name: inherited_hard_rules
+    type: "list[str]"
+    description: |
+      Hard rules every conforming routine inherits. Routines MAY add more
+      in their own SKILL.md; they MAY NOT subtract from this set. The set:
+        - Never end output with a question to the operator.
+        - Never edit ~/.claude/settings.json or ~/.claude/hooks/ (§9 boundary).
+        - Never push to main, never --no-verify, never --force, never -D,
+          never --hard, never --rebase from a routine.
+        - Never bypass the validity gate; respect 'action: block' decisions.
+        - Forbidden-by-persona items → silent skip + one-token bucket in
+          output, no lecture explaining the §9 binding. Joel wrote it.
+        - When in doubt, file an issue; do not silently invent.
+  - name: failure_mode
+    type: "FailureMode"
+    description: |
+      What happens when a routine cannot complete its work. Sub-schema:
+        gh_unauthenticated (str — 'SKIP cleanly, log, exit non-zero suppressed'),
+        lw_verb_missing (str — 'file ONE tool-gap issue on lightwave-cli, HALT pass'),
+        repo_dirty_or_active (str — 'GH-side triage only; skip local git ops'),
+        validity_gate_block (str — 'respect block, log, skip the write'),
+        retry_policy (str — fixed: 'no retry, no recovery, no force').
+      No routine recovers from failure. Failure is a signal to the next pass.
+
+optional_fields:
+  - name: handoff_to
+    type: "list[str]"
+    description: "Routines this one feeds (e.g. v_cto reads v_scrum-manager's handoff channel)."
+  - name: handoff_from
+    type: "list[str]"
+    description: "Routines this one consumes (inverse of handoff_to)."
+  - name: forbidden_actions
+    type: "list[str]"
+    description: "Routine-specific forbidden actions beyond inherited_hard_rules (e.g. v_cto_merge-sweep adds 'never gh pr close')."
+
+relations:
+  parent: "lightwave://schemas/workflows/scheduled_jobs/cron_job"
+  children: []
+
+example:
+  id: "v_core_wiring-pass"
+  conforms_to: "lightwave://schemas/workflows/scheduled_jobs/scheduled_task_protocol@v1"
+  required_sections:
+    - heading: "AUTONOMY POSTURE"
+      purpose: "Declares act-not-ask discipline; names what the routine WILL act on without check-in and the narrow set of actions it cannot take (the §9 boundary)."
+      inheritance: "protocol"
+    - heading: "Persona reference"
+      purpose: "One sentence pointing at the persona YAML whose authority_includes composes the routine's principles/soul/skills. NEVER restate them in SKILL.md."
+      inheritance: "persona"
+    - heading: "Scope"
+      purpose: "What dirs/repos/channels are inside this routine; what is delegated to siblings."
+      inheritance: "routine"
+    - heading: "Inputs (what you read every pass)"
+      purpose: "Observability channels + configs + catalogs the routine consumes for situational awareness."
+      inheritance: "routine"
+    - heading: "Per pass / Passes"
+      purpose: "Named, ordered passes describing the routine's work. Same order every heartbeat."
+      inheritance: "routine"
+    - heading: "Hard caps"
+      purpose: "Per-pass limits — edits, issues filed, wall-clock duration. Prevents runaway behavior."
+      inheritance: "protocol"
+    - heading: "Output"
+      purpose: "Stdout shape (SUMMARY + HANDOFF) + JSONL channel append shape + broadcast line. Concrete format declared."
+      inheritance: "protocol"
+    - heading: "Tool gaps"
+      purpose: "What to do when a required lw verb is missing — file ONE tool-gap issue on lightwave-cli, halt pass."
+      inheritance: "protocol"
+    - heading: "Hard rules"
+      purpose: "Inherited protocol rules + routine-specific NEVERs. Mirrors persona but does not restate principles."
+      inheritance: "protocol"
+    - heading: "Out of scope (delegated)"
+      purpose: "Explicit delegation table — what other routine/skill handles each adjacent concern. Prevents scope creep."
+      inheritance: "routine"
+    - heading: "Failure mode"
+      purpose: "gh unauth, lw missing, DIRTY/ACTIVE repo, validity block — each gets a one-line policy. No retry, no recovery."
+      inheritance: "protocol"
+  output_channel_convention:
+    per_routine_jsonl: "~/.lightwave/observability/<route>-<scope>.jsonl"
+    notes_jsonl: "~/.lightwave/observability/<writer>-notes.jsonl"
+    broadcast_jsonl: "~/.lightwave/observability/broadcasts.jsonl"
+    reader_convention: "filter .audience==<self> on the writer's notes channel; windowed tail (last 24h) for inbox-style read"
+  handoff_record_shape:
+    machine_only: true
+    required_keys: ["ts", "agent", "audience", "topic"]
+    optional_keys: ["detail", "action_proposed", "pr_refs", "payload"]
+    forbidden_keys: ["summary_text", "human_label", "attended_only"]
+    ordering: "append-only; reader filters by .audience and reads windowed (last 24h) for inbox-style consumption"
+  inherited_hard_rules:
+    - "Never end output with a question to the operator."
+    - "Never edit ~/.claude/settings.json or ~/.claude/hooks/ (§9 boundary)."
+    - "Never push to main, never --no-verify, --force, -D, --hard, --rebase from a routine."
+    - "Never bypass the validity gate; respect action:block."
+    - "Forbidden-by-persona items → silent skip + one-token bucket; no lecture."
+    - "When in doubt, file an issue; do not silently invent."
+    - "Never invent a new observability channel when an audience-keyed existing one routes."
+  failure_mode:
+    gh_unauthenticated: "SKIP cleanly, log, exit non-zero suppressed"
+    lw_verb_missing: "file ONE tool-gap issue on lightwave-cli, HALT pass"
+    repo_dirty_or_active: "GH-side triage only; skip local git ops"
+    validity_gate_block: "respect block, log, skip the write"
+    retry_policy: "no retry, no recovery, no force"
+  handoff_from:
+    - "v_scrum-manager (reads scrum-notes.jsonl filtered by audience: 'v_cto')"
+  handoff_to: []
+  forbidden_actions:
+    - "Never write feature code in ~/dev/<repo>/ — route via issue → PR."
+    - "Never edit ~/.lightwave/brain/ — v_brain's territory."
+    - "Never silently rename when two configs disagree — file issue."

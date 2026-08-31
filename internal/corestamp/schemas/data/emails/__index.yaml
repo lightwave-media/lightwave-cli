@@ -1,0 +1,43 @@
+# =============================================================================
+# EMAIL TEMPLATE SCHEMA REGISTRY (Category A / kind family: emails)
+# =============================================================================
+# Per-template prop schemas for React Email components in
+# lightwave-ui/src/emails/. Each schema declares the contract (variables +
+# types + validation) the component consumes; the component itself lives
+# in lightwave-ui (rendering layer) — never duplicated here.
+#
+# Cross-checked by `lw lint email` per template_kinds.yaml (kind:
+# email_template) — every TSX file in lightwave-ui/src/emails/ must have a
+# corresponding schema here.
+#
+# Distinction:
+#   schema (here)       = contract / props / validation
+#   component (in ui)   = JSX rendering
+#   renderer (in platform) = Go (or Node sidecar) that takes schema + data
+#                            and produces HTML
+#   transport (SES)     = wire delivery
+# =============================================================================
+
+_meta:
+  version: "0.2.0"
+  schema_id: "lightwave://schemas/data/emails/__index"
+  title: "Email Template Schema Registry"
+  description: |
+    Per-TSX-template prop schemas for React Email components in
+    lightwave-ui/src/emails/. Only production-shaped TSX files get
+    schemas here; design-mock TSX (hardcoded body, branding-only
+    parameters) are NOT yet schema'd — when their TSX gets
+    parameterized, add the schema then.
+
+    Cross-checked by `lw lint email` per template_kinds.yaml.
+  changelog:
+    - version: "0.2.0"
+      date: "2026-06-03"
+      summary: "dropped 9 design-mock schemas (simple_welcome_02, simple_invite, simple_verification, image_welcome, video_welcome_01/02/03, mockup_01/02) per PR #110 review — they were fictional contracts (production_target_fields only, empty required_fields). Add back when TSX parameterizes."
+    - version: "0.1.0"
+      date: "2026-06-02"
+      summary: "initial backfill — 11 schemas matching lightwave-ui/src/emails/*.tsx"
+
+schemas:
+  simple_welcome_01: simple_welcome_01.yaml
+  morning_standup: morning_standup.yaml

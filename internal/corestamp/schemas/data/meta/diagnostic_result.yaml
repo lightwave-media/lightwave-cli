@@ -1,0 +1,49 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/diagnostic_result"
+  title: "Diagnostic Result"
+  description: |
+    Structured result returned by a single diagnostic check. The wire shape
+    for `lw local --doctor`, `zc doctor`, future `lw doctor`, and any
+    HTTP/JSON dashboard surface that consumes diagnostics.
+
+    One DiagResult per check. Callers aggregate a list of DiagResult
+    records and summarise by severity (worst-wins) and category.
+
+    Parallel-defined by lightwave-sys via the `DiagResult` Rust struct
+    (returned by `diagnose` and `probe_models`). Symbol references not
+    file paths — cross-repo paths rot.
+
+    Stamped 2026-05-26 alongside diagnostic_severities + diagnostic_categories
+    to bring zeroclaw's doctor module under SST contract.
+  generates:
+    # `generates:` is metadata for the future `lw codegen <lang>` verb
+    # (Phase 7+) — NOT a claim that any binding does codegen today.
+    - "rust:DiagResult"
+    - "pydantic:DiagnosticResult"
+  depends_on:
+    - "lightwave://schemas/data/enums/diagnostic_severities"
+    - "lightwave://schemas/data/enums/diagnostic_categories"
+
+required_fields:
+  - name: severity
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/diagnostic_severities"
+    description: "Severity level for this check result. See diagnostic_severities enum."
+  - name: category
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/diagnostic_categories"
+    description: "Top-level category this check belongs to. See diagnostic_categories enum for the closed set."
+  - name: message
+    type: str
+    description: |
+      Human-readable single-line message describing what was checked + the
+      outcome. Free-form prose; not parsed. Keep under ~120 chars where
+      practical so it fits TUI / dashboard rows without wrapping. For long
+      diagnostic detail, use multi-line via embedded newlines but expect
+      most consumers to render only the first line in summary views.
+
+example:
+  severity: "warn"
+  category: "cli_tools"
+  message: "docker: not running (start Docker Desktop or run `lw dev start`)"

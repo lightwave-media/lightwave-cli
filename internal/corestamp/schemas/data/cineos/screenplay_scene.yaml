@@ -1,0 +1,113 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/cineos/screenplay_scene"
+  title: "Screenplay Scene (Parsed)"
+  description: |
+    The parsed CONTENT of one scene — the output of the rules-based screenplay
+    parser (createOS src/cineos/parse.ts; FDX first, Fountain, text-layer PDF)
+    and the input to the dramatized-audiobook segment planner
+    (EPIC-CINE-AUDIO-001). Distinct from `scene`, the production-breakdown noun
+    this family already stamps: `scene` is what gets scheduled and shot;
+    `screenplay_scene` is what the writer wrote, pinned to the script_version it
+    was parsed from so revisions regenerate only changed scenes. An optional
+    scene_ref cross-links the two (soft ref, documented on the field per the
+    family convention). Parse is local and LLM-free; screenplay text never
+    leaves the device (decision A/C, 2026-08-11).
+  generates:
+    - "go:ScreenplayScene"
+    - "typescript:ScreenplayScene"
+    - "zig:ScreenplayScene"
+    - "json_schema:screenplay_scene"
+  depends_on:
+    - "lightwave://schemas/data/cineos/script_version"
+
+required_fields:
+  - name: scene_id
+    type: str
+    description: "Stable scene identifier that survives revisions (slug, not ordinal); the cache and audio_manifest key on it"
+  - name: ordinal
+    type: int
+    description: "1-based position of the scene in this script version"
+  - name: script_version_ref
+    type: str
+    description: "Slug/id of the ScriptVersion this parse came from"
+  - name: heading_raw
+    type: str
+    description: "The slugline exactly as written, e.g. 'INT. GYM - EARLY MORNING'"
+  - name: elements
+    type: list[ScreenplayElement]
+    description: "Ordered screenplay elements; order is the performance order — a parenthetical steers the dialogue that follows it"
+
+optional_fields:
+  - name: int_ext
+    type: str
+    description: "Setting prefix decomposed from the slugline: int, ext, or int_ext"
+  - name: location
+    type: str
+    description: "The set/location decomposed from the slugline (split on the last dash — sets can contain dashes)"
+  - name: time_of_day
+    type: str
+    description: "Time of day decomposed from the slugline (e.g. 'DAY', 'CONTINUOUS'); empty when the slugline carries none"
+  - name: scene_ref
+    type: str
+    description: "Optional soft cross-ref to the production-breakdown `scene` record for this scene (cineos/scene); not a containment edge"
+  - name: text_hash
+    type: str
+    description: "Content hash of the normalized scene text; combined with script_version_ref + voice cast it forms the audio cache key (see audio_manifest)"
+  - name: parse_confidence
+    type: float
+    description: "Scene-level parse confidence 0–1; min of element confidences. Below threshold the PDF path flags the scene for manual review before audio generation"
+
+sub_schemas:
+  ScreenplayElement:
+    type:
+      type: str
+      description: "Element type; values from the cineos_screenplay_element_types enum"
+    text:
+      type: str
+      description: "The element's text content"
+    character:
+      type: str
+      description: "Dialogue/dual_dialogue only: normalized speaking character. Qualifiers (V.O./O.S./CONT'D) are stripped — 'DAN (V.O.)' and 'DAN' are the same character and map to one voice"
+    qualifier:
+      type: str
+      description: "Dialogue/dual_dialogue only: cue qualifier as written (V.O., O.S., CONT'D) — recorded for a later processing pass, never announced in audio"
+    dual_group:
+      type: int
+      description: "Links simultaneous dual_dialogue partner blocks; MVP renders sequentially, Cinematic Mode may honour the overlap"
+    confidence:
+      type: float
+      description: "Per-element parse confidence 0–1; the PDF path flags low-confidence blocks for review before audio is generated"
+
+relations:
+  parent: script_version
+  children: []
+
+example:
+  scene_id: "gym-early-morning-01"
+  ordinal: 1
+  script_version_ref: "iron-dan-white"
+  heading_raw: "INT. GYM - EARLY MORNING"
+  int_ext: "int"
+  location: "GYM"
+  time_of_day: "EARLY MORNING"
+  text_hash: "sha256:9f2c1a"
+  parse_confidence: 1.0
+  elements:
+    - type: scene_heading
+      text: "INT. GYM - EARLY MORNING"
+      confidence: 1.0
+    - type: action
+      text: "The heavy bag swings. MARCUS, 40s, wraps his hands in silence."
+      confidence: 1.0
+    - type: character
+      text: "MARCUS"
+      character: "MARCUS"
+      confidence: 1.0
+    - type: parenthetical
+      text: "(quietly)"
+      confidence: 1.0
+    - type: dialogue
+      text: "One more round."
+      character: "MARCUS"
+      confidence: 1.0
