@@ -17,13 +17,6 @@ func CLIConfigPath(lightwaveRoot string) string {
 	)
 }
 
-func cliSchemaDir(lightwaveRoot string) string {
-	return filepath.Join(
-		lightwaveRoot,
-		"lightwave-core", "src", "schemas", "interfaces", "cli",
-	)
-}
-
 type domainFragment struct {
 	Domain      string       `yaml:"domain"`
 	Description string       `yaml:"description"`
