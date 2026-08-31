@@ -147,15 +147,3 @@ require (
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	sigs.k8s.io/yaml v1.6.0 // indirect
 )
-
-// TEMPORARY — MUST NOT MERGE.
-//
-// This points at a local checkout, so it only builds on one machine. It is
-// here because the published binding tag is too old to use: bindings/go/v0.5.0
-// carries 20 command domains against core's current 39, schema version 1.0.0
-// against 1.1.0, and does not export ReadSchema at all — and ReadSchema is
-// required, because LoadSchema returns map[string]any and loses the YAML key
-// order commands.yaml depends on for domain ordering.
-//
-// Unblock: cut a core release so release.yml emits the companion binding tag,
-// then replace this with a normal require on bindings/go v0.6.4.
