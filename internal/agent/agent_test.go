@@ -251,8 +251,14 @@ func TestSpawn_QuickExit(t *testing.T) {
 		t.Errorf("status = %q, want running", a.Status)
 	}
 
-	// Poll briefly until the child exits + RefreshStatus catches it.
-	deadline := time.Now().Add(2 * time.Second)
+	// Poll until the child exits + RefreshStatus catches it.
+	//
+	// The deadline is generous rather than tight: the loop breaks as soon as
+	// the status flips, so a large bound costs nothing on a healthy machine.
+	// At 2s this flaked on GitHub's ubuntu runners — spawning a shell, having
+	// it exit, and the OS reaping it can exceed that under CI contention,
+	// while the same test passed on macos-latest and locally.
+	deadline := time.Now().Add(30 * time.Second)
 	for time.Now().Before(deadline) {
 		if err := RefreshStatus(a); err != nil {
 			t.Fatalf("RefreshStatus: %v", err)
