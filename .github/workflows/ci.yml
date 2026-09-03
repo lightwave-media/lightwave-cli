@@ -6,12 +6,26 @@ name: CI
 #
 # Releases (.github/workflows/release.yml) call the same reusable
 # workflows to keep `main` ↔ release semantics identical.
+#
+# CI Required Gate fails on skipped as well as failure/cancelled.
+# A skipped lint makes base-test and build skip (`needs: [lint]`); treating
+# skipped as green was a green gate with zero tests and zero builds
+# (lightwave-cli#350).
+#
+# Negative control: workflow_dispatch with force_lint_skip=true skips
+# lint; the gate job must go red.
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      force_lint_skip:
+        description: "Negative control — skip lint so CI Required Gate must go red"
+        type: boolean
+        default: false
 
 concurrency:
   # Cancel in-progress runs for the same PR/SHA; never cancel on main.
@@ -60,6 +74,7 @@ jobs:
 
   lint:
     name: Lint
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.force_lint_skip != true }}
     uses: ./.github/workflows/lint.yml
     secrets: inherit
     with:
@@ -104,9 +119,9 @@ jobs:
     steps:
       - name: Check upstream job results
         env:
-          HAS_FAILURE: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+          HAS_FAILURE: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
         run: |
           if [[ "$HAS_FAILURE" == "true" ]]; then
-            echo "::error::One or more upstream jobs failed or were cancelled"
+            echo "::error::One or more upstream jobs failed, were cancelled, or were skipped"
             exit 1
           fi
