@@ -125,7 +125,11 @@ func TestAssuranceFlagShapes(t *testing.T) {
 func TestWorktreePolicyViolations(t *testing.T) {
 	tmp := t.TempDir()
 	mainCheckout := filepath.Join(tmp, "repo")
-	profile := &localSetupProfile{WorktreeRoot: ".worktrees"}
+	// worktree_home_policy v2.0.0: an absolute canonical_root with {repo}
+	// underneath. The v1.x repo-relative ".worktrees" is now a legacy root,
+	// so using it here would test the superseded layout.
+	profile := &localSetupProfile{WorktreeRoot: filepath.Join(tmp, "wt-home")}
+	canonicalRepoRoot := filepath.Join("wt-home", "repo")
 
 	mkWorktreeDir := func(rel string, withMarker bool) string {
 		t.Helper()
@@ -151,28 +155,54 @@ func TestWorktreePolicyViolations(t *testing.T) {
 		absentCodes []string
 	}{
 		{
-			name:        "conforming worktree is clean",
-			checkout:    mkWorktreeDir("repo/.worktrees/2026-08-10-good-slug", true),
-			absentCodes: []string{"forbidden_worktree_root", "legacy_worktree_layout", "naming_violation", "missing_marker", "expired_worktree"},
+			name:        "registered tree in the canonical root is clean",
+			checkout:    mkWorktreeDir(filepath.Join(canonicalRepoRoot, "good-slug"), true),
+			absentCodes: []string{"legacy_worktree_root", "undeclared_worktree_root", "naming_violation", "missing_marker", "expired_worktree"},
 		},
 		{
-			name:      "harness root is forbidden",
-			checkout:  mkWorktreeDir("repo/.claude/worktrees/sess-abc123", true),
-			wantCodes: []string{"forbidden_worktree_root"},
+			// The v2.0.0 inversion, half one. .claude/worktrees left
+			// forbidden_roots and became supplemental: a tree there carrying
+			// the project_workspace record is CONFORMING, not a violation.
+			name:        "registered tree in a supplemental vendor root is conforming",
+			checkout:    mkWorktreeDir("repo/.claude/worktrees/sess-abc123", true),
+			absentCodes: []string{"legacy_worktree_root", "undeclared_worktree_root", "missing_marker"},
 		},
 		{
-			name:      "outside canonical root is legacy",
+			// The v2.0.0 inversion, half two. The record, not the path,
+			// decides. Same vendor root, no record, so it is nonconforming —
+			// and never invisible.
+			name:        "unregistered tree in a supplemental root is nonconforming",
+			checkout:    mkWorktreeDir("repo/.claude/worktrees/sess-unmarked", false),
+			wantCodes:   []string{"missing_marker"},
+			absentCodes: []string{"undeclared_worktree_root"},
+		},
+		{
+			// The old canonical root. Existing trees register in place and
+			// drain; the finding must not imply relocating them.
+			name:      "the v1.x repo root takes no new allocation",
+			checkout:  mkWorktreeDir("repo/.worktrees/some-slug", true),
+			wantCodes: []string{"legacy_worktree_root"},
+		},
+		{
+			name:      "a root no policy names is undeclared",
 			checkout:  mkWorktreeDir("elsewhere/some-worktree", true),
-			wantCodes: []string{"legacy_worktree_layout"},
+			wantCodes: []string{"undeclared_worktree_root"},
 		},
 		{
-			name:      "bad name in canonical root",
-			checkout:  mkWorktreeDir("repo/.worktrees/no-date-prefix", true),
+			// v2.0.0 naming is {slug}. A date prefix is allowed but no longer
+			// required, so only a non-slug shape may fail here.
+			name:      "non-slug name in the canonical root",
+			checkout:  mkWorktreeDir(filepath.Join(canonicalRepoRoot, "Bad_Slug"), true),
 			wantCodes: []string{"naming_violation"},
 		},
 		{
+			name:        "the v1.x date-prefixed name is still a valid slug",
+			checkout:    mkWorktreeDir(filepath.Join(canonicalRepoRoot, "2026-08-10-good-slug"), true),
+			absentCodes: []string{"naming_violation"},
+		},
+		{
 			name:      "missing claim marker",
-			checkout:  mkWorktreeDir("repo/.worktrees/2026-08-10-unmarked", false),
+			checkout:  mkWorktreeDir(filepath.Join(canonicalRepoRoot, "unmarked"), false),
 			wantCodes: []string{"missing_marker"},
 		},
 	}
