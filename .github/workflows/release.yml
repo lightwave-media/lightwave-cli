@@ -38,7 +38,7 @@ jobs:
     # Pinned by SHA — determinism requires the same tag re-run the same
     # pipeline bytes. Bump SHA + comment together when adopting a new plane
     # release.
-    uses: lightwave-media/pipelines-workflows/.github/workflows/release-go-binary.yml@0e10d20b6964383fc5507d9d0d3ea6f778e9939a # v1.2.2
+    uses: lightwave-media/pipelines-workflows/.github/workflows/release-go-binary.yml@56053b60aa42dba997f388a5a38713d1acc2b823 # v1.4.0
     permissions:
       contents: write
       # shipped-in notifications (feedback_loop, release_pipeline.yaml):
