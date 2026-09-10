@@ -31,15 +31,37 @@ const (
 	gitDirPerm          = 0o755
 	gitFilePerm         = 0o644
 
-	// worktree_policy.yaml v1.1.0 (CORE-0047): repo_structure invariants.
-	worktreeMarkerFile  = ".lw-worktree.yaml"
-	worktreeMaxAge      = 72 * time.Hour
-	forbiddenHarnessDir = ".claude/worktrees"
+	// worktree_policy.yaml v2.0.0 + worktree_home_policy.yaml v2.0.0
+	// (CORE-0051, operator ruling 2026-08-31): repo_structure invariants.
+	worktreeMarkerFile = ".lw-worktree.yaml"
+	worktreeMaxAge     = 72 * time.Hour
+
+	// canonicalWorktreeHome is worktree_home_policy.canonical_root. It sits
+	// outside every repo on purpose: a Stop-hook `git add -A` can no longer
+	// stage a worktree as a gitlink. Layout underneath is {repo}/{slug}.
+	canonicalWorktreeHome = ".worktrees"
+
+	// harnessWorktreeDir left forbidden_roots in v2.0.0 and is now a
+	// supplemental root: a tree there is CONFORMING when it carries the
+	// project_workspace record and nonconforming when it does not — never
+	// invisible, and never relocated.
+	harnessWorktreeDir = ".claude/worktrees"
+
+	// legacyRepoWorktreeDir was the v1.x canonical root. v2.0.0 puts it in
+	// both legacy_roots and forbidden_roots: no NEW allocation here. Existing
+	// trees register in place and drain; they are never moved.
+	legacyRepoWorktreeDir = ".worktrees"
+
+	// adoptCommand is the remediation the stamp names for an unregistered
+	// tree. The previous string named `lw git worktree migrate`, which has
+	// never been implemented — the advice pointed at nothing.
+	adoptCommand = "lw workspace adopt"
 )
 
-// canonicalWorktreeNameRe pins worktree_policy.repo_structure.naming:
-// <YYYY-MM-DD>-<ticket-slug>.
-var canonicalWorktreeNameRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}-[a-z0-9-]+$`)
+// canonicalWorktreeSlugRe pins worktree_policy.repo_structure.naming, which
+// v2.0.0 reduced to {slug} derived from the task's branch intent. The v1.x
+// <YYYY-MM-DD>-<ticket-slug> form is no longer required.
+var canonicalWorktreeSlugRe = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 func init() {
 	RegisterHandler("git.audit", gitAuditHandler)
@@ -528,11 +550,12 @@ func loadWorkspaceProfile() localSetupProfile {
 	def := localSetupProfile{
 		ID:             "default",
 		WorkspaceRoots: []string{filepath.Join(home, "dev")},
-		// Repo-relative per worktree_home_policy.canonical_root: resolved
-		// against each discovered repo, not one global directory. The old
-		// default (~/.lightwave/worktrees) is a forbidden_root and was empty,
-		// which left the audit blind to the real fleet.
-		WorktreeRoot: ".worktrees",
+		// worktree_home_policy v2.0.0 (CORE-0051): the canonical root is
+		// ~/.worktrees, with {repo}/{slug} underneath. It sits outside every
+		// repo deliberately, so a Stop-hook `git add -A` cannot stage a
+		// worktree as a gitlink. The v1.x repo-relative ".worktrees" is now a
+		// legacy AND forbidden root; existing trees there drain in place.
+		WorktreeRoot: filepath.Join(home, canonicalWorktreeHome),
 		CursorWorktreeRoots: []string{
 			filepath.Join(home, ".cursor", "worktrees"),
 		},
@@ -587,15 +610,26 @@ func expandHome(p string) string {
 // global root so pre-v1.1.0 prints keep working.
 func canonicalWorktreeRoot(profile *localSetupProfile, mainCheckout string) string {
 	root := profile.WorktreeRoot
-	if root == "" {
-		root = ".worktrees"
+
+	// A repo-relative root IS the v1.x <repo>/.worktrees layout, which v2.0.0
+	// moved into legacy_roots and forbidden_roots. Honouring it here would let
+	// a profile written before the 2026-08-31 ruling demote the stamped
+	// canonical root, and the checker would then report a correctly-placed
+	// tree as a violation. The stamp outranks a stale print, so anything that
+	// is not an explicit absolute override resolves to canonical_root.
+	if !filepath.IsAbs(root) {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			// No home means no canonical root to compare against. Fall back to
+			// the legacy in-repo root so classification still resolves to
+			// something bounded rather than matching every path.
+			return filepath.Join(mainCheckout, legacyRepoWorktreeDir)
+		}
+
+		root = filepath.Join(home, canonicalWorktreeHome)
 	}
 
-	if filepath.IsAbs(root) {
-		return root
-	}
-
-	return filepath.Join(mainCheckout, root)
+	return filepath.Join(root, filepath.Base(mainCheckout))
 }
 
 func buildGitAuditReport(ctx context.Context, profile *localSetupProfile) (*gitAuditReport, error) { //nolint:unparam // error reserved for future walk failures
@@ -795,36 +829,96 @@ func inspectGitCheckout(ctx context.Context, checkout string, profile *localSetu
 	return node, nil
 }
 
+// worktreeRootClass is where a linked worktree lives relative to the roots
+// declared in worktree_home_policy.yaml v2.0.0 (CORE-0051).
+type worktreeRootClass string
+
+const (
+	// worktreeRootCanonical is ~/.worktrees/{repo} — the LightWave-managed root.
+	worktreeRootCanonical worktreeRootClass = "canonical"
+	// worktreeRootSupplemental is a vendor root from
+	// workspace_broker_policy.root_taxonomy. Trees here are legitimate; the
+	// project_workspace record, not the path, decides conformance.
+	worktreeRootSupplemental worktreeRootClass = "supplemental"
+	// worktreeRootLegacy is the v1.x <repo>/.worktrees root: no new
+	// allocation, existing trees drain in place.
+	worktreeRootLegacy worktreeRootClass = "legacy"
+	// worktreeRootUndeclared is a root no policy names at all.
+	worktreeRootUndeclared worktreeRootClass = "undeclared"
+)
+
+func isUnder(path, root string) bool {
+	return root != "" && strings.HasPrefix(path, root+string(filepath.Separator))
+}
+
+// classifyWorktreeRoot resolves a checkout to the root that governs it.
+// Order matters: the canonical root is checked first so that a repo whose
+// override happens to alias a vendor path is still read as canonical.
+func classifyWorktreeRoot(checkout, mainCheckout string, profile *localSetupProfile) worktreeRootClass {
+	if isUnder(checkout, canonicalWorktreeRoot(profile, mainCheckout)) {
+		return worktreeRootCanonical
+	}
+
+	if isUnder(checkout, filepath.Join(mainCheckout, harnessWorktreeDir)) {
+		return worktreeRootSupplemental
+	}
+
+	for _, vendorRoot := range profile.CursorWorktreeRoots {
+		if isUnder(checkout, vendorRoot) {
+			return worktreeRootSupplemental
+		}
+	}
+
+	if isUnder(checkout, filepath.Join(mainCheckout, legacyRepoWorktreeDir)) {
+		return worktreeRootLegacy
+	}
+
+	return worktreeRootUndeclared
+}
+
 // worktreePolicyViolations checks one linked worktree against
-// worktree_policy.yaml v1.1.0 + worktree_home_policy.yaml v1.1.0 (CORE-0047):
-// canonical root, <YYYY-MM-DD>-<slug> naming, the .lw-worktree.yaml marker,
-// and the 72h expiry.
+// worktree_policy.yaml v2.0.0 + worktree_home_policy.yaml v2.0.0 (CORE-0051):
+// root taxonomy, {slug} naming, the .lw-worktree.yaml claim marker, and the
+// 72h expiry.
+//
+// v2.0.0 inverted two of the v1.1.0 rules this function used to encode.
+// .claude/worktrees left forbidden_roots and became a supplemental root, so a
+// registered tree there is conforming. The old canonical <repo>/.worktrees
+// joined legacy_roots and forbidden_roots, so it is no longer somewhere to
+// send anyone. Under v1.1.0 rules this reported the current stamp backwards.
 func worktreePolicyViolations(checkout, mainCheckout, branch string, profile *localSetupProfile) []gitViolation {
 	var violations []gitViolation
 
 	canonicalRoot := canonicalWorktreeRoot(profile, mainCheckout)
-	inCanonicalRoot := strings.HasPrefix(checkout, canonicalRoot+string(filepath.Separator))
-	forbiddenRoot := filepath.Join(mainCheckout, forbiddenHarnessDir)
 
-	switch {
-	case strings.HasPrefix(checkout, forbiddenRoot+string(filepath.Separator)):
+	switch classifyWorktreeRoot(checkout, mainCheckout, profile) {
+	case worktreeRootCanonical:
+		if !canonicalWorktreeSlugRe.MatchString(filepath.Base(checkout)) {
+			violations = append(violations, gitViolation{
+				Code:     "naming_violation",
+				Severity: gitSeverityWarn,
+				Message:  fmt.Sprintf("%s: name %q is not a {slug} (lowercase, digits, dashes)", checkout, filepath.Base(checkout)),
+			})
+		}
+
+	case worktreeRootSupplemental:
+		// No root violation by design. A vendor tree is conforming when it
+		// carries the record; the marker check below is the whole test.
+
+	case worktreeRootLegacy:
 		violations = append(violations, gitViolation{
-			Code:     "forbidden_worktree_root",
+			Code:     "legacy_worktree_root",
 			Severity: gitSeverityWarn,
-			Message: fmt.Sprintf("%s: worktree under forbidden root %s — canonical root is %s (CORE-0047; drains via WorktreeCreate redirect)",
-				checkout, forbiddenHarnessDir, profile.WorktreeRoot),
+			Message: fmt.Sprintf("%s: legacy root %s takes no new allocation — canonical is %s (CORE-0051). Register in place with %s and let it drain; do not move it.",
+				checkout, legacyRepoWorktreeDir, canonicalRoot, adoptCommand),
 		})
-	case !inCanonicalRoot:
+
+	case worktreeRootUndeclared:
 		violations = append(violations, gitViolation{
-			Code:     "legacy_worktree_layout",
+			Code:     "undeclared_worktree_root",
 			Severity: gitSeverityWarn,
-			Message:  fmt.Sprintf("%s: worktree outside canonical root %s", checkout, canonicalRoot),
-		})
-	case !canonicalWorktreeNameRe.MatchString(filepath.Base(checkout)):
-		violations = append(violations, gitViolation{
-			Code:     "naming_violation",
-			Severity: gitSeverityWarn,
-			Message:  fmt.Sprintf("%s: name %q does not match <YYYY-MM-DD>-<ticket-slug>", checkout, filepath.Base(checkout)),
+			Message: fmt.Sprintf("%s: root is named by no policy — canonical is %s, vendor roots come from workspace_broker_policy.root_taxonomy (CORE-0051)",
+				checkout, canonicalRoot),
 		})
 	}
 
@@ -832,7 +926,8 @@ func worktreePolicyViolations(checkout, mainCheckout, branch string, profile *lo
 		violations = append(violations, gitViolation{
 			Code:     "missing_marker",
 			Severity: gitSeverityWarn,
-			Message:  fmt.Sprintf("%s: missing %s claim marker — run lw git worktree migrate", checkout, worktreeMarkerFile),
+			Message: fmt.Sprintf("%s: missing %s — the tree carries no project_workspace record, so it has no owner, task or heartbeat. Register it with %s.",
+				checkout, worktreeMarkerFile, adoptCommand),
 		})
 	}
 
@@ -865,31 +960,57 @@ func repoLevelWorktreeViolations(mainCheckout string, registered map[string]bool
 		})
 	}
 
-	canonicalRoot := canonicalWorktreeRoot(profile, mainCheckout)
+	seen := map[string]bool{}
 
-	entries, err := os.ReadDir(canonicalRoot)
-	if err != nil {
-		return violations
-	}
-
-	for _, e := range entries {
-		if !e.IsDir() {
+	for _, root := range worktreeScanRoots(profile, mainCheckout) {
+		if seen[root] {
 			continue
 		}
 
-		p := filepath.Join(canonicalRoot, e.Name())
-		if registered[p] {
+		seen[root] = true
+
+		entries, err := os.ReadDir(root)
+		if err != nil {
 			continue
 		}
 
-		violations = append(violations, gitViolation{
-			Code:     "orphan_gitdir",
-			Severity: gitSeverityWarn,
-			Message:  fmt.Sprintf("%s: directory under %s is not a registered worktree — unresolvable gitdir? archive contents, then remove", p, canonicalRoot),
-		})
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+
+			p := filepath.Join(root, e.Name())
+			if registered[p] {
+				continue
+			}
+
+			violations = append(violations, gitViolation{
+				Code:     "orphan_gitdir",
+				Severity: gitSeverityWarn,
+				Message:  fmt.Sprintf("%s: directory under %s is not a registered worktree — unresolvable gitdir? archive contents, then remove", p, root),
+			})
+		}
 	}
 
 	return violations
+}
+
+// worktreeScanRoots lists every directory that may legitimately hold a
+// worktree for this repo. Scanning only the canonical root would hide orphans
+// in the legacy and vendor roots, and v2.0.0 is explicit that a tree outside
+// the canonical root is "never invisible" — it drains in place, so it has to
+// stay observable while it does.
+func worktreeScanRoots(profile *localSetupProfile, mainCheckout string) []string {
+	const namedRoots = 3
+
+	roots := make([]string, 0, namedRoots+len(profile.CursorWorktreeRoots))
+	roots = append(roots,
+		canonicalWorktreeRoot(profile, mainCheckout),
+		filepath.Join(mainCheckout, legacyRepoWorktreeDir),
+		filepath.Join(mainCheckout, harnessWorktreeDir),
+	)
+
+	return append(roots, profile.CursorWorktreeRoots...)
 }
 
 func summarizeNodes(nodes []gitTopologyNode) gitAuditSummary {
