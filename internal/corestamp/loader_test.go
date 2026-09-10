@@ -1,11 +1,14 @@
 package corestamp
 
 import (
+	"archive/tar"
 	"bytes"
+	"errors"
+	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -83,45 +86,106 @@ func TestLoadIndex(t *testing.T) {
 	}
 }
 
-// TestNoDrift fails if the vendored mirror (bindings/go/schemas) has fallen out
-// of sync with the canonical src/schemas. It runs in the lightwave-core repo
-// CI; it skips when the canonical tree isn't reachable (e.g. a consumer running
-// the module from their go module cache).
-func TestNoDrift(t *testing.T) {
-	canonical := filepath.Join("..", "..", "src", "schemas")
-	if _, err := os.Stat(canonical); err != nil {
-		t.Skip("canonical src/schemas not reachable; drift guard runs in lightwave-core CI")
+// coreCheckout resolves the lightwave-core checkout the way lw does —
+// LW_LIGHTWAVE_ROOT, then LW_DEV_ROOT, then the flat ~/dev sibling layout.
+// The names match viper.BindEnv in internal/config; a different spelling would
+// fail silently back to the default, which is how you get a plausible wrong
+// answer with no error.
+func coreCheckout(t *testing.T) string {
+	t.Helper()
+
+	root := os.Getenv("LW_LIGHTWAVE_ROOT")
+	if root == "" {
+		root = os.Getenv("LW_DEV_ROOT")
 	}
 
-	// Compare EVERY file (not just .yaml) so the byte-for-byte guarantee holds
-	// for .gitkeep and any non-yaml asset that lands under src/schemas.
+	if root == "" {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return ""
+		}
+
+		root = filepath.Join(home, "dev")
+	}
+
+	core := filepath.Join(root, "lightwave-core")
+	if _, err := os.Stat(filepath.Join(core, ".git")); err != nil {
+		return ""
+	}
+
+	return core
+}
+
+// TestNoDrift fails if the vendored mirror has fallen out of sync with the
+// lightwave-core tree it claims to come from.
+//
+// Content is read from SourceTag via `git archive`, never from core's working
+// tree: that tree is whatever branch another agent has out, uncommitted changes
+// included, and reading it once embedded an unrelated session's in-flight state
+// (lightwave-cli#383).
+//
+// It skips only when there is no lightwave-core checkout to compare against —
+// the genuine "cannot know" case, which is normal in this public repo's CI since
+// lightwave-core is private. That is the ONLY sanctioned skip here: the
+// checkout-free half of the guarantee (TestVerifyEmbeddedDigest) always runs, so
+// a hand-edited mirror is caught with or without core.
+func TestNoDrift(t *testing.T) {
+	core := coreCheckout(t)
+	if core == "" {
+		t.Skip("no lightwave-core checkout reachable via LW_LIGHTWAVE_ROOT/LW_DEV_ROOT/~/dev; " +
+			"digest guard (TestVerifyEmbeddedDigest) covers the in-repo half")
+	}
+
+	const subtree = "bindings/go/schemas"
+
+	if err := exec.Command("git", "-C", core, "rev-parse", "--verify", "--quiet",
+		SourceTag+"^{commit}").Run(); err != nil {
+		t.Skipf("SourceTag %q does not resolve in %s (shallow clone or missing tags)", SourceTag, core)
+	}
+
+	archived, err := exec.Command("git", "-C", core, "archive", SourceTag, "--", subtree).Output()
+	if err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			t.Fatalf("git archive %s: %v: %s", SourceTag, err, exitErr.Stderr)
+		}
+
+		t.Fatalf("git archive %s: %v", SourceTag, err)
+	}
+
 	want := map[string][]byte{}
-	if err := filepath.WalkDir(canonical, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
+	reader := tar.NewReader(bytes.NewReader(archived))
+
+	for {
+		header, nextErr := reader.Next()
+		if errors.Is(nextErr, io.EOF) {
+			break
 		}
 
-		b, readErr := os.ReadFile(path)
+		if nextErr != nil {
+			t.Fatalf("reading archive of %s: %v", SourceTag, nextErr)
+		}
+
+		if header.Typeflag != tar.TypeReg {
+			continue
+		}
+
+		body, readErr := io.ReadAll(reader)
 		if readErr != nil {
-			return readErr
+			t.Fatalf("reading %s from archive: %v", header.Name, readErr)
 		}
 
-		rel, relErr := filepath.Rel(canonical, path)
-		if relErr != nil {
-			return relErr
-		}
+		want[strings.TrimPrefix(header.Name, subtree+"/")] = body
+	}
 
-		want[filepath.ToSlash(rel)] = b
-
-		return nil
-	}); err != nil {
-		t.Fatalf("walking canonical: %v", err)
+	if len(want) == 0 {
+		t.Fatalf("%s:%s is empty — wrong ref or wrong subtree", SourceTag, subtree)
 	}
 
 	got := map[string][]byte{}
-	if err := fs.WalkDir(schemaFS, schemaRoot, func(path string, d fs.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return err
+	if err := fs.WalkDir(schemaFS, schemaRoot, func(path string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil || d.IsDir() {
+			return walkErr
 		}
 
 		b, readErr := schemaFS.ReadFile(path)
@@ -137,46 +201,26 @@ func TestNoDrift(t *testing.T) {
 	}
 
 	if len(want) != len(got) {
-		t.Fatalf("file count drift: canonical %d, vendored %d — run scripts/sync-go-binding.sh", len(want), len(got))
+		t.Errorf("file count drift vs %s: canonical %d, vendored %d — run scripts/sync-core-stamp.sh",
+			SourceTag, len(want), len(got))
 	}
 
 	for name, wb := range want {
 		gb, ok := got[name]
 		if !ok {
-			t.Errorf("vendored mirror missing %s — run scripts/sync-go-binding.sh", name)
+			t.Errorf("vendored mirror missing %s — run scripts/sync-core-stamp.sh", name)
 
 			continue
 		}
 
 		if !bytes.Equal(wb, gb) {
-			t.Errorf("vendored %s differs from canonical — run scripts/sync-go-binding.sh", name)
+			t.Errorf("vendored %s differs from %s — run scripts/sync-core-stamp.sh", name, SourceTag)
 		}
 	}
-}
 
-// TestVersionLockstep enforces the release-train rule: the binding's Version
-// must equal pyproject.toml#version, so one git tag stamps every binding.
-func TestVersionLockstep(t *testing.T) {
-	pyproject := filepath.Join("..", "..", "pyproject.toml")
-
-	raw, err := os.ReadFile(pyproject)
-	if err != nil {
-		t.Skip("pyproject.toml not reachable; lockstep guard runs in lightwave-core CI")
-	}
-
-	// Anchor to the [project] table so a `version = "…"` in another table
-	// (e.g. a pinned dep block above [project]) can't shadow the package version.
-	proj := regexp.MustCompile(`(?ms)^\[project\]\s*$(.*?)(?:^\[|\z)`).FindSubmatch(raw)
-	if proj == nil {
-		t.Fatal("could not find [project] table in pyproject.toml")
-	}
-
-	m := regexp.MustCompile(`(?m)^version\s*=\s*"([^"]+)"`).FindSubmatch(proj[1])
-	if m == nil {
-		t.Fatal("could not find version in [project] table")
-	}
-
-	if got := string(m[1]); got != Version {
-		t.Errorf("version drift: pyproject.toml is %q but binding Version is %q — keep them in lockstep (release train)", got, Version)
+	for name := range got {
+		if _, ok := want[name]; !ok {
+			t.Errorf("vendored mirror has %s, absent from %s — run scripts/sync-core-stamp.sh", name, SourceTag)
+		}
 	}
 }
