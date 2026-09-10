@@ -28,6 +28,9 @@ func TestToolsForTierFiltering(t *testing.T) {
 	sing := names(toolsFor(TierSingular))
 	assert.False(t, contains(dev, "epic_write"), "developer must be read-only, got %v", dev)
 	assert.False(t, contains(dev, "dispatch_agent"), "developer must be read-only, got %v", dev)
+	assert.True(t, contains(dev, "stamp_list"), "stamp library is advertised on every tier, got %v", dev)
+	assert.True(t, contains(dev, "stamp_read"), "stamp library is advertised on every tier, got %v", dev)
+	assert.True(t, contains(eng, "stamp_list"), "stamp library is advertised on every tier, got %v", eng)
 	assert.True(t, contains(eng, "epic_write"), "engineer gets writes, got %v", eng)
 	assert.False(t, contains(eng, "dispatch_agent"), "engineer must not get dispatch, got %v", eng)
 	assert.True(t, contains(sing, "dispatch_agent"), "singular gets dispatch, got %v", sing)
@@ -131,6 +134,7 @@ func TestServeInitializeAndToolList(t *testing.T) {
 	require.Len(t, frames, 2, "body=%s", out.String())
 	assert.Contains(t, string(frames[0]), `"protocolVersion"`)
 	assert.Contains(t, string(frames[1]), `"queue_read"`)
+	assert.Contains(t, string(frames[1]), `"stamp_list"`)
 	assert.NotContains(t, string(frames[1]), `"dispatch_agent"`, "default engineer tier must not advertise dispatch_agent")
 }
 

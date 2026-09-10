@@ -46,11 +46,12 @@ type rpcError struct {
 
 // Server is the stdio MCP loop. Fields are overridable in tests.
 type Server struct {
-	Connect func(context.Context) (*pgxpool.Pool, error)
-	Client  *http.Client
-	Persona string
-	HomeDir string
-	Base    string
+	Connect  func(context.Context) (*pgxpool.Pool, error)
+	Client   *http.Client
+	Persona  string
+	HomeDir  string
+	Base     string
+	CoreRoot string
 }
 
 // Serve reads Content-Length framed JSON-RPC from in until EOF.
