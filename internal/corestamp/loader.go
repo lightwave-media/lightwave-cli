@@ -24,12 +24,24 @@ import (
 // schemaRoot is the embed prefix; bindings/go/schemas mirrors src/schemas.
 const schemaRoot = "schemas"
 
-// Version is the lightwave-core release this binding embeds. The release train
-// keeps it in lockstep with pyproject.toml#version — one git tag stamps every
-// binding, so a consumer verifies SST alignment with a single comparison.
-// Update this together with pyproject.toml#version; TestVersionLockstep enforces
-// the match in CI.
-const Version = "0.6.4"
+// Version is the lightwave-core release this binding embeds, as that release
+// declares itself (bindings/go/loader.go at SourceTag).
+//
+// SourceTag is the git ref the mirror was extracted from. Version and SourceTag
+// are read from independent places by scripts/sync-core-stamp.sh, which is the
+// point: comparing them catches a tag published without its version bump. That
+// is a live defect — bindings/go/v0.6.5 carries a tree declaring 0.6.4
+// (lightwave-core#552) — and the previous guard could not see it, because it
+// compared pyproject.toml against loader.go, two values one hand bumps together.
+//
+// SchemasSHA256 digests the embedded tree so a hand-edit under schemas/ is
+// detectable without a lightwave-core checkout. All three are rewritten by
+// scripts/sync-core-stamp.sh; do not edit them by hand.
+const (
+	Version       = "0.6.4"
+	SourceTag     = "v0.6.4"
+	SchemasSHA256 = "b454394e6e9fe9cbc14cd181e2aad4a45577d983eb21f772d126b6b3da1e0c35"
+)
 
 // indexFile is the registry index name (present at each tree level).
 const indexFile = "__index.yaml"
