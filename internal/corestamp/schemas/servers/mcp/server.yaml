@@ -7,7 +7,7 @@
 # =============================================================================
 
 _meta:
-  version: "0.1.0"
+  version: "0.2.0"
   schema_id: "lightwave://schemas/servers/mcp/server"
   title: "MCP Server Configuration"
   description: |
@@ -16,6 +16,12 @@ _meta:
     from the persona tier (singular/engineer/developer) and the tool
     allow/forbid lists in agent_definition.yaml. The MCP server reads
     the SST and auto-generates tool definitions for every schema category.
+
+    v0.2.0: Claude Code attaches to `lw mcp serve` (stdio). Stamp-library
+    tools (schemas, templates, blueprints, runbooks, workflows, SOPs,
+    knowledge base) are advertised on that same server — never a second
+    parallel MCP. `lw mcp start|status|logs|stop|restart` manage the
+    optional listener on transports.sse (default 127.0.0.1:7701).
   # Tier mapping is sourced from data/enums/persona_tiers + the allow/forbid
   # lists in data/meta/agent_definition; the server derives tool visibility
   # from those rather than declaring its own tier vocabulary.
@@ -60,7 +66,11 @@ example:
             - Read
             - Glob
             - Grep
-            - schemas_read
+            - stamp_list
+            - stamp_read
+            - schema_fields
+            - enum_read
+            - rules_list
         engineer:
           allowed_categories:
             - data
@@ -72,7 +82,11 @@ example:
             - Read
             - Glob
             - Grep
-            - schemas_read
+            - stamp_list
+            - stamp_read
+            - schema_fields
+            - enum_read
+            - rules_list
             - schemas_write
             - spec_read
             - spec_write
@@ -88,7 +102,11 @@ example:
             - Read
             - Glob
             - Grep
-            - schemas_read
+            - stamp_list
+            - stamp_read
+            - schema_fields
+            - enum_read
+            - rules_list
             - orchestrate
 
   transports:

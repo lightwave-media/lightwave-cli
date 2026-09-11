@@ -60,12 +60,50 @@ skills:
     slug: journey-first
     category: meta
     print_path: ~/.lightwave/skills/journey-first/SKILL.md
-    description: Joel writes the journey; contracts compile into code. Agents never
-      invent above the contract line.
+    description: Joel writes the journey; contracts compile into code. Agents own
+      everything below the contract line.
     agents:
-    - v_scrum-manager
-    - v_product-manager
+    - v_accountant
     - v_architect
+    - v_brain
+    - v_ceo
+    - v_cfo
+    - v_cineos
+    - v_cli-developer
+    - v_core
+    - v_core-maintenance
+    - v_core-package-developer
+    - v_core-package-engineer
+    - v_cto
+    - v_data-engineer
+    - v_devops
+    - v_frontend-developer
+    - v_general-manager
+    - v_infra-developer
+    - v_infra-engineer
+    - v_legal-advisor
+    - v_legal-officer
+    - v_lightwave-ai-engineer
+    - v_localapp-developer
+    - v_marketing-content-lead
+    - v_nullbuilder-developer
+    - v_nullclaw-developer
+    - v_nullhub-developer
+    - v_nulltickets-developer
+    - v_nullwatch-developer
+    - v_photographer
+    - v_platform-developer
+    - v_product-manager
+    - v_qa-engineer
+    - v_release-engineer
+    - v_research-analyst
+    - v_scrum-manager
+    - v_security-compliance
+    - v_speak
+    - v_staff-engineer
+    - v_sys-developer
+    - v_ux-researcher
+    - v_write
   lightwave-git:
     slug: lightwave-git
     category: tooling
@@ -108,14 +146,3 @@ skills:
     description: Voice profile authoring for v_speak personas.
     agents:
     - v_speak
-  journey-first:
-    slug: journey-first
-    category: meta
-    print_path: ~/.lightwave/skills/journey-first/SKILL.md
-    description: Joel writes the journey; agents own everything below the contract line.
-    agents:
-    - v_product-manager
-    - v_staff-engineer
-    - v_cto
-    - v_platform-developer
-    - v_frontend-developer

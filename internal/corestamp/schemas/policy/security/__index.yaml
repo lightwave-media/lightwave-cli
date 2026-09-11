@@ -5,7 +5,7 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/policy/security/__index"
   title: "Security Policy Schemas Index"
-  description: "Registry of security policy schemas (git conduct, shell tool, skill policy, secrets, worktree lifecycle)."
+  description: "Registry of security policy schemas (git conduct, shell tool, skill policy, secrets, worktree lifecycle, workspace broker)."
 
 schemas:
   git_conduct: git_conduct.yaml
@@ -14,6 +14,7 @@ schemas:
   provider_identity_invariant: provider_identity_invariant.yaml
   skill_policy: skill_policy.yaml
   worktree_policy: worktree_policy.yaml
+  workspace_broker_policy: workspace_broker_policy.yaml
   developer_sandbox_policy: developer_sandbox.yaml
   developer_sandbox: developer_sandbox.yaml  # deprecated alias — use developer_sandbox_policy
   agent_aws_credentials: agent_aws_credentials.yaml

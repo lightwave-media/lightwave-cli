@@ -1,5 +1,5 @@
 _meta:
-  version: "1.14.0"
+  version: "1.16.0"
   schema_id: "lightwave://schemas/policy/validity/core-self"
   title: "lightwave-core self-validity contract"
   description: |

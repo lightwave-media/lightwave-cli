@@ -15,7 +15,7 @@
 name: "core-self-continued-2"
 
 _meta:
-  version: "1.14.0"
+  version: "1.16.0"
   schema_id: "lightwave://schemas/policy/validity/core-self-continued-2"
   title: "lightwave-core self-validity contract — rules R-47+"
   description: |

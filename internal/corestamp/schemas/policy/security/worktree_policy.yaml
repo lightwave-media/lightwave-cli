@@ -1,5 +1,5 @@
 _meta:
-  version: "1.1.0"
+  version: "2.0.0"
   schema_id: "lightwave://schemas/policy/security/worktree_policy"
   title: "Worktree Lifecycle Policy — creation, flip, cleanup, main-lock"
   description: >
@@ -12,10 +12,19 @@ _meta:
     scattered across 5 directory schemes, 33 [gone] branches, and agent
     sessions whose mutations leaked into the canonical checkout. This policy
     makes the cleanup automatic and the enforcement structural.
+
+    v2.0.0 (CORE-0051, GTD-1305): the LightWave-managed root moves to
+    ~/.worktrees/{repo}/{slug} and the claim block becomes the on-disk print
+    of data/meta/project_workspace — identity (repo, task) is the invariant;
+    the path is where the workspace happens to live. Vendor-created trees
+    register in place under policy/security/workspace_broker_policy; this
+    policy keeps governing persona permissions, the main lock, the save_gate
+    and maintenance for every registered tree wherever it lives.
   generates:
     - "pydantic:WorktreePolicy"
   depends_on:
     - "lightwave://schemas/data/enums/persona_tiers"
+    - "lightwave://schemas/policy/security/workspace_broker_policy"
 
 status_enum: "document_statuses"
 
@@ -26,8 +35,9 @@ required_fields:
   - name: repo_structure
     type: "RepoStructureRef"
     description: >
-      Where worktrees live and how they're named. All repos under ~/dev
-      MUST conform.
+      Where LightWave-managed worktrees live and how they're named:
+      ~/.worktrees/{repo}/{slug} (CORE-0051). Vendor-managed roots are
+      governed by workspace_broker_policy.root_taxonomy and register in place.
   - name: persona_permissions
     type: "PersonaPermissionsRef"
     description: >
@@ -58,18 +68,20 @@ relations:
 example:
   id: "worktree-lifecycle-v1"
   repo_structure:
-    worktree_root: ".worktrees/"
-    naming: "<YYYY-MM-DD>-<ticket-slug>"
+    worktree_root: "~/.worktrees/{repo}/"
+    naming: "<slug>"
+    identity_ref: "lightwave://schemas/data/meta/project_workspace"
     max_age_hours: 72
     claim:
       marker_file: ".lw-worktree.yaml"
-      fields: [session_id, agent_id, pid, heartbeat_at, holders, stale_after_minutes]
+      fields: [workspace_id, task_ref, repo, branch, claim_holder, heartbeat_at, lifecycle_state, stale_after_minutes]
       stale_after_minutes: 30
       lock_on_claim: true
       rules:
-        - "A worktree with a live claim (heartbeat within stale_after_minutes) is single-writer; a second session may join only by appending to holders."
-        - "A stale heartbeat auto-releases the claim — a crashed session cannot wedge a tree."
-        - "Reaping (max_age_hours) MUST run the save_gate before removal: dirty tree → commit to wip/<name> first. Removal without the save_gate is a policy violation, not an option."
+        - "The marker is the on-disk print of the project_workspace record; identity is (repo, task_ref), never the path or an issue id."
+        - "A worktree with a live claim (heartbeat within stale_after_minutes) is single-writer; a second writable request for the same identity fails closed naming the existing claim."
+        - "A stale heartbeat moves the workspace to abandoned — a crashed session cannot wedge a tree, and a resumed session re-enters it instead of allocating another."
+        - "Reaping (max_age_hours) proposes; the operator disposes. Removal MUST run the save_gate first: dirty tree → commit to wip/<name>. A live, locked or unpushed tree is never removed by automation."
   persona_permissions:
     developer:
       can_create: true
@@ -111,20 +123,21 @@ example:
   enforcement:
     naming_validation:
       hook: pre_commit
-      regex: '^.worktrees/\\d{4}-\\d{2}-\\d{2}-[a-z0-9-]+$$'
-      fail_message: "Worktree name must match .worktrees/YYYY-MM-DD-<ticket-slug>"
+      regex: '^~/\\.worktrees/[a-z0-9._-]+/[a-z0-9][a-z0-9-]*$$'
+      fail_message: "LightWave-managed worktree path must match ~/.worktrees/<repo>/<slug> (CORE-0051); vendor-managed trees register in place instead"
     session_lifecycle:
       # Realized by the Claude Code harness worktree hooks (CORE-0047), which
       # take precedence over native worktree creation for --worktree sessions,
       # --spawn=worktree, and Agent(isolation:"worktree") alike. Contract:
-      # interfaces/hooks/worktree_lifecycle_hook.yaml.
+      # interfaces/hooks/worktree_lifecycle_hook.yaml. Under CORE-0051 the hook
+      # delegates allocation to the broker (`lw workspace prepare`).
       worktree_create:
         hook: WorktreeCreate
         developer:
-          - "git worktree add <repo-root>/.worktrees/<YYYY-MM-DD>-<slug> -b <branch> origin/main"
-          - "Write .lw-worktree.yaml marker (claim block) at birth"
+          - "lw workspace prepare <task_ref> — broker allocates ~/.worktrees/<repo>/<slug> from origin/main and registers the project_workspace record"
+          - "Write .lw-worktree.yaml marker (record print) at birth"
           - "git worktree lock <path>"
-          - "Echo absolute worktree path to stdout (harness consumes it)"
+          - "Return the absolute worktree path (harness consumes it); non-zero exit aborts creation — never fall through to an unregistered root"
         reader:
           - "Set cwd to repo root (read-only)"
           - "Export LW_READONLY=1"
@@ -180,4 +193,12 @@ example:
     object store mid-scan), the save_gate is now normative, and the
     session lifecycle is realized by the harness WorktreeCreate/
     WorktreeRemove hooks so conformance requires zero agent discipline.
+
+    v2.0.0 (2026-09-02, CORE-0051): the 2026-08-31 measurement found 18
+    worktrees across five conventions with every instrument reporting a
+    clean fleet — identity was the Paperclip issue id and harness trees
+    have none. The root moves out of the repo to ~/.worktrees/{repo}/{slug}
+    (operator ruling 2026-08-31), the claim block becomes the print of the
+    project_workspace record, and vendor-created trees are registered in
+    place rather than fought. Existing trees drain; none is moved live.
   status: "active"

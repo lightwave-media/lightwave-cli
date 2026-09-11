@@ -1,5 +1,5 @@
 _meta:
-  version: "1.5.0"
+  version: "1.7.0"
   schema_id: "lightwave://schemas/data/meta/homedir_zones"
   title: "HomeDir Zones"
   description: |
@@ -8,6 +8,18 @@ _meta:
     "Zones:" line under notes) into a queryable shape so hygiene tooling and
     `lw home reset` can READ which dirs are wipeable instead of hard-coding
     the list. Every dir name MUST be a top-level dir declared in homedir.yaml.
+
+    v1.7.0 (2026-09-10): ADD hcr/ to AUTHORED — Harness Change Requests
+    (CORE-0045) awaiting operator review. Not wipeable: each holds a prepared
+    diff an agent is forbidden to apply itself, so no other copy exists.
+    homedir.yaml v3.10.0 lockstep.
+
+    v1.6.0 (2026-09-01): ADD backups/ + plugins/ to RETAINED and session-env/
+    + sessions/ to RUNTIME — the four coding-agent harness dirs declared in
+    homedir.yaml v3.9.0 lockstep. RETAINED because a wiped backup is not a
+    backup and a wiped plugin registry uninstalls tooling; RUNTIME because
+    per-session state is superseded on the next launch. RUNTIME now
+    classifies 9 dirs, RETAINED 6.
 
     v1.5.0 (2026-08-04): ADD logs/ + state/ to RUNTIME (regenerate on next
     run, wipe-safe) and secrets/ + forgejo-runner/ to RETAINED (credential
@@ -74,7 +86,7 @@ required_fields:
 # =============================================================================
 
 example:
-  version: "1.2.0"
+  version: "1.3.0"
   zones:
     AUTHORED:
       wipe_on_reset: false
@@ -92,20 +104,32 @@ example:
           governance,
           db,
           reviews,
+          hcr,
         ]
-      rationale: "Operator-authored source of truth; loss is unrecoverable."
+      rationale: "Operator-authored source of truth; loss is unrecoverable. hcr/ holds Harness Change Requests awaiting operator review (CORE-0045) — each carries a prepared diff an agent may not apply itself, so a wipe would discard proposed work with no other copy."
     GENERATED:
       wipe_on_reset: true
       dirs: [index, reports]
       rationale: "Derived artifacts; regenerable from authored + runtime sources."
     RUNTIME:
       wipe_on_reset: true
-      dirs: [observability, artefacts, forgejo, harvest, inbox, logs, state]
-      rationale: "Transient daemon/tool output; task_done archives artefacts to archive/ first, so these are GC-safe to wipe and re-render. inbox/ is the groom queue — processed items are routed to brain/knowledge or archived first. Worktrees are NOT here — they are repo-scoped per worktree_policy.yaml."
+      dirs:
+        [
+          observability,
+          artefacts,
+          forgejo,
+          harvest,
+          inbox,
+          logs,
+          state,
+          session-env,
+          sessions,
+        ]
+      rationale: "Transient daemon/tool output; task_done archives artefacts to archive/ first, so these are GC-safe to wipe and re-render. inbox/ is the groom queue — processed items are routed to brain/knowledge or archived first. session-env/ + sessions/ are per-session harness state, superseded on the next launch. Worktrees are NOT here — they are repo-scoped per worktree_policy.yaml."
     RETAINED:
       wipe_on_reset: false
-      dirs: [archive, v_core, secrets, forgejo-runner]
-      rationale: "Durable runtime that must survive reset: archive/ holds retained monthly task tarballs; v_core/ holds operator daemon config (providers, channels, plugins, cron) + KV memory; secrets/ holds host-side credential material; forgejo-runner/ holds the CI runner registration. Wiping any is data loss."
+      dirs: [archive, v_core, secrets, forgejo-runner, backups, plugins]
+      rationale: "Durable runtime that must survive reset: archive/ holds retained monthly task tarballs; v_core/ holds operator daemon config (providers, channels, plugins, cron) + KV memory; secrets/ holds host-side credential material; forgejo-runner/ holds the CI runner registration; backups/ holds the only rollback for a bad coding-agent config; plugins/ holds the harness plugin registry, which reinstalls rather than regenerates. Wiping any is data loss."
     SHARED:
       wipe_on_reset: false
       dirs: [lib, bin]

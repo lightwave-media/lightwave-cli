@@ -22,6 +22,12 @@ schemas:
   document_statuses: document_statuses.yaml
   life_domains: life_domains.yaml
   task_statuses: task_statuses.yaml
+  workspace_lifecycle_states: workspace_lifecycle_states.yaml
+  workspace_clients: workspace_clients.yaml
+  workspace_modes: workspace_modes.yaml
+  workspace_terminal_outcomes: workspace_terminal_outcomes.yaml
+  execution_modes: execution_modes.yaml
+  git_upstream_states: git_upstream_states.yaml
   sprint_statuses: sprint_statuses.yaml
   epic_statuses: epic_statuses.yaml
   user_story_statuses: user_story_statuses.yaml
@@ -116,3 +122,6 @@ schemas:
   # createOS shell promoted-product / domain-registry row (bound via R-41 values_ref)
   promoted_product_states: promoted_product_states.yaml
   promoted_product_publish_states: promoted_product_publish_states.yaml
+  # Operator attention state — subject-owned, distinct from lifecycle_phases (LC-01/LC-02)
+  operating_modes: operating_modes.yaml
+  mode_signal_sources: mode_signal_sources.yaml

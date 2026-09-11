@@ -38,9 +38,9 @@ const schemaRoot = "schemas"
 // detectable without a lightwave-core checkout. All three are rewritten by
 // scripts/sync-core-stamp.sh; do not edit them by hand.
 const (
-	Version       = "0.6.4"
-	SourceTag     = "v0.6.4"
-	SchemasSHA256 = "b454394e6e9fe9cbc14cd181e2aad4a45577d983eb21f772d126b6b3da1e0c35"
+	Version       = "0.7.0"
+	SourceTag     = "bindings/go/v0.7.0"
+	SchemasSHA256 = "abc6939c3d13a827c59e14224306480e3183b8b0cac9f3ddcfe268570bdd3dbb"
 )
 
 // indexFile is the registry index name (present at each tree level).

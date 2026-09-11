@@ -37,7 +37,7 @@ example:
 name: "commands"
 
 _meta:
-  version: "1.1.0"
+  version: "1.2.0"
   schema_id: "lightwave://schemas/interfaces/cli/commands"
   title: "lw CLI Command Surface"
   description: >-
@@ -60,6 +60,10 @@ _meta:
     the tracking ref that builds it — an unreferenced aspiration is
     decoration, and 18 quietly became 25 exactly that way. Domains lacking
     `_status` are published: strict REQUIRES their handlers to exist.
+
+    v1.2.0 adds mcp.start|status|logs|stop|restart so a core agent-developer
+    can lifecycle-manage the Lightwave MCP process without raw lsof/tail.
+    Destructive stop/restart ship --dry-run + --yes. Tracking: lightwave-cli#385.
 
 domains:
   check:
@@ -585,9 +589,11 @@ domains:
 
   runbook:
     description: "Agent runbook apply in worktrees (ADR-0039)"
-    # Published: lightwave-cli#335 shipped the five verbs. No _status means
-    # the dispatcher will attach them when RegisterHandler is wired. Until
-    # that follow-up, `lw runbook` is the hardcoded cobra tree from #335.
+    # Published. Handlers registered in lightwave-cli#338; the interim
+    # hardcoded cobra tree from #335 was removed in #346, which also added a
+    # test asserting no domain is attached by both init() and the dispatcher.
+    # A domain published here without _status while the CLI still hand-wires
+    # it is attached twice — legacyHardcodedDomains() is the exemption list.
     commands:
       - {
           name: start,
@@ -752,4 +758,19 @@ domains:
     commands:
       - name: serve
         flags: [--persona]
-        description: "Serve Lightwave MCP tools over stdio (default persona tier: engineer)"
+        description: "Serve Lightwave MCP tools over stdio (default persona tier: engineer). The transport Claude Code and Cursor spawn from .mcp.json."
+      - name: start
+        flags: [--listen, --foreground, --dry-run, --json]
+        description: "Start the managed MCP listener (same tool surface as mcp serve) so agents can status/logs/stop it without lsof. Default listen 127.0.0.1:7701. --foreground stays in-process; without it, start daemonizes and writes ~/.lightwave/run/mcp-server.pid."
+      - name: status
+        flags: [--json]
+        description: "Report whether the managed MCP listener is running (pid, listen address, log path, .mcp.json wiring)."
+      - name: logs
+        flags: [--tail, --json]
+        description: "Read ~/.lightwave/logs/mcp-server.log (--tail N, default 80)."
+      - name: stop
+        flags: [--dry-run, --yes, --json]
+        description: "Stop the managed MCP listener. Destructive: --dry-run previews; --yes skips the confirm prompt."
+      - name: restart
+        flags: [--listen, --dry-run, --yes, --json]
+        description: "Stop then start the managed MCP listener. Destructive: --dry-run previews; --yes skips the confirm prompt."

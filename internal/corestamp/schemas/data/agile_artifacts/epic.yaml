@@ -1,11 +1,12 @@
 _meta:
-  version: 1.5.0
+  version: 1.6.0
   schema_id: lightwave://schemas/data/agile_artifacts/epic
   title: Epic
   description: 'A major initiative under a PRD. Holds the brief (subtitle/log_line) and aggregates UserStories + Sprints.
     Mapped 1:1 to Django Epic. Migrated 2026-05-25 from governance/agile/epic.yaml (Phase 4 file #10) — Augusta example replaced
     with v_core, Postgres-first language updated to local-first per ADR-0002, products/createos/config dep dropped (Epic is
-    generic — not tied to createos). v1.5.0 adds GitHub milestone/project projection fields (CORE-0048).'
+    generic — not tied to createos). v1.5.0 adds GitHub milestone/project projection fields (CORE-0048). v1.6.0 makes
+    project_ref required: the Global Projects & Epics print enforces Kind + Parent item, so an epic without a project cannot exist.'
   generates:
   - pydantic:Epic
   depends_on:
@@ -36,6 +37,15 @@ required_fields:
   description: Slug of parent prd
   storage: db
   fk_ref: lightwave://schemas/data/agile_artifacts/prd
+  fk_column: slug
+  indexed: true
+- name: project_ref
+  type: str
+  description: 'Slug of the parent Project in the work spine (Goal → Project → Epic). Required since v1.6.0 — the Global
+    Projects & Epics print enforces Kind + Parent item. Orthogonal to prd_ref: prd_ref is the R-P-I-V-R doc-lineage parent,
+    project_ref is the work-hierarchy grouping. Added 2026-06-19 with the goal/project spine.'
+  storage: db
+  fk_ref: lightwave://schemas/data/agile_artifacts/project
   fk_column: slug
   indexed: true
 - name: domain
@@ -97,15 +107,6 @@ optional_fields:
   description: List of {category, slug} for required SAD/NFR/DDD links; consumed by the Ready-state gate
   storage: db
   column_type: jsonb
-- name: project_ref
-  type: str
-  description: 'Slug of the parent Project in the work spine (Goal → Project → Epic). Optional and orthogonal to prd_ref:
-    prd_ref is the R-P-I-V-R doc-lineage parent, project_ref is the work-hierarchy grouping. Added 2026-06-19 with the goal/project
-    spine.'
-  storage: db
-  fk_ref: lightwave://schemas/data/agile_artifacts/project
-  fk_column: slug
-  indexed: true
 - name: github_milestone_title
   type: str
   description: GitHub milestone title this epic projects onto (engineering tracking surface)
@@ -135,6 +136,7 @@ example:
   slug: v-core-v1-ready-task-dispatch
   name: v_core v1 — Ready-Task dispatch
   prd_ref: createos-inbox-agent-dispatch
+  project_ref: createos-spine-knowledge-ingestion-v1
   domain: software-development
   status: in_progress
   priority: high
