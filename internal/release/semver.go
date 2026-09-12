@@ -128,20 +128,136 @@ func ClassifyCommit(subject, body string) Bump {
 		return BumpMajor
 	}
 
-	m := conventionalRe.FindStringSubmatch(subject)
-	if m == nil {
+	parsed, ok := parseConventional(subject)
+	if !ok {
 		return BumpPatch
 	}
 
-	if m[3] == "!" {
+	if parsed.Breaking {
 		return BumpMajor
 	}
 
-	if strings.EqualFold(m[1], "feat") {
+	if strings.EqualFold(parsed.Type, "feat") {
 		return BumpMinor
 	}
 
 	return BumpPatch
+}
+
+// conventionalParts is the decomposed subject line.
+type conventionalParts struct {
+	Type     string
+	Scope    string
+	Breaking bool
+}
+
+// parseConventional splits a Conventional Commits subject. Extracted so the
+// bump decision and the classification report read the same parse instead of
+// each running the regex with its own interpretation.
+func parseConventional(subject string) (conventionalParts, bool) {
+	m := conventionalRe.FindStringSubmatch(subject)
+	if m == nil {
+		return conventionalParts{}, false
+	}
+
+	return conventionalParts{
+		Type:     strings.ToLower(m[1]),
+		Scope:    strings.Trim(m[2], "()"),
+		Breaking: m[3] == "!",
+	}, true
+}
+
+// contributorFacingTypes describe the contributor workflow rather than the
+// released artifact's contract. A `!` on one of these is still a real break —
+// of how people contribute — but it is not a break of any `lw` command, so it
+// should not silently publish a major that tells every user their usage broke.
+//
+// Deliberately conservative. `build` is absent because it can change the shipped
+// artifact, and `refactor`/`perf`/`revert` are absent because they can change
+// observable behaviour. When in doubt a type stays consumer-facing, because the
+// cost of a needless major is an upgrade note while the cost of a missed one is
+// a silent break.
+var contributorFacingTypes = map[string]bool{
+	"ci":    true,
+	"chore": true,
+	"docs":  true,
+	"test":  true,
+	"style": true,
+}
+
+// BreakingMarker is one commit in the range that demands a major bump.
+type BreakingMarker struct {
+	Subject string
+	Type    string
+	Scope   string
+
+	// ContributorFacing is true when the commit's type describes the
+	// contributor workflow rather than the artifact's contract.
+	ContributorFacing bool
+}
+
+// Summary is the classification that produced a bump — what a human needs to
+// see BEFORE publishing, not after.
+type Summary struct {
+	ByType   map[string]int
+	Breaking []BreakingMarker
+	Total    int
+}
+
+// AllBreakingAreContributorFacing reports whether a computed major rests
+// entirely on contributor-facing commits.
+//
+// This is the v3.13.0 case (#382): a `ci(release)!` commit whose break was "no
+// more nightly Release PRs" would compute v4.0.0 and announce to every consumer
+// that their usage broke. It is a warning, never an automatic downgrade — a
+// `ci!` commit CAN carry a real consumer break, and silently reclassifying it
+// would trade a loud wrong answer for a quiet one.
+func (s Summary) AllBreakingAreContributorFacing() bool {
+	if len(s.Breaking) == 0 {
+		return false
+	}
+
+	for _, b := range s.Breaking {
+		if !b.ContributorFacing {
+			return false
+		}
+	}
+
+	return true
+}
+
+// Summarize classifies a commit range: counts by type, and every breaking
+// marker with the scope that carried it.
+func Summarize(commits []Commit) Summary {
+	out := Summary{ByType: make(map[string]int, len(commits)), Total: len(commits)}
+
+	for _, c := range commits {
+		parsed, ok := parseConventional(c.Subject)
+
+		typ := parsed.Type
+		if !ok {
+			typ = "(non-conventional)"
+		}
+
+		out.ByType[typ]++
+
+		if !ok {
+			continue
+		}
+
+		if !parsed.Breaking && !breakingTrailerRe.MatchString(c.Body) {
+			continue
+		}
+
+		out.Breaking = append(out.Breaking, BreakingMarker{
+			Subject:           c.Subject,
+			Type:              parsed.Type,
+			Scope:             parsed.Scope,
+			ContributorFacing: contributorFacingTypes[parsed.Type],
+		})
+	}
+
+	return out
 }
 
 // Commit is the minimum a bump decision needs.

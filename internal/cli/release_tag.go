@@ -19,7 +19,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/release"
@@ -46,12 +48,12 @@ func releaseTagHandler(ctx context.Context, _ []string, flags map[string]any) er
 	module := flagStr(flags, "module")
 	prefix := release.TagPrefix(module)
 
-	next, bump, last, err := resolveNextTagVersion(ctx, repo, prefix, flagStr(flags, "version"))
+	plan, err := resolveNextTagVersion(ctx, repo, prefix, flagStr(flags, "version"))
 	if err != nil {
 		return err
 	}
 
-	tag := prefix + next.String()
+	tag := prefix + plan.Next.String()
 
 	if exists, err := tagExists(ctx, repo, tag); err != nil {
 		return err
@@ -59,7 +61,8 @@ func releaseTagHandler(ctx context.Context, _ []string, flags map[string]any) er
 		return fmt.Errorf("tag %s already exists — pass --version to pick another", tag)
 	}
 
-	printTagPlan(tag, last, next, bump, module)
+	printTagPlan(tag, plan.LastTag, plan.Next, plan.Bump, module)
+	printClassification(plan.Summary, tagAge(ctx, repo, plan.LastTag))
 
 	// Checked before the dry-run exit on purpose: a dry run whose only job is to
 	// tell you what a real run would do must report the thing that would stop it.
@@ -84,7 +87,7 @@ func releaseTagHandler(ctx context.Context, _ []string, flags map[string]any) er
 		return nil
 	}
 
-	return createAndPushTag(ctx, repo, tag, next)
+	return createAndPushTag(ctx, repo, tag, plan.Next)
 }
 
 // verifyHeadIsOriginMain refuses to tag anything that is not exactly
@@ -137,50 +140,65 @@ func shortSHA(sha string) string {
 // resolveNextTagVersion returns the version to tag, the bump that produced it,
 // and the last tag it was computed from ("" when this is the first release).
 // An explicit --version short-circuits the commit scan entirely.
+// tagPlan is everything the operator interaction needs about the release being
+// proposed. A struct rather than a fifth return value: the classification
+// (#382) pushed this past the point where positional results stayed readable.
+type tagPlan struct {
+	LastTag string
+	Summary release.Summary
+	Next    release.Version
+	Bump    release.Bump
+}
+
 func resolveNextTagVersion(
 	ctx context.Context, repo, prefix, override string,
-) (next release.Version, bump release.Bump, lastTag string, err error) {
-	lastTag, err = lastMatchingTag(ctx, repo, prefix)
+) (tagPlan, error) {
+	lastTag, err := lastMatchingTag(ctx, repo, prefix)
 	if err != nil {
-		return release.Version{}, release.BumpNone, "", err
+		return tagPlan{}, err
 	}
 
 	if override != "" {
 		v, perr := release.ParseVersion(override)
 		if perr != nil {
-			return release.Version{}, release.BumpNone, "", fmt.Errorf("--version: %w", perr)
+			return tagPlan{}, fmt.Errorf("--version: %w", perr)
 		}
 
-		return v, release.BumpNone, lastTag, nil
+		return tagPlan{Next: v, Bump: release.BumpNone, LastTag: lastTag}, nil
 	}
 
 	// No prior tag: this is the first release of this artifact. Seed at 0.1.0
 	// rather than computing a bump from the whole history, which would be
 	// arbitrary — the operator can override with --version.
 	if lastTag == "" {
-		return release.Version{Minor: 1}, release.BumpNone, "", nil
+		return tagPlan{Next: release.Version{Minor: 1}, Bump: release.BumpNone}, nil
 	}
 
 	lastVersion, err := release.ParseVersion(lastTag)
 	if err != nil {
-		return release.Version{}, release.BumpNone, "", fmt.Errorf("last tag %s: %w", lastTag, err)
+		return tagPlan{}, fmt.Errorf("last tag %s: %w", lastTag, err)
 	}
 
 	commits, err := commitsSince(ctx, repo, lastTag)
 	if err != nil {
-		return release.Version{}, release.BumpNone, "", err
+		return tagPlan{}, err
 	}
 
-	next, bump, err = release.NextVersion(lastVersion, commits)
+	next, bump, err := release.NextVersion(lastVersion, commits)
 	if err != nil {
 		if errors.Is(err, release.ErrNoCommits) {
-			return release.Version{}, release.BumpNone, "", fmt.Errorf("%w (last tag %s)", err, lastTag)
+			return tagPlan{}, fmt.Errorf("%w (last tag %s)", err, lastTag)
 		}
 
-		return release.Version{}, release.BumpNone, "", err
+		return tagPlan{}, err
 	}
 
-	return next, bump, lastTag, nil
+	return tagPlan{
+		Next:    next,
+		Bump:    bump,
+		LastTag: lastTag,
+		Summary: release.Summarize(commits),
+	}, nil
 }
 
 // lastMatchingTag returns the highest tag matching the prefix, or "" when the
@@ -262,6 +280,110 @@ func printTagPlan(tag, lastTag string, next release.Version, bump release.Bump, 
 		fmt.Printf("  module:  %s\n", module)
 	}
 }
+
+// printClassification shows the reasoning behind the computed version before it
+// is published, not after (#382).
+//
+// v3.13.0 shipped 30 commits that had sat on main for four weeks, and cutting it
+// meant reading 30 subjects by hand to classify them. The range also held a
+// `ci(release)!` commit whose BREAKING CHANGE was "no more nightly Release PRs"
+// — contributor-facing, no `lw` command changed — which conventional-commit
+// arithmetic computes as a major. Publishing that says "your usage broke" to
+// every consumer when nothing of theirs did.
+//
+// So: print the histogram, list the breaking markers with their scope, and warn
+// when a major rests only on contributor-facing commits. The judgment stays with
+// the human; this only makes the delta visible in time to apply it.
+func printClassification(s release.Summary, staleness string) {
+	if s.Total == 0 {
+		return
+	}
+
+	fmt.Printf("\n%s %d commit(s)\n", color.CyanString("since last tag:"), s.Total)
+
+	if staleness != "" {
+		fmt.Printf("  age:     %s\n", staleness)
+	}
+
+	for _, t := range sortedTypes(s.ByType) {
+		fmt.Printf("  %-20s %d\n", t, s.ByType[t])
+	}
+
+	if len(s.Breaking) == 0 {
+		return
+	}
+
+	fmt.Printf("\n%s (%d)\n", color.YellowString("breaking markers"), len(s.Breaking))
+
+	for _, b := range s.Breaking {
+		facing := color.RedString("consumer-facing")
+		if b.ContributorFacing {
+			facing = color.YellowString("contributor-facing")
+		}
+
+		fmt.Printf("  ! %-8s %s\n      %s\n", b.Type, facing, b.Subject)
+	}
+
+	if s.AllBreakingAreContributorFacing() {
+		fmt.Printf("\n%s\n",
+			color.YellowString("every breaking marker above is contributor-facing."))
+		fmt.Println("  A major says \"your usage broke\" to everyone who installed this.")
+		fmt.Println("  If no command, flag or output changed, pass --version to cut a minor instead.")
+	}
+}
+
+// sortedTypes orders the histogram deterministically so two runs of the same
+// range print the same report.
+func sortedTypes(byType map[string]int) []string {
+	out := make([]string, 0, len(byType))
+	for t := range byType {
+		out = append(out, t)
+	}
+
+	sort.Strings(out)
+
+	return out
+}
+
+// tagAge reports how far main has drifted from the last tag, in days.
+//
+// The staleness half of #382: release.yml fires on a pushed tag, no workflow
+// creates one, and `lw` neither self-updates nor says it is behind — so a merged
+// PR is not a shipped feature and nothing anywhere says so. Four weeks of main
+// went unreleased that way. Empty string when the age cannot be read; a missing
+// signal must not fail a release.
+func tagAge(ctx context.Context, repo, lastTag string) string {
+	if lastTag == "" {
+		return ""
+	}
+
+	out, err := gitOutput(ctx, repo, "log", "-1", "--format=%cI", lastTag)
+	if err != nil || out == "" {
+		return ""
+	}
+
+	tagged, err := time.Parse(time.RFC3339, strings.TrimSpace(out))
+	if err != nil {
+		return ""
+	}
+
+	days := int(time.Since(tagged).Hours() / hoursPerDay)
+	if days < 1 {
+		return "tagged today"
+	}
+
+	age := fmt.Sprintf("%s was %d day(s) ago", lastTag, days)
+	if days >= staleTagDays {
+		return color.YellowString("%s — main has been unreleased that long", age)
+	}
+
+	return age
+}
+
+// staleTagDays is when an unreleased main is worth flagging. Set from the
+// incident: v3.12.0 → v3.13.0 was four weeks, and nothing reported it.
+// hoursPerDay is declared in worktree.go, in this same package.
+const staleTagDays = 14
 
 func createAndPushTag(ctx context.Context, repo, tag string, next release.Version) error {
 	msg := "Release " + next.String()
