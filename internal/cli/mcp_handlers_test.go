@@ -40,10 +40,17 @@ func TestMCPStampCommandsDispatch(t *testing.T) {
 	}
 
 	for _, cmd := range mcpStampCommands(t) {
+		// Resolved here rather than inside the subtest: findChild calls
+		// cobra's Commands(), which sorts the child slice IN PLACE on first
+		// call. Calling it from parallel subtests races on that sort, and the
+		// race detector only catches it once the tree is large enough for the
+		// sort to still be running when the next subtest reads — which is why
+		// it stayed hidden until the embedded stamp grew.
+		child := findChild(mcpCmd, cmd.Name)
+
 		t.Run(cmd.Name, func(t *testing.T) {
 			t.Parallel()
 
-			child := findChild(mcpCmd, cmd.Name)
 			require.NotNil(t, child, "mcp %s subcommand should be attached from the stamp", cmd.Name)
 			require.NotNil(t, child.RunE, "mcp %s must have a RunE", cmd.Name)
 		})

@@ -27,6 +27,7 @@ schemas:
   core-self: validity/core-self.yaml
   core-self-continued: validity/core-self-continued.yaml
   core-self-continued-2: validity/core-self-continued-2.yaml
+  core-self-continued-3: validity/core-self-continued-3.yaml
   provider_identity_invariant: security/provider_identity_invariant.yaml
   channel_bindings: governance/channel_bindings.yaml
   daemon_secrets: security/daemon_secrets.yaml
@@ -54,3 +55,4 @@ schemas:
   token_budget: compliance/token_budget.yaml
   lsp_control_plane: compliance/lsp_control_plane.yaml
   test_contract: testing/test_contract.yaml
+  workspace_broker_policy: security/workspace_broker_policy.yaml

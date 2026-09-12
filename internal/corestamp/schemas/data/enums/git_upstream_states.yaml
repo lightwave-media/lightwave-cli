@@ -1,0 +1,44 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/git_upstream_states"
+  title: "Git Upstream States (branch vs its tracking ref)"
+  description: |
+    Relationship between a workspace branch and its upstream, as reported by
+    `git status -sb` / `git rev-list --left-right` (CORE-0051, GTD-1305).
+    project_workspace.upstream_state binds here so scan and sweep classify
+    staleness on facts (`gone`, `ahead` = unpushed work) rather than mtime
+    alone. `unpushed` marks the values under which a tree MUST NOT be moved or
+    deleted by automation.
+  generates:
+    - "pydantic:GitUpstreamState"
+  depends_on: []
+
+name: git_upstream_states
+description: "How a workspace branch relates to its upstream tracking ref"
+default: none
+closed: true
+options:
+  - value: none
+    label: "No upstream"
+    description: "Branch has never been pushed; every commit on it is local-only."
+    unpushed: true
+  - value: in_sync
+    label: "In sync"
+    description: "Branch and upstream point at the same commit."
+    unpushed: false
+  - value: ahead
+    label: "Ahead"
+    description: "Branch has commits the upstream lacks; work is unpushed."
+    unpushed: true
+  - value: behind
+    label: "Behind"
+    description: "Upstream has commits the branch lacks; fast-forwardable."
+    unpushed: false
+  - value: diverged
+    label: "Diverged"
+    description: "Both sides have commits the other lacks; needs a rebase or merge decision."
+    unpushed: true
+  - value: gone
+    label: "Gone"
+    description: "Tracking ref was deleted on origin, usually because the PR merged; a clean tree here is a sweep candidate."
+    unpushed: false

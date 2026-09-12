@@ -1,0 +1,51 @@
+# =============================================================================
+# core-self contract — continuation 3 (rules R-66+)
+# =============================================================================
+# PART FOUR of lightwave-core's self-validity contract. core-self.yaml holds
+# R-1..R-17; core-self-continued.yaml holds R-18..R-46; core-self-continued-2
+# holds R-47..R-65; this file holds R-66 and later. Split 2026-08-27 when
+# continued-2 hit 521/500 lines on the R-66 addition (R-12 cap).
+#
+# The four files compose ONE logical contract:
+#   - R-23's rule-ID loader unions rules[].id across policy/validity/core-self*.yaml.
+#   - pydantic:CoreSelfValidityContract codegen (Phase 6) unions the same way.
+# Add new rules to whichever part has headroom; keep all under the R-12 cap.
+# =============================================================================
+name: "core-self-continued-3"
+
+_meta:
+  version: "1.16.0"
+  schema_id: "lightwave://schemas/policy/validity/core-self-continued-3"
+  title: "lightwave-core self-validity contract — rules R-66+"
+  description: |
+    Third continuation of the lightwave-core self-validity contract. Holds
+    R-66 and later. Split 2026-08-27 from core-self-continued-2.yaml (which
+    reached 521 lines on the R-66 addition). R-23 unions rules across all
+    policy/validity/core-self*.yaml files.
+  generates:
+    - "pydantic:CoreSelfValidityContract"
+  depends_on:
+    - "lightwave://schemas/policy/validity/core-self-continued-2"
+
+rules:
+  - id: R-66
+    name: "generates-symbol-uniqueness"
+    severity: error
+    description: |
+      Every `generates:` symbol in the stamp MUST name exactly one schema,
+      with two declared exceptions: `postgres:DDL` (a target-kind marker many
+      schemas legitimately emit, not a type name) and
+      `pydantic:CoreSelfValidityContract` (the core-self contract is one
+      logical type split across four files for R-12). Two schemas emitting
+      the same type symbol means codegen writes the same artifact twice and
+      whichever runs last silently wins.
+    enforced_by: "tests/validation/test_r66_generates_uniqueness.py"
+    enforces:
+      - "src/schemas/**/*.yaml"
+    rationale: |
+      #295 asked for this under the first intentionally-unused rule ID;
+      both sprint plans lock those two IDs against reuse, so it lands at
+      the next free ID instead. The 2026-08-27 scan found 528 symbols with
+      exactly the two intended collisions above — the rule freezes that
+      state so a third collision cannot land silently.
+    locked: 2026-08-27

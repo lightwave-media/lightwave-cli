@@ -1,5 +1,5 @@
 _meta:
-  version: "1.2.1"
+  version: "1.3.0"
   schema_id: "lightwave://schemas/policy/governance/branch_protection"
   title: "Branch Protection — server-side enforcement of the merge gate"
   description: |
@@ -157,21 +157,22 @@ example:
         unit is added or removed, so requiring them would break the tree on every
         new unit.
     - repo: lightwave-sys
-      required_checks: []
+      required_checks: ["Lightwave Required Gate"]
       rationale: |
-        Gate authored in lightwave-sys#172 (`Lightwave Required Gate`,
-        `if: always()`, needs `mise run ci` on ubuntu-latest). Ghostty's
-        Test/Nix matrix still SKIP/CANCEL (Namespace runners) and cannot be
-        required. Fill this list with that exact context after it reports;
-        then the operator applies GitHub (lightwave-core#467).
+        Aggregate authored in lightwave-sys#172 (`if: always()`, needs
+        `mise run ci` on ubuntu-latest). Verified 2026-09-08 reporting
+        `completed / success` on main HEAD. Ghostty's Test/Nix matrix still
+        SKIP/CANCEL (Namespace runners) and must not be required. Operator
+        applies GitHub from this list (lightwave-core#467).
     - repo: lightwave-platform
-      required_checks: []
+      required_checks: ["Lightwave Required Gate"]
       rationale: |
-        Gate job `Lightwave Required Gate` (`if: always()`, needs unit +
-        integration + e2e) is landing so the check can report. Do not require
-        it until (1) it reports on a PR and (2) unit/e2e are green on main —
-        main has been red since #669. Previous `Pre-commit Checks` reported
-        on only 5/10 PRs.
+        Aggregate (`if: always()`, needs unit + integration + e2e), landed
+        with lightwave-platform#688. Both preconditions verified 2026-09-08
+        on main HEAD: the gate reports `completed / success`, and `Unit
+        checks`, `Postgres RLS` and `Playwright shell e2e` are green (main
+        had been red since #669). Previous `Pre-commit Checks` reported on
+        only 5/10 PRs and stays unrequired.
     - repo: pipelines-workflows
       required_checks: ["ci / CI (mise)"]
       rationale: "Commissioned release plane; the aggregate mise job reports on every PR."

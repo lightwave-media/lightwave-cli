@@ -1,0 +1,49 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/operating_modes"
+  title: "Operating Mode Enum — human attention state"
+  description: |
+    The mode the human operator is currently working in. Subject-owned and
+    independent of any artifact's lifecycle_phase. Determines what the UI
+    renders, which fields are visible, and which writes are permitted.
+
+    Mode and phase are different axes and MUST be able to disagree: being in
+    plan mode while looking at an in-progress task is the common case.
+    lifecycle_phases is object-owned and stays closed and unmodified; the
+    lifecycle_phase on each option here is a reference into it, not a copy.
+
+    maintenance deliberately has no mode — it is the agent-only phase.
+  generates:
+    - "typescript:OperatingMode"
+    - "go:OperatingMode"
+  depends_on:
+    - "lightwave://schemas/data/enums/lifecycle_phases"
+name: operating_modes
+description: "Human attention state driving UI render and write scope."
+default: "capture"
+closed: true
+options:
+  - value: "capture"
+    label: "Capture"
+    description: "Get it out of the head and into the system. No judgement, no ordering."
+    lifecycle_phase: "discovery"
+    question: "What exists?"
+    is_active: true
+  - value: "plan"
+    label: "Plan"
+    description: "Decide what matters and in what order. Judgement, no making."
+    lifecycle_phase: "planning"
+    question: "What matters, and in what order?"
+    is_active: true
+  - value: "execute"
+    label: "Execute"
+    description: "Do the one next thing. No reordering, no new capture."
+    lifecycle_phase: "execution"
+    question: "What is the one next thing?"
+    is_active: true
+  - value: "review"
+    label: "Review"
+    description: "Interpret what happened and emit structured captures with provenance."
+    lifecycle_phase: "review"
+    question: "What happened, and what does it mean?"
+    is_active: true

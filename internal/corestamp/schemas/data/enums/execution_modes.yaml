@@ -1,0 +1,47 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/execution_modes"
+  title: "Execution Modes (agent autonomy ladder)"
+  description: |
+    Mirrors the Global Tasks DB `Execution Mode` ladder in Notion, value for
+    value, so the workspace broker gates on the planning surface's own
+    vocabulary instead of a parallel taxonomy (CORE-0051, GTD-1305;
+    US-HARNESS-CAP-001 asks for exactly this mapping).
+
+    `writes_permitted` is the runtime reading of each rung: modes below
+    agent_can_edit_locally allocate no workspace and issue no writer claim.
+    policy/security/workspace_broker_policy.execution_mode_gate partitions
+    the ladder the same way; the conformance test fails if the two disagree.
+  generates:
+    - "pydantic:ExecutionMode"
+  depends_on: []
+
+name: execution_modes
+description: "Allowed level of agent autonomy for a task; mirrors the Notion Execution Mode ladder"
+default: agent_planning_only
+closed: true
+options:
+  - value: human_only
+    label: "Human Only"
+    description: "No agent action at all; the task is the operator's hand."
+    writes_permitted: false
+  - value: agent_planning_only
+    label: "Agent Planning Only"
+    description: "Agents may read, plan and write planning artefacts outside the repo; no repository write, no worktree."
+    writes_permitted: false
+  - value: agent_can_edit_locally
+    label: "Agent Can Edit Locally"
+    description: "Agents may write in an isolated, registered workspace but may not push or open a PR."
+    writes_permitted: true
+  - value: agent_can_open_draft_pr
+    label: "Agent Can Open Draft PR"
+    description: "Agents may write, push the task branch and open a draft pull request."
+    writes_permitted: true
+  - value: agent_can_open_pr
+    label: "Agent Can Open PR"
+    description: "Agents may write, push and open a ready-for-review pull request."
+    writes_permitted: true
+  - value: agent_can_merge
+    label: "Agent Can Merge"
+    description: "Agents may write, open and merge the pull request once gates are green."
+    writes_permitted: true

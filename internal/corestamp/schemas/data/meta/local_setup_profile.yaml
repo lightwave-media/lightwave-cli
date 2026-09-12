@@ -25,7 +25,7 @@ required_fields:
     description: "Directories recursively scanned for git repos."
   - name: worktree_root
     type: str
-    description: "Canonical mount for task worktrees. Repo-scoped per worktree_policy.yaml: {repo-root}/.worktrees/{YYYY-MM-DD}-{ticket-slug}/. NOT a ~/.lightwave/ dir."
+    description: "Canonical mount for LightWave-managed task worktrees: ~/.worktrees/{repo}/{slug} per worktree_home_policy v2 (CORE-0051). Outside every repo; NOT a ~/.lightwave/ dir."
   - name: branch_policy
     type: "object[BranchPolicy]"
     description: |
@@ -52,9 +52,9 @@ optional_fields:
   - name: worktree_home
     type: "object[WorktreeHomePolicy]"
     description: |
-      Operator print override for ADR-0037. Sub-fields mirror worktree_home_policy.yaml:
-      canonical_root, path_layout, marker_file, supplemental_roots, forbidden_roots.
-      When absent, defaults from worktree_home_policy example apply.
+      Operator print override for ADR-0037 / CORE-0051. Sub-fields mirror worktree_home_policy.yaml:
+      canonical_root, path_layout, marker_file, supplemental_roots (path, client, conformance),
+      forbidden_roots. When absent, defaults from worktree_home_policy example apply.
   - name: strict_markers
     type: "list[str]"
     description: "Filenames that classify a repo as strict tier when present at repo root."
@@ -66,20 +66,22 @@ example:
   id: "joelschaeffer-default"
   workspace_roots:
     - "~/dev"
-  worktree_root: ".worktrees"
+  worktree_root: "~/.worktrees"
   cursor_worktree_roots:
     - "~/.cursor/worktrees"
   worktree_home:
-    canonical_root: ".worktrees"
-    path_layout: "{YYYY-MM-DD}-{ticket-slug}"
+    canonical_root: "~/.worktrees"
+    path_layout: "{repo}/{slug}"
     marker_file: ".lw-worktree.yaml"
     supplemental_roots:
       - path: "~/.cursor/worktrees"
-        owner: cursor
-        audit_only: true
+        client: cursor
+        conformance: registration_required
     forbidden_roots:
       - "~/.lightwave/worktrees"
       - "~/.lightwave/.worktrees"
+      - "~/dev/.worktrees"
+      - ".worktrees"
   strict_markers:
     - "mise.toml"
     - "AGENTS.md"
