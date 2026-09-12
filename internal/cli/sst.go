@@ -284,7 +284,7 @@ type consumerCorpus struct {
 	testGenerator    []byte // tests/generators/
 	runtimeValidator []byte // loader.load("...") in platform + core
 	schemaValidator  []byte // lightwave-core/src/schemas/
-	docsGenerator    []byte // mkdocs.yml + platform docs/
+	docsGenerator    []byte // lightwave-platform/docs/
 }
 
 // buildConsumerCorpus reads the heuristic source files into memory once.
@@ -314,9 +314,14 @@ func buildConsumerCorpus(brainDir string) consumerCorpus {
 		schemaValidator: concatTreeRead(
 			filepath.Join(root, "lightwave-core", "src", "schemas"),
 		),
+		// `mkdocs.yml` + `packages/lightwave-platform/docs` until #387. The
+		// second encoded the dissolved ~/dev/lightwave-media umbrella; the
+		// first does not exist in any repo in the workspace. concatTreeRead
+		// returns nil on a missing path, so this corpus was always empty and
+		// every heuristic reading it silently answered "no docs generator".
+		// The flat-sibling path below is the one that exists.
 		docsGenerator: concatTreeRead(
-			filepath.Join(root, "mkdocs.yml"),
-			filepath.Join(root, "packages", "lightwave-platform", "docs"),
+			filepath.Join(root, "lightwave-platform", "docs"),
 		),
 	}
 }
