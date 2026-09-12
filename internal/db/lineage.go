@@ -67,17 +67,45 @@ type createOSConfigYAML struct {
 	} `yaml:"lineage_validation"`
 }
 
-// LoadLineageConfig reads lineage validation rules from SST YAML.
-// Falls back to hardcoded defaults if the file can't be read.
+// lineageConfigSchema is the stamp this reads when it exists, relative to a
+// lightwave-core checkout.
+//
+// It does NOT exist on core's origin/main today — verified by ref, not by
+// working tree. The lineage rules were never migrated into the rebuilt
+// src/schemas taxonomy, so every call currently returns defaultLineageConfig().
+// That is the honest state, and it is fine: the defaults are complete, not a
+// degraded stub — they carry the full document set and chain order, so
+// consumers get correct behaviour rather than empty data.
+//
+// Kept as a live read rather than deleted so the parse path stays wired for
+// when the schema is restamped. Restoring SST-driven lineage means stamping the
+// schema in lightwave-core at this path and nothing else here.
+const lineageConfigSchema = "src/schemas/workflows/lineage/document_lineage.yaml"
+
+// LoadLineageConfig returns the lineage validation rules.
+//
+// Reads them from the stamp when it is present, otherwise returns the built-in
+// defaults. Until lineageConfigSchema is stamped, the defaults are the effective
+// source of truth — see that constant.
+//
+// The path this built before #387 was
+//
+//	<root>/packages/lightwave-core/lightwave/schema/definitions/products/createos/config.yaml
+//
+// which encoded the dissolved ~/dev/lightwave-media umbrella AND the pre-rebuild
+// schema layout at once. It could not resolve on any machine, in any workspace,
+// since the flat-sibling move — so the "falls back to hardcoded defaults" branch
+// was not a fallback, it was the only branch that ever ran, while the doc
+// comment claimed the rules came from SST.
 func LoadLineageConfig() LineageConfig {
 	cfg := config.Get()
-	configPath := filepath.Join(
-		cfg.Paths.LightwaveRoot,
-		"packages", "lightwave-core", "lightwave", "schema",
-		"definitions", "products", "createos", "config.yaml",
-	)
+	if cfg == nil {
+		return defaultLineageConfig()
+	}
 
-	data, err := os.ReadFile(configPath)
+	configPath := filepath.Join(cfg.Paths.LightwaveRoot, "lightwave-core", lineageConfigSchema)
+
+	data, err := os.ReadFile(configPath) //nolint:gosec // a workspace-relative stamp path
 	if err != nil {
 		return defaultLineageConfig()
 	}
