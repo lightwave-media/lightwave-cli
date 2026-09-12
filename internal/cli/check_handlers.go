@@ -13,6 +13,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/sst"
+	"github.com/spf13/cobra"
 )
 
 // Schema-driven check handlers. 13 handlers registered below. The matching
@@ -216,13 +217,36 @@ func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) err
 	sort.Strings(missing)
 	sort.Strings(orphaned)
 
+	// Third direction: invocable but unstamped. Compared against Keys() rather
+	// than KeysPublished() on purpose — an in_development command IS stamped,
+	// it is just not dispatched yet, so counting it here would report drift
+	// against an entry that already exists.
+	surfaceKeys := cobraSurfaceKeys(rootCmd)
+	stamped := make(map[string]bool, len(schema.Keys()))
+
+	for _, k := range schema.Keys() {
+		stamped[k] = true
+	}
+
+	var unstamped []string
+
+	for _, k := range surfaceKeys {
+		if !stamped[k] {
+			unstamped = append(unstamped, k)
+		}
+	}
+
+	sort.Strings(unstamped)
+
 	report := schemaDriftReport{
-		SchemaVersion:    schema.Version,
-		DomainCount:      len(schema.Domains),
-		CommandCount:     len(schemaKeys),
-		HandlerCount:     len(registryKeys),
-		MissingHandlers:  missing,
-		OrphanedHandlers: orphaned,
+		SchemaVersion:     schema.Version,
+		DomainCount:       len(schema.Domains),
+		CommandCount:      len(schemaKeys),
+		HandlerCount:      len(registryKeys),
+		SurfaceCount:      len(surfaceKeys),
+		MissingHandlers:   missing,
+		OrphanedHandlers:  orphaned,
+		UnstampedCommands: unstamped,
 	}
 	if len(schemaKeys) > 0 {
 		matched := len(schemaKeys) - len(missing)
@@ -240,9 +264,20 @@ func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) err
 		printSchemaDriftHuman(report)
 	}
 
-	if os.Getenv(EnvCheckSchemaStrict) == "1" && (len(missing) > 0 || len(orphaned) > 0) {
+	if os.Getenv(EnvCheckSchemaStrict) != "1" {
+		return nil
+	}
+
+	if len(missing) > 0 || len(orphaned) > 0 {
 		return fmt.Errorf("schema↔handler drift detected (%d missing, %d orphaned); see report above. Cure: add the missing handler OR add/remove the schema entry, then re-run `lw check schema`",
 			len(missing), len(orphaned))
+	}
+
+	// Ratchet, not a threshold: only GROWTH past the recorded backlog fails.
+	// See unstampedBaseline for why the existing 36 do not block every PR.
+	if len(unstamped) > unstampedBaseline {
+		return fmt.Errorf("unstamped commands grew to %d (baseline %d); see report above. Cure: declare the new command in lightwave-core's interfaces/cli/commands.yaml, or lower unstampedBaseline if you removed one",
+			len(unstamped), unstampedBaseline)
 	}
 
 	return nil
@@ -411,10 +446,89 @@ type schemaDriftReport struct {
 	SchemaVersion     string   `json:"schema_version"`
 	MissingHandlers   []string `json:"missing_handlers"`
 	OrphanedHandlers  []string `json:"orphaned_handlers"`
+	UnstampedCommands []string `json:"unstamped_commands"`
 	DomainCount       int      `json:"domain_count"`
 	CommandCount      int      `json:"command_count"`
 	HandlerCount      int      `json:"handler_count"`
+	SurfaceCount      int      `json:"surface_count"`
 	HandlerMatchRatio float64  `json:"handler_match_ratio"`
+}
+
+// unstampedBaseline is the number of invocable commands absent from the stamp
+// when this third drift direction was first measured (#337).
+//
+// A ratchet, not a threshold. Turning 36 known-unstamped commands into an
+// immediate hard failure would have produced a gate whose first act is to block
+// every PR, and the reliable outcome of that is the gate being switched off. So
+// the bar is "no WORSE than when we started": new unstamped commands fail, the
+// existing backlog does not. Lower this number as domains get stamped; raising
+// it needs a reason in the commit message.
+//
+// The same ratcheting posture golangci-lint already runs here with
+// --new-from-merge-base.
+//
+// Measured, not estimated: `lw check schema --json` on main at e1d635c. The
+// first count was 75, which was wrong — it included 43 bare domain names,
+// because cobra reports a group as Runnable() when it prints its own help. Those
+// are domains in the stamp's model, never commands, so "stamping" them would
+// have meant inventing entries that must not exist. Leaves only, hence 32.
+const unstampedBaseline = 32
+
+// cobraSurfaceKeys returns the dotted key of every runnable command on the
+// assembled tree — what `lw <domain> <verb>` actually accepts, which is NOT the
+// same set as the handler registry.
+//
+// The registry holds only what RegisterHandler wired. Commands attached to the
+// legacy cobra tree with AddCommand never enter it, so a drift check that reads
+// the registry alone cannot see them: `lw check schema` reported "✓ no drift" at
+// 100% coverage while 36 working commands were absent from the stamp entirely
+// (#337). A green gate blind to a third of the CLI is worse than a red one,
+// because green ends the investigation.
+//
+// Note for maintainers: Commands() lazily sorts the child slice in place, so
+// this must stay on one goroutine. See mcp_handlers_test.go for the race that
+// caused.
+func cobraSurfaceKeys(root *cobra.Command) []string {
+	if root == nil {
+		return nil
+	}
+
+	var out []string
+
+	var walk func(parent *cobra.Command, prefix string)
+
+	walk = func(parent *cobra.Command, prefix string) {
+		for _, child := range parent.Commands() {
+			name := child.Name()
+
+			// cobra generates these; they are not part of the lw surface.
+			if child.Hidden || name == "help" || name == "completion" {
+				continue
+			}
+
+			key := name
+			if prefix != "" {
+				key = prefix + "." + name
+			}
+
+			// Leaves only. A command that carries subcommands is a group —
+			// `lw db`, `lw config harness` — and cobra reports those as
+			// Runnable() because they print their own help. The stamp models
+			// them as domains and command groups, never as commands, so
+			// counting them reported 43 phantom "unstamped commands" whose cure
+			// would have been to stamp entries that must not exist.
+			if child.Runnable() && !child.HasSubCommands() {
+				out = append(out, key)
+			}
+
+			walk(child, key)
+		}
+	}
+
+	walk(root, "")
+	sort.Strings(out)
+
+	return out
 }
 
 func printSchemaDriftHuman(r schemaDriftReport) {
@@ -424,8 +538,32 @@ func printSchemaDriftHuman(r schemaDriftReport) {
 	fmt.Printf("  handlers: %d (%.0f%% coverage)\n",
 		r.HandlerCount, r.HandlerMatchRatio*100)
 
+	// Only meaningful when the tree was assembled; a handler invoked outside the
+	// assembled binary sees an empty surface, and printing "0" there would read
+	// as "nothing unstamped" rather than "not measured".
+	if r.SurfaceCount > 0 {
+		fmt.Printf("  surface:  %d invocable (%d unstamped)\n",
+			r.SurfaceCount, len(r.UnstampedCommands))
+	}
+
+	if len(r.UnstampedCommands) > 0 {
+		fmt.Printf("\n%s (%d, baseline %d)\n",
+			color.YellowString("unstamped commands (invocable, absent from the stamp)"),
+			len(r.UnstampedCommands), unstampedBaseline)
+
+		for _, k := range r.UnstampedCommands {
+			fmt.Printf("  - %s\n", k)
+		}
+	}
+
 	if len(r.MissingHandlers) == 0 && len(r.OrphanedHandlers) == 0 {
-		fmt.Println(color.GreenString("\n✓ no drift"))
+		if len(r.UnstampedCommands) == 0 {
+			fmt.Println(color.GreenString("\n✓ no drift"))
+		} else {
+			fmt.Println(color.YellowString(
+				"\n✓ no schema↔handler drift — but the unstamped backlog above is still open"))
+		}
+
 		return
 	}
 
