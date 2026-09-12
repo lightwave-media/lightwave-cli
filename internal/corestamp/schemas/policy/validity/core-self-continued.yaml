@@ -16,7 +16,7 @@
 name: "core-self-continued"
 
 _meta:
-  version: "1.14.0"
+  version: "1.16.0"
   schema_id: "lightwave://schemas/policy/validity/core-self-continued"
   title: "lightwave-core self-validity contract — rules R-18+"
   description: |
@@ -101,19 +101,20 @@ rules:
     severity: error
     description: |
       Every skill at ~/.lightwave/skills/<name>/ MUST have a SKILL.md file
-      with YAML frontmatter declaring `name`, `description`, `category`,
-      `agents` (list), `status` (document_statuses enum value), and
-      `last_reviewed_at` (ISO date). Non-empty markdown body required.
-      `authority_includes:` refs MUST resolve to existing files per the
-      doc-ref resolution algorithm. Round-trip consistency: if a SKILL.md
+      declaring `name` + `description` at the frontmatter top level, and
+      `category`, `agents` (list), `status` (document_statuses enum value),
+      `last_reviewed_at` (ISO date) and `authority_includes` under
+      `metadata:`. Non-empty markdown body required. `authority_includes:`
+      refs MUST resolve per the doc-ref algorithm. Round-trip: if a SKILL.md
       declares `agents: [v_cto, v_staff-engineer]`, those agent YAMLs at
       ~/.lightwave/config/agents/v_*.yaml MUST list this skill in their
       own `skills:` field.
 
-      Skills are Anthropic SKILL.md format verbatim PLUS lightwave-required
-      frontmatter additions (category, agents, status, last_reviewed_at).
-      See homedir.yaml v3.1 changelog for the canonical skills/ + sops/
-      home declarations.
+      Skills are Anthropic SKILL.md format verbatim; that format fixes the
+      top-level keys and reserves `metadata:` for author-defined fields, so
+      the lightwave additions live there (migrated 2026-09-09). The
+      published format decides what a SKILL.md IS and the stamp follows, as
+      with CLI commands (#317/#318). Home layout: homedir.yaml v3.1.
 
       Note: R-21 is the first R-rule that enforces OUT-OF-REPO — checks
       ~/.lightwave/ (operator's home), not src/. The package scope.paths

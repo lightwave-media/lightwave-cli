@@ -1,5 +1,5 @@
 _meta:
-  version: "3.8.0"
+  version: "3.10.0"
   schema_id: "lightwave://schemas/data/meta/homedir"
   title: "HomeDir Structure"
   description: |
@@ -7,6 +7,32 @@ _meta:
     Defines top-level dirs, recursive sub-structure, kind→dir mapping, ephemeral
     runtime files, and consolidation paths from external homes. lightwave-core
     defines the SHAPE; the actual filesystem is the PRINT.
+
+    v3.10.0 (2026-09-10): ADD hcr/ DirSpec — Harness Change Requests
+    (CORE-0045) awaiting operator review, observed undeclared by R-35 within
+    minutes of the first live request landing. AUTHORED zone, not RUNTIME:
+    each file holds a prepared diff an agent is forbidden to apply itself, so
+    a wipe discards proposed work with no other copy. homedir_zones.yaml
+    v1.7.0 lockstep. Carries an open reconciliation — CORE-0045 section 3
+    declares the queue as observability/harness-change-requests.jsonl while
+    the print landed here as YAML; this DirSpec records the print that exists
+    rather than blessing it, and the ADR is reconciled before `lw harness hcr`
+    is stamped. Same bucket reasoning as v3.7.0 and v3.9.0: forbidden_paths is
+    wrong because R-34 requires forbidden paths NOT to exist, and this does.
+
+    v3.9.0 (2026-09-01): ADD backups/, plugins/, session-env/, sessions/
+    DirSpecs — four dirs observed undeclared by R-35, all written by the
+    coding-agent harness rather than by LightWave. write_authority: agent.
+    Zones: backups/ + plugins/ RETAINED (losing them loses rollback and
+    silently uninstalls tooling); session-env/ + sessions/ RUNTIME
+    (per-session, superseded each launch). homedir_zones.yaml v1.6.0
+    lockstep. Same reasoning as v3.7.0: forbidden_paths is the wrong bucket
+    because R-34 requires forbidden paths NOT to exist, and these do.
+    Note for the workspace-broker contract (GTD-1305): a vendor tool
+    creating undeclared state inside the LightWave print is the filesystem
+    analogue of an unregistered vendor worktree. R-35 caught it because the
+    print is declared. Declaring these makes them conforming rather than
+    invisible.
 
     v3.8.0 (2026-08-14): CORE-0049 — db/ no longer holds SQLite files. The
     structured query layer moved to Postgres (one schema namespace per domain,
@@ -257,6 +283,27 @@ example:
             enforce branch naming conventions.
           write_authority: operator
           read_consumers: [git-hooks]
+    - path: "hcr"
+      purpose: |
+        Harness Change Requests (CORE-0045) awaiting operator review — one YAML
+        per request, each carrying target_kind, target_path, the prepared diff,
+        rationale, linked_incident, risk and revert. An agent may author a
+        request and set only `proposed`; `reviewed`, `applied` and `rejected`
+        are operator-owned, which is the CLAUDE.md section 9 boundary made
+        auditable.
+
+        OPEN RECONCILIATION: CORE-0045 section 3 declares the queue as an
+        append-only channel at observability/harness-change-requests.jsonl,
+        while the first live request landed here as a YAML file. Both shapes
+        are defensible — a jsonl queue for transitions, a file per request for
+        a reviewable diff — but two locations for one artifact is the parallel
+        taxonomy the stamp exists to prevent. This DirSpec records the print
+        that exists rather than blessing it; the ADR and this entry are
+        reconciled under the linked issue before `lw harness hcr` is stamped.
+      accepts_files: [hcr-*.yaml]
+      write_authority: operator
+      read_consumers: [operator, lw-cli]
+      migration_status: provisional
     - path: "observability"
       purpose: |
         Append-only jsonl event streams from runtime tools. ONE home for all ops
@@ -642,6 +689,41 @@ example:
       write_authority: operator
       read_consumers: [operator]
       migration_status: current
+    - path: "backups"
+      purpose: |
+        Timestamped config backups the coding-agent harness writes before it
+        rewrites its own settings (e.g. .claude.json.backup.<epoch_ms>).
+        Vendor-shaped content LightWave does not author. Wiping it destroys the
+        only rollback for a bad harness config, so it is RETAINED, not RUNTIME —
+        a backup that does not survive a reset is not a backup.
+      write_authority: agent
+      read_consumers: [operator, claude-code]
+      migration_status: current
+    - path: "plugins"
+      purpose: |
+        Coding-agent plugin registry — installed_plugins.json plus the
+        marketplaces/ catalogs it resolves against. Same class as the plugin
+        state inside v_core/: wiping it silently uninstalls the operator's
+        tooling rather than regenerating it, so it is RETAINED.
+      write_authority: agent
+      read_consumers: [claude-code, operator]
+      migration_status: current
+    - path: "session-env"
+      purpose: |
+        Per-session environment captures, one sub-dir per session UUID. Scoped
+        to a single agent session and superseded on the next launch; nothing
+        durable graduates from here, so it is RUNTIME.
+      write_authority: agent
+      read_consumers: [claude-code, agent-harness]
+      migration_status: current
+    - path: "sessions"
+      purpose: |
+        Per-session harness state keyed by session id. Transient companion to
+        session-env/ — empty between runs is its normal resting state, so it is
+        RUNTIME.
+      write_authority: agent
+      read_consumers: [claude-code, agent-harness]
+      migration_status: current
   kind_to_dir_map:
     product_vision: "specs/product_vision"
     market_analysis: "specs/market_analysis"
@@ -673,10 +755,11 @@ example:
     See _meta.description for v2.0/v2.1/v2.2/v2.3/v3.2/v3.3 changelog. Authoring discipline:
 
     - Worktrees are NOT a ~/.lightwave/ dir. Per the locked policy
-      src/schemas/policy/security/worktree_policy.yaml, worktrees are repo-scoped
-      at {repo-root}/.worktrees/{YYYY-MM-DD}-{ticket-slug}/. homedir.yaml does not
-      declare them; homedir_zones.yaml does not classify them. The v3.2.0
-      declaration was a contradiction with worktree_policy.yaml and is removed in v3.4.0.
+      src/schemas/policy/security/worktree_policy.yaml v2 (CORE-0051), LightWave-
+      managed worktrees live at ~/.worktrees/{repo}/{slug}/ and vendor-managed ones
+      register in place. homedir.yaml does not declare them; homedir_zones.yaml
+      does not classify them. The v3.2.0 declaration was a contradiction with
+      worktree_policy.yaml and is removed in v3.4.0.
 
     - Adding a new top-level dir requires a major-or-minor version bump
       depending on breakage (v2.3.0 added sources/ — additive, MINOR;

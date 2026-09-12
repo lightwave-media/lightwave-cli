@@ -1,12 +1,14 @@
 _meta:
-  version: "1.0.0"
+  version: "1.1.0"
   schema_id: "lightwave://schemas/policy/security/developer_sandbox"
   title: "Developer Sandbox Policy — write-restricted tier isolation"
   description: >
     Governance contract for source-file writes in lightwave-core. Declares that
     ONLY developer-tier personas (suffix -developer) may write to repo source
-    files, and that all such writes are sandboxed to
-    {repo-root}/.worktrees/{active-session}/.
+    files, and that all such writes are sandboxed to the active session's
+    registered Project Workspace (v1.1.0, CORE-0051: previously the fixed
+    {repo-root}/.worktrees/{active-session}/ path; now the path recorded in
+    data/meta/project_workspace for the session, wherever the broker placed it).
 
     Engineer and singular tiers are read-only on source files. Engineers may
     still author specifications under spec/. The orchestration tier
@@ -24,6 +26,7 @@ _meta:
   depends_on:
     - "lightwave://schemas/data/enums/persona_tiers"
     - "lightwave://schemas/policy/security/worktree_policy"
+    - "lightwave://schemas/policy/security/workspace_broker_policy"
 
 status_enum: "document_statuses"
 
@@ -35,8 +38,9 @@ required_fields:
     type: "WriteScopeRef"
     description: >
       The single permitted write root for source files. All developer-tier
-      writes MUST land under {repo-root}/.worktrees/{active-session}/. Writes
-      outside this scope are rejected.
+      writes MUST land under the active session's registered project_workspace
+      path (canonical ~/.worktrees/{repo}/{slug}/ or a registered vendor root
+      per workspace_broker_policy). Writes outside this scope are rejected.
   - name: persona_permissions
     type: "PersonaPermissionsRef"
     description: >
@@ -69,15 +73,17 @@ relations:
 example:
   id: "developer-sandbox-v1"
   write_scope:
-    root: "{repo-root}/.worktrees/{active-session}/"
+    root: "{project_workspace.path}/"
     description: >
-      Only path under which source-file writes are permitted. The active
-      session's worktree is the sole legal mutation surface.
+      Only path under which source-file writes are permitted: the registered
+      Project Workspace of the active session (~/.worktrees/{repo}/{slug}/ when
+      brokered, a registered vendor root otherwise). Unregistered paths and the
+      canonical checkout are never a legal mutation surface for an agent.
     reject_outside: true
   persona_permissions:
     developer:
       may_write_source: true
-      write_root: "{repo-root}/.worktrees/{active-session}/"
+      write_root: "{project_workspace.path}/"
       persona_suffixes: ["-developer"]
       persona_ids:
         - "v_staff-engineer"
@@ -121,8 +127,9 @@ example:
       reject_tiers: ["orchestration"]
       fail_message: >
         Sandbox violation: only developer-tier personas may write to repo
-        source files, and only under .worktrees/{active-session}/. Set
-        LW_PERSONA_TIER=developer and operate from your session worktree.
+        source files, and only inside the session's registered Project
+        Workspace. Set LW_PERSONA_TIER=developer and operate from the path
+        `lw workspace prepare` returned.
     bash_guard:
       mechanism: "Block git write operations outside the active worktree path"
       fail_message: "Write blocked: target path is outside the developer sandbox."

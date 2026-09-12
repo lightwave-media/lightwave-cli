@@ -55,6 +55,7 @@ schemas:
   voice_speak_goals: voice_speak_goals.yaml
   voice_tone_registry: voice_tone_registry.yaml
   worktree_home_policy: worktree_home_policy.yaml
+  project_workspace: project_workspace.yaml
   visual_docs_registry: visual_docs_registry.yaml
   docs_structure: docs_structure.yaml
   spec_package: spec_package.yaml

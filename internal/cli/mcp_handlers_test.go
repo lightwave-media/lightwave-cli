@@ -45,12 +45,19 @@ func TestMCPStampCommandsDispatch(t *testing.T) {
 		t.Skip("stamp did not dispatch mcp (lightwave-core commands.yaml missing or mcp in_development)")
 	}
 
-	// Resolved here, on one goroutine, rather than inside parallel subtests.
 	// findChild calls cobra's Commands(), which lazily sorts the parent's
 	// command slice IN PLACE and flips commandsAreSorted (cobra command.go:1295)
-	// — an unsynchronised write. Calling it from parallel subtests raced on
-	// every run under -race and turned `mise run ci` red. Same loop shape as
-	// runbook_test.go, which walks its subcommands serially for this reason.
+	// — an unsynchronised write. Calling it from parallel subtests raced on it.
+	// As #393 observed independently, the detector only catches this once the
+	// tree is large enough that the sort is still running when the next reader
+	// arrives, which is why it stayed hidden until the embedded stamp grew.
+	//
+	// #393 fixed that by hoisting findChild out of the subtest while keeping
+	// t.Run/t.Parallel. With the two top-level tests now serial (see above),
+	// those parallel subtests buy nothing: the assertions are two nil-checks
+	// that already name the offending subcommand in their failure message, so
+	// the subtest names carry no diagnostic the messages lack. Walking them
+	// serially is the same shape runbook_test.go uses.
 	for _, cmd := range mcpStampCommands(t) {
 		child := findChild(mcpCmd, cmd.Name)
 		require.NotNil(t, child, "mcp %s subcommand should be attached from the stamp", cmd.Name)

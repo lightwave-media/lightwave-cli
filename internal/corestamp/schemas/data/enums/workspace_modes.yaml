@@ -1,0 +1,38 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/workspace_modes"
+  title: "Workspace Modes (execution surface of a task)"
+  description: |
+    Mirrors the Global Tasks DB `Workspace Mode` ladder in Notion so the
+    runtime and the planning surface share one vocabulary (CORE-0051,
+    GTD-1305). Notion's fifth value, "Not applicable", is deliberately absent:
+    a project_workspace record only exists for a real surface.
+
+    `writable` marks the modes in which a registered writer claim exists.
+    read_only_checkout is the fallback-chain terminal (deny-write); the broker
+    never returns canonical_checkout for a writing session.
+  generates:
+    - "pydantic:WorkspaceMode"
+  depends_on: []
+
+name: workspace_modes
+description: "Execution surface a task runs on; mirrors the Notion Workspace Mode ladder"
+default: lightwave_managed_worktree
+closed: true
+options:
+  - value: canonical_checkout
+    label: "Canonical checkout"
+    description: "The main clone under ~/dev/<repo>. Legal only for operator-driven or SST/codegen work that the git skill routes there; never brokered for an agent writing session."
+    writable: true
+  - value: lightwave_managed_worktree
+    label: "LightWave-managed worktree"
+    description: "Allocated by `lw workspace prepare` under the canonical root ~/.worktrees/<repo>/<slug>; registered at allocation."
+    writable: true
+  - value: vendor_managed_worktree
+    label: "Vendor-managed worktree"
+    description: "Created by the client under its own root and registered in place with the same identity and lifecycle fields; never relocated."
+    writable: true
+  - value: read_only_checkout
+    label: "Read-only checkout"
+    description: "Planning or review session sharing a checkout without a worktree or writer claim; any write is denied."
+    writable: false
