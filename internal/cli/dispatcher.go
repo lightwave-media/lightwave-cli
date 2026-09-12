@@ -259,6 +259,7 @@ var booleanFlags = map[string]bool{
 	"list":            true,
 	"release-pr":      true,
 	"remote":          true,
+	"foreground":      true,
 }
 
 func isBooleanFlag(name string) bool {
