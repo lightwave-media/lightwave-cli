@@ -176,6 +176,8 @@ func CreateCompliantIssue(opts IssueCreateOpts) (IssueCreateResult, error) {
 	if opts.Org == "" {
 		opts.Org = DefaultOrg
 	}
+
+	opts.Repo = QualifyRepo(opts.Repo, opts.Org)
 	if opts.ProjectNumber == 0 {
 		opts.ProjectNumber = DefaultProjectNum
 	}
