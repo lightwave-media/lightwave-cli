@@ -12,27 +12,85 @@ import (
 
 	"github.com/lightwave-media/lightwave-cli/internal/cli"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/lightwave-media/lightwave-cli/internal/sst"
 	"github.com/lightwave-media/lightwave-cli/internal/testutil"
 )
 
-// skipIfNoLightwaveCore skips when the sibling lightwave-core repo
-// isn't checked out at the expected workspace path. CI runs
-// lightwave-cli stand-alone (lightwave-core is private, default
-// GITHUB_TOKEN can't reach it without a cross-repo PAT). Local devs
-// have the workspace layout via `~/dev/lightwave-media/packages/*`.
-// Same pattern as internal/sst/cli_loader_test.go.
+// skipIfNoLightwaveCore skips when the sibling lightwave-core repo isn't
+// checked out. CI runs lightwave-cli stand-alone (lightwave-core is private,
+// the default GITHUB_TOKEN can't reach it without a cross-repo PAT), so the
+// skip is legitimate there.
+//
+// It must not be the state on a developer machine. From 2026-06 until #387
+// this helper stat'd
+//
+//	<root>/packages/lightwave-core/lightwave/schema/definitions/config/cli/commands.yaml
+//
+// which carries BOTH the dissolved ~/dev/lightwave-media umbrella and the
+// pre-rebuild schema layout. Neither has existed since the flat-sibling move,
+// so the path could never resolve and all three tests below skipped on every
+// machine — including ones with a healthy ~/dev/lightwave-core. The gate they
+// cover (schema-drift-check.yml, armed and blocking merges since #301) had no
+// running tests at all.
+//
+// Two changes keep that from recurring. The path now comes from
+// sst.CLIConfigPath — the same resolver the production loader uses, so a future
+// layout move updates this helper for free instead of silently re-skipping.
+// And LW_SURFACE_GATE_STRICT=1 turns the skip into a failure, matching
+// command_surface_test.go: a gate that skips in CI is indistinguishable from a
+// gate that passes, which is the whole bug (#350).
 func skipIfNoLightwaveCore(t *testing.T) {
 	t.Helper()
+
 	cfg := config.Get()
 	if cfg == nil {
+		if os.Getenv("LW_SURFACE_GATE_STRICT") == "1" {
+			t.Fatal("LW_SURFACE_GATE_STRICT=1 but config did not load, so the " +
+				"schema-drift tests would have checked nothing")
+		}
+
 		t.Skip("config not loaded; schema-drift tests skip")
 	}
-	path := filepath.Join(cfg.Paths.LightwaveRoot,
-		"packages", "lightwave-core", "lightwave", "schema",
-		"definitions", "config", "cli", "commands.yaml")
-	if _, err := os.Stat(path); os.IsNotExist(err) {
+
+	path := sst.CLIConfigPath(cfg.Paths.LightwaveRoot)
+	if _, err := os.Stat(path); err != nil {
+		if os.Getenv("LW_SURFACE_GATE_STRICT") == "1" {
+			t.Fatalf("LW_SURFACE_GATE_STRICT=1 but the stamp is unreadable at %s: %v — "+
+				"the schema-drift tests would have checked nothing", path, err)
+		}
+
 		t.Skipf("lightwave-core schema not present at %s; skipping schema-drift test", path)
 	}
+}
+
+// TestStampPathIsFlatSiblingLayout is the regression guard for #387.
+//
+// It pins the SHAPE of the resolved path rather than driving skipIfNoLightwaveCore
+// through the environment, deliberately: LW_LIGHTWAVE_ROOT is exported by the
+// operator harness (settings.json `env`), so an inline override in a test run is
+// silently replaced and a control built on it proves nothing — it passes whether
+// or not the code is correct. Asserting the shape needs no environment and fails
+// for exactly the reason the bug existed.
+//
+// The two substrings below are the fingerprints of the layouts that produced the
+// silent skip: `packages/` from the dissolved ~/dev/lightwave-media umbrella, and
+// `definitions/` from the pre-rebuild schema tree. If either reappears in the
+// resolver, every schema-drift test goes back to skipping on every machine and
+// nothing else would report it.
+func TestStampPathIsFlatSiblingLayout(t *testing.T) {
+	t.Parallel()
+
+	got := sst.CLIConfigPath("/ROOT")
+
+	assert.Equal(t,
+		filepath.Join("/ROOT", "lightwave-core", "src", "schemas", "interfaces", "cli", "commands.yaml"),
+		got,
+		"stamp path must be the flat-sibling layout")
+
+	assert.NotContains(t, got, "packages",
+		"dissolved ~/dev/lightwave-media umbrella layout is back (#387)")
+	assert.NotContains(t, got, "definitions",
+		"pre-rebuild lightwave/schema/definitions layout is back (#387)")
 }
 
 // PR9 of the gruntwork-harden mission: prove `lw check schema`
