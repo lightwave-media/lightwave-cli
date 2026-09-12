@@ -64,7 +64,9 @@ func objectSchema(props map[string]any, required []string) map[string]any {
 }
 
 func toolsFor(tier Tier) []toolDef {
-	read := []toolDef{
+	read := libraryTools()
+
+	read = append(read, []toolDef{
 		{Name: "queue_read", Description: "Read agile queue/board state (tasks).", InputSchema: objectSchema(map[string]any{
 			"status": map[string]any{"type": "string", "description": "Optional status filter"},
 			"limit":  map[string]any{"type": "string", "description": "Max rows (default 50)"},
@@ -81,7 +83,7 @@ func toolsFor(tier Tier) []toolDef {
 		}, nil)},
 		{Name: "context_get", Description: "Show Lightwave runtime context (instance bindings + composer status).", InputSchema: objectSchema(map[string]any{}, nil)},
 		{Name: "context_refresh", Description: "Refresh Lightwave runtime context (same surface as lw context refresh).", InputSchema: objectSchema(map[string]any{}, nil)},
-	}
+	}...)
 	if !tier.allowsWrite() {
 		return read
 	}
@@ -140,6 +142,16 @@ func (s Server) callTool(ctx context.Context, tier Tier, raw json.RawMessage) to
 	args := parseToolArgs(params.Arguments)
 
 	switch params.Name {
+	case "stamp_list":
+		return s.stampList(args)
+	case "stamp_read":
+		return s.stampRead(args)
+	case "schema_fields":
+		return s.schemaFields(args)
+	case "enum_read":
+		return s.enumRead(args)
+	case "rules_list":
+		return s.rulesList()
 	case "queue_read", "task_read":
 		return s.taskRead(ctx, args)
 	case "epic_read":
