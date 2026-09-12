@@ -31,6 +31,26 @@ type Config struct {
 	Paperclip    PaperclipConfig    `mapstructure:"paperclip"`
 	Tenant       string             `mapstructure:"tenant"`
 	Paths        PathsConfig        `mapstructure:"paths"`
+	Deploy       DeployConfig       `mapstructure:"deploy"`
+}
+
+// DeployConfig names the ECS targets `lw deploy` acts on.
+//
+// These were derived from the environment name — cluster `platform-<env>`, log
+// group `/ecs/<cluster>-<service>` — which was the Django-era convention. The
+// cluster that exists is `lightwave-platform` and its log group is
+// `/ecs/lightwave-platform`, so every `lw deploy` verb failed with
+// ClusterNotFoundException (#368). A naming convention cannot be corrected once
+// the thing it names stops following it; configuration can.
+//
+// Clusters is keyed by environment, for when a second environment exists.
+// Cluster is the single-target fallback, and the default below is the cluster
+// that is actually deployed today.
+type DeployConfig struct {
+	Clusters  map[string]string `mapstructure:"clusters"`
+	LogGroups map[string]string `mapstructure:"log_groups"`
+	Cluster   string            `mapstructure:"cluster"`
+	LogGroup  string            `mapstructure:"log_group"`
 }
 
 // OrchestratorConfig for Elixir Phoenix orchestrator access
@@ -189,6 +209,13 @@ func setDefaults() {
 	viper.SetDefault("paths.lightwave_root", filepath.Join(home, "dev"))
 	viper.SetDefault("paths.platform", filepath.Join(home, "dev", "lightwave-platform"))
 	_ = viper.BindEnv("paths.lightwave_root", "LW_LIGHTWAVE_ROOT", "LW_DEV_ROOT")
+
+	// Deploy — the cluster that exists today (lightwave-infrastructure-live#72),
+	// not the `platform-<env>` name the Django-era stack used. See DeployConfig.
+	viper.SetDefault("deploy.cluster", "lightwave-platform")
+
+	_ = viper.BindEnv("deploy.cluster", "LW_DEPLOY_CLUSTER")
+	_ = viper.BindEnv("deploy.log_group", "LW_DEPLOY_LOG_GROUP")
 }
 
 // Get returns the loaded config (loads if not already loaded)
