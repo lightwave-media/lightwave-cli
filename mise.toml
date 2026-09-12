@@ -88,12 +88,61 @@ run = "bash dev/mutation_gate.sh"
 description = "Enforce changed-code mutation thresholds after ratchet promotion"
 run = "LW_MUTATION_ENFORCEMENT=block bash dev/mutation_gate.sh"
 
+[tasks."schema-drift"]
+description = "Schema↔handler drift + command-surface trust (matches the CI Schema Drift job)"
+# Mirrors .github/workflows/schema-drift-check.yml. Third cloud-only gate pulled
+# local, after codespell and tidy (#231), for the same reason and with a sharper
+# case: the drift gate is ARMED and blocks the merge (#301), yet `mise run ci`
+# never ran it. A local-green push could therefore fail the required gate on a
+# change the developer had no local way to see.
+#
+# That is not hypothetical. On 2026-09-12 lightwave-core#615 declared `check
+# stamp`; this repo's handler landed separately in #393. In the window between,
+# `mise run ci` was green and the cloud Schema Drift job failed with
+# "1 missing (check.stamp)".
+#
+# CAVEAT, deliberately not hidden: CI checks out lightwave-core fresh at its
+# main, while this reads whatever ~/dev/lightwave-core currently has out. A
+# sibling session holding that repo on a feature branch makes local and cloud
+# disagree, so a local pass is only as current as that checkout. Verify a
+# surprising result against a ref (`git -C ~/dev/lightwave-core show
+# origin/main:src/schemas/interfaces/cli/commands.yaml`) before trusting it.
+run = '''
+root="${LW_LIGHTWAVE_ROOT:-$HOME/dev}"
+stamp="$root/lightwave-core/src/schemas/interfaces/cli/commands.yaml"
+
+# Assert the precondition instead of letting the fallback answer for us. With no
+# core checkout `lw` silently measures against the embedded stamp snapshot, which
+# lags core (#376) — on 2026-09-12 that produced "orphaned handlers (1)
+# check.stamp" against a tree where check.stamp is correctly registered. Failing
+# with a phantom orphan sends the reader chasing a bug that does not exist, so
+# say what is actually wrong.
+if [ ! -f "$stamp" ]; then
+  echo "schema-drift: no lightwave-core stamp at $stamp"
+  echo "  This gate compares the CLI against core's commands.yaml and cannot run"
+  echo "  without it. The workspace contract is the flat ~/dev sibling layout;"
+  echo "  clone lightwave-core beside this repo, or set LW_LIGHTWAVE_ROOT."
+  echo "  Not skipping: the cloud Schema Drift job is armed and blocks the merge."
+  exit 1
+fi
+
+go build -o ./bin/lw ./cmd/lw || exit 1
+LW_SURFACE_GATE_STRICT=1 go test ./internal/cli/ -run TestCommandSurface || exit 1
+LW_CHECK_SCHEMA_STRICT=1 ./bin/lw check schema || exit 1
+'''
+
 [tasks.ci]
-description = "Local CI: fmt-check + vet + lint + build + test + codespell + tidy"
+description = "Local CI: fmt-check + vet + lint + build + test + codespell + tidy + schema-drift"
 # Mirrors the cloud CI required-gate job set so a local-green push is cloud-green.
 # codespell + tidy were cloud-only jobs (separate GH workflows) absent here — a
 # misspelling or untidy go.mod could only fail in cloud CI (lightwave-cli#231).
-depends = ["fmt-check", "vet", "lint", "build", "test", "codespell", "tidy"]
+# schema-drift was the same gap and the costliest, because that gate blocks the
+# merge: see the task's own comment for the 2026-09-12 case it would have caught.
+#
+# The one required-gate job still absent locally is Pre-commit. It is partly
+# covered by the repo-tracked hooks that run on every commit, and `lw check
+# pre-commit` (#381) is the verb that would close it properly.
+depends = ["fmt-check", "vet", "lint", "build", "test", "codespell", "tidy", "schema-drift"]
 
 [tasks."release:gate"]
 description = "Dry-run lw release merge (autonomous gate)"
