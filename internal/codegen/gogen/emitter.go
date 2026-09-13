@@ -142,8 +142,17 @@ func EmitMigration(entities []*EntitySchema) (string, error) {
 		// already exists") and crashes startup. Guard with DROP POLICY IF EXISTS
 		// so re-applying schema.sql is idempotent. FORCE RLS with no policy is
 		// default-deny, so the drop/recreate window is fail-safe (lightwave-cli#245).
+		// The tenants table has no tenant_id — it IS the tenant, so it isolates
+		// on its own primary key. 001_init.sql wrote this policy by hand; once
+		// tenants is generated the generator has to know it too, or it emits a
+		// policy against a column that does not exist and every apply fails.
+		isolationCol := "tenant_id"
+		if t == tenantsTable {
+			isolationCol = "id"
+		}
+
 		fmt.Fprintf(&b, "DROP POLICY IF EXISTS %s_tenant_isolation ON %s;\n", t, t)
-		fmt.Fprintf(&b, "CREATE POLICY %s_tenant_isolation ON %s\n    USING (tenant_id::text = current_setting('app.current_org', true));\n", t, t)
+		fmt.Fprintf(&b, "CREATE POLICY %s_tenant_isolation ON %s\n    USING (%s::text = current_setting('app.current_org', true));\n", t, t, isolationCol)
 	}
 
 	return b.String(), nil
@@ -161,9 +170,12 @@ func createTable(e *EntitySchema, known map[string]bool) string {
 
 	fmt.Fprintf(&b, "CREATE TABLE IF NOT EXISTS %s (\n", e.Meta.TableName)
 
-	cols := []string{
-		"id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY",
-		"tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE",
+	cols := []string{"id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY"}
+
+	// The tenants table IS the tenant; giving it a tenant_id FK to itself
+	// would make every row require a parent tenant that cannot exist yet.
+	if e.Meta.TableName != tenantsTable {
+		cols = append(cols, "tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE")
 	}
 
 	if e.IsDocument() {
@@ -191,8 +203,18 @@ func createTable(e *EntitySchema, known map[string]bool) string {
 		cols = append(cols, columnDef(&optDB[i], false))
 	}
 
+	// A UNIQUE on a column this table does not have is invalid DDL that only
+	// fails at apply time, several tables into the migration, naming the
+	// column and not the schema that declared it ("column slug named in key
+	// does not exist"). Emit a comment instead so the mismatch is visible in
+	// the generated file, next to the table it belongs to.
 	if e.NaturalKey.Column != "" && e.NaturalKey.Unique {
-		cols = append(cols, fmt.Sprintf("UNIQUE (tenant_id, %s)", e.NaturalKey.Column))
+		if hasColumn(e, e.NaturalKey.Column) {
+			cols = append(cols, fmt.Sprintf("UNIQUE (tenant_id, %s)", e.NaturalKey.Column))
+		} else {
+			fmt.Fprintf(&b, "\t-- natural_key %q is declared but no such field exists in %s\n",
+				e.NaturalKey.Column, e.Meta.SchemaID)
+		}
 	}
 
 	cols = append(cols, foreignKeys(e, known)...)
@@ -202,11 +224,75 @@ func createTable(e *EntitySchema, known map[string]bool) string {
 	return b.String()
 }
 
+// reservedWords are PostgreSQL keywords that cannot appear as a bare column
+// name. Not the full list — only words plausible as a schema field, kept short
+// so it stays readable. data/reference_documents/agent_handoff declares a
+// `references` field, which produced `references JSONB,` and a syntax error
+// 99 lines into the migration.
+var reservedWords = map[string]bool{
+	"references": true, "order": true, "user": true, "group": true,
+	"table": true, "column": true, "constraint": true, "default": true,
+	"check": true, "primary": true, "foreign": true, "unique": true,
+	"select": true, "from": true, "where": true, "limit": true, "offset": true,
+	"union": true, "all": true, "any": true, "case": true, "when": true,
+	"then": true, "else": true, "end": true, "null": true, "true": true,
+	"false": true, "and": true, "or": true, "not": true, "in": true,
+	"is": true, "like": true, "between": true, "as": true, "on": true,
+	"using": true, "to": true, "with": true, "values": true, "returning": true,
+	"window": true, "having": true, "into": true, "grant": true, "array": true,
+}
+
+// quoteIdent double-quotes a column name only when it is reserved. Quoting
+// everything would be equally valid SQL but would change every byte of the
+// already-generated platform schema, so `lw codegen go --check` would report
+// drift for a change that alters nothing.
+func quoteIdent(name string) string {
+	if reservedWords[strings.ToLower(name)] || !isBareIdent(name) {
+		return `"` + name + `"`
+	}
+
+	return name
+}
+
+// isBareIdent reports whether name can appear unquoted in DDL: lowercase
+// letters, digits and underscores, not starting with a digit. A field like
+// skill_definition's `allowed-tools` is legal YAML and legal SQL only when
+// quoted — unquoted it parses as a subtraction and fails 936 lines in.
+func isBareIdent(name string) bool {
+	if name == "" {
+		return false
+	}
+
+	for i := range len(name) {
+		c := name[i]
+
+		switch {
+		case c >= 'a' && c <= 'z', c == '_':
+		case c >= '0' && c <= '9' && i > 0:
+		default:
+			return false
+		}
+	}
+
+	return true
+}
+
+// hasColumn reports whether a stored field of this name exists on the entity.
+func hasColumn(e *EntitySchema, name string) bool {
+	for _, f := range dbOnly(append(e.RequiredFields, e.OptionalFields...)) {
+		if f.Name == name {
+			return true
+		}
+	}
+
+	return false
+}
+
 // columnDef builds one column definition: type, null-ness, and DEFAULT now()
 // on timestamps. UNIQUE and FK constraints are emitted table-level (composite
 // with tenant_id) by createTable / foreignKeys, not here.
 func columnDef(f *FieldDef, required bool) string {
-	parts := []string{f.Name, SQLType(f.Type, f.ColumnType)}
+	parts := []string{quoteIdent(f.Name), SQLType(f.Type, f.ColumnType)}
 
 	if required {
 		parts = append(parts, "NOT NULL")
@@ -232,13 +318,38 @@ func indexLines(e *EntitySchema) []string {
 	return out
 }
 
+// dbOnly keeps the fields that become columns.
+//
+// An ABSENT `storage` means db. Measured across origin/main: only 21 of 242
+// data schemas declare `storage:` at all, and all 294 declarations say "db" —
+// there is no other value anywhere in the stamp. So the field only ever meant
+// "yes, store this", and requiring it made silence mean "drop the column".
+//
+// That was invisible while the generator only ever saw data/agile_artifacts,
+// the one family that annotates every field. Pointing it at the newly declared
+// families produced tables with no columns at all — `audio_manifests` came out
+// as id + tenant_id and nothing else — plus a UNIQUE constraint on a natural
+// key whose column had been dropped, which is what finally raised an error
+// instead of quietly emitting an empty shell.
 func dbOnly(fields []FieldDef) []FieldDef {
 	out := make([]FieldDef, 0, len(fields))
 
 	for _, f := range fields {
-		if f.Storage == "db" {
-			out = append(out, f)
+		if f.Storage != "" && f.Storage != "db" {
+			continue
 		}
+
+		// The generator owns id and tenant_id, emitting them ahead of every
+		// schema field. A schema that also declares one is describing the same
+		// column, not a second one — Postgres rejects the duplicate with
+		// "column \"id\" specified more than once". Only agile_artifacts was
+		// ever generated before, and none of those schemas declare an id
+		// field, so the collision was unreachable.
+		if f.Name == "id" || f.Name == "tenant_id" {
+			continue
+		}
+
+		out = append(out, f)
 	}
 
 	return out
@@ -281,6 +392,9 @@ func foreignKeys(e *EntitySchema, known map[string]bool) []string {
 // Self-references are ignored (valid within a single CREATE TABLE) and any
 // cross-table cycle is broken best-effort. Deterministic: ties resolve by
 // table name so golden output is stable.
+// tenantsTable is the FK target createTable hardcodes on every table.
+const tenantsTable = "tenants"
+
 func topoSort(entities []*EntitySchema) []*EntitySchema {
 	byTable := make(map[string]*EntitySchema, len(entities))
 	names := make([]string, 0, len(entities))
@@ -308,6 +422,19 @@ func topoSort(entities []*EntitySchema) []*EntitySchema {
 		}
 
 		state[e.Meta.TableName] = visiting
+
+		// Every table carries `tenant_id ... REFERENCES tenants(id)`, emitted
+		// by createTable rather than declared as an fk_ref — so the dependency
+		// is real but invisible to referencedTables. It never mattered while
+		// `tenants` came from 001_init.sql, applied before this file. Once
+		// tenants is itself generated (scope: both) the omission puts it in
+		// alphabetical position and the very first CREATE TABLE fails with
+		// `relation "tenants" does not exist`.
+		if e.Meta.TableName != tenantsTable {
+			if dep, ok := byTable[tenantsTable]; ok {
+				visit(dep)
+			}
+		}
 
 		for _, dep := range referencedTables(e) {
 			if dep == e.Meta.TableName {
