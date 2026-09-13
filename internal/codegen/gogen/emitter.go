@@ -166,6 +166,21 @@ func createTable(e *EntitySchema, known map[string]bool) string {
 		"tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE",
 	}
 
+	if e.IsDocument() {
+		// A `document` table INDEXES files; it does not own them. source_path
+		// records which file the row was derived from and content_sha256 makes
+		// staleness detectable, so a reindex can tell "changed" from "already
+		// current" without reparsing. Without these two the table is
+		// indistinguishable from a copy of the file's contents — which is the
+		// moment a derived store becomes a second truth (ADR-0049).
+		cols = append(cols,
+			"source_path TEXT NOT NULL",
+			"content_sha256 TEXT",
+			"indexed_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+			"UNIQUE (tenant_id, source_path)",
+		)
+	}
+
 	reqDB := dbOnly(e.RequiredFields)
 	for i := range reqDB {
 		cols = append(cols, columnDef(&reqDB[i], true))

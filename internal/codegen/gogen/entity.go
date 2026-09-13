@@ -3,8 +3,10 @@
 package gogen
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"unicode"
@@ -20,6 +22,7 @@ type EntitySchema struct {
 		Title     string `yaml:"title"`
 		TableKind string `yaml:"table_kind"`
 		TableName string `yaml:"table_name"`
+		Scope     string `yaml:"scope"`
 	} `yaml:"_meta"`
 	PrimaryKey struct {
 		Column string `yaml:"column"`
@@ -57,22 +60,96 @@ type Relations struct {
 	Children []string `yaml:"children"`
 }
 
-// Load parses one entity YAML file. Returns an error if the file is not
-// an entity schema (table_kind != "entity").
+// Tabled reports whether this schema materialises as a table.
+//
+// `entity` is a record with its own lifecycle. `document` is content whose
+// truth is a FILE — an ADR under spec/, a runbook body — and it gets a table
+// too, but that table INDEXES the files: the row carries source_path and the
+// file remains authoritative. That distinction is ADR-0049's, and collapsing
+// the two is how a derived store quietly becomes a second truth.
+//
+// `map` and `value_object` never produce tables.
+func (e *EntitySchema) Tabled() bool {
+	return e.Meta.TableKind == KindEntity || e.Meta.TableKind == KindDocument
+}
+
+// IsDocument reports whether the table indexes files rather than owning rows.
+func (e *EntitySchema) IsDocument() bool { return e.Meta.TableKind == KindDocument }
+
+// Table kinds, bound to data/enums/table_kinds.yaml in lightwave-core.
+const (
+	KindEntity      = "entity"
+	KindDocument    = "document"
+	KindMap         = "map"
+	KindValueObject = "value_object"
+)
+
+// Storage scopes, bound to data/enums/storage_scopes.yaml.
+const (
+	ScopePlatform = "platform"
+	ScopeLocal    = "local"
+	ScopeBoth     = "both"
+)
+
+// InScope reports whether this schema belongs in the store named by want.
+// An empty want accepts everything, which is what preserves the pre-scope
+// behaviour for callers that do not ask.
+//
+// A schema with no declared scope is treated as `platform`: that matches the
+// enum's own default and means adding a scope filter cannot silently pull an
+// undeclared schema onto a workstation.
+func (e *EntitySchema) InScope(want string) bool {
+	if want == "" {
+		return true
+	}
+
+	got := e.Meta.Scope
+	if got == "" {
+		got = ScopePlatform
+	}
+
+	return got == want || got == ScopeBoth
+}
+
+// Load parses one schema. Returns an error if it does not materialise as a
+// table, so callers can treat "not a table" and "unreadable" distinctly.
 func Load(path string) (*EntitySchema, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
 
+	return Parse(filepath.Base(path), data)
+}
+
+// Parse is Load without the filesystem, so a Source can supply the bytes.
+func Parse(name string, data []byte) (*EntitySchema, error) {
 	var e EntitySchema
 
 	if err := yaml.Unmarshal(data, &e); err != nil {
 		return nil, err
 	}
 
-	if e.Meta.TableKind != "entity" {
-		return nil, fmt.Errorf("%s: not an entity schema (table_kind=%q)", filepath.Base(path), e.Meta.TableKind)
+	if !e.Tabled() {
+		return nil, fmt.Errorf("%s: not a tabled schema (table_kind=%q)", name, e.Meta.TableKind)
+	}
+
+	// Derive the table name when the schema does not declare one.
+	//
+	// Every agile_artifacts schema carries an explicit `table_name`, because
+	// that family was hand-annotated when the convention was invented — so
+	// nothing ever exercised the absent case. Pointing the generator at the
+	// newly-declared families surfaced it immediately: 64 entities resolved,
+	// one table was emitted, and a Go file was written to disk named ".go".
+	// An empty table name is not a validation error anywhere downstream; it
+	// just produces DDL for a table called "" and collides every entity into
+	// one map key.
+	//
+	// TableFromFKRef already performs exactly this schema_id -> table
+	// derivation for foreign keys, so reusing it keeps one pluralisation rule
+	// rather than a second that can disagree with the first.
+	if e.Meta.TableName == "" {
+		e.Meta.TableName = TableFromFKRef(e.Meta.SchemaID)
 	}
 
 	return &e, nil
@@ -101,6 +178,42 @@ func FindEntities(dir string) ([]string, error) {
 	}
 
 	return out, nil
+}
+
+// LoadFrom resolves every tabled schema under dir from src, filtered by scope.
+//
+// Unlike FindEntities this reports what it REJECTED and why. The old path
+// silently skipped anything that failed to parse as an entity, so an
+// undeclared schema, a deliberate value_object and a YAML syntax error were
+// one indistinguishable outcome — nothing. That is why 109 entity-shaped
+// schemas sat undeclared without ever producing a signal.
+func LoadFrom(ctx context.Context, src Source, dir, scope string) (entities []*EntitySchema, skipped []string, err error) {
+	paths, err := src.List(ctx, dir)
+	if err != nil {
+		return nil, nil, fmt.Errorf("listing %s: %w", dir, err)
+	}
+
+	for _, p := range paths {
+		data, readErr := src.Read(ctx, p)
+		if readErr != nil {
+			return nil, nil, readErr
+		}
+
+		e, parseErr := Parse(path.Base(p), data)
+		if parseErr != nil {
+			skipped = append(skipped, fmt.Sprintf("%s: %v", p, parseErr))
+			continue
+		}
+
+		if !e.InScope(scope) {
+			skipped = append(skipped, fmt.Sprintf("%s: scope=%s, wanted %s", p, e.Meta.Scope, scope))
+			continue
+		}
+
+		entities = append(entities, e)
+	}
+
+	return entities, skipped, nil
 }
 
 // referencedTables returns the distinct table names this entity's fields
@@ -193,11 +306,20 @@ func TableFromFKRef(fkRef string) string {
 	parts := strings.Split(strings.TrimRight(fkRef, "/"), "/")
 	name := parts[len(parts)-1]
 
-	if strings.HasSuffix(name, "y") {
+	// -y pluralises to -ies only after a CONSONANT. After a vowel it takes a
+	// plain -s: day -> days, not daies. The rule was consonant-blind because
+	// every name it had ever seen (story, category, identity) happened to end
+	// in consonant+y; pointing the generator at data/cineos produced
+	// `shoot_daies` on the first run.
+	if strings.HasSuffix(name, "y") && len(name) > 1 && !isVowel(name[len(name)-2]) {
 		return name[:len(name)-1] + "ies"
 	}
 
 	return name + "s"
+}
+
+func isVowel(c byte) bool {
+	return strings.IndexByte("aeiouAEIOU", c) >= 0
 }
 
 // CamelCase converts a snake_case / space- / hyphen-separated label into a Go
