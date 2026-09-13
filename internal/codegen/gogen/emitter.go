@@ -193,9 +193,19 @@ func createTable(e *EntitySchema, known map[string]bool) string {
 		)
 	}
 
+	// A document table's columns are NULLABLE even where the schema marks the
+	// field required. The row is an INDEX ENTRY over a file, and an index
+	// cannot be stricter than the thing it indexes: adr.yaml requires `date`,
+	// and real ADR files under ~/.lightwave/specs/adr/ do not all carry one,
+	// so NOT NULL makes 32 existing documents unindexable. Requiredness is the
+	// file's own validation to enforce (lw docs spec-lint), not the index's —
+	// an index that refuses to record a non-conforming file is an index that
+	// hides exactly the files worth finding.
+	required := !e.IsDocument()
+
 	reqDB := dbOnly(e.RequiredFields)
 	for i := range reqDB {
-		cols = append(cols, columnDef(&reqDB[i], true))
+		cols = append(cols, columnDef(&reqDB[i], required))
 	}
 
 	optDB := dbOnly(e.OptionalFields)
