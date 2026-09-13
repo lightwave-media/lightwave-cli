@@ -5,24 +5,21 @@ import (
 	"testing"
 )
 
-// TestTaskCreate_SkipFlags_GlobalsWired confirms the dispatcher-side
-// flag bindings reach the runTaskCreate globals. End-to-end behavior
-// (database create, gh shell-out, paperclip API) is integration-tested
-// by the manual smoke pass — this guards the wiring contract.
+// TestTaskCreate_SkipFlags_GlobalsWired confirms the dispatcher-side flag
+// binding reaches the runTaskCreate global. End-to-end behavior (database
+// create, gh shell-out) is integration-tested by the manual smoke pass — this
+// guards the wiring contract.
+//
+// --skip-paperclip went with the Paperclip leg (#351). It was never declared in
+// commands.yaml, so it was `unknown flag` through the dispatcher anyway: the
+// documented escape hatch for a dead service was itself unreachable.
 func TestTaskCreate_SkipFlags_GlobalsWired(t *testing.T) {
 	defer resetTaskCreateSkipFlags()
 	resetTaskCreateSkipFlags()
 
-	flags := map[string]any{
-		"skip-paperclip": true,
-		"skip-github":    true,
-	}
-	taskCreateSkipPaperclip = flagBool(flags, "skip-paperclip")
+	flags := map[string]any{"skip-github": true}
 	taskCreateSkipGitHub = flagBool(flags, "skip-github")
 
-	if !taskCreateSkipPaperclip {
-		t.Error("--skip-paperclip did not propagate to taskCreateSkipPaperclip")
-	}
 	if !taskCreateSkipGitHub {
 		t.Error("--skip-github did not propagate to taskCreateSkipGitHub")
 	}
@@ -35,13 +32,9 @@ func TestTaskCreate_SkipFlags_DefaultFalse(t *testing.T) {
 	defer resetTaskCreateSkipFlags()
 	resetTaskCreateSkipFlags()
 
-	flags := map[string]any{} // neither flag set
-	taskCreateSkipPaperclip = flagBool(flags, "skip-paperclip")
+	flags := map[string]any{} // flag not set
 	taskCreateSkipGitHub = flagBool(flags, "skip-github")
 
-	if taskCreateSkipPaperclip {
-		t.Error("default for skip-paperclip should be false")
-	}
 	if taskCreateSkipGitHub {
 		t.Error("default for skip-github should be false")
 	}
@@ -51,7 +44,7 @@ func TestTaskCreate_SkipFlags_DefaultFalse(t *testing.T) {
 // recognizes the new flags as booleans (otherwise they'd be parsed as
 // strings and silently ignored at the type assertion in flagBool).
 func TestDispatcher_SkipFlagsAreBoolean(t *testing.T) {
-	for _, name := range []string{"skip-paperclip", "skip-github"} {
+	for _, name := range []string{"skip-github"} {
 		if !isBooleanFlag(name) {
 			t.Errorf("dispatcher booleanFlags table missing %q — flag will be parsed as string", name)
 		}
@@ -68,6 +61,5 @@ func TestTaskCreateLong_NoAtomicallyClaim(t *testing.T) {
 }
 
 func resetTaskCreateSkipFlags() {
-	taskCreateSkipPaperclip = false
 	taskCreateSkipGitHub = false
 }

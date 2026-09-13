@@ -64,8 +64,7 @@ var (
 
 	// Per-target skip flags (#21 option A) — let task creation succeed
 	// when one downstream is offline without losing the captured intent.
-	taskCreateSkipPaperclip bool
-	taskCreateSkipGitHub    bool
+	taskCreateSkipGitHub bool
 )
 
 // Flags for task update
@@ -202,22 +201,27 @@ var taskContextCmd = &cobra.Command{
 
 var taskCreateCmd = &cobra.Command{
 	Use:   "create",
-	Short: "Create a new task (createOS + Paperclip + GitHub fan-out)",
-	Long: `Create a new task: a createOS canonical record, a linked Paperclip
-issue (with documents, attachments, labels, parent, assignee, priority,
-blocks/blockedBy), and a GitHub issue with Projects sync.
+	Short: "Create a new task (createOS + GitHub fan-out)",
+	Long: `Create a new task: a createOS canonical record and a GitHub issue
+with Projects sync, carrying the assignee and labels.
 
-The createOS step is fail-fast (it's the canonical record). Paperclip
-and GitHub legs degrade to warnings on per-step failures, and can be
-explicitly skipped with --skip-paperclip / --skip-github when one of
-those downstreams is unreachable (airplane mode, GitHub incident,
-Paperclip restart). The createOS task always lands, so the captured
-description is never lost.
+The createOS step is fail-fast (it's the canonical record). The GitHub leg
+degrades to warnings on per-step failures, and can be skipped with
+--skip-github when that downstream is unreachable (airplane mode, GitHub
+incident). The createOS task always lands, so the captured description is
+never lost.
+
+The Paperclip leg was removed in #351: it called a local service on :3100
+belonging to the retired Django-era stack, which has not been running.
+--assign and --label survive as GitHub assignee and labels. The flags that
+Paperclip alone implemented (--prd, --plan, --doc, --attach, --parent,
+--project, --project-workspace, --blocked-by, --blocks, --billing-code)
+now error rather than being silently ignored, because which of them to
+re-home is a product call — see the issue.
 
 Per ~/.brain/memory/feedback/2026-04-27-one-command-issue-creation.yaml:
-this is the SINGLE command surface for any agent anywhere. Do not chain
-raw Paperclip API calls + lw doc + gh issue create. Extend this command,
-do not add parallel commands like 'lw paperclip issue create'.
+this is the SINGLE command surface for any agent anywhere. Extend this
+command, do not add parallel ones.
 
 Examples:
   lw task create --title="Fix login bug"
@@ -353,7 +357,18 @@ Examples:
 
 // createGitHubIssueForTask creates a GitHub Issue for a newly created task.
 // Returns the issue number (0 if creation failed).
-func createGitHubIssueForTask(task *db.Task) (int, error) {
+// createGitHubIssueForTask creates the GitHub issue for a task.
+//
+// assignee and extraLabels carry the intent that used to go to Paperclip
+// (#351): --assign resolved a Paperclip agent and --label found-or-created a
+// Paperclip label. GitHub has both natively, so the capability survives even
+// though the Paperclip-shaped implementation does not.
+//
+// An unknown assignee makes `gh` reject the whole create, which would lose the
+// issue over a misspelled name. So the assignee is attempted, and on failure
+// the issue is created without it and the caller is told — the issue is the
+// thing worth keeping.
+func createGitHubIssueForTask(task *db.Task, assignee string, extraLabels []string) (int, error) {
 	// Build issue body with task metadata
 	var body strings.Builder
 	body.WriteString(fmt.Sprintf("**Task ID:** %s\n", task.ShortID))
@@ -382,17 +397,29 @@ func createGitHubIssueForTask(task *db.Task) (int, error) {
 		typeLabel = "bug"
 	}
 
+	labels := append([]string{priorityLabel, typeLabel}, extraLabels...)
+
 	ghArgs := []string{
 		"issue", "create",
 		"--repo", defaultGHRepo,
 		"--title", task.Title,
 		"--body", body.String(),
-		"--label", fmt.Sprintf("%s,%s", priorityLabel, typeLabel),
+		"--label", strings.Join(labels, ","),
 	}
 
-	cmd := exec.Command("gh", ghArgs...)
+	if assignee != "" {
+		ghArgs = append(ghArgs, "--assignee", assignee)
+	}
 
-	out, err := cmd.CombinedOutput()
+	out, err := exec.CommandContext(context.Background(), "gh", ghArgs...).CombinedOutput()
+	if err != nil && assignee != "" {
+		// Retry without the assignee rather than lose the issue to a bad name.
+		fmt.Printf("  %s assignee %q rejected by gh; creating the issue without it\n",
+			color.YellowString("⚠"), assignee)
+
+		out, err = exec.CommandContext(context.Background(), "gh", ghArgs[:len(ghArgs)-2]...).CombinedOutput()
+	}
+
 	if err != nil {
 		return 0, fmt.Errorf("gh issue create: %w\n%s", err, string(out))
 	}
@@ -490,7 +517,6 @@ func init() {
 	taskCreateCmd.Flags().StringVar(&taskCreateProjectWS, "project-workspace", "", "Paperclip project workspace ID")
 	taskCreateCmd.Flags().BoolVar(&taskCreateJSON, "json", false, "JSON output with createos/paperclip/github IDs")
 	taskCreateCmd.Flags().BoolVar(&taskCreateDryRun, "dry-run", false, "Resolve refs and print intent; no mutation")
-	taskCreateCmd.Flags().BoolVar(&taskCreateSkipPaperclip, "skip-paperclip", false, "Skip the Paperclip leg (createOS + GitHub only)")
 	taskCreateCmd.Flags().BoolVar(&taskCreateSkipGitHub, "skip-github", false, "Skip the GitHub leg (createOS + Paperclip only)")
 
 	// task update flags

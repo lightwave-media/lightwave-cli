@@ -11,7 +11,6 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/db"
-	"github.com/lightwave-media/lightwave-cli/internal/paperclip"
 	"github.com/spf13/cobra"
 )
 
@@ -43,29 +42,22 @@ type attachRef struct {
 	ID   string `json:"id,omitempty"`
 }
 
-// runTaskCreate is the atomic fan-out implementation backing `lw task create`.
+// runTaskCreate is the fan-out implementation backing `lw task create`.
 //
 // Flow:
-//  1. Validate flags + resolve description body
-//  2. Resolve assignee → companyID via Paperclip (sets target tenant for the issue)
-//  3. Build doc and attachment lists from flags
-//  4. Dry-run: print intent and exit
-//  5. db.CreateTask (createOS canonical record)
-//  6. paperclip.CreateIssue with full metadata (priority, parent, project,
-//     billing-code, labels, blockedBy, blocks)
-//  7. Resolve labels (find or create) and patch issue.labelIds
-//  8. PutDocument for prd/plan/--doc entries
-//  9. UploadAttachment for --attach entries
-//  10. createGitHubIssueForTask + Projects sync (existing behavior)
-//  11. Persist GitHub cross-ref to createos_task.notion_id (legacy column —
-//     proper paperclip_issue_id/github_issue_number columns require a Django
-//     migration, see plan §4.4)
-//  12. Print three-identifier output (text or JSON)
+//  1. Validate flags; reject the Paperclip-only ones (see paperclipOnlyFlags)
+//  2. Resolve description body
+//  3. Dry-run: print intent and exit — no network, no database
+//  4. db.CreateTask (createOS canonical record)
+//  5. createGitHubIssueForTask, carrying --assign and --label
+//  6. Persist the GitHub cross-ref
+//  7. Print the identifiers (text or JSON)
 //
-// Failure handling: createOS step is fail-fast (nothing to roll back).
-// Paperclip create failure marks the createOS task as errored. Per-label,
-// per-doc, per-attachment, per-GitHub failures degrade to warnings so the
-// task still lands as a usable record.
+// The Paperclip leg is gone (#351). It called a local service on :3100 that
+// belongs to the retired Django-era stack and has not been running; every call
+// against it returned connection refused. createOS is fail-fast (it is the
+// canonical record); the GitHub leg degrades to a warning so the task still
+// lands as a usable record.
 func runTaskCreate(cmd *cobra.Command, args []string) error {
 	if taskCreateTitle == "" {
 		return errors.New("--title is required")
@@ -75,53 +67,24 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		return errors.New("--description and --description-file are mutually exclusive")
 	}
 
+	if err := rejectPaperclipOnlyFlags(); err != nil {
+		return err
+	}
+
 	body, err := resolveTaskBody()
 	if err != nil {
 		return err
 	}
 
-	docs, err := collectDocuments()
-	if err != nil {
-		return err
-	}
-
-	attachments, err := collectAttachments()
-	if err != nil {
-		return err
+	// Dry-run BEFORE any I/O. It used to sit after a Paperclip agent lookup, so
+	// `--assign x --dry-run` made a network call and failed — a preview with a
+	// side effect, against this repo's own destructive-command standard (#351).
+	if taskCreateDryRun {
+		return printDryRun(body, taskCreateAssign)
 	}
 
 	ctx := context.Background()
-	pc := paperclip.NewClient()
 
-	// Resolve assignee → companyID. Required for Paperclip create.
-	var (
-		companyID string
-		agentID   string
-		agentName string
-	)
-
-	if taskCreateAssign != "" {
-		agents, err := pc.ListAllAgents(ctx)
-		if err != nil {
-			return fmt.Errorf("paperclip: list agents: %w", err)
-		}
-
-		target := findAgentByName(agents, taskCreateAssign)
-		if target == nil {
-			return fmt.Errorf("agent %q not found in any Paperclip company", taskCreateAssign)
-		}
-
-		companyID = target.CompanyID
-		agentID = target.ID
-		agentName = target.Name
-	}
-
-	// Dry run: stop here and print intent.
-	if taskCreateDryRun {
-		return printDryRun(body, docs, attachments, agentName, companyID)
-	}
-
-	// 1. createOS task — canonical local record.
 	pool, err := db.Connect(ctx)
 	if err != nil {
 		return fmt.Errorf("database connection failed: %w", err)
@@ -149,116 +112,23 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 		CreateosShortID: task.ShortID,
 	}
 
-	// 2. Paperclip issue (if assignee given AND not explicitly skipped).
-	//    Without an assignee we can't pick a company — Paperclip leg is
-	//    skipped, surfaced as a warning. --skip-paperclip is the explicit
-	//    "downstream is offline / I'll sync later" path.
-	if taskCreateSkipPaperclip {
-		result.Warnings = append(result.Warnings,
-			"Paperclip leg skipped (--skip-paperclip)")
-	} else if companyID != "" {
-		issue := paperclip.Issue{
-			Title:              taskCreateTitle,
-			Description:        body,
-			Status:             "todo",
-			AssigneeAgentID:    agentID,
-			Priority:           normalizePaperclipPriority(taskCreatePriority),
-			ParentID:           taskCreateParent,
-			ProjectID:          taskCreateProject,
-			ProjectWorkspaceID: taskCreateProjectWS,
-			BlockedByIDs:       taskCreateBlockedBy,
-			BlocksIDs:          taskCreateBlocks,
-			BillingCode:        taskCreateBillingCode,
-		}
-
-		created, err := pc.CreateIssue(ctx, companyID, issue)
-		if err != nil {
-			// Mark createOS task errored — keep going so the user sees the partial state.
-			_, _ = db.UpdateTask(ctx, pool, task.ID, db.TaskUpdateOptions{
-				Status: ptr("errored"),
-			})
-
-			return fmt.Errorf("paperclip: create issue (createOS task %s left in errored state): %w",
-				task.ShortID, err)
-		}
-
-		result.PaperclipIssueID = created.ID
-		result.PaperclipIdentifier = created.Identifier
-		result.PaperclipURL = paperclipIssueURL(created.Identifier)
-
-		// 3. Labels — find or create, then attach.
-		for _, name := range taskCreateLabels {
-			labelID, warn := resolveOrCreateLabel(ctx, pc, companyID, name)
-			if warn != "" {
-				result.Warnings = append(result.Warnings, warn)
-				continue
-			}
-
-			if _, err := pc.AddIssueLabel(ctx, created.ID, labelID); err != nil {
-				result.Warnings = append(result.Warnings,
-					fmt.Sprintf("attach label %q: %v", name, err))
-
-				continue
-			}
-
-			result.Labels = append(result.Labels, name)
-		}
-
-		// 4. Documents — text artifacts (PRD/plan/keyed).
-		for _, d := range docs {
-			doc, err := pc.PutDocument(ctx, created.ID, d.key, d.body)
-			if err != nil {
-				result.Warnings = append(result.Warnings,
-					fmt.Sprintf("put document %q (%s): %v", d.key, d.path, err))
-
-				continue
-			}
-
-			result.Documents = append(result.Documents, docRef{
-				Key:      doc.Key,
-				Revision: doc.Revision,
-			})
-		}
-
-		// 5. Attachments — binary multipart uploads.
-		for _, p := range attachments {
-			att, err := pc.UploadAttachmentFromFile(ctx, created.ID, p)
-			if err != nil {
-				result.Warnings = append(result.Warnings,
-					fmt.Sprintf("upload attachment %s: %v", p, err))
-
-				continue
-			}
-
-			result.Attachments = append(result.Attachments, attachRef{
-				Path: p,
-				ID:   att.ID,
-			})
-		}
-	} else {
-		result.Warnings = append(result.Warnings,
-			"no --assign given; Paperclip leg skipped (no company target)")
-	}
-
-	// 6. GitHub issue (existing path — preserves current behavior).
-	//    --skip-github bypasses the entire leg for offline / GitHub-incident scenarios.
 	if taskCreateSkipGitHub {
-		result.Warnings = append(result.Warnings,
-			"GitHub leg skipped (--skip-github)")
+		result.Warnings = append(result.Warnings, "GitHub leg skipped (--skip-github)")
 
 		return printTaskCreateResult(task, result)
 	}
 
-	issueNum, ghErr := createGitHubIssueForTask(task)
+	issueNum, ghErr := createGitHubIssueForTask(task, taskCreateAssign, taskCreateLabels)
 	if ghErr != nil {
 		result.Warnings = append(result.Warnings, fmt.Sprintf("github: %v", ghErr))
 	} else if issueNum > 0 {
 		result.GitHubIssueNumber = issueNum
 		result.GitHubURL = fmt.Sprintf("https://github.com/%s/issues/%d", defaultGHRepo, issueNum)
+		result.Labels = taskCreateLabels
 
-		// 7. Persist cross-ref. Today this overloads notion_id; proper
-		//    paperclip_issue_id / github_issue_number columns require a Django
-		//    migration in lightwave-platform — see plan §4.4 / LIGA-787.
+		// Cross-ref still overloads notion_id. The comment here used to say the
+		// proper column "requires a Django migration"; there is no Django, and
+		// the column question is now a Go-side schema change.
 		legacyRef := fmt.Sprintf("gh-%d", issueNum)
 		if _, err := db.UpdateTaskNotionID(ctx, pool, task.ID, legacyRef); err != nil {
 			result.Warnings = append(result.Warnings,
@@ -267,6 +137,66 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 	}
 
 	return printTaskCreateResult(task, result)
+}
+
+// paperclipOnlyFlags are the flags whose ONLY implementation was the Paperclip
+// leg, with the reason each is not silently carried forward.
+//
+// They were inert before this change, not merely Paperclip-bound: the block
+// that consumed them sat inside `else if companyID != ""`, and companyID was
+// set only when --assign resolved against Paperclip. So without --assign they
+// were silently ignored, and with --assign the command errored before reaching
+// them. There was no path on which they worked.
+//
+// Failing loudly is the point. Silently accepting a flag that does nothing is
+// the worst of the three options, and quietly deleting them would make a
+// product decision by omission — which of these carry intent worth re-homing is
+// a call for a person, and #351 says so explicitly. An error keeps the choice
+// visible.
+var paperclipOnlyFlags = []struct {
+	value  func() bool
+	name   string
+	reason string
+}{
+	{name: "prd", value: func() bool { return taskCreatePRD != "" },
+		reason: "document storage was a Paperclip capability; spec/ artifacts referenced from the issue body are the likely home"},
+	{name: "plan", value: func() bool { return taskCreatePlan != "" },
+		reason: "document storage was a Paperclip capability; spec/ artifacts referenced from the issue body are the likely home"},
+	{name: "doc", value: func() bool { return len(taskCreateDocs) > 0 },
+		reason: "document storage was a Paperclip capability; spec/ artifacts referenced from the issue body are the likely home"},
+	{name: "attach", value: func() bool { return len(taskCreateAttach) > 0 },
+		reason: "attachment upload was a Paperclip capability; GitHub issue attachments are the likely home"},
+	{name: "parent", value: func() bool { return taskCreateParent != "" },
+		reason: "the task graph lived in Paperclip; GitHub issue links or the createOS task graph are the candidates"},
+	{name: "blocked-by", value: func() bool { return len(taskCreateBlockedBy) > 0 },
+		reason: "the task graph lived in Paperclip; GitHub issue links or the createOS task graph are the candidates"},
+	{name: "blocks", value: func() bool { return len(taskCreateBlocks) > 0 },
+		reason: "the task graph lived in Paperclip; GitHub issue links or the createOS task graph are the candidates"},
+	{name: "project", value: func() bool { return taskCreateProject != "" },
+		reason: "a Paperclip-domain concept with no current analogue"},
+	{name: "project-workspace", value: func() bool { return taskCreateProjectWS != "" },
+		reason: "a Paperclip-domain concept with no current analogue"},
+	{name: "billing-code", value: func() bool { return taskCreateBillingCode != "" },
+		reason: "a Paperclip-domain concept with no current analogue"},
+}
+
+// rejectPaperclipOnlyFlags errors on any flag whose only implementation was the
+// retired Paperclip leg.
+func rejectPaperclipOnlyFlags() error {
+	for _, f := range paperclipOnlyFlags {
+		if !f.value() {
+			continue
+		}
+
+		return fmt.Errorf(
+			"--%s was implemented only by the retired Paperclip leg and has been inert since "+
+				"before it was retired (#351): %s. It is not silently ignored, and it is not "+
+				"deleted, because which of these to re-home is a product call rather than "+
+				"something to infer from code",
+			f.name, f.reason)
+	}
+
+	return nil
 }
 
 type docInput struct {
@@ -290,140 +220,22 @@ func resolveTaskBody() (string, error) {
 	return strings.ReplaceAll(taskCreateDescription, `\n`, "\n"), nil
 }
 
-// collectDocuments resolves --prd, --plan, and --doc into a list of {key, body} pairs.
-// Reads each file once and validates paths up front so the atomic fan-out
-// doesn't fail halfway through.
-func collectDocuments() ([]docInput, error) {
-	var out []docInput
-
-	if taskCreatePRD != "" {
-		body, err := os.ReadFile(taskCreatePRD)
-		if err != nil {
-			return nil, fmt.Errorf("read --prd %s: %w", taskCreatePRD, err)
-		}
-
-		out = append(out, docInput{key: "prd", path: taskCreatePRD, body: body})
-	}
-
-	if taskCreatePlan != "" {
-		body, err := os.ReadFile(taskCreatePlan)
-		if err != nil {
-			return nil, fmt.Errorf("read --plan %s: %w", taskCreatePlan, err)
-		}
-
-		out = append(out, docInput{key: "plan", path: taskCreatePlan, body: body})
-	}
-
-	for _, kv := range taskCreateDocs {
-		key, path, ok := strings.Cut(kv, "=")
-		if !ok || key == "" || path == "" {
-			return nil, fmt.Errorf("--doc must be key=path, got %q", kv)
-		}
-
-		body, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("read --doc %s=%s: %w", key, path, err)
-		}
-
-		out = append(out, docInput{key: key, path: path, body: body})
-	}
-
-	return out, nil
-}
-
-// collectAttachments validates that every --attach path exists and is readable.
-func collectAttachments() ([]string, error) {
-	for _, p := range taskCreateAttach {
-		if _, err := os.Stat(p); err != nil {
-			return nil, fmt.Errorf("--attach %s: %w", p, err)
-		}
-	}
-
-	return taskCreateAttach, nil
-}
-
-// findAgentByName resolves a kebab/lowercase/spaced name to an agent.
-func findAgentByName(agents []paperclip.Agent, name string) *paperclip.Agent {
-	normalize := func(s string) string {
-		return strings.ToLower(strings.ReplaceAll(s, "-", " "))
-	}
-
-	target := normalize(name)
-	for i := range agents {
-		if normalize(agents[i].Name) == target {
-			return &agents[i]
-		}
-	}
-
-	return nil
-}
-
-// normalizePaperclipPriority maps createOS priority strings (p1_urgent, p2_high...)
-// to Paperclip's vocabulary (low|medium|high|critical). Pass-through for
-// already-Paperclip-native values.
-func normalizePaperclipPriority(p string) string {
-	switch strings.ToLower(p) {
-	case "p1_urgent", "critical", "urgent":
-		return "critical"
-	case "p2_high", "high":
-		return "high"
-	case "p3_medium", "medium", "":
-		return "medium"
-	case "p4_low", "low":
-		return "low"
-	default:
-		return p
-	}
-}
-
-// resolveOrCreateLabel looks up a label by name; creates it on miss.
-func resolveOrCreateLabel(ctx context.Context, pc *paperclip.Client, companyID, name string) (string, string) {
-	label, err := pc.FindLabelByName(ctx, companyID, name)
-	if err == nil {
-		return label.ID, ""
-	}
-
-	created, err := pc.CreateLabel(ctx, companyID, name, "")
-	if err != nil {
-		return "", fmt.Sprintf("resolve label %q: %v", name, err)
-	}
-
-	return created.ID, ""
-}
-
-// paperclipIssueURL builds a viewable URL for a Paperclip identifier.
-func paperclipIssueURL(identifier string) string {
-	if identifier == "" {
-		return ""
-	}
-
-	base := "http://localhost:3100"
-	// Mirror paperclip.NewClient's base URL resolution.
-	if u := os.Getenv("PAPERCLIP_URL"); u != "" {
-		base = strings.TrimRight(u, "/")
-	}
-
-	return fmt.Sprintf("%s/issues/%s", base, identifier)
-}
-
 func ptr[T any](v T) *T { return &v }
 
 // printDryRun renders the resolved intent without making any mutations.
-func printDryRun(body string, docs []docInput, attachments []string, agentName, companyID string) error {
+// printDryRun previews the fan-out without touching the network or the database.
+//
+// It previously ran AFTER a Paperclip agent lookup, so `--assign x --dry-run`
+// made a network call and errored — a preview with a side effect (#351). It is
+// now the first thing that happens after flag validation.
+func printDryRun(body, assignee string) error {
 	if taskCreateJSON {
 		out := taskCreateResult{
 			CreateosShortID: "(dry-run)",
 			DryRun:          true,
-		}
-		for _, d := range docs {
-			out.Documents = append(out.Documents, docRef{Key: d.key})
+			Labels:          taskCreateLabels,
 		}
 
-		for _, a := range attachments {
-			out.Attachments = append(out.Attachments, attachRef{Path: a})
-		}
-
-		out.Labels = taskCreateLabels
 		enc := json.NewEncoder(os.Stdout)
 		enc.SetIndent("", "  ")
 
@@ -432,55 +244,21 @@ func printDryRun(body string, docs []docInput, attachments []string, agentName, 
 
 	fmt.Printf("%s lw task create (dry-run)\n", color.CyanString("→"))
 	fmt.Printf("  Title:    %s\n", taskCreateTitle)
-	fmt.Printf("  Priority: %s (paperclip: %s)\n", taskCreatePriority, normalizePaperclipPriority(taskCreatePriority))
+	fmt.Printf("  Priority: %s\n", taskCreatePriority)
 	fmt.Printf("  Type:     %s\n", taskCreateType)
 
-	if agentName != "" {
-		fmt.Printf("  Assignee: %s (company %s)\n", agentName, companyID)
-	} else {
-		fmt.Printf("  Assignee: %s — Paperclip leg will be skipped\n", color.YellowString("(none)"))
+	if assignee != "" {
+		fmt.Printf("  Assignee: %s (GitHub)\n", assignee)
 	}
 
 	if len(taskCreateLabels) > 0 {
 		fmt.Printf("  Labels:   %s\n", strings.Join(taskCreateLabels, ", "))
 	}
 
-	if taskCreateParent != "" {
-		fmt.Printf("  Parent:   %s\n", taskCreateParent)
-	}
-
-	if taskCreateProject != "" {
-		fmt.Printf("  Project:  %s\n", taskCreateProject)
-	}
-
-	if len(taskCreateBlocks) > 0 {
-		fmt.Printf("  Blocks:   %s\n", strings.Join(taskCreateBlocks, ", "))
-	}
-
-	if len(taskCreateBlockedBy) > 0 {
-		fmt.Printf("  BlockedBy: %s\n", strings.Join(taskCreateBlockedBy, ", "))
-	}
-
-	if len(docs) > 0 {
-		fmt.Println("  Documents:")
-
-		for _, d := range docs {
-			fmt.Printf("    %s ← %s (%d bytes)\n", d.key, d.path, len(d.body))
-		}
-	}
-
-	if len(attachments) > 0 {
-		fmt.Println("  Attachments:")
-
-		for _, a := range attachments {
-			fmt.Printf("    %s\n", filepath.Base(a))
-		}
-	}
-
 	if len(body) > 0 {
 		preview := body
-		if len(preview) > 200 {
-			preview = preview[:200] + "…"
+		if len(preview) > dryRunBodyPreview {
+			preview = preview[:dryRunBodyPreview] + "…"
 		}
 
 		fmt.Printf("  Body:     %d bytes\n            %s\n", len(body), strings.ReplaceAll(preview, "\n", " "))
@@ -490,6 +268,9 @@ func printDryRun(body string, docs []docInput, attachments []string, agentName, 
 
 	return nil
 }
+
+// dryRunBodyPreview caps the description preview in dry-run output.
+const dryRunBodyPreview = 200
 
 // printTaskCreateResult renders human-readable output OR JSON depending on flags.
 func printTaskCreateResult(task *db.Task, result taskCreateResult) error {
