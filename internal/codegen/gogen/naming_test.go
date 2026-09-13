@@ -52,6 +52,23 @@ required_fields:
 	assert.Equal(t, "ledger_events", e.Meta.TableName)
 }
 
+func TestUnnameableTableIsRejected(t *testing.T) {
+	t.Parallel()
+
+	// Neither table_name nor schema_id. The derivation would have returned "s"
+	// — a perfectly valid identifier — so every such schema would have
+	// collided into one table named `s` and produced DDL that looked fine.
+	_, err := gogen.Parse("nameless.yaml", []byte(`_meta:
+  table_kind: entity
+  scope: local
+required_fields:
+- name: field
+  type: str
+`))
+	require.Error(t, err, "a table nobody can name must be refused, not guessed")
+	assert.Contains(t, err.Error(), "neither _meta.table_name nor _meta.schema_id")
+}
+
 func TestDeclaredTableNameWins(t *testing.T) {
 	t.Parallel()
 

@@ -149,6 +149,16 @@ func Parse(name string, data []byte) (*EntitySchema, error) {
 	// derivation for foreign keys, so reusing it keeps one pluralisation rule
 	// rather than a second that can disagree with the first.
 	if e.Meta.TableName == "" {
+		if e.Meta.SchemaID == "" {
+			// Nothing to derive from. TableFromFKRef would happily return "s"
+			// for an empty id — a valid identifier, so every such schema would
+			// collide into one table named `s` and the DDL would look fine.
+			// Refuse instead: a name nobody chose is worse than an error.
+			return nil, fmt.Errorf(
+				"%s: tabled schema has neither _meta.table_name nor _meta.schema_id "+
+					"to derive one from", name)
+		}
+
 		e.Meta.TableName = TableFromFKRef(e.Meta.SchemaID)
 	}
 
