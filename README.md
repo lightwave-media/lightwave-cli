@@ -59,7 +59,7 @@ lw local up
 lw check
 
 # Create a task end-to-end — the title is positional
-lw task create "describe the change" --type=fix --prd=<path/to/prd.md>
+lw task create "describe the change" --type=fix --label=cli --assign=<github-user>
 
 # Explore the surface
 lw --help
@@ -68,7 +68,10 @@ lw <command> --help
 
 Each top-level command owns a group of verbs (`lw task --help`,
 `lw db --help`, `lw check --help`). An unknown verb exits non-zero
-rather than printing help and reporting success.
+rather than printing help and reporting success — **including with
+`--help` on the line**, which is how callers ask whether a command
+exists. Until #426 that form exited 0 and printed the parent's help, so
+probing for a verb returned the same answer whether it existed or not.
 
 > **Note on wording.** These groups are spelled `domains:` in the
 > `commands.yaml` stamp and in `internal/cli/dispatcher.go`. That is a

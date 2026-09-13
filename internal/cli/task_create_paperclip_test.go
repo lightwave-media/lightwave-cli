@@ -2,6 +2,10 @@
 package cli
 
 import (
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -116,4 +120,42 @@ func TestTaskCreateHelpDropsPaperclip(t *testing.T) {
 		"the long help still advertises a flag that no longer exists")
 	assert.Contains(t, taskCreateCmd.Long, "#351",
 		"the long help should say where the leg went")
+}
+
+// TestReadmeDoesNotAdvertiseRejectedFlags closes the loop #351 left open.
+//
+// Rejecting those ten flags at runtime made the CLI honest and left the README
+// lying: its quickstart was `lw task create "..." --type=fix --prd=<path>`,
+// which from that merge onward exits 1. The repo's own headline example stopped
+// working and nothing noticed, because docs are not on any gate.
+//
+// Flag existence cannot catch this — every rejected flag is still declared in
+// commands.yaml, so `--help` lists it and a "does this flag exist" check passes.
+// The only thing that distinguishes them is the rejection table itself, so that
+// table is what the README is checked against.
+func TestReadmeDoesNotAdvertiseRejectedFlags(t *testing.T) {
+	t.Parallel()
+
+	top, err := exec.CommandContext(t.Context(), "git", "rev-parse", "--show-toplevel").Output()
+	require.NoError(t, err)
+
+	raw, err := os.ReadFile(filepath.Join(strings.TrimSpace(string(top)), "README.md")) //nolint:gosec // the repo's own README
+	require.NoError(t, err)
+
+	readme := string(raw)
+
+	for _, f := range paperclipOnlyFlags {
+		// Only inside shell examples. The README may legitimately discuss a
+		// retired flag in prose, and banning the word would make the guard fire
+		// on its own explanation.
+		for _, line := range strings.Split(readme, "\n") {
+			if !strings.HasPrefix(strings.TrimSpace(line), "lw ") {
+				continue
+			}
+
+			assert.NotContains(t, line, "--"+f.name,
+				"README.md shows `--%s` in a runnable example, but that flag has "+
+					"errored since #351 — the example exits 1", f.name)
+		}
+	}
 }
