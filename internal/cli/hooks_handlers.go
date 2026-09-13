@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
@@ -332,22 +333,149 @@ func repoStatusFor(ctx context.Context, repo string) repoStatus {
 	}
 }
 
-// installHooks runs `pre-commit install` and `pre-commit install -t pre-push`
-// in repo. Streams output so the user sees pre-commit's own progress.
-func installHooks(ctx context.Context, repo string) error {
-	for _, args := range [][]string{
-		{"install"},
-		{"install", "-t", "pre-push"},
-	} {
-		c := exec.CommandContext(ctx, "pre-commit", args...)
-		c.Dir = repo
-		c.Stdout = os.Stdout
+// stampedHooksDir is where repo-infra.yaml v1.4.0 puts git hooks:
+// dev/hooks, wired through core.hooksPath.
+const stampedHooksDir = "dev/hooks"
 
-		c.Stderr = os.Stderr
-		if err := c.Run(); err != nil {
-			return fmt.Errorf("pre-commit %v: %w", args, err)
+// hookPreCommit / hookPrePush name the two hooks this command manages.
+const (
+	hookPreCommit = "pre-commit"
+	hookPrePush   = "pre-push"
+)
+
+// hookDirPerm / hookFilePerm: a git hook that is not executable is one git
+// silently skips, so the executable bits are part of the contract, not a
+// default.
+const (
+	hookDirPerm  = 0o755
+	hookFilePerm = 0o755
+)
+
+// canonicalPreCommit delegates to the pre-commit framework. It is a shim rather
+// than the framework's own generated hook because the framework writes into
+// .git/hooks, which git ignores entirely once core.hooksPath is set.
+const canonicalPreCommit = `#!/usr/bin/env sh
+# Canonical pre-commit (written by ` + "`lw hooks install`" + `). Delegates to the
+# pre-commit framework when the repo uses it.
+ROOT=$(git rev-parse --show-toplevel) || exit 0; cd "$ROOT"
+if [ -f .pre-commit-config.yaml ] && command -v pre-commit >/dev/null 2>&1; then
+  pre-commit run --hook-stage pre-commit || exit 1
+fi
+exit 0
+`
+
+// canonicalPrePush runs the repo's own local CI. repo-infra.yaml v1.2.0 makes
+// mise tasks the canonical check definitions and has this hook and GitHub
+// Actions consume the same graph, so the two cannot drift.
+const canonicalPrePush = `#!/usr/bin/env sh
+# Canonical pre-push (written by ` + "`lw hooks install`" + `). mise run ci is THE
+# local-CI command per repo-infra.yaml; CI runs the same task graph.
+ROOT=$(git rev-parse --show-toplevel) || exit 1; cd "$ROOT"
+command -v mise >/dev/null 2>&1 || exit 0
+exec mise run ci
+`
+
+// installHooks wires the repository's hooks at the path the stamp names, then
+// verifies what it did before reporting it.
+//
+// It used to shell out to `pre-commit install` and `pre-commit install -t
+// pre-push`, which was wrong in both directions a repo can be in (#411):
+//
+//   - With core.hooksPath UNSET it wrote .git/hooks and left core.hooksPath
+//     unset, producing a repo that violates repo-infra.yaml v1.4.0 — hooks
+//     belong in dev/hooks — while reporting success.
+//   - With core.hooksPath SET, which is the normal state for six of seven
+//     first-party repos, pre-commit refuses outright ("Cowardly refusing to
+//     install hooks with core.hooksPath set") and the command exits 1. So the
+//     verb could not work in precisely the repos that already conform.
+//
+// Both were measured, not inferred. The second is the more interesting one: the
+// same file's `lw hooks doctor` already resolves hooks THROUGH core.hooksPath,
+// so install and doctor disagreed about where hooks live.
+//
+// An existing hook is never overwritten. conform.sh writes a richer pre-push
+// (opt-in act and review phases) and clobbering it would make this the second
+// installer fighting the first — the thing #411 says is worse than one. This
+// fills gaps and leaves anything already there alone.
+func installHooks(ctx context.Context, repo string) error {
+	hooksDir, err := ensureHooksPath(ctx, repo)
+	if err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Join(repo, hooksDir), hookDirPerm); err != nil {
+		return fmt.Errorf("creating %s: %w", hooksDir, err)
+	}
+
+	for _, hook := range []struct{ name, body string }{
+		{hookPreCommit, canonicalPreCommit},
+		{hookPrePush, canonicalPrePush},
+	} {
+		path := filepath.Join(repo, hooksDir, hook.name)
+
+		if _, statErr := os.Stat(path); statErr == nil {
+			fmt.Printf("  = %s/%s already present — preserved\n", hooksDir, hook.name)
+			continue
+		}
+
+		if err := os.WriteFile(path, []byte(hook.body), hookFilePerm); err != nil { //nolint:gosec // a git hook must be executable
+			return fmt.Errorf("writing %s: %w", path, err)
+		}
+
+		fmt.Printf("  + wrote %s/%s\n", hooksDir, hook.name)
+	}
+
+	return verifyHooks(ctx, repo, hooksDir)
+}
+
+// ensureHooksPath returns the repo-relative hooks directory, setting
+// core.hooksPath to the stamped default when the repo has none.
+//
+// A path the operator already chose is respected rather than overwritten: this
+// command's job is to make an unconfigured repo conform, not to relitigate a
+// deliberate choice.
+func ensureHooksPath(ctx context.Context, repo string) (string, error) {
+	existing, _ := gitOutput(ctx, repo, "config", "core.hooksPath")
+	if existing = strings.TrimSpace(existing); existing != "" {
+		return existing, nil
+	}
+
+	c := exec.CommandContext(ctx, "git", "-C", repo, "config", "core.hooksPath", stampedHooksDir)
+	if out, err := c.CombinedOutput(); err != nil {
+		return "", fmt.Errorf("setting core.hooksPath: %w: %s", err, out)
+	}
+
+	fmt.Printf("  → core.hooksPath: unset → %s\n", stampedHooksDir)
+
+	return stampedHooksDir, nil
+}
+
+// verifyHooks re-reads what was just written, so success is reported only when
+// it is true.
+//
+// CLAUDE.md section 15 records the same defect in the multi-repo pre-commit
+// self-heal: it "reported installed for hooks it had not installed — it awaited
+// proc.exited without reading the exit code". Printing an action is not evidence
+// the action happened.
+func verifyHooks(ctx context.Context, repo, hooksDir string) error {
+	configured, _ := gitOutput(ctx, repo, "config", "core.hooksPath")
+	if strings.TrimSpace(configured) != hooksDir {
+		return fmt.Errorf("core.hooksPath reads %q after install, expected %q",
+			strings.TrimSpace(configured), hooksDir)
+	}
+
+	for _, name := range []string{hookPreCommit, hookPrePush} {
+		info, err := os.Stat(filepath.Join(repo, hooksDir, name))
+		if err != nil {
+			return fmt.Errorf("%s/%s missing after install: %w", hooksDir, name, err)
+		}
+
+		if info.Mode().Perm()&0o111 == 0 {
+			return fmt.Errorf("%s/%s is not executable, so git will silently skip it", hooksDir, name)
 		}
 	}
+
+	fmt.Printf("✓ hooks wired at %s (core.hooksPath)\n", hooksDir)
 
 	return nil
 }
