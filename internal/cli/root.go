@@ -58,6 +58,12 @@ func Execute() error {
 		return err
 	}
 
+	// Before cobra runs, because cobra answers --help before it validates args
+	// and reports success for a verb that does not exist. See UnknownVerbError.
+	if err := UnknownVerbError(rootCmd, os.Args[1:]); err != nil {
+		return err
+	}
+
 	return rootCmd.Execute()
 }
 
