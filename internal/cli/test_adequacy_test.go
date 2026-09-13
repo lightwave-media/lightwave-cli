@@ -22,13 +22,20 @@ import (
 //     against itself, epic/story, epic_handlers/sprint_handlers, db epics
 //     /stories). There is no duplicated fixture setup to extract.
 //
-//   - "Large files mask mutation gaps." 68% of files over 200 LOC carry no
-//     rejection-path assertion — against 64% of the files under it. The rates
-//     are the same, so file size predicts nothing about this.
+//   - "Large files mask mutation gaps." Inverted: 42% of files over 200 LOC
+//     carry no rejection-path assertion, against 53% of the files under it. The
+//     big files are BETTER covered. Splitting them would move work from the
+//     better-tested half of the suite into the worse-tested half.
 //
-// What is real: 47 of 91 test files (52%) never assert that anything is
-// REJECTED. They test only the happy path. That is the adequacy gap, it is
-// independent of file length, and a LOC cap would not have moved it — while
+//     (The PR that introduced this file reported 68% against 64% — computed
+//     with the narrow first-pass regex described at rejectionPathAssertion,
+//     before `if err == nil` was added. Those numbers were wrong. The
+//     conclusion they supported — no LOC cap — survives the correction and is
+//     strengthened by it, but the figures themselves should not be quoted.)
+//
+// What is real: 47 of 92 test files (51%) never assert that anything is
+// REJECTED. They test only the happy path. That is the adequacy gap, it does
+// not track file length, and a LOC cap would not have moved it — while
 // actively discouraging the one thing that helps, which is writing more tests.
 //
 // So this guard measures the gap itself rather than a proxy for it, and
