@@ -2,6 +2,8 @@
 package cli
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -46,24 +48,75 @@ func repoRootFromGit(t *testing.T) string {
 	return strings.TrimSpace(string(out))
 }
 
+// parseReadmeClaims is split out as a pure function so the extractor itself can
+// be driven against a README that does NOT contain the block.
+//
+// Without that, the guard only ever sees input it can parse, and a regex that
+// silently stops matching — because the section was reworded, or the fence
+// changed — would turn the whole check into a no-op that still reports success.
+// That is the exact failure this file exists to prevent, so the extractor gets
+// the same both-directions treatment (CLAUDE.md section 18).
+func parseReadmeClaims(src string) (claimed int, names []string, err error) {
+	m := readmeSurfaceBlock.FindStringSubmatch(src)
+	if len(m) != 3 {
+		return 0, nil, errors.New(
+			"README.md no longer contains a \"<N> top-level commands ship in the current build:\" " +
+				"block followed by a fence. If that section moved, move this guard with it — " +
+				"do not delete it, or the list goes back to being unchecked")
+	}
+
+	claimed, err = strconv.Atoi(m[1])
+	if err != nil {
+		return 0, nil, fmt.Errorf("parsing the claimed command count: %w", err)
+	}
+
+	return claimed, strings.Fields(m[2]), nil
+}
+
 func readmeClaims(t *testing.T) (claimed int, names []string) {
 	t.Helper()
 
-	root := repoRootFromGit(t)
-
-	raw, err := os.ReadFile(filepath.Join(root, "README.md")) //nolint:gosec // the repo's own README
+	raw, err := os.ReadFile(filepath.Join(repoRootFromGit(t), "README.md")) //nolint:gosec // the repo's own README
 	require.NoError(t, err, "reading README.md")
 
-	m := readmeSurfaceBlock.FindStringSubmatch(string(raw))
-	require.Len(t, m, 3,
-		"README.md no longer contains a \"<N> top-level commands ship in the current build:\" "+
-			"block followed by a fence. If that section moved, move this guard with it — "+
-			"do not delete it, or the list goes back to being unchecked")
-
-	claimed, err = strconv.Atoi(m[1])
+	claimed, names, err = parseReadmeClaims(string(raw))
 	require.NoError(t, err)
 
-	return claimed, strings.Fields(m[2])
+	return claimed, names
+}
+
+// TestParseReadmeClaims drives the extractor both ways.
+func TestParseReadmeClaims(t *testing.T) {
+	t.Parallel()
+
+	const good = "blah\n\n7 top-level commands ship in the current build:\n\n```\naudit check\ndb\n```\n\nmore prose"
+
+	t.Run("extracts count and names", func(t *testing.T) {
+		t.Parallel()
+
+		claimed, names, err := parseReadmeClaims(good)
+		require.NoError(t, err)
+		assert.Equal(t, 7, claimed)
+		assert.Equal(t, []string{"audit", "check", "db"}, names)
+	})
+
+	// The rejection path. A README with no such block must fail loudly rather
+	// than yield an empty list, because an empty list compares equal to nothing
+	// and the guard would pass while checking no commands at all.
+	for name, src := range map[string]string{
+		"no block at all":    "just prose, no command inventory here",
+		"sentence gone":      "```\naudit check\n```",
+		"fence gone":         "7 top-level commands ship in the current build:\n\naudit check\n",
+		"count not a number": "many top-level commands ship in the current build:\n```\naudit\n```",
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, names, err := parseReadmeClaims(src)
+			require.Error(t, err, "an unparsable README must not read as zero commands")
+			assert.Empty(t, names)
+		})
+	}
 }
 
 // shippedCommandNames returns what `lw --help` lists: available (non-hidden)

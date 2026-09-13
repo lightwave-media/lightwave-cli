@@ -42,6 +42,15 @@ import (
 // ratchets rather than caps. CLAUDE.md section 18 and this repo's own
 // `lw check` rules already require both directions of every detector; this is
 // that existing rule applied to the test suite.
+//
+// KNOWN BLIND SPOT, by construction: it scans `git ls-files`, so a brand-new
+// test file is invisible until it is staged. `mise run ci` on an unstaged file
+// therefore passes, and the same tree fails at `git add` + pre-push. That is
+// the #388 class — a gate blind to untracked work — and it is kept on purpose:
+// the alternative is a filesystem walk, which is what #404 had to be reverted
+// for after it descended into a nested worktree and linted another session's
+// checkout. Staged-only is the narrower wrong answer, and it is wrong in the
+// safe direction. Stage before you trust a local pass.
 func TestRejectionPathCoverageDoesNotRegress(t *testing.T) {
 	t.Parallel()
 
