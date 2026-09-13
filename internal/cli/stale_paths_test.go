@@ -62,9 +62,13 @@ func TestNoDissolvedUmbrellaPathsInSource(t *testing.T) {
 			continue
 		}
 
+		// A tracked file can legitimately be absent from the worktree — deleted
+		// but not yet staged, or an intent-to-add entry whose file is gone. Hard
+		//-erroring there fails the guard for a reason that has nothing to do
+		// with what it guards, which is how it broke during #318.
 		src, readErr := os.ReadFile(filepath.Join(root, rel)) //nolint:gosec // a git-tracked path in our own repo
 		if readErr != nil {
-			require.NoError(t, readErr)
+			continue
 		}
 
 		for _, line := range strings.Split(string(src), "\n") {
