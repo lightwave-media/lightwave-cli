@@ -9,6 +9,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/aws"
+	"github.com/lightwave-media/lightwave-cli/internal/config"
 )
 
 // Schema-driven deploy handlers. commands.yaml v3.0.0 declares 4 commands:
@@ -25,8 +26,78 @@ func init() {
 	RegisterHandler("deploy.rollback", deployRollbackHandler)
 }
 
+// deployClusterFor resolves the ECS cluster for an environment.
+//
+// It returned `"platform-" + env` until #368 — the Django-era name. The cluster
+// created by prod/us-east-1/lightwave-platform is `lightwave-platform`, so every
+// verb in the group (`run`, `status`, `logs`, `rollback` all share this helper)
+// failed with ClusterNotFoundException against a cluster that no longer exists.
+//
+// Resolution order, most specific first: the per-env map, then the single-target
+// value, then the environment name as a last resort. A naming convention cannot
+// be corrected once the thing it names stops following it, so the convention is
+// no longer the source — but it stays as the final fallback rather than
+// returning empty, because a wrong cluster name produces a clear AWS error while
+// an empty one produces a confusing SDK failure.
 func deployClusterFor(env string) string {
-	return "platform-" + env
+	cfg := config.Get()
+	if cfg == nil {
+		return env
+	}
+
+	return resolveCluster(cfg.Deploy, env)
+}
+
+// resolveCluster is the precedence itself, separated from the config singleton
+// so it can be tested without reaching through a global.
+func resolveCluster(dc config.DeployConfig, env string) string {
+	if c, ok := dc.Clusters[env]; ok && c != "" {
+		return c
+	}
+
+	if dc.Cluster != "" {
+		return dc.Cluster
+	}
+
+	return env
+}
+
+// deployLogGroupFor resolves the CloudWatch log group for a service.
+//
+// The old derivation was `/ecs/<cluster>-<service>`, wrong in two ways at once:
+// it used the Django-era cluster name, and the real group carries no service
+// suffix (`/ecs/lightwave-platform`).
+//
+// Reading `awslogs-group` from the task definition would be better still — it
+// is what the service actually writes to, rather than a second convention to
+// keep in step — but that needs a DescribeTaskDefinition call the aws package
+// does not yet wrap, and one this change cannot verify without live
+// credentials. Left as the remaining half of #368 rather than guessed at.
+func deployLogGroupFor(env, service string) string {
+	cfg := config.Get()
+	if cfg == nil {
+		return "/ecs/" + env
+	}
+
+	return resolveLogGroup(cfg.Deploy, env, service)
+}
+
+// resolveLogGroup mirrors resolveCluster: precedence without the global.
+//
+// service is accepted and unused. The real group is cluster-scoped
+// (`/ecs/lightwave-platform`), not per-service, and keeping the parameter makes
+// that explicit at every call site rather than leaving a reader to wonder
+// whether the service was forgotten.
+func resolveLogGroup(dc config.DeployConfig, env, _ string) string {
+	if g, ok := dc.LogGroups[env]; ok && g != "" {
+		return g
+	}
+
+	if dc.LogGroup != "" {
+		return dc.LogGroup
+	}
+
+	return "/ecs/" + resolveCluster(dc, env)
 }
 
 func deployRunHandler(ctx context.Context, args []string, flags map[string]any) error {
@@ -172,7 +243,7 @@ func deployLogsHandler(ctx context.Context, args []string, flags map[string]any)
 
 	service := args[0]
 	env := flagStrOr(flags, "env", "prod")
-	logGroup := fmt.Sprintf("/ecs/%s-%s", deployClusterFor(env), service)
+	logGroup := deployLogGroupFor(env, service)
 
 	client, err := aws.NewLogsClient(ctx)
 	if err != nil {
