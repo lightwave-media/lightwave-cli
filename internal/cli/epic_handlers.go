@@ -11,20 +11,21 @@ import (
 
 // Schema-driven epic handlers. commands.yaml v3.0.0 declares: list, info, tasks.
 
+// Caps the default listing so a large local store cannot flood a terminal.
+const defaultEpicListLimit = 50
+
 func init() {
 	RegisterHandler("epic.list", epicListHandler)
 	RegisterHandler("epic.info", epicInfoHandler)
 	RegisterHandler("epic.tasks", epicTasksHandler)
 }
 
+// Reads the local-first store (lightwave-core ADR-0004), not Postgres. The
+// previous implementation queried `createos_epic` in the platform database —
+// a Django-era table archived at `legacy/django-era-platform` (2026-06-03)
+// that nothing generates any more, so this listing could only ever fail.
 func epicListHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	pool, err := db.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("database connection failed: %w", err)
-	}
-	defer db.Close()
-
-	epics, err := db.ListEpics(ctx, pool, db.EpicListOptions{Limit: 50})
+	epics, err := db.ListEpicsLocal(ctx, db.EpicListOptions{Limit: defaultEpicListLimit})
 	if err != nil {
 		return err
 	}
