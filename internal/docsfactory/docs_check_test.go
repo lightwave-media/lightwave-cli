@@ -1,6 +1,7 @@
 package docsfactory_test
 
 import (
+	"bytes"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -218,6 +219,50 @@ cli_verbs: []
 	res, err := docsfactory.CheckDocs(repo, fakeDocSchemas())
 	require.NoError(t, err)
 	assert.True(t, res.Clean(), "expected clean, got %+v", res)
+}
+
+// TestSyncDocs_EmitsExactlyOneTrailingNewline pins output hygiene against the
+// repo's own pre-commit hooks.
+//
+// regenerateBody appended "\n" to a raw string literal that already ended in
+// one, so every generated doc carried a trailing BLANK line. The
+// end-of-file-fixer hook then stripped it, and the two fought on every commit
+// that touched a generated doc: sync added the line, the fixer removed it, and
+// the commit aborted because the file changed after staging. CI's Pre-commit
+// job failed with "fix end of files ... Failed".
+//
+// Generated output has to satisfy the same hygiene hooks as authored files, or
+// every regeneration costs a round trip.
+func TestSyncDocs_EmitsExactlyOneTrailingNewline(t *testing.T) {
+	t.Parallel()
+
+	repo := t.TempDir()
+	initGit(t, repo)
+	writeLwdocs(t, repo, "cli", []string{"architecture"})
+
+	doc := filepath.Join(repo, "docs", "architecture.md")
+	writeFile(t, doc, `---
+generated_at: bootstrap
+generator_version: bootstrap
+kind: architecture
+source_commit: bootstrap
+---
+
+# Architecture
+`)
+
+	_, err := docsfactory.SyncDocs(repo, fakeDocSchemas(),
+		docsfactory.SyncOptions{RegenerateBodies: true})
+	require.NoError(t, err)
+
+	out, err := os.ReadFile(doc) //nolint:gosec // path built in this test
+	require.NoError(t, err)
+
+	trailing := len(out) - len(bytes.TrimRight(out, "\n"))
+	assert.Equal(t, 1, trailing,
+		"generated docs must end with exactly one newline; %d means the "+
+			"end-of-file-fixer hook will rewrite the file the generator just wrote",
+		trailing)
 }
 
 func TestSyncDocs_RefreshesSourceCommit(t *testing.T) {

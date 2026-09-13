@@ -72,7 +72,7 @@ func docsSpecLintHandler(_ context.Context, _ []string, flags map[string]any) er
 		return toolError(err)
 	}
 
-	return reportSpecLint(repo, res)
+	return reportSpecLint(repo, res, schemas.Provenance)
 }
 
 func resolveDocsRepoFromFlags(flags map[string]any) string {

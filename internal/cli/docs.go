@@ -84,7 +84,7 @@ Examples:
 		if err != nil {
 			return toolError(err)
 		}
-		return reportSpecLint(repo, res)
+		return reportSpecLint(repo, res, schemas.Provenance)
 	},
 }
 
@@ -235,22 +235,42 @@ func toolError(err error) error {
 	return fmt.Errorf("docs: tool error: %w", err)
 }
 
-func reportSpecLint(repo string, res *docsfactory.SpecLintResult) error {
+// reportSpecLint prints the verdict, and names the contract it was reached
+// against.
+//
+// A lint result is only as current as the stamp behind it. When the local
+// lightwave-core checkout was six minutes behind origin, this reported
+// `unknown kind "technical_study"` — indistinguishable from "that kind does not
+// exist" — and the cure was `git pull`, which nothing in the output suggested
+// (#313). The provenance line is cheap and always printed, the way a compiler
+// names its own version; the warning appears only when the stamp is actually
+// behind or dirty, so it stays worth reading.
+func reportSpecLint(repo string, res *docsfactory.SpecLintResult, prov docsfactory.Provenance) error {
 	rel := func(p string) string {
 		return filepath.Join("spec", p)
 	}
-	fmt.Printf("%s %d files, %d clean\n", color.CyanString("spec-lint:"), res.Total, res.Clean)
+
+	fmt.Printf("%s %d files, %d clean  (%s)\n",
+		color.CyanString("spec-lint:"), res.Total, res.Clean, prov)
+
+	if warn := prov.StaleWarning(); warn != "" {
+		fmt.Println(color.YellowString(warn))
+	}
+
 	if len(res.Violations) == 0 {
 		fmt.Println(color.GreenString("✓ clean"))
 		return nil
 	}
+
 	sort.Slice(res.Violations, func(i, j int) bool {
 		return res.Violations[i].Path < res.Violations[j].Path
 	})
 	fmt.Printf("\n%s %d violation(s):\n", color.RedString("✗"), len(res.Violations))
+
 	for _, v := range res.Violations {
 		fmt.Printf("  %s  (%s)  %s\n", rel(v.Path), v.Kind, v.Reason)
 	}
+
 	return fmt.Errorf("%d violation(s) in %s", len(res.Violations), filepath.Join(repo, "spec"))
 }
 

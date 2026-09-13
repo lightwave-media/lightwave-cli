@@ -13,6 +13,7 @@
 package docsfactory
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -124,6 +125,10 @@ type Schemas struct {
 	Manifest          RepoDocManifest
 	HandoffBlockKinds []string
 	HandoffStatuses   []string
+
+	// Provenance records which checkout these contracts came from, so a verdict
+	// can say what it was reached against (#313).
+	Provenance Provenance
 }
 
 // LoadSchemas reads the three governance YAMLs from lightwave-core. It honors
@@ -168,6 +173,10 @@ func LoadSchemas(lightwaveRoot string) (*Schemas, error) {
 	if s.HandoffStatuses, err = loadEnumValues(filepath.Join(enumsDir, "handoff_statuses.yaml")); err != nil {
 		return nil, fmt.Errorf("load handoff_statuses: %w", err)
 	}
+
+	// Recorded after the loads succeed: naming a checkout whose contracts did
+	// not parse would attribute a verdict to a stamp that produced none.
+	s.Provenance = ReadProvenance(context.Background(), root)
 
 	return &s, nil
 }

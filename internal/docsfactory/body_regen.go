@@ -46,7 +46,14 @@ Do not hand-edit. Fix source code or schemas, then re-run lw docs sync && lw doc
 	if err != nil {
 		return err
 	}
-	fm.Body = body + "\n"
+	// Exactly one trailing newline. `body` is a raw string literal that already
+	// ends in one, so appending another emitted a trailing BLANK line — which
+	// the repo's own end-of-file-fixer pre-commit hook then stripped. The two
+	// hooks fought on every commit that touched a generated doc: sync added the
+	// line, the fixer removed it, and the commit aborted because the file
+	// changed after staging. Generated output has to satisfy the same hygiene
+	// hooks as authored files, or every regeneration costs a round trip.
+	fm.Body = strings.TrimRight(body, "\n") + "\n"
 	out, err := fm.Render()
 	if err != nil {
 		return err
