@@ -143,7 +143,6 @@ func taskCreateHandler(_ context.Context, args []string, flags map[string]any) e
 	taskCreateProjectWS = flagStr(flags, "project-workspace")
 	taskCreateJSON = flagBool(flags, "json")
 	taskCreateDryRun = flagBool(flags, "dry-run")
-	taskCreateSkipPaperclip = flagBool(flags, "skip-paperclip")
 	taskCreateSkipGitHub = flagBool(flags, "skip-github")
 
 	return runTaskCreate(nil, args)

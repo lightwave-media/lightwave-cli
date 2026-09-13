@@ -113,7 +113,6 @@ func runHealth(asJSON bool) error {
 	checks = append(checks, checkPostgres(cfg))
 
 	// ── Paperclip API ────────────────────────────────────────────────────────
-	checks = append(checks, checkHTTP("Paperclip API", cfg.GetPaperclipURL()+"/api/health", true))
 
 	// ── nullboiler (orchestrator) ────────────────────────────────────────────
 	// Labelled by module name per SAD-0002; the URL is still orchestrator.url
