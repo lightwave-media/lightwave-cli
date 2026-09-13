@@ -250,7 +250,6 @@ var booleanFlags = map[string]bool{
 	"empty":           true,
 	"auto-approve":    true,
 	"staged":          true,
-	"skip-paperclip":  true,
 	"skip-github":     true,
 	"apply":           true,
 	"no-fetch":        true,
@@ -260,6 +259,7 @@ var booleanFlags = map[string]bool{
 	"release-pr":      true,
 	"remote":          true,
 	"foreground":      true,
+	"unreachable":     true,
 }
 
 func isBooleanFlag(name string) bool {
