@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -47,7 +48,7 @@ func (t *TerragruntRunner) GetWorkingDir() string {
 // Plan runs terragrunt plan for a specific unit/stack.
 // Output streams to terminal in real-time and is captured for change detection.
 func (t *TerragruntRunner) Plan(ctx context.Context, path string) (*PlanResult, error) {
-	workDir := filepath.Join(t.GetWorkingDir(), path)
+	workDir := t.ResolveUnitDir(path)
 
 	if _, err := os.Stat(workDir); os.IsNotExist(err) {
 		return nil, fmt.Errorf("path does not exist: %s", workDir)
@@ -84,7 +85,7 @@ func (t *TerragruntRunner) Plan(ctx context.Context, path string) (*PlanResult, 
 
 // Apply runs terragrunt apply for a specific unit/stack
 func (t *TerragruntRunner) Apply(ctx context.Context, path string, autoApprove bool) error {
-	workDir := filepath.Join(t.GetWorkingDir(), path)
+	workDir := t.ResolveUnitDir(path)
 
 	args := []string{"apply", "-no-color"}
 	if autoApprove {
@@ -128,7 +129,7 @@ type terraformOutput struct {
 
 // Output gets outputs from a specific unit
 func (t *TerragruntRunner) Output(ctx context.Context, path string) (map[string]string, error) {
-	workDir := filepath.Join(t.GetWorkingDir(), path)
+	workDir := t.ResolveUnitDir(path)
 
 	cmd := exec.CommandContext(ctx, "terragrunt", "output", "-json")
 	cmd.Dir = workDir
@@ -165,36 +166,83 @@ func (t *TerragruntRunner) Output(ctx context.Context, path string) (map[string]
 	return result, nil
 }
 
-// ListUnits lists all terragrunt units in the environment
+// ListUnits returns every unit the infrastructure repo tracks, as
+// <env>/<region>/<unit> paths, sorted.
+//
+// It used to walk the filesystem from <root>/<env>/<region>, with env and
+// region fixed at prod / us-east-1 because nothing registered the flags that
+// would have changed them (#367). Everything outside that one directory was
+// invisible: on the live repo it returned the 9 units under prod/us-east-1 and
+// none of the 11 under prod/us-west-2, so `lw infra list` answered "these are
+// the units" while omitting more than half of them. The Cloudflare diagnosis
+// that filed the issue had to fall back to raw `aws s3 ls`.
+//
+// Enumerating from `git ls-files` rather than walking the tree is deliberate,
+// and not only for speed:
+//
+//   - A walk of the repo root descends into nested worktrees. The live
+//     lightwave-infrastructure-live checkout has 20 terragrunt.hcl files under
+//     .claude/worktrees — another session's branch — which a walk would report
+//     as units of this one. That is exactly the failure #404 had to be reverted
+//     for, and here it is pre-existing rather than hypothetical.
+//   - .terragrunt-cache and .terragrunt-stack are generated and untracked, so
+//     they drop out by construction instead of by a string-match skip list that
+//     has to keep guessing at directory names. A plain `find` over the live repo
+//     counts 82 and 78 "units" in the two regions against the real 9 and 11.
+//
+// The returned paths are repo-root-relative so they can be handed straight back
+// to plan/apply. A bare unit name would be ambiguous the moment two regions
+// contain the same unit, which is the normal case here.
 func (t *TerragruntRunner) ListUnits(ctx context.Context) ([]string, error) {
+	out, err := exec.CommandContext(ctx,
+		"git", "-C", t.infraRoot, "ls-files", "-z", "*terragrunt.hcl").Output()
+	if err != nil {
+		return nil, fmt.Errorf("listing tracked units in %s: %w", t.infraRoot, err)
+	}
+
 	var units []string
-	workDir := t.GetWorkingDir()
 
-	err := filepath.Walk(workDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil // Skip errors
+	for _, f := range strings.Split(string(out), "\x00") {
+		if f == "" {
+			continue
 		}
 
-		// Skip generated Terragrunt cache and stack expansion directories
-		if info.IsDir() && (strings.Contains(path, ".terragrunt-cache") || strings.Contains(path, ".terragrunt-stack")) {
-			return filepath.SkipDir
+		dir := filepath.Dir(f)
+		if dir == "." {
+			continue // the repo-root terragrunt.hcl is config, not a unit
 		}
 
-		if info.Name() == "terragrunt.hcl" && !strings.Contains(path, ".terragrunt-cache") && !strings.Contains(path, ".terragrunt-stack") {
-			relPath, _ := filepath.Rel(workDir, filepath.Dir(path))
-			if relPath != "." {
-				units = append(units, relPath)
-			}
-		}
-		return nil
-	})
+		units = append(units, dir)
+	}
 
-	return units, err
+	sort.Strings(units)
+
+	return units, nil
+}
+
+// ResolveUnitDir turns a user-supplied unit path into an absolute directory.
+//
+// ListUnits now prints <env>/<region>/<unit>, so that form has to work. The
+// bare <unit> form predates this change and still appears in scripts, so it is
+// resolved against the runner's env/region rather than broken. Returning the
+// repo-root form first means an explicit path always wins over the default.
+func (t *TerragruntRunner) ResolveUnitDir(path string) string {
+	if hasTerragrunt(filepath.Join(t.infraRoot, path)) {
+		return filepath.Join(t.infraRoot, path)
+	}
+
+	return filepath.Join(t.GetWorkingDir(), path)
+}
+
+func hasTerragrunt(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, "terragrunt.hcl"))
+
+	return err == nil
 }
 
 // Validate runs terragrunt validate with live output streaming
 func (t *TerragruntRunner) Validate(ctx context.Context, path string) error {
-	workDir := filepath.Join(t.GetWorkingDir(), path)
+	workDir := t.ResolveUnitDir(path)
 
 	cmd := exec.CommandContext(ctx, "terragrunt", "validate")
 	cmd.Dir = workDir
