@@ -45,12 +45,12 @@ jobs:
           repositories: lightwave-core
 
       - name: Checkout lightwave-cli
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           path: lightwave-cli
 
       - name: Checkout lightwave-core (sibling for SST schemas)
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           repository: lightwave-media/lightwave-core
           path: lightwave-core
@@ -61,7 +61,7 @@ jobs:
         # and the mise-action's working-directory handling complicates
         # the dual-checkout layout. Plain setup-go reads go.mod via
         # explicit path.
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: lightwave-cli/go.mod
           cache: true

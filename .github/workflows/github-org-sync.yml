@@ -40,12 +40,12 @@ jobs:
           repositories: lightwave-core
 
       - name: Checkout lightwave-cli
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           path: lightwave-cli
 
       - name: Checkout lightwave-core (sibling for the CLI command schema)
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           repository: lightwave-media/lightwave-core
           path: lightwave-core
