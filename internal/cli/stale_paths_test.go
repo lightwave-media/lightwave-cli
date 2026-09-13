@@ -2,6 +2,7 @@ package cli_test
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -50,32 +51,20 @@ func TestNoDissolvedUmbrellaPathsInSource(t *testing.T) {
 
 	var offenders []string
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-
-		if d.IsDir() {
-			// Vendored stamp content is a mirror of core and not ours to lint.
-			if d.Name() == ".git" || d.Name() == "schemas" {
-				return filepath.SkipDir
-			}
-
-			return nil
-		}
-
-		if !strings.HasSuffix(path, ".go") {
-			return nil
-		}
-
+	for _, rel := range trackedGoFiles(t, root) {
 		// This file names the banned strings on purpose.
-		if strings.HasSuffix(path, "stale_paths_test.go") {
-			return nil
+		if strings.HasSuffix(rel, "stale_paths_test.go") {
+			continue
 		}
 
-		src, readErr := os.ReadFile(path) //nolint:gosec // walking our own repo
+		// Vendored stamp content mirrors lightwave-core and is not ours to lint.
+		if strings.Contains(filepath.ToSlash(rel), "/corestamp/schemas/") {
+			continue
+		}
+
+		src, readErr := os.ReadFile(filepath.Join(root, rel)) //nolint:gosec // a git-tracked path in our own repo
 		if readErr != nil {
-			return readErr
+			require.NoError(t, readErr)
 		}
 
 		for _, line := range strings.Split(string(src), "\n") {
@@ -100,20 +89,53 @@ func TestNoDissolvedUmbrellaPathsInSource(t *testing.T) {
 
 			for needle, why := range banned {
 				if strings.Contains(line, needle) {
-					rel, _ := filepath.Rel(root, path)
 					offenders = append(offenders,
 						rel+": "+why+" — "+strings.TrimSpace(line))
 				}
 			}
 		}
-
-		return nil
-	})
-	require.NoError(t, err)
+	}
 
 	require.Empty(t, offenders,
 		"a path built from a dissolved layout resolves to nothing and every caller "+
 			"treats nothing as an answer; see #387")
+}
+
+// trackedGoFiles returns the .go files git says THIS repository tracks.
+//
+// The first version of this test walked the filesystem from the module root,
+// which is wrong on any machine that keeps worktrees inside the repo. On the
+// canonical checkout it descended into .worktrees/cineos-fdx-workspace — a
+// different checkout, on an old branch, still carrying the pre-#387 code — and
+// reported six offenders that are not this branch's source at all.
+//
+// It passed everywhere it was tried before merging: in an isolated worktree
+// (no nested checkouts) and in CI (a clean clone). So it was green in CI and
+// red on a developer machine, which is the inverse of the failure #387 was
+// about and arguably worse — CI is the thing you trust.
+//
+// `git ls-files` fixes the scope at the source: it lists what this repo tracks,
+// so nested worktrees, build output and another session's untracked work are
+// all excluded by construction rather than by a skip list that has to keep
+// guessing at directory names. CLAUDE.md section 17 states the general rule —
+// scope any gate to work you can attribute to yourself.
+func trackedGoFiles(t *testing.T, root string) []string {
+	t.Helper()
+
+	out, err := exec.CommandContext(t.Context(), "git", "-C", root, "ls-files", "-z", "*.go").Output()
+	require.NoError(t, err, "git ls-files")
+
+	var files []string
+
+	for _, f := range strings.Split(string(out), "\x00") {
+		if f != "" {
+			files = append(files, f)
+		}
+	}
+
+	require.NotEmpty(t, files, "git tracks no .go files — the scan would vacuously pass")
+
+	return files
 }
 
 // repoRoot walks up from the test's working directory to the module root.
