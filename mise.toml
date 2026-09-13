@@ -160,7 +160,17 @@ description = "Local CI: fmt-check + vet + lint + build + test + codespell + tid
 # The one required-gate job still absent locally is Pre-commit. It is partly
 # covered by the repo-tracked hooks that run on every commit, and `lw check
 # pre-commit` (#381) is the verb that would close it properly.
-depends = ["fmt-check", "vet", "lint", "build", "test", "codespell", "tidy", "schema-drift"]
+depends = ["fmt-check", "vet", "lint", "build", "test", "codespell", "tidy", "schema-drift", "actions-pinned"]
+
+[tasks.actions-pinned]
+description = "Every third-party GitHub Action is pinned to a commit SHA, not a mutable tag or branch"
+# Runs its own proof first: a gate with no evidence it can fire is unverified,
+# whatever its history says. The test asserts BOTH directions — a matcher
+# loosened until it stops false-positiving can just as easily stop firing.
+run = [
+    "bash scripts/check-actions-pinned-test.sh",
+    "bash scripts/check-actions-pinned.sh",
+]
 
 [tasks."release:gate"]
 description = "Dry-run lw release merge (autonomous gate)"
