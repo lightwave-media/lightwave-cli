@@ -107,8 +107,22 @@ description = "Schema↔handler drift + command-surface trust (matches the CI Sc
 # disagree, so a local pass is only as current as that checkout. Verify a
 # surprising result against a ref (`git -C ~/dev/lightwave-core show
 # origin/main:src/schemas/interfaces/cli/commands.yaml`) before trusting it.
+#
+# LW_STAMP_ROOT is the escape hatch for exactly that case — point it at a
+# checkout that matches core's main:
+#
+#   LW_STAMP_ROOT=/path/to/root mise run schema-drift    # expects <root>/lightwave-core
+#
+# It exists because LW_LIGHTWAVE_ROOT, which this task originally told you to
+# set, CANNOT be overridden here. ~/dev/mise.toml declares
+# `LW_LIGHTWAVE_ROOT = "{{ env.HOME }}/dev"` under [env], and a mise [env] entry
+# overrides the value the caller exported — so every repo under ~/dev sees
+# ~/dev no matter what was passed in. Verified by passing a sentinel:
+# `LW_LIGHTWAVE_ROOT=/tmp/PROBE mise run <task>` printed /Users/joelschaeffer/dev.
+# The documented workaround was itself unreachable, which is the same defect
+# class as #351's --skip-paperclip.
 run = '''
-root="${LW_LIGHTWAVE_ROOT:-$HOME/dev}"
+root="${LW_STAMP_ROOT:-${LW_LIGHTWAVE_ROOT:-$HOME/dev}}"
 stamp="$root/lightwave-core/src/schemas/interfaces/cli/commands.yaml"
 
 # Assert the precondition instead of letting the fallback answer for us. With no
@@ -121,14 +135,18 @@ if [ ! -f "$stamp" ]; then
   echo "schema-drift: no lightwave-core stamp at $stamp"
   echo "  This gate compares the CLI against core's commands.yaml and cannot run"
   echo "  without it. The workspace contract is the flat ~/dev sibling layout;"
-  echo "  clone lightwave-core beside this repo, or set LW_LIGHTWAVE_ROOT."
+  echo "  clone lightwave-core beside this repo, or set LW_STAMP_ROOT."
   echo "  Not skipping: the cloud Schema Drift job is armed and blocks the merge."
   exit 1
 fi
 
+# Pass the resolved root down explicitly. The child would otherwise inherit
+# mise's pinned LW_LIGHTWAVE_ROOT and measure a different tree than the one
+# this task just asserted exists — the gate would report on a stamp nobody
+# chose.
 go build -o ./bin/lw ./cmd/lw || exit 1
-LW_SURFACE_GATE_STRICT=1 go test ./internal/cli/ -run TestCommandSurface || exit 1
-LW_CHECK_SCHEMA_STRICT=1 ./bin/lw check schema || exit 1
+LW_LIGHTWAVE_ROOT="$root" LW_SURFACE_GATE_STRICT=1 go test ./internal/cli/ -run TestCommandSurface || exit 1
+LW_LIGHTWAVE_ROOT="$root" LW_CHECK_SCHEMA_STRICT=1 ./bin/lw check schema || exit 1
 '''
 
 [tasks.ci]
