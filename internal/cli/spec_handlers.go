@@ -20,21 +20,8 @@ func init() {
 	RegisterHandler("spec.history", specHistoryHandler)
 }
 
-func specListHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	args := []string{"spec_list"}
-	if t := flagStr(flags, "type"); t != "" {
-		args = append(args, "--type", t)
-	}
-
-	if d := flagStr(flags, "domain"); d != "" {
-		args = append(args, "--domain", d)
-	}
-
-	if flagBool(flags, "compliance") {
-		args = append(args, "--compliance")
-	}
-
-	return djangoManage(ctx, args...)
+func specListHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("spec list", "The agile-artifact store is PostgreSQL behind the Go API; the spec domain is already listed in DecommissionedCommands as a legacy parked tree pending schema merge.")
 }
 
 func specShowHandler(_ context.Context, args []string, _ map[string]any) error {
@@ -45,29 +32,8 @@ func specShowHandler(_ context.Context, args []string, _ map[string]any) error {
 	return errors.New("spec show: not yet wired (no spec_show management command — filter `lw spec list` output for now)")
 }
 
-func specGenerateTasksHandler(ctx context.Context, args []string, flags map[string]any) error {
-	if len(args) < 1 {
-		return errors.New("usage: lw spec generate-tasks <spec_path>")
-	}
-
-	mgmt := []string{"spec_generate_tasks", args[0]}
-	if flagBool(flags, "dry-run") {
-		mgmt = append(mgmt, "--dry-run")
-	}
-
-	if flagBool(flags, "with-goal-tests") {
-		mgmt = append(mgmt, "--with-goal-tests")
-	}
-
-	if e := flagStr(flags, "epic"); e != "" {
-		mgmt = append(mgmt, "--epic", e)
-	}
-
-	if s := flagStr(flags, "story"); s != "" {
-		mgmt = append(mgmt, "--story", s)
-	}
-
-	return djangoManage(ctx, mgmt...)
+func specGenerateTasksHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("spec generate-tasks", "The agile-artifact store is PostgreSQL behind the Go API; the spec domain is already listed in DecommissionedCommands as a legacy parked tree pending schema merge.")
 }
 
 func specCoverageHandler(_ context.Context, args []string, _ map[string]any) error {

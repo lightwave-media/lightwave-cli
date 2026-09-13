@@ -2,7 +2,6 @@ package cli
 
 import (
 	"context"
-	"errors"
 )
 
 // Schema-driven plan handlers. commands.yaml v3.0.0 declares 2 commands:
@@ -14,32 +13,10 @@ func init() {
 	RegisterHandler("plan.generate", planGenerateHandler)
 }
 
-func planSyncHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	args := []string{"plan_sync"}
-	if t := flagStr(flags, "task"); t != "" {
-		args = append(args, "--task", t)
-	}
-
-	if flagBool(flags, "pull") {
-		args = append(args, "--pull")
-	}
-
-	if flagBool(flags, "push") {
-		args = append(args, "--push")
-	}
-
-	return djangoManage(ctx, args...)
+func planSyncHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("plan sync", "Plans are agile artifacts in PostgreSQL behind the Go API, not Django management commands. No lw verb owns the sync yet.")
 }
 
-func planGenerateHandler(ctx context.Context, args []string, flags map[string]any) error {
-	if len(args) < 1 {
-		return errors.New("usage: lw plan generate <task_id> [--from-prelim]")
-	}
-
-	mgmt := []string{"plan_generate", args[0]}
-	if flagBool(flags, "from-prelim") {
-		mgmt = append(mgmt, "--from-prelim")
-	}
-
-	return djangoManage(ctx, mgmt...)
+func planGenerateHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("plan generate", "Plans are agile artifacts in PostgreSQL behind the Go API, not Django management commands. No lw verb owns generation yet.")
 }

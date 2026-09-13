@@ -22,50 +22,16 @@ func init() {
 	RegisterHandler("schema.coverage", schemaCoverageHandler)
 }
 
-func schemaValidateHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	args := []string{"validate_schema"}
-	if flagBool(flags, "strict") {
-		args = append(args, "--strict")
-	}
-
-	if flagBool(flags, "fix") {
-		args = append(args, "--fix")
-	}
-
-	if flagBool(flags, "json") {
-		args = append(args, "--json")
-	}
-
-	return djangoManage(ctx, args...)
+func schemaValidateHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("schema validate", "This validated Django model state against the YAML stamp. `lw check schema` is a DIFFERENT check — it compares the CLI command surface to its handlers — so it is not the replacement. No lw verb validates data schemas against the stamp yet.")
 }
 
-func schemaDriftHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	args := []string{"drift_report"}
-	if out := flagStr(flags, "output"); out != "" {
-		args = append(args, "--output", out)
-	}
-
-	if flagBool(flags, "json") {
-		args = append(args, "--json")
-	}
-
-	return djangoManage(ctx, args...)
+func schemaDriftHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("schema drift", "This diffed the Django DB against the YAML stamp. Note the name collision: `lw check schema` is the CLI-surface drift gate, not this. No lw verb reports data-schema drift yet.")
 }
 
-func schemaReconcileHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	if !flagBool(flags, "yes") && !flagBool(flags, "dry-run") {
-		if !promptYesNo("Reconcile DB to YAML ideal state? Mutates schema rows.") {
-			fmt.Println("Cancelled")
-			return nil
-		}
-	}
-
-	args := []string{"reconcile"}
-	if flagBool(flags, "dry-run") {
-		args = append(args, "--check")
-	}
-
-	return djangoManage(ctx, args...)
+func schemaReconcileHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("schema reconcile", "This mutated Django schema rows to match the YAML ideal. The Go stack generates its DDL instead: `lw codegen go` emits schema.sql whole, so there is nothing to reconcile row-by-row.")
 }
 
 // schemaGenerateHandler is a thin shim — codegen entrypoints currently live

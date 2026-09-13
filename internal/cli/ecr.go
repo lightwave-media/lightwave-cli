@@ -106,7 +106,7 @@ Examples:
 		fmt.Println(color.GreenString("✓ Pushed"))
 
 		fmt.Printf("\n%s %s\n", color.CyanString("Image:"), imageURI)
-		fmt.Printf("\nNext: %s\n", color.YellowString("lw aws ecs deploy django --wait"))
+		fmt.Printf("\nNext: %s\n", color.YellowString("lw aws ecs deploy lightwave-platform --wait"))
 
 		return nil
 	},

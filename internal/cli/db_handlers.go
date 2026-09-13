@@ -37,16 +37,49 @@ func init() {
 
 const dbExecTimeout = 15 * time.Minute
 
-// djangoManage runs `docker compose exec backend python manage.py <args...>`
-// streaming stdio. Bounded by dbExecTimeout to prevent silent hangs.
-func djangoManage(ctx context.Context, args ...string) error {
-	ctx, cancel := context.WithTimeout(ctx, dbExecTimeout)
-	defer cancel()
-
-	full := append([]string{"exec", "backend", "python", "manage.py"}, args...)
-
-	return runCompose(ctx, full...)
+// errDjangoRetired reports a verb whose entire implementation was the Django
+// backend, and says what replaced it.
+//
+// Until #318 these verbs called `docker compose exec backend python manage.py`.
+// The platform is a Go monolith (ADR-0018); there is no manage.py and no
+// `backend` compose service, so every one of the fourteen call sites had been
+// dead since the migration. They did not fail cleanly — they failed as a docker
+// error about a missing service, which reads like a local environment problem
+// rather than a retired command, so the CLI was inviting people to debug their
+// docker setup for a capability that no longer exists.
+//
+// Each caller passes what actually replaced it. Where nothing did, it says so;
+// a pointer to a plausible-sounding wrong verb is worse than admitting the gap,
+// because the reader spends their time on the wrong thing.
+func errDjangoRetired(verb, replacement string) error {
+	return fmt.Errorf(
+		"`lw %s` was implemented by the retired Django backend and has been dead since "+
+			"the Go migration (ADR-0018) — there is no manage.py. %s",
+		verb, replacement)
 }
+
+// Replacement guidance, kept together so the story stays consistent across the
+// four files that had Django call sites.
+const (
+	// The schema is generated from the SST stamp, not diffed from ORM models,
+	// so "make migrations" has no counterpart: `lw codegen go` emits schema.sql
+	// whole.
+	replByCodegen = "The schema is generated, not migrated from models: " +
+		"`lw codegen go` emits schema.sql from the SST entity schemas."
+
+	// django-tenants gave each tenant its own Postgres schema. The Go stack
+	// keeps one schema and isolates by row: the generated DDL carries tenant_id
+	// plus an RLS policy per table (verified: 45 RLS declarations, one `tenants`
+	// table, in the platform's generated schema).
+	replByRLS = "Per-tenant Postgres schemas were replaced by row-level security (ADR-0010): " +
+		"one schema, tenant_id plus an RLS policy per table, emitted by `lw codegen go`."
+
+	// Honest gap. backend/foundation/db/migrations/*.sql is the migration set;
+	// no lw verb applies it yet, and inventing one here would be a feature
+	// rather than the Django removal this change is.
+	replNoVerbYet = "No lw verb applies migrations yet — the set is " +
+		"backend/foundation/db/migrations/*.sql in lightwave-platform. Tracked separately."
+)
 
 // pgExec runs psql against the postgres container.
 func pgExec(ctx context.Context, args ...string) error {
@@ -171,74 +204,27 @@ func dbResetHandler(ctx context.Context, _ []string, flags map[string]any) error
 
 	fmt.Println("Public schema dropped + recreated")
 
-	return djangoManage(ctx, "migrate")
+	// Reset used to finish by re-running Django migrations. It now leaves an
+	// empty public schema and says so, rather than reporting success on a
+	// half-done reset.
+	return errDjangoRetired("db reset", "The schema was dropped and recreated but NOT repopulated. "+replNoVerbYet)
 }
 
-func dbMigrateHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	args := []string{"migrate"}
-	if flagBool(flags, "fake") {
-		args = append(args, "--fake")
-	}
-
-	if v := flagStr(flags, "plan"); v != "" {
-		// `--plan` is a Django boolean flag; if user supplied a value, ignore
-		// and pass through as bool. (Schema lists --plan; bool table excludes
-		// it because task.create reuses the name.)
-		args = append(args, "--plan")
-	}
-
-	if v := flagStr(flags, "app"); v != "" {
-		args = append(args, v)
-	}
-
-	return djangoManage(ctx, args...)
+func dbMigrateHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("db migrate", replNoVerbYet)
 }
 
-func dbMakemigrationsHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	args := []string{"makemigrations"}
-	if v := flagStr(flags, "app"); v != "" {
-		args = append(args, v)
-	}
-
-	if flagBool(flags, "empty") {
-		args = append(args, "--empty")
-	}
-
-	if v := flagStr(flags, "name"); v != "" {
-		args = append(args, "-n", v)
-	}
-
-	return djangoManage(ctx, args...)
+func dbMakemigrationsHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("db makemigrations", replByCodegen)
 }
 
-func dbCheckHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	args := []string{"check"}
-	if flagBool(flags, "deploy") {
-		args = append(args, "--deploy")
-	}
-
-	if v := flagStr(flags, "fail-level"); v != "" {
-		args = append(args, "--fail-level", v)
-	}
-
-	return djangoManage(ctx, args...)
+func dbCheckHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("db check",
+		"That was Django's system check, not a connectivity probe. For connectivity use `lw db shell`.")
 }
 
-func dbSchemaInitHandler(ctx context.Context, args []string, flags map[string]any) error {
-	if len(args) < 1 {
-		return errors.New("usage: lw db schema-init <schema-name>")
-	}
-
-	name := args[0]
-	if err := djangoManage(ctx, "create_test_tenant", "--schema", name); err != nil {
-		return err
-	}
-
-	if flagBool(flags, "skip-migrate") {
-		return nil
-	}
-
-	return djangoManage(ctx, "migrate_schemas", "--schema", name)
+func dbSchemaInitHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("db schema-init", replByRLS)
 }
 
 func dbSchemaListHandler(ctx context.Context, _ []string, flags map[string]any) error {
@@ -317,13 +303,8 @@ func dbSchemaDropHandler(ctx context.Context, args []string, flags map[string]an
 	return nil
 }
 
-func dbMigrateSchemasHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	args := []string{"migrate_schemas"}
-	if v := flagStr(flags, "schema"); v != "" {
-		args = append(args, "--schema", v)
-	}
-
-	return djangoManage(ctx, args...)
+func dbMigrateSchemasHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errDjangoRetired("db migrate-schemas", replByRLS)
 }
 
 // validIdent rejects anything but [A-Za-z0-9_] to gate raw schema names

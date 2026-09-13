@@ -51,7 +51,7 @@ With a service name, shows detailed status for that service.
 
 Examples:
   lw aws ecs status
-  lw aws ecs status django
+  lw aws ecs status lightwave-platform
   lw aws ecs status --cluster my-cluster`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
@@ -79,8 +79,8 @@ var ecsDeployCmd = &cobra.Command{
 This triggers ECS to pull the latest image and restart all tasks.
 
 Examples:
-  lw aws ecs deploy django
-  lw aws ecs deploy django --wait`,
+  lw aws ecs deploy lightwave-platform
+  lw aws ecs deploy lightwave-platform --wait`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := context.Background()
