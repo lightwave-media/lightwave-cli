@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -297,23 +298,41 @@ func checkDepsHandler(_ context.Context, _ []string, _ map[string]any) error {
 	return runMake(dir, "deps-check")
 }
 
-// checkGitHandler ensures the working tree is clean (no uncommitted changes
-// to tracked files; untracked files are allowed).
-func checkGitHandler(_ context.Context, _ []string, _ map[string]any) error {
+// checkGitHandler ensures every workspace repo's working tree is clean (no
+// uncommitted changes to tracked files; untracked files are allowed).
+//
+// Same correction as checkLocksHandler: the workspace parent is not a git
+// repository, and `git diff --quiet` run there exits 129 for usage — which the
+// previous version reported as "uncommitted changes in tracked files" (#444).
+func checkGitHandler(ctx context.Context, _ []string, _ map[string]any) error {
 	cfg := config.Get()
 	if cfg == nil {
 		return errors.New("config not loaded")
 	}
 
-	root := cfg.Paths.LightwaveRoot
-	c := exec.Command("git", "diff", "--quiet")
-
-	c.Dir = root
-	if err := c.Run(); err != nil {
-		return errors.New("uncommitted changes in tracked files")
+	repos, err := workspaceGitRepos(ctx, cfg.Paths.LightwaveRoot)
+	if err != nil {
+		return err
 	}
 
-	fmt.Println(color.GreenString("✓ working tree clean"))
+	var dirty []string
+
+	for _, repo := range repos {
+		changed, changedErr := hasUncommittedChanges(ctx, repo)
+		if changedErr != nil {
+			return changedErr
+		}
+
+		if changed {
+			dirty = append(dirty, filepath.Base(repo))
+		}
+	}
+
+	if len(dirty) > 0 {
+		return fmt.Errorf("uncommitted changes in tracked files: %s", strings.Join(dirty, ", "))
+	}
+
+	fmt.Println(color.GreenString("✓ working tree clean (%d repo(s))", len(repos)))
 
 	return nil
 }
@@ -412,6 +431,111 @@ func checkSmokeHandler(_ context.Context, args []string, flags map[string]any) e
 // runGitDiff is gone with its only caller (#444). It merged stderr into stdout
 // and returned nil from both arms of its error branch, so `git diff` refusing
 // to run reached the caller as a diff.
+
+// fileIsTracked reports whether repo tracks path. An absent or untracked file
+// is not drift; treating it as drift is how the old check named uv.lock on
+// machines where no repository has ever contained one.
+func fileIsTracked(ctx context.Context, repo, path string) (bool, error) {
+	c := exec.CommandContext(ctx, "git", "ls-files", "--", path)
+	c.Dir = repo
+
+	out, err := c.Output()
+	if err != nil {
+		return false, fmt.Errorf("git ls-files %s in %s: %w", path, repo, err)
+	}
+
+	return strings.TrimSpace(string(out)) != "", nil
+}
+
+// hasUncommittedChanges reports whether repo has modifications to tracked files.
+//
+// `git diff --quiet` exits 1 when there are differences and 128/129 when it
+// cannot run at all. Collapsing every non-zero exit into "dirty" is exactly how
+// a usage error came to be reported as uncommitted work, so the two are
+// separated here: only exit 1 is an answer, anything else is a failure to
+// measure and must surface as one.
+func hasUncommittedChanges(ctx context.Context, repo string) (bool, error) {
+	c := exec.CommandContext(ctx, "git", "diff", "--quiet")
+	c.Dir = repo
+
+	err := c.Run()
+	if err == nil {
+		return false, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return true, nil
+	}
+
+	return false, fmt.Errorf("git diff --quiet in %s: %w", repo, err)
+}
+
+// workspaceGitRepos returns the git work trees a workspace-scoped check should
+// inspect.
+//
+// paths.lightwave_root is the PARENT of the repositories in the flat sibling
+// layout — it is not itself a repository, and git run there fails rather than
+// answering. Resolving the repositories first is what makes these checks
+// measurable at all. A root that IS a repository resolves to itself, so
+// pointing lightwave_root at a single checkout keeps working.
+//
+// A root with no repositories under it returns an error rather than an empty
+// sweep: a check that silently examines nothing and prints a tick is worse than
+// one that fails, because it reports a guarantee it never established.
+func workspaceGitRepos(ctx context.Context, root string) ([]string, error) {
+	if isGitWorkTree(ctx, root) {
+		return []string{root}, nil
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("reading workspace %s: %w", root, err)
+	}
+
+	var repos []string
+
+	// Deliberately no IsDir() precondition: ReadDir reports a SYMLINK as a
+	// non-directory, and symlinking a checkout into a root is a supported
+	// layout here (it is how LW_LIGHTWAVE_ROOT is pointed at a worktree). A
+	// non-directory entry simply has no .git child, so the work-tree test is
+	// the only test needed.
+	for _, e := range entries {
+		if dir := filepath.Join(root, e.Name()); isGitWorkTree(ctx, dir) {
+			repos = append(repos, dir)
+		}
+	}
+
+	if len(repos) == 0 {
+		return nil, fmt.Errorf("%s is neither a git repository nor a workspace containing one", root)
+	}
+
+	return repos, nil
+}
+
+// isGitWorkTree reports whether dir is the root of a git work tree.
+//
+// git is asked rather than the filesystem. Testing for a .git entry looks
+// equivalent and is not: ~/dev/lightwave-plugin is a BARE repository, which has
+// a .git directory and no work tree, so `git diff` there fails with "this
+// operation must be run in a work tree" (exit 128). Under a filesystem test
+// that repo is swept in and the whole check dies on it. A bare repo has no
+// working copy to be dirty, so the honest answer is that it is not a work tree
+// and is skipped — not that the check failed.
+//
+// This also covers the cases a .git test gets wrong in the other direction: a
+// linked worktree carries .git as a FILE, and a submodule as a gitfile.
+func isGitWorkTree(ctx context.Context, dir string) bool {
+	c := exec.CommandContext(ctx, "git", "rev-parse", "--is-inside-work-tree")
+	c.Dir = dir
+
+	out, err := c.Output()
+	if err != nil {
+		return false
+	}
+
+	return strings.TrimSpace(string(out)) == "true"
+}
 
 // schemaDriftReport is the JSON shape emitted by `lw check schema --json`.
 // Originally lived in check_schema.go (Phase 3 standalone); moved here when
