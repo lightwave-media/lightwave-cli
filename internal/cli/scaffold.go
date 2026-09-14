@@ -56,7 +56,7 @@ render it with the Gruntwork boilerplate engine (non-interactive).
 Blueprint library resolution:
   1. --blueprints-dir, else
   2. $LW_BLUEPRINTS_DIR, else
-  3. <lightwave_root>/src/boilerplate/blueprints
+  3. <lightwave_root>/lightwave-core/src/boilerplate/blueprints
 
 All variables come from --var/--var-file (blueprint defaults fill the rest).
 

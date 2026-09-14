@@ -39,7 +39,14 @@ const dirPerm fs.FileMode = 0o755
 
 // BlueprintsDir resolves the canonical blueprint library:
 //  1. $LW_BLUEPRINTS_DIR if set, else
-//  2. <lightwaveRoot>/src/boilerplate/blueprints
+//  2. <lightwaveRoot>/lightwave-core/src/boilerplate/blueprints
+//
+// The `lightwave-core` segment is not optional and is easy to drop: the repos
+// live flat under ~/dev, so lightwaveRoot is the WORKSPACE, not the stamp repo.
+// Both this comment and `lw scaffold --help` omitted it, one line above the code
+// that gets it right — and a reader following either would point
+// --blueprints-dir at a directory that does not exist and conclude the library
+// was missing. Pinned by TestScaffoldHelpMatchesBlueprintsDir.
 func BlueprintsDir(lightwaveRoot string) string {
 	if v := os.Getenv(EnvBlueprintsDir); v != "" {
 		return v
