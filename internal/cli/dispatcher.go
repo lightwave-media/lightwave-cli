@@ -263,6 +263,11 @@ var booleanFlags = map[string]bool{
 	"remote":          true,
 	"foreground":      true,
 	"unreachable":     true,
+	// git sweep: --execute is the act-on-it switch, --offline the no-network
+	// one. Neither is a value flag; typed as strings they would read as
+	// always-false and the verb would silently never act.
+	"execute": true,
+	"offline": true,
 }
 
 func isBooleanFlag(name string) bool {
