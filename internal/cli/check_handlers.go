@@ -168,6 +168,59 @@ func checkDomainsHandler(_ context.Context, _ []string, _ map[string]any) error 
 // section.
 const EnvCheckSchemaStrict = "LW_CHECK_SCHEMA_STRICT"
 
+// ComputeSchemaDrift reports the three directions the gate measures.
+//
+// The two key sets are NOT interchangeable, and conflating them is the defect
+// this function was extracted to make testable:
+//
+//   - publishedKeys excludes in_development domains. It is the right
+//     denominator for MISSING, so the gate does not fire on a command that was
+//     deliberately declared ahead of its handler.
+//   - stampedKeys includes them. It is the right denominator for ORPHANED and
+//     UNSTAMPED, because an in_development command IS stamped — it is simply
+//     not dispatched yet.
+//
+// Measuring ORPHANED against publishedKeys made the in_development mechanism
+// self-defeating: a declaration could land early, but the moment its handler
+// followed, the armed gate called the handler an orphan and blocked the merge.
+// `adr.new` hit this with its declaration present in commands.yaml. The whole
+// lightwave-core#647 cohort was unlandable for the same reason.
+func ComputeSchemaDrift(publishedKeys, stampedKeys, registryKeys, surfaceKeys []string) (missing, orphaned, unstamped []string) {
+	stampedSet := make(map[string]bool, len(stampedKeys))
+	for _, k := range stampedKeys {
+		stampedSet[k] = true
+	}
+
+	registrySet := make(map[string]bool, len(registryKeys))
+	for _, k := range registryKeys {
+		registrySet[k] = true
+	}
+
+	for _, k := range publishedKeys {
+		if !registrySet[k] {
+			missing = append(missing, k)
+		}
+	}
+
+	for _, k := range registryKeys {
+		if !stampedSet[k] {
+			orphaned = append(orphaned, k)
+		}
+	}
+
+	for _, k := range surfaceKeys {
+		if !stampedSet[k] {
+			unstamped = append(unstamped, k)
+		}
+	}
+
+	sort.Strings(missing)
+	sort.Strings(orphaned)
+	sort.Strings(unstamped)
+
+	return missing, orphaned, unstamped
+}
+
 // checkSchemaHandler is the Phase 3 drift validator, re-shaped for the
 // dispatcher. Default mode: report drift, exit 0. With LW_CHECK_SCHEMA_STRICT=1
 // set in env, exits 1 when drift is detected — that's the form CI uses
@@ -185,58 +238,12 @@ func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) err
 		return fmt.Errorf("load CLI schema: %w", err)
 	}
 
-	// KeysPublished excludes in_development domains so the strict gate does
-	// not fire on commands declared before their Go handler companion lands.
 	schemaKeys := schema.KeysPublished()
 	registryKeys := RegisteredKeys()
-
-	schemaSet := make(map[string]bool, len(schemaKeys))
-	for _, k := range schemaKeys {
-		schemaSet[k] = true
-	}
-
-	registrySet := make(map[string]bool, len(registryKeys))
-	for _, k := range registryKeys {
-		registrySet[k] = true
-	}
-
-	var missing, orphaned []string
-
-	for _, k := range schemaKeys {
-		if !registrySet[k] {
-			missing = append(missing, k)
-		}
-	}
-
-	for _, k := range registryKeys {
-		if !schemaSet[k] {
-			orphaned = append(orphaned, k)
-		}
-	}
-
-	sort.Strings(missing)
-	sort.Strings(orphaned)
-
-	// Third direction: invocable but unstamped. Compared against Keys() rather
-	// than KeysPublished() on purpose — an in_development command IS stamped,
-	// it is just not dispatched yet, so counting it here would report drift
-	// against an entry that already exists.
 	surfaceKeys := cobraSurfaceKeys(rootCmd)
-	stamped := make(map[string]bool, len(schema.Keys()))
 
-	for _, k := range schema.Keys() {
-		stamped[k] = true
-	}
-
-	var unstamped []string
-
-	for _, k := range surfaceKeys {
-		if !stamped[k] {
-			unstamped = append(unstamped, k)
-		}
-	}
-
-	sort.Strings(unstamped)
+	missing, orphaned, unstamped := ComputeSchemaDrift(
+		schemaKeys, schema.Keys(), registryKeys, surfaceKeys)
 
 	report := schemaDriftReport{
 		SchemaVersion:     schema.Version,
