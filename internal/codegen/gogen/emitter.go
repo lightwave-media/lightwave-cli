@@ -155,7 +155,40 @@ func EmitMigration(entities []*EntitySchema) (string, error) {
 		fmt.Fprintf(&b, "CREATE POLICY %s_tenant_isolation ON %s\n    USING (%s::text = current_setting('app.current_org', true));\n", t, t, isolationCol)
 	}
 
+	// v_current_<table> for every file index.
+	//
+	// These existed only as hand-written views inside
+	// ~/.lightwave/index/lightwave.db — a file nobody rebuilt, which is why it
+	// reached 21 tables against 427 schemas and sat 19 days stale while createOS
+	// read it as its live data source. Generating them makes the read surface
+	// derived and droppable like everything else: `SELECT * FROM
+	// v_current_adrs` answers "what is live" without the caller knowing the
+	// rule, and the rule has exactly one definition.
+	if views := currentViews(ordered); views != "" {
+		b.WriteString("\n")
+		b.WriteString(views)
+	}
+
 	return b.String(), nil
+}
+
+// currentViews renders the v_current_<table> view for each document table.
+func currentViews(ordered []*EntitySchema) string {
+	var b strings.Builder
+
+	for _, e := range ordered {
+		if !e.IsDocument() {
+			continue
+		}
+
+		t := e.Meta.TableName
+		fmt.Fprintf(&b, "DROP VIEW IF EXISTS v_current_%s;\n", t)
+		fmt.Fprintf(&b,
+			"CREATE VIEW v_current_%s AS SELECT * FROM %s WHERE active_state IN ('active','paused');\n",
+			t, t)
+	}
+
+	return b.String()
 }
 
 // createTable renders one CREATE TABLE: id PK, tenant_id (FK to tenants), the
@@ -189,6 +222,11 @@ func createTable(e *EntitySchema, known map[string]bool) string {
 			"source_path TEXT NOT NULL",
 			"content_sha256 TEXT",
 			"indexed_at TIMESTAMPTZ NOT NULL DEFAULT now()",
+			// active_state is the index's own lifecycle, separate from the
+			// document's `status`: a superseded ADR is still `accepted` but is
+			// no longer current. The v_current_* views filter on it, so a
+			// reader asking "what is live" never has to know the rule.
+			"active_state TEXT NOT NULL DEFAULT 'active'",
 			"UNIQUE (tenant_id, source_path)",
 		)
 	}
@@ -211,6 +249,14 @@ func createTable(e *EntitySchema, known map[string]bool) string {
 	optDB := dbOnly(e.OptionalFields)
 	for i := range optDB {
 		cols = append(cols, columnDef(&optDB[i], false))
+	}
+
+	// source_id is the row's natural key, so it carries the same per-tenant
+	// UNIQUE that source_path does on a document table. Without it a
+	// projection has no conflict target and cannot be idempotent — which is
+	// the whole property that makes re-running one on a 900s cycle safe.
+	if hasColumn(e, "source_id") {
+		cols = append(cols, "UNIQUE (tenant_id, source_id)")
 	}
 
 	// A UNIQUE on a column this table does not have is invalid DDL that only
@@ -350,12 +396,30 @@ func dbOnly(fields []FieldDef) []FieldDef {
 		}
 
 		// The generator owns id and tenant_id, emitting them ahead of every
-		// schema field. A schema that also declares one is describing the same
-		// column, not a second one — Postgres rejects the duplicate with
-		// "column \"id\" specified more than once". Only agile_artifacts was
-		// ever generated before, and none of those schemas declare an id
-		// field, so the collision was unreachable.
-		if f.Name == "id" || f.Name == "tenant_id" {
+		// schema field, so a schema declaring one would produce
+		// `column "id" specified more than once`.
+		//
+		// But a declared `id` is only the SAME column when it is also a uuid.
+		// ledger_event's id is `led-1d446a21-177` — a stable string the emitter
+		// assigns and never reuses, and the ledger's actual natural key. Dropping
+		// it made the projected rows unidentifiable: nothing could say whether a
+		// JSONL line was already in the table, so the projection could not be
+		// idempotent. Emit it as source_id instead, matching the source_path
+		// convention the document tables already use for "where this row came
+		// from".
+		if f.Name == "tenant_id" {
+			continue
+		}
+
+		if f.Name == "id" {
+			if f.Type == "uuid" {
+				continue
+			}
+
+			renamed := f
+			renamed.Name = "source_id"
+			out = append(out, renamed)
+
 			continue
 		}
 
