@@ -16,7 +16,51 @@ type Handler func(ctx context.Context, args []string, flags map[string]any) erro
 var (
 	handlerRegistryMu sync.RWMutex
 	handlerRegistry   = map[string]Handler{}
+
+	// retiredFlagUsage maps "<domain>.<command>" to flag name to the help text
+	// that flag should carry. See RegisterRetiredFlags.
+	retiredFlagUsage = map[string]map[string]string{}
 )
+
+// RegisterRetiredFlags gives help text to flags a command's schema still
+// declares but no longer implements.
+//
+// #351 retired the Paperclip leg and made its ten flags fail loudly rather than
+// be silently ignored — deliberately NOT deleting them from commands.yaml,
+// because which of them carry intent worth re-homing is a product call and
+// deleting decides it by omission. That left `lw task create --help` listing
+// ten flags that always error, indistinguishable from the ones that work:
+// the dispatcher gives every schema flag an empty usage string, so `--prd` and
+// `--label` printed identically.
+//
+// So the help says which is which. The flags stay declared, the decision stays
+// open and visible, and nobody reads the surface as a promise it cannot keep.
+// Hiding them (cobra's MarkDeprecated) was the alternative and is a softer form
+// of the same omission — out of sight is not the same as decided.
+//
+// Call from a file-level init(), beside RegisterHandler. Registering a flag the
+// schema does not declare is not an error here: the stamp is the authority for
+// what exists, and a test asserts the two agree.
+func RegisterRetiredFlags(key string, usageByFlag map[string]string) {
+	handlerRegistryMu.Lock()
+	defer handlerRegistryMu.Unlock()
+
+	if retiredFlagUsage[key] == nil {
+		retiredFlagUsage[key] = map[string]string{}
+	}
+
+	for name, usage := range usageByFlag {
+		retiredFlagUsage[key][name] = usage
+	}
+}
+
+// usageForFlag returns a retired flag's help text, or "" for a live flag.
+func usageForFlag(key, name string) string {
+	handlerRegistryMu.RLock()
+	defer handlerRegistryMu.RUnlock()
+
+	return retiredFlagUsage[key][name]
+}
 
 // RegisterHandler binds a Handler to a "<domain>.<command>" key.
 // Call from a file-level init(): RegisterHandler("task.list", taskList).
