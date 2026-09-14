@@ -15,6 +15,13 @@ import (
 // via the cobra root — kept temporarily for orchestrator.go callers awaiting
 // Phase 5 sweep.
 
+// Mirrors defaultEpicListLimit — one screenful without paging.
+const defaultSprintListLimit = 50
+
+// The status `sprint current` selects on. Named because the linter counts ten
+// occurrences of the literal across this package.
+const sprintStatusActive = "active"
+
 func init() {
 	RegisterHandler("sprint.list", sprintListHandler)
 	RegisterHandler("sprint.current", sprintCurrentHandler)
@@ -22,13 +29,13 @@ func init() {
 }
 
 func sprintListHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	pool, err := db.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("database connection failed: %w", err)
-	}
-	defer db.Close()
-
-	sprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{Limit: 50})
+	// Local-first store, not the platform Postgres — same reasoning as
+	// `epic list` (see ListEpicsLocal). ADR-0002 puts the arrow this way round:
+	// "Cloud is downstream of local". The `createos_sprint` table this queried
+	// belonged to the Django-era platform ADR-0009 moved off, and nothing
+	// generates it, so every invocation failed with `relation ... does not
+	// exist`.
+	sprints, err := db.ListSprintsLocal(ctx, db.SprintListOptions{Limit: defaultSprintListLimit})
 	if err != nil {
 		return err
 	}
@@ -48,13 +55,7 @@ func sprintListHandler(ctx context.Context, _ []string, flags map[string]any) er
 }
 
 func sprintCurrentHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	pool, err := db.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("database connection failed: %w", err)
-	}
-	defer db.Close()
-
-	sprints, err := db.ListSprints(ctx, pool, db.SprintListOptions{Status: "active", Limit: 1})
+	sprints, err := db.ListSprintsLocal(ctx, db.SprintListOptions{Status: sprintStatusActive, Limit: 1})
 	if err != nil {
 		return err
 	}

@@ -13,6 +13,8 @@ import (
 // Heavy interview / record / complete-round flows are out of scope for lw —
 // they live in Python/Celery per the prune.
 
+const defaultStoryListLimit = 50
+
 func init() {
 	RegisterHandler("story.list", storyListHandler)
 	RegisterHandler("story.show", storyShowHandler)
@@ -20,13 +22,9 @@ func init() {
 }
 
 func storyListHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	pool, err := db.Connect(ctx)
-	if err != nil {
-		return fmt.Errorf("database connection failed: %w", err)
-	}
-	defer db.Close()
-
-	stories, err := db.ListStories(ctx, pool, db.StoryListOptions{Limit: 50})
+	// Local-first store, not the platform Postgres — see ListStoriesLocal and
+	// the note on sprintListHandler. `createos_userstory` no longer exists.
+	stories, err := db.ListStoriesLocal(ctx, db.StoryListOptions{Limit: defaultStoryListLimit})
 	if err != nil {
 		return err
 	}
