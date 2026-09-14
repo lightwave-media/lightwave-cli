@@ -160,7 +160,7 @@ description = "Local CI: fmt-check + vet + lint + build + test + codespell + tid
 # The one required-gate job still absent locally is Pre-commit. It is partly
 # covered by the repo-tracked hooks that run on every commit, and `lw check
 # pre-commit` (#381) is the verb that would close it properly.
-depends = ["fmt-check", "vet", "lint", "build", "test", "codespell", "tidy", "schema-drift", "actions-pinned"]
+depends = ["fmt-check", "vet", "lint", "build", "test", "codespell", "tidy", "schema-drift", "actions-pinned", "failure-digest"]
 
 [tasks.actions-pinned]
 description = "Every third-party GitHub Action is pinned to a commit SHA, not a mutable tag or branch"
@@ -171,6 +171,15 @@ run = [
     "bash scripts/check-actions-pinned-test.sh",
     "bash scripts/check-actions-pinned.sh",
 ]
+
+[tasks.failure-digest]
+description = "The CI failure digest names the failing test and the shuffle seed (#345)"
+# The digest itself only runs on a red CI run, which is rare by design — so its
+# proof runs on every GREEN one instead. Otherwise it would sit unexercised for
+# months and be found broken at the one moment it was needed, which is the shape
+# of #345 itself. Writing the proof caught exactly that: the first version used
+# only trailing context, so it named the failing test and dropped the assertion.
+run = "bash scripts/failure-digest-test.sh"
 
 [tasks."release:gate"]
 description = "Dry-run lw release merge (autonomous gate)"

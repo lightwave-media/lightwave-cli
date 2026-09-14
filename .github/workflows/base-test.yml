@@ -56,6 +56,36 @@ jobs:
           set -o pipefail
           go test -race -shuffle=on -v ./... 2>&1 | tee test-output.txt | mise exec -- go-junit-report -set-exit-code > test-results.xml
 
+      # Everything below runs only on failure, and exists because a failing run
+      # here used to say nothing but "internal/agent | Failed 0.35s" (#345).
+      # The step above pipes `go test -v` straight into the JUnit converter, so
+      # the job log holds the XML and not one line of test output; the reporter
+      # then groups by suite, which collapses the test name too. The output was
+      # already being written to test-output.txt and simply thrown away.
+      #
+      # A re-run passes and erases the only evidence, so this has to land in the
+      # log, not just an artifact — the artifact needs a deliberate download and
+      # expires, and by then the question is usually "was that mine or a flake".
+      - name: Show what failed
+        if: failure()
+        run: |
+          bash scripts/failure-digest.sh test-output.txt 2>&1 | tee digest.txt
+          {
+            echo '### Test failures'
+            echo '```'
+            cat digest.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload raw test output
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: test-output-${{ inputs.os }}
+          path: test-output.txt
+          retention-days: 14
+          if-no-files-found: warn
+
       - name: Upload JUnit report
         if: ${{ always() && inputs.upload-junit }}
         uses: mikepenz/action-junit-report@a9170d5795813c01ab4901ffb045b52bab4ab09d # v6.5.0
