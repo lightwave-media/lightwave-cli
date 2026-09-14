@@ -37,6 +37,7 @@ var VerifiedCommands = map[string]bool{
 	"site":     true, // site init scaffolder — test backing in internal/sitegen/*_test.go
 	"codegen":  true, // types generator — test backing in internal/codegen/zodgen/*_test.go + codegen_types_test.go; journeys stays offline below
 	"issue":    true, // compliant GitHub issue filing — test backing in internal/github/issue_create_test.go
+	"adr":      true, // atomic ADR id reservation — test backing in internal/adr/adr_test.go + adr_handlers_test.go
 	"self":     true, // dev lw rebuild — test backing in self_handlers_test.go
 	"mcp":      true, // stdio MCP server — test backing in internal/mcp/server_test.go + mcp_handlers_test.go
 	"runbook":  true, // agent runbook kernel — test backing in internal/runbook/*_test.go + runbook_test.go
