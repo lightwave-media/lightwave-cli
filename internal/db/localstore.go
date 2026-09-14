@@ -31,6 +31,8 @@ const localStoreEnv = "LW_LOCAL_STORE"
 // current revision of each. Querying the base tables would return superseded
 // rows alongside live ones.
 const currentEpicsView = "v_current_epics"
+const currentStoriesView = "v_current_user_stories"
+const currentSprintsView = "v_current_sprints"
 
 // LocalStorePath resolves the local-first store, honouring LW_LOCAL_STORE so
 // tests can point at a fixture without touching the operator's real store.
@@ -68,12 +70,23 @@ func OpenLocalStore() (*sql.DB, error) {
 	return handle, nil
 }
 
-// ListEpicsLocal reads epics from the local-first store.
+// listLocal runs one query against the local-first store and scans every row.
 //
-// `slug` is the identifier users and agents actually type, and it is what
-// tasks.epic_ref points at, so it serves as the display ID; the store's `pk` is
-// an internal UUID that appears in no other surface.
-func ListEpicsLocal(ctx context.Context, opts EpicListOptions) ([]Epic, error) {
+// Epics, stories and sprints differ only in their query and their scanner —
+// open, iterate, check rows.Err, close is identical for all three. Written out
+// per entity it was three byte-identical bodies, which `dupl` flagged and which
+// means a fix to the iteration (a missing rows.Err, a leaked handle) has to be
+// made three times.
+//
+// `kind` appears only in error text, so a failure names the entity rather than
+// reading "query from local store".
+func listLocal[T any](
+	ctx context.Context,
+	kind string,
+	query string,
+	args []any,
+	scan func(*sql.Rows) (T, error),
+) ([]T, error) {
 	handle, err := OpenLocalStore()
 	if err != nil {
 		return nil, err
@@ -81,31 +94,43 @@ func ListEpicsLocal(ctx context.Context, opts EpicListOptions) ([]Epic, error) {
 
 	defer func() { _ = handle.Close() }()
 
-	query, args := buildEpicQuery(opts)
-
 	rows, err := handle.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, fmt.Errorf("query epics from local store: %w", err)
+		return nil, fmt.Errorf("query %s from local store: %w", kind, err)
 	}
 
 	defer func() { _ = rows.Close() }()
 
-	var epics []Epic
+	var out []T
 
 	for rows.Next() {
-		epic, scanErr := scanEpic(rows)
+		item, scanErr := scan(rows)
 		if scanErr != nil {
 			return nil, scanErr
 		}
 
-		epics = append(epics, epic)
+		out = append(out, item)
 	}
 
+	// Checked separately from the loop: rows.Next() returns false both at the
+	// end of a healthy result set and on a mid-iteration failure, so without
+	// this a truncated read looks like a short list.
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate epic rows: %w", err)
+		return nil, fmt.Errorf("iterate %s rows: %w", kind, err)
 	}
 
-	return epics, nil
+	return out, nil
+}
+
+// ListEpicsLocal reads epics from the local-first store.
+//
+// `slug` is the identifier users and agents actually type, and it is what
+// tasks.epic_ref points at, so it serves as the display ID; the store's `pk` is
+// an internal UUID that appears in no other surface.
+func ListEpicsLocal(ctx context.Context, opts EpicListOptions) ([]Epic, error) {
+	query, args := buildEpicQuery(opts)
+
+	return listLocal(ctx, "epics", query, args, scanEpic)
 }
 
 func buildEpicQuery(opts EpicListOptions) (string, []any) {
@@ -166,6 +191,203 @@ func scanEpic(rows *sql.Rows) (Epic, error) {
 	// GithubRepo stays nil: the stamp has no github_repo field, so the local
 	// print has no column for it. The table renders "-".
 	return epic, nil
+}
+
+// ListStoriesLocal reads user stories from the local-first store.
+//
+// Same identifier reasoning as epics: `slug` is what a person types and what
+// other rows reference (`sprint_ref`, `epic_ref`), so it is the display ID.
+func ListStoriesLocal(ctx context.Context, opts StoryListOptions) ([]Story, error) {
+	query, args := buildStoryQuery(opts)
+
+	return listLocal(ctx, "stories", query, args, scanLocalStory)
+}
+
+func buildStoryQuery(opts StoryListOptions) (string, []any) {
+	// Same nullable-name guard as sprints. No current story is unnamed, but the
+	// column allows it and the failure mode is a driver error that kills the
+	// entire listing rather than one row. ListEpicsLocal has the same latent
+	// shape and is left alone — merged code, no observed nulls.
+	query := `
+		SELECT s.slug, COALESCE(NULLIF(s.name, ''), s.slug), s.description,
+		       s.status, COALESCE(s.priority, ''),
+		       s.user_type, s.story_points, s.epic_ref, s.sprint_ref,
+		       COALESCE(s.created_at, ''), COALESCE(s.updated_at, '')
+		FROM ` + currentStoriesView + ` s`
+
+	var (
+		where []string
+		args  []any
+	)
+
+	if statuses := splitStatuses(opts.Status); len(statuses) > 0 {
+		where = append(where, "s.status IN (?"+strings.Repeat(", ?", len(statuses)-1)+")")
+
+		for _, s := range statuses {
+			args = append(args, s)
+		}
+	}
+
+	// The Postgres path filtered on a UUID epic_id; here the join key is the
+	// slug, which is also what the caller has in hand.
+	if opts.EpicID != "" {
+		where = append(where, "s.epic_ref = ?")
+		args = append(args, opts.EpicID)
+	}
+
+	if opts.SprintID != "" {
+		where = append(where, "s.sprint_ref = ?")
+		args = append(args, opts.SprintID)
+	}
+
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+
+	query += " ORDER BY s.name"
+
+	if opts.Limit > 0 {
+		query += " LIMIT ?"
+
+		args = append(args, opts.Limit)
+	}
+
+	return query, args
+}
+
+func scanLocalStory(rows *sql.Rows) (Story, error) {
+	var (
+		story                                     Story
+		description, userType, epicRef, sprintRef sql.NullString
+		points                                    sql.NullInt64
+		priority, createdAt, updatedAt            string
+	)
+
+	if err := rows.Scan(&story.ID, &story.Name, &description, &story.Status, &priority,
+		&userType, &points, &epicRef, &sprintRef, &createdAt, &updatedAt); err != nil {
+		return Story{}, fmt.Errorf("scan story row: %w", err)
+	}
+
+	story.ShortID = story.ID
+	story.Priority = priority
+	story.Description = nullableString(description)
+	story.UserType = nullableString(userType)
+	story.EpicID = nullableString(epicRef)
+	story.SprintID = nullableString(sprintRef)
+
+	if points.Valid {
+		narrowed := int16(points.Int64)
+		story.StoryPoints = &narrowed
+	}
+
+	story.CreatedAt = parseStoreTime(createdAt)
+	story.UpdatedAt = parseStoreTime(updatedAt)
+
+	return story, nil
+}
+
+// ListSprintsLocal reads sprints from the local-first store.
+func ListSprintsLocal(ctx context.Context, opts SprintListOptions) ([]Sprint, error) {
+	query, args := buildSprintQuery(opts)
+
+	return listLocal(ctx, "sprints", query, args, scanLocalSprint)
+}
+
+func buildSprintQuery(opts SprintListOptions) (string, []any) {
+	// `name` is nullable in this store and 3 of 9 current sprints have none —
+	// scanning NULL into a string is a driver error, so `sprint list` died on
+	// the whole listing because of three rows. Falling back to the slug shows
+	// the identifier the row is known by rather than an empty cell.
+	query := `
+		SELECT sp.slug, COALESCE(NULLIF(sp.name, ''), sp.slug), sp.status,
+		       sp.objectives, sp.start_date, sp.end_date,
+		       sp.epic_ref, COALESCE(sp.created_at, ''), COALESCE(sp.updated_at, '')
+		FROM ` + currentSprintsView + ` sp`
+
+	var (
+		where []string
+		args  []any
+	)
+
+	if statuses := splitStatuses(opts.Status); len(statuses) > 0 {
+		where = append(where, "sp.status IN (?"+strings.Repeat(", ?", len(statuses)-1)+")")
+
+		for _, s := range statuses {
+			args = append(args, s)
+		}
+	}
+
+	if opts.EpicID != "" {
+		where = append(where, "sp.epic_ref = ?")
+		args = append(args, opts.EpicID)
+	}
+
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
+	}
+
+	// Newest first: `sprint current` wants the live one, and an undated sprint
+	// sorts last rather than masking a dated one.
+	query += " ORDER BY COALESCE(sp.start_date, '') DESC, sp.slug"
+
+	if opts.Limit > 0 {
+		query += " LIMIT ?"
+
+		args = append(args, opts.Limit)
+	}
+
+	return query, args
+}
+
+func scanLocalSprint(rows *sql.Rows) (Sprint, error) {
+	var (
+		sprint               Sprint
+		objectives, epicRef  sql.NullString
+		startDate, endDate   sql.NullString
+		createdAt, updatedAt string
+	)
+
+	if err := rows.Scan(&sprint.ID, &sprint.Name, &sprint.Status, &objectives,
+		&startDate, &endDate, &epicRef, &createdAt, &updatedAt); err != nil {
+		return Sprint{}, fmt.Errorf("scan sprint row: %w", err)
+	}
+
+	sprint.ShortID = sprint.ID
+	sprint.Objectives = nullableString(objectives)
+	sprint.EpicID = nullableString(epicRef)
+	sprint.StartDate = nullableStoreTime(startDate)
+	sprint.EndDate = nullableStoreTime(endDate)
+	sprint.CreatedAt = parseStoreTime(createdAt)
+	sprint.UpdatedAt = parseStoreTime(updatedAt)
+
+	return sprint, nil
+}
+
+// A NULL column and an empty string are the same absence to these callers —
+// both render as "-" — so they collapse to nil rather than to a pointer at "".
+func nullableString(value sql.NullString) *string {
+	if !value.Valid || value.String == "" {
+		return nil
+	}
+
+	out := value.String
+
+	return &out
+}
+
+// A date the store cannot parse is reported as absent rather than as the zero
+// time, which would render as year 1 in a sprint table.
+func nullableStoreTime(value sql.NullString) *time.Time {
+	if !value.Valid || value.String == "" {
+		return nil
+	}
+
+	parsed := parseStoreTime(value.String)
+	if parsed.IsZero() {
+		return nil
+	}
+
+	return &parsed
 }
 
 func splitStatuses(raw string) []string {
