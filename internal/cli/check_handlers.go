@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -283,26 +284,55 @@ func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) err
 	return nil
 }
 
-// checkLocksHandler verifies that uv.lock and pnpm-lock.yaml are committed
-// (no uncommitted changes that would drift CI). Fast — uses git status.
-func checkLocksHandler(_ context.Context, _ []string, _ map[string]any) error {
+// lockFileNames are the lock files a workspace repo may own. A repo that
+// tracks neither contributes nothing — absence is not drift.
+var lockFileNames = []string{"uv.lock", "pnpm-lock.yaml"}
+
+// checkLocksHandler verifies that every tracked lock file in the workspace is
+// committed (no uncommitted changes that would drift CI).
+//
+// It asks each repository, not the workspace parent. The parent is not a git
+// repository in the flat sibling layout, so the previous version ran git where
+// git could not work and read the resulting usage text as a diff — reporting
+// both lock files dirty on every machine, including machines where no repo has
+// ever tracked uv.lock (#444).
+func checkLocksHandler(ctx context.Context, _ []string, _ map[string]any) error {
 	cfg := config.Get()
 	if cfg == nil {
 		return errors.New("config not loaded")
 	}
 
-	root := cfg.Paths.LightwaveRoot
-	files := []string{"uv.lock", "pnpm-lock.yaml"}
-	dirty := []string{}
+	repos, err := workspaceGitRepos(cfg.Paths.LightwaveRoot)
+	if err != nil {
+		return err
+	}
 
-	for _, f := range files {
-		out, err := runGitDiff(root, f)
-		if err != nil {
-			return fmt.Errorf("git diff %s: %w", f, err)
-		}
+	var (
+		dirty   []string
+		tracked int
+	)
 
-		if strings.TrimSpace(out) != "" {
-			dirty = append(dirty, f)
+	for _, repo := range repos {
+		for _, name := range lockFileNames {
+			isTracked, trackErr := fileIsTracked(ctx, repo, name)
+			if trackErr != nil {
+				return trackErr
+			}
+
+			if !isTracked {
+				continue
+			}
+
+			tracked++
+
+			out, diffErr := runGitDiff(ctx, repo, name)
+			if diffErr != nil {
+				return diffErr
+			}
+
+			if strings.TrimSpace(out) != "" {
+				dirty = append(dirty, filepath.Join(filepath.Base(repo), name))
+			}
 		}
 	}
 
@@ -310,7 +340,7 @@ func checkLocksHandler(_ context.Context, _ []string, _ map[string]any) error {
 		return fmt.Errorf("uncommitted lock changes: %s", strings.Join(dirty, ", "))
 	}
 
-	fmt.Println(color.GreenString("✓ lock files clean"))
+	fmt.Println(color.GreenString("✓ lock files clean (%d tracked across %d repo(s))", tracked, len(repos)))
 
 	return nil
 }
@@ -326,23 +356,41 @@ func checkDepsHandler(_ context.Context, _ []string, _ map[string]any) error {
 	return runMake(dir, "deps-check")
 }
 
-// checkGitHandler ensures the working tree is clean (no uncommitted changes
-// to tracked files; untracked files are allowed).
-func checkGitHandler(_ context.Context, _ []string, _ map[string]any) error {
+// checkGitHandler ensures every workspace repo's working tree is clean (no
+// uncommitted changes to tracked files; untracked files are allowed).
+//
+// Same correction as checkLocksHandler: the workspace parent is not a git
+// repository, and `git diff --quiet` run there exits 129 for usage — which the
+// previous version reported as "uncommitted changes in tracked files" (#444).
+func checkGitHandler(ctx context.Context, _ []string, _ map[string]any) error {
 	cfg := config.Get()
 	if cfg == nil {
 		return errors.New("config not loaded")
 	}
 
-	root := cfg.Paths.LightwaveRoot
-	c := exec.Command("git", "diff", "--quiet")
-
-	c.Dir = root
-	if err := c.Run(); err != nil {
-		return errors.New("uncommitted changes in tracked files")
+	repos, err := workspaceGitRepos(cfg.Paths.LightwaveRoot)
+	if err != nil {
+		return err
 	}
 
-	fmt.Println(color.GreenString("✓ working tree clean"))
+	var dirty []string
+
+	for _, repo := range repos {
+		changed, changedErr := hasUncommittedChanges(ctx, repo)
+		if changedErr != nil {
+			return changedErr
+		}
+
+		if changed {
+			dirty = append(dirty, filepath.Base(repo))
+		}
+	}
+
+	if len(dirty) > 0 {
+		return fmt.Errorf("uncommitted changes in tracked files: %s", strings.Join(dirty, ", "))
+	}
+
+	fmt.Println(color.GreenString("✓ working tree clean (%d repo(s))", len(repos)))
 
 	return nil
 }
@@ -439,17 +487,113 @@ func checkSmokeHandler(_ context.Context, args []string, flags map[string]any) e
 }
 
 // runGitDiff returns the diff output for a path. Empty string = clean.
-func runGitDiff(root, path string) (string, error) {
-	c := exec.Command("git", "diff", "--", path)
-	c.Dir = root
+// runGitDiff returns the diff for one path inside repo.
+//
+// It reads stdout ONLY, and propagates failure. The previous version called
+// CombinedOutput and then discarded the error on both branches — the if and the
+// fallthrough returned the same value — so when git failed, its stderr became
+// the return value and every caller testing for non-empty output read the error
+// text as a diff (#444).
+func runGitDiff(ctx context.Context, repo, path string) (string, error) {
+	c := exec.CommandContext(ctx, "git", "diff", "--", path)
+	c.Dir = repo
 
-	out, err := c.CombinedOutput()
+	out, err := c.Output()
 	if err != nil {
-		// non-zero exit also means changes — but we want stdout regardless
-		return string(out), nil
+		return "", fmt.Errorf("git diff %s in %s: %w", path, repo, err)
 	}
 
 	return string(out), nil
+}
+
+// fileIsTracked reports whether repo tracks path. An absent or untracked file
+// is not drift; treating it as drift is how the old check named uv.lock on
+// machines where no repository has ever contained one.
+func fileIsTracked(ctx context.Context, repo, path string) (bool, error) {
+	c := exec.CommandContext(ctx, "git", "ls-files", "--", path)
+	c.Dir = repo
+
+	out, err := c.Output()
+	if err != nil {
+		return false, fmt.Errorf("git ls-files %s in %s: %w", path, repo, err)
+	}
+
+	return strings.TrimSpace(string(out)) != "", nil
+}
+
+// hasUncommittedChanges reports whether repo has modifications to tracked files.
+//
+// `git diff --quiet` exits 1 when there are differences and 128/129 when it
+// cannot run at all. Collapsing every non-zero exit into "dirty" is exactly how
+// a usage error came to be reported as uncommitted work, so the two are
+// separated here: only exit 1 is an answer, anything else is a failure to
+// measure and must surface as one.
+func hasUncommittedChanges(ctx context.Context, repo string) (bool, error) {
+	c := exec.CommandContext(ctx, "git", "diff", "--quiet")
+	c.Dir = repo
+
+	err := c.Run()
+	if err == nil {
+		return false, nil
+	}
+
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+		return true, nil
+	}
+
+	return false, fmt.Errorf("git diff --quiet in %s: %w", repo, err)
+}
+
+// workspaceGitRepos returns the git work trees a workspace-scoped check should
+// inspect.
+//
+// paths.lightwave_root is the PARENT of the repositories in the flat sibling
+// layout — it is not itself a repository, and git run there fails rather than
+// answering. Resolving the repositories first is what makes these checks
+// measurable at all. A root that IS a repository resolves to itself, so
+// pointing lightwave_root at a single checkout keeps working.
+//
+// A root with no repositories under it returns an error rather than an empty
+// sweep: a check that silently examines nothing and prints a tick is worse than
+// one that fails, because it reports a guarantee it never established.
+func workspaceGitRepos(root string) ([]string, error) {
+	if isGitWorkTree(root) {
+		return []string{root}, nil
+	}
+
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("reading workspace %s: %w", root, err)
+	}
+
+	var repos []string
+
+	// Deliberately no IsDir() precondition: ReadDir reports a SYMLINK as a
+	// non-directory, and symlinking a checkout into a root is a supported
+	// layout here (it is how LW_LIGHTWAVE_ROOT is pointed at a worktree). A
+	// non-directory entry simply has no .git child, so the work-tree test is
+	// the only test needed.
+	for _, e := range entries {
+		if dir := filepath.Join(root, e.Name()); isGitWorkTree(dir) {
+			repos = append(repos, dir)
+		}
+	}
+
+	if len(repos) == 0 {
+		return nil, fmt.Errorf("%s is neither a git repository nor a workspace containing one", root)
+	}
+
+	return repos, nil
+}
+
+// isGitWorkTree reports whether dir is the root of a git work tree. A linked
+// worktree carries .git as a FILE rather than a directory, so the entry's type
+// is deliberately not part of the test.
+func isGitWorkTree(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, ".git"))
+
+	return err == nil
 }
 
 // schemaDriftReport is the JSON shape emitted by `lw check schema --json`.
