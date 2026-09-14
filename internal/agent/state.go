@@ -87,20 +87,57 @@ func StatePath(id string) (string, error) {
 
 // Save writes the agent record atomically (write-to-tmp + rename so a
 // concurrent `lw agent list` never sees a partial JSON blob).
+//
+// The temp name is UNIQUE per write. It used to be `<path>.tmp`, derived from
+// the agent ID alone, so two concurrent saves of the SAME agent wrote the same
+// file: the first rename consumed it and the second failed with ENOENT (#345).
+//
+// Two writers exist by design — Spawn's reaper goroutine calls Save when the
+// child exits, and any caller polling RefreshStatus calls it the moment it
+// observes the pid gone. Both notice the same exit in the same instant. That is
+// what made TestSpawn_QuickExit fail intermittently on CI for a fortnight while
+// passing everywhere locally; -race never reported it, because the shared state
+// was the filesystem rather than memory.
+//
+// Load ignores anything not ending in `.json`, so these names stay invisible to
+// it. A failed write removes its own temp file rather than leaving litter in
+// the state dir for `lw agent list` to trip over.
 func (a *Agent) Save() error {
 	path, err := StatePath(a.ID)
 	if err != nil {
 		return err
 	}
+
 	data, err := json.MarshalIndent(a, "", "  ")
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+
+	tmp, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+
+	if _, err := tmp.Write(data); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+
+		return err
+	}
+
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmp.Name())
+
+		return err
+	}
+
+	if err := os.Rename(tmp.Name(), path); err != nil {
+		_ = os.Remove(tmp.Name())
+
+		return err
+	}
+
+	return nil
 }
 
 // Load reads an agent record by ID. The lookup accepts the full UUID or
