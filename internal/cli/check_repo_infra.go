@@ -254,8 +254,13 @@ func checkOneRepo(repoPath, name string, infraCfg *sst.RepoInfraConfig) []repoIn
 	for _, d := range infraCfg.RequiredDirs {
 		dpath := filepath.Join(repoPath, d.Path)
 		if fi, err := os.Stat(dpath); os.IsNotExist(err) {
+			// A missing directory is the one violation here with a genuinely
+			// mechanical cure: the stamp checks that it EXISTS, and creating it
+			// delivers exactly that, no more. See fixRepoInfra for why the
+			// missing FILES are not treated the same way.
 			viols = append(viols, repoInfraViolation{
 				Repo: name, RepoPath: repoPath, Kind: "dir", Missing: d.Path + "/",
+				Fixable: true,
 			})
 		} else if err != nil {
 			viols = append(viols, repoInfraViolation{
@@ -502,10 +507,24 @@ func applyRepoInfraFixes(viols []repoInfraViolation) error {
 		}
 
 		if !v.Fixable {
-			fmt.Printf("%s %s/%s — manual fix required\n",
-				color.YellowString("SKIP"), v.Repo, v.Missing)
+			fmt.Printf("%s %s/%s — %s\n",
+				color.YellowString("SKIP"), v.Repo, v.Missing, whyNotFixable(&v))
 
 			skipped++
+
+			continue
+		}
+
+		if v.Kind == "dir" {
+			if err := createRequiredDir(v.RepoPath, v.Missing); err != nil {
+				fmt.Printf("%s %s/%s: %v\n", color.RedString("ERROR"), v.Repo, v.Missing, err)
+				continue
+			}
+
+			fmt.Printf("%s %s/%s created (with .gitkeep)\n",
+				color.GreenString("FIXED"), v.Repo, v.Missing)
+
+			fixed++
 
 			continue
 		}
@@ -526,7 +545,8 @@ func applyRepoInfraFixes(viols []repoInfraViolation) error {
 	}
 
 	if skipped > 0 {
-		fmt.Printf("\n%d violation(s) require manual intervention (dev/, .github/ scaffold)\n", skipped)
+		fmt.Printf("\n%d violation(s) need content only a person can supply — "+
+			"a generated stub would satisfy this check while delivering nothing\n", skipped)
 	}
 
 	if fixed > 0 && skipped == 0 {
@@ -538,6 +558,67 @@ func applyRepoInfraFixes(viols []repoInfraViolation) error {
 	}
 
 	return nil
+}
+
+// createRequiredDir makes a stamped directory, with a .gitkeep so it survives a
+// clone.
+//
+// Git does not track an empty directory. Without the placeholder, `--fix` would
+// satisfy the check on the machine that ran it and the next clone would fail it
+// again — a local-green / remote-red split, which is the same shape as a gate
+// that passes because it cannot see what it guards.
+func createRequiredDir(repoPath, missing string) error {
+	dir := filepath.Join(repoPath, strings.TrimSuffix(missing, "/"))
+
+	const dirPerms = 0o755
+	if err := os.MkdirAll(dir, dirPerms); err != nil {
+		return fmt.Errorf("creating %s: %w", dir, err)
+	}
+
+	keep := filepath.Join(dir, ".gitkeep")
+	if _, err := os.Stat(keep); err == nil {
+		return nil
+	}
+
+	const filePerms = 0o644
+	if err := os.WriteFile(keep, nil, filePerms); err != nil {
+		return fmt.Errorf("writing %s: %w", keep, err)
+	}
+
+	return nil
+}
+
+// whyNotFixable says what a person has to supply, instead of repeating "manual
+// fix required" for every violation.
+//
+// #410 reported that `lw check repo-infra --fix` skipped all nine violations on
+// a fresh repo with one blanket message, so the output could not distinguish a
+// directory nobody had created from a file whose CONTENT is the requirement.
+//
+// The files stay manual on purpose. AGENTS.md is the canonical agent contract
+// and mise.toml's [tasks] is what `mise run ci` runs; a generated stub for
+// either would turn this check green while delivering nothing — and for
+// mise.toml it would be worse than nothing, because a repo whose `ci` task does
+// nothing reports success on every push. `.gitignore` is the same trade in
+// miniature: an empty one declares no exclusions, so writing it would buy a
+// passing check and no behaviour. Auto-fixing those would make this gate a
+// thing that reports success without covering its surface, which is the defect
+// class the repo's own README names.
+func whyNotFixable(v *repoInfraViolation) string {
+	switch {
+	case v.Missing == "AGENTS.md":
+		return "canonical agent contract — a generated stub would pass this check and instruct nobody"
+	case v.Missing == "CLAUDE.md":
+		return "needs AGENTS.md first; it is a pointer, and a pointer to nothing is worse than absent"
+	case strings.HasPrefix(v.Missing, "mise.toml"):
+		return "[tasks.ci] is what `mise run ci` runs — an empty stub would report success on every push"
+	case v.Missing == ".gitignore":
+		return "an empty one declares no exclusions; write the ignores this repo actually needs"
+	case v.Detail != "":
+		return v.Detail
+	default:
+		return "manual fix required"
+	}
 }
 
 func printRepoInfraReport(r *repoInfraReport) {
