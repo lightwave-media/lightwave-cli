@@ -283,37 +283,8 @@ func checkSchemaHandler(_ context.Context, _ []string, flags map[string]any) err
 	return nil
 }
 
-// checkLocksHandler verifies that uv.lock and pnpm-lock.yaml are committed
-// (no uncommitted changes that would drift CI). Fast — uses git status.
-func checkLocksHandler(_ context.Context, _ []string, _ map[string]any) error {
-	cfg := config.Get()
-	if cfg == nil {
-		return errors.New("config not loaded")
-	}
-
-	root := cfg.Paths.LightwaveRoot
-	files := []string{"uv.lock", "pnpm-lock.yaml"}
-	dirty := []string{}
-
-	for _, f := range files {
-		out, err := runGitDiff(root, f)
-		if err != nil {
-			return fmt.Errorf("git diff %s: %w", f, err)
-		}
-
-		if strings.TrimSpace(out) != "" {
-			dirty = append(dirty, f)
-		}
-	}
-
-	if len(dirty) > 0 {
-		return fmt.Errorf("uncommitted lock changes: %s", strings.Join(dirty, ", "))
-	}
-
-	fmt.Println(color.GreenString("✓ lock files clean"))
-
-	return nil
-}
+// checkLocksHandler lives in check_locks.go — one file per check (AGENTS.md),
+// and the rewrite there is long enough to earn its own.
 
 // checkDepsHandler verifies workspace dependency consistency. Delegates to
 // the Make target (no direct Go impl — pnpm/uv would re-implement work).
@@ -438,19 +409,9 @@ func checkSmokeHandler(_ context.Context, args []string, flags map[string]any) e
 	return runMake(dir, "smoke", extra...)
 }
 
-// runGitDiff returns the diff output for a path. Empty string = clean.
-func runGitDiff(root, path string) (string, error) {
-	c := exec.Command("git", "diff", "--", path)
-	c.Dir = root
-
-	out, err := c.CombinedOutput()
-	if err != nil {
-		// non-zero exit also means changes — but we want stdout regardless
-		return string(out), nil
-	}
-
-	return string(out), nil
-}
+// runGitDiff is gone with its only caller (#444). It merged stderr into stdout
+// and returned nil from both arms of its error branch, so `git diff` refusing
+// to run reached the caller as a diff.
 
 // schemaDriftReport is the JSON shape emitted by `lw check schema --json`.
 // Originally lived in check_schema.go (Phase 3 standalone); moved here when
