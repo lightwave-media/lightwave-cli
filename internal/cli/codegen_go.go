@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,6 +19,8 @@ var (
 	codegenGoOut   string
 	codegenGoOnly  string
 	codegenGoCheck bool
+	codegenGoRef   string
+	codegenGoScope string
 )
 
 // migrationFile is the single combined DDL output. One file (not per-table) so
@@ -32,13 +36,30 @@ var codegenGoCmd = &cobra.Command{
                  tenant_id + an RLS tenant-isolation policy + FORCE (ADR-0010).
                  Depends on 001_init.sql (tenants table); apply after it.
 
-family selects a schema sub-directory (default: data/agile_artifacts).
+family selects a schema sub-directory (default: data/agile_artifacts). A
+parent directory works too — "data" reads every family beneath it.
+
+Schemas are read from a git REF, not the working tree (default origin/main).
+That checkout is shared: measured 2026-09-13 it sat on a feature branch while
+origin/main was three commits behind, with nine worktrees attached, so
+"generated from the stamp" named no particular stamp. The resolved sha is
+printed with the summary. Use --ref worktree to iterate on an uncommitted
+schema.
+
+--scope selects by storage scope, so a local print can exclude the
+tenant-scoped platform tables instead of the generator hardcoding a list.
+
+Emits a table for table_kind entity AND document. A document table indexes
+files (source_path, content_sha256, indexed_at) rather than replacing them —
+the file stays truth (ADR-0049).
 
 Examples:
-  lw codegen go                          # generate all agile_artifacts entities
+  lw codegen go                          # agile_artifacts at origin/main
+  lw codegen go data --scope local       # every local family, one migration
+  lw codegen go --ref worktree           # read the working tree instead
+  lw codegen go --ref v0.6.5             # generate from a released stamp
   lw codegen go --only epic              # generate only the epic struct
   lw codegen go --dry-run                # print to stdout, write nothing
-  lw codegen go --out ./gen              # write elsewhere
   lw codegen go --check                  # exit 1 if generated output is stale`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runCodegenGo,
@@ -48,10 +69,19 @@ func init() {
 	codegenGoCmd.Flags().StringVar(&codegenGoOut, "out", "", "output directory (default: <lightwave_root>/lightwave-platform/backend/foundation/store/generated)")
 	codegenGoCmd.Flags().StringVar(&codegenGoOnly, "only", "", "generate only the named entity (e.g. --only epic)")
 	codegenGoCmd.Flags().BoolVar(&codegenGoCheck, "check", false, "exit 1 if output is stale (drift gate)")
+	codegenGoCmd.Flags().StringVar(&codegenGoRef, "ref", "origin/main",
+		"git ref to read schemas from; 'worktree' reads the working tree")
+	codegenGoCmd.Flags().StringVar(&codegenGoScope, "scope", "",
+		"only schemas declaring this storage scope (platform|local|both); empty means no filter")
 	codegenCmd.AddCommand(codegenGoCmd)
 }
 
-func runCodegenGo(_ *cobra.Command, args []string) error {
+func runCodegenGo(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+
 	cfg := config.Get()
 
 	root := cfg.Paths.LightwaveRoot
@@ -65,9 +95,14 @@ func runCodegenGo(_ *cobra.Command, args []string) error {
 		family = args[0]
 	}
 
-	entityDir := filepath.Join(root, "lightwave-core", "src", "schemas", family)
-	if _, err := os.Stat(entityDir); err != nil {
-		return fmt.Errorf("schema directory not found: %s (is lightwave-core checked out at %s?)", entityDir, root)
+	coreRoot := filepath.Join(root, "lightwave-core")
+	// Repo-relative, because a Source may resolve it through git rather than
+	// through the filesystem.
+	entityDir := path.Join("src", "schemas", family)
+
+	src, err := gogen.NewSource(ctx, coreRoot, codegenGoRef)
+	if err != nil {
+		return err
 	}
 
 	outDir := codegenGoOut
@@ -75,13 +110,18 @@ func runCodegenGo(_ *cobra.Command, args []string) error {
 		outDir = filepath.Join(root, "lightwave-platform", "backend", "foundation", "store", "generated")
 	}
 
-	entities, err := loadEntities(entityDir)
+	entities, skipped, err := gogen.LoadFrom(ctx, src, entityDir, codegenGoScope)
 	if err != nil {
 		return err
 	}
 
 	if len(entities) == 0 {
-		color.Yellow("no entity schemas found in %s", entityDir)
+		color.Yellow("no tabled schemas in %s at %s (%d skipped)", entityDir, src.Describe(), len(skipped))
+
+		for _, s := range skipped {
+			fmt.Printf("  skip %s\n", s)
+		}
+
 		return nil
 	}
 
@@ -115,33 +155,10 @@ func runCodegenGo(_ *cobra.Command, args []string) error {
 		color.Green("✓ %s", dest)
 	}
 
-	fmt.Printf("\nGenerated %s entities → %s\n", color.CyanString("%d", len(entities)), outDir)
+	fmt.Printf("\nGenerated %s entities from %s → %s\n",
+		color.CyanString("%d", len(entities)), color.CyanString("%s", src.Describe()), outDir)
 
 	return nil
-}
-
-// loadEntities loads every entity in dir. The full set is always loaded so the
-// migration's FK ordering is complete even under --only (which filters only
-// which Go structs are emitted, in buildOutputs).
-func loadEntities(dir string) ([]*gogen.EntitySchema, error) {
-	paths, err := gogen.FindEntities(dir)
-	if err != nil {
-		return nil, fmt.Errorf("scanning %s: %w", dir, err)
-	}
-
-	entities := make([]*gogen.EntitySchema, 0, len(paths))
-
-	for _, p := range paths {
-		e, loadErr := gogen.Load(p)
-		if loadErr != nil {
-			color.Yellow("skip %s: %v", filepath.Base(p), loadErr)
-			continue
-		}
-
-		entities = append(entities, e)
-	}
-
-	return entities, nil
 }
 
 // buildOutputs renders the per-entity Go structs plus, unless --only is set,

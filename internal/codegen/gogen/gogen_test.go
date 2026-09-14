@@ -136,7 +136,12 @@ func TestLoad_NonEntity_Rejected(t *testing.T) {
 	require.NoError(t, os.WriteFile(p, []byte(fixtureNonEntityYAML), 0o644))
 	_, err := gogen.Load(p)
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "not an entity schema")
+	// Wording widened with table_kind: document, which IS tabled, so the
+	// rejection is now "not a tabled schema". The claim is unchanged — a
+	// non-table must be refused — and the kind is named so the caller can
+	// report WHY rather than skipping in silence.
+	assert.Contains(t, err.Error(), "not a tabled schema")
+	assert.Contains(t, err.Error(), `table_kind="enum"`)
 }
 
 func TestGenerateGo_Struct(t *testing.T) {
