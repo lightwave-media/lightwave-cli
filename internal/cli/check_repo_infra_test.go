@@ -58,6 +58,96 @@ func TestCheckRepoInfra_FixCreatesCLAUDEmd(t *testing.T) {
 	assert.Contains(t, string(content), "@AGENTS.md")
 }
 
+// #410: `lw create repo --kind generic` emitted two files and `lw check
+// repo-infra --fix` then skipped ALL nine violations with one blanket "manual
+// fix required". The two tools that exist to create and conform a repo could
+// not, together, produce one that passes the check.
+//
+//nolint:paralleltest
+func TestCheckRepoInfra_FixCreatesMissingDirs(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+
+	for _, d := range []string{"dev", "docs", "tests"} {
+		require.NoError(t, os.RemoveAll(filepath.Join(dir, d)))
+	}
+
+	_, err := testutil.RunHandler(t, "check.repo-infra", nil,
+		map[string]any{"repo": dir, "fix": true})
+	require.NoError(t, err, "missing directories are mechanical and must be fixed")
+
+	for _, d := range []string{"dev", "docs", "tests"} {
+		info, serr := os.Stat(filepath.Join(dir, d))
+		require.NoError(t, serr, "%s/ must exist after --fix", d)
+		assert.True(t, info.IsDir())
+
+		// Git does not track an empty directory. Without this the fix holds on
+		// the machine that ran it and the next clone fails the check again —
+		// local-green / remote-red, the shape a gate is supposed to prevent.
+		assert.FileExists(t, filepath.Join(dir, d, ".gitkeep"),
+			"%s/ needs a placeholder or it will not survive a clone", d)
+	}
+}
+
+// TestCheckRepoInfra_FixDoesNotInventContent is the more important half.
+//
+// AGENTS.md is the canonical agent contract and mise.toml's [tasks.ci] is what
+// `mise run ci` runs. A generated stub for either would turn this check green
+// while delivering nothing — and for mise.toml it is worse than nothing, since
+// a repo whose ci task does nothing reports success on every push. .gitignore
+// is the same trade in miniature. Fixing them would make this gate exactly what
+// the repo's own README warns against: a check that reports success without
+// covering its surface.
+//
+//nolint:paralleltest
+func TestCheckRepoInfra_FixDoesNotInventContent(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+
+	for _, f := range []string{"AGENTS.md", "CLAUDE.md", ".gitignore"} {
+		require.NoError(t, os.Remove(filepath.Join(dir, f)))
+	}
+
+	// A mise.toml with tools but no [tasks] is the shape that matters most: the
+	// file exists, so only its CONTENT is missing, and a stub would satisfy the
+	// check while `mise run ci` does nothing.
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, "mise.toml"), []byte("[tools]\ngo = \"1.26\"\n"), 0o644))
+
+	out, err := testutil.RunHandler(t, "check.repo-infra", nil,
+		map[string]any{"repo": dir, "fix": true})
+	require.Error(t, err, "content-bearing files must not be auto-satisfied")
+
+	for _, f := range []string{"AGENTS.md", ".gitignore"} {
+		assert.NoFileExists(t, filepath.Join(dir, f),
+			"%s must not be invented — a stub passes the check and delivers nothing", f)
+	}
+
+	// CLAUDE.md is a pointer, so it stays unfixable while its target is gone.
+	assert.NoFileExists(t, filepath.Join(dir, "CLAUDE.md"),
+		"a pointer to a missing AGENTS.md is worse than an absent one")
+
+	// Each skip says what a person has to supply. One blanket line for nine
+	// violations is what #410 reported.
+	assert.Contains(t, out, "canonical agent contract")
+	assert.Contains(t, out, "mise run ci")
+	assert.Contains(t, out, "declares no exclusions")
+}
+
+//nolint:paralleltest
+func TestCheckRepoInfra_FixIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	scaffoldConformantRepo(t, dir)
+	require.NoError(t, os.RemoveAll(filepath.Join(dir, "docs")))
+
+	flags := map[string]any{"repo": dir, "fix": true}
+	_, err := testutil.RunHandler(t, "check.repo-infra", nil, flags)
+	require.NoError(t, err)
+
+	_, err = testutil.RunHandler(t, "check.repo-infra", nil, flags)
+	require.NoError(t, err, "a second --fix must not fail on what it already created")
+}
+
 //nolint:paralleltest
 func TestCheckRepoInfra_CLAUDEmdTooLong(t *testing.T) {
 	dir := t.TempDir()
