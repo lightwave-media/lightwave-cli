@@ -99,19 +99,22 @@ func buildSubcommand(cmd sst.CLICommand, key string, handler Handler) *cobra.Com
 			continue
 		}
 
+		// Empty for a live flag; retired flags say so (RegisterRetiredFlags).
+		usage := usageForFlag(key, name)
+
 		switch {
 		case isBooleanFlag(name):
 			b := false
 			flagBools[name] = &b
-			c.Flags().BoolVar(&b, name, false, "")
+			c.Flags().BoolVar(&b, name, false, usage)
 		case isStringArrayFlag(name):
 			s := []string{}
 			flagSlices[name] = &s
-			c.Flags().StringSliceVar(&s, name, nil, "")
+			c.Flags().StringSliceVar(&s, name, nil, usage)
 		default:
 			s := ""
 			flagValues[name] = &s
-			c.Flags().StringVar(&s, name, "", "")
+			c.Flags().StringVar(&s, name, "", usage)
 		}
 	}
 

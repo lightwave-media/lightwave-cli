@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -15,6 +16,87 @@ import (
 // #351 listed four faults in `lw task create`'s Paperclip leg. These pin the
 // three that are behavioural; the fourth (--skip-paperclip being `unknown flag`
 // through the dispatcher) is gone with the flag itself.
+
+// taskCreateCommand returns the assembled `lw task create` — the command
+// `--help` prints, built by the dispatcher from the stamp.
+func taskCreateCommand(t *testing.T) *cobra.Command {
+	t.Helper()
+
+	task := findChild(shippedSurface(t), "task")
+	require.NotNil(t, task, "task domain missing from the assembled surface")
+
+	create := findChild(task, "create")
+	require.NotNil(t, create, "task create missing from the assembled surface")
+
+	return create
+}
+
+// TestRetiredFlagsAreMarkedInHelp closes the half of #351 that the runtime
+// rejection left open.
+//
+// #351 made the ten Paperclip-only flags error rather than be silently ignored,
+// and deliberately did NOT delete them from commands.yaml — which of them carry
+// intent worth re-homing is a product call, and deleting decides it by omission.
+// The cost was that `--help` still listed all ten, indistinguishable from the
+// flags that work: the dispatcher gives every schema flag an empty usage string,
+// so `--prd` and `--label` printed identically. The surface promised something
+// it always refuses.
+func TestRetiredFlagsAreMarkedInHelp(t *testing.T) {
+	t.Parallel()
+
+	flags := taskCreateCommand(t).Flags()
+
+	for _, f := range paperclipOnlyFlags {
+		flag := flags.Lookup(f.name)
+		require.NotNil(t, flag, "--%s is registered as retired but not declared in the stamp", f.name)
+		assert.Contains(t, flag.Usage, "RETIRED",
+			"--%s always errors; help that does not say so is a promise the surface cannot keep", f.name)
+	}
+}
+
+// TestLiveFlagsAreNotMarkedRetired is the other direction. A marker on every
+// flag would be as useless as a marker on none — the point is telling them
+// apart. --assign and --label are the two #351 actually ported to GitHub.
+func TestLiveFlagsAreNotMarkedRetired(t *testing.T) {
+	t.Parallel()
+
+	flags := taskCreateCommand(t).Flags()
+
+	for _, name := range []string{"assign", "label", "type", "priority", "epic", "dry-run"} {
+		flag := flags.Lookup(name)
+		require.NotNil(t, flag, "--%s should still be declared", name)
+		assert.NotContains(t, flag.Usage, "RETIRED",
+			"--%s works; marking it retired would send callers away from a live flag", name)
+	}
+}
+
+// TestEveryRetiredFlagIsStillDeclared guards the registration against the stamp
+// moving underneath it.
+//
+// RegisterRetiredFlags is keyed by flag name and applied while the dispatcher
+// builds the command, so a flag dropped from commands.yaml makes its entry here
+// dead — no error, no help text, nothing to notice. The table would then claim
+// to document a flag the surface no longer has, and the next reader would trust
+// it. The stamp is the authority; this asserts the two agree.
+func TestEveryRetiredFlagIsStillDeclared(t *testing.T) {
+	t.Parallel()
+
+	flags := taskCreateCommand(t).Flags()
+
+	var undeclared []string
+
+	for _, f := range paperclipOnlyFlags {
+		if flags.Lookup(f.name) == nil {
+			undeclared = append(undeclared, f.name)
+		}
+	}
+
+	assert.Empty(t, undeclared,
+		"these are listed in paperclipOnlyFlags but no longer declared in commands.yaml: %v. "+
+			"If they were removed from the stamp deliberately, remove them here too — "+
+			"a rejection for a flag nobody can pass is dead code that reads as policy",
+		undeclared)
+}
 
 func resetPaperclipOnlyFlags(t *testing.T) {
 	t.Helper()

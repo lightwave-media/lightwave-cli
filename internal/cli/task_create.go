@@ -153,6 +153,11 @@ func runTaskCreate(cmd *cobra.Command, args []string) error {
 // product decision by omission — which of these carry intent worth re-homing is
 // a call for a person, and #351 says so explicitly. An error keeps the choice
 // visible.
+//
+// This table is the single authority for both halves of that: the runtime
+// rejection below, and the help text registered in init(). Two lists would drift,
+// and the pair that drifted would be "what the surface promises" against "what
+// it does" — the exact gap #351 was closing.
 var paperclipOnlyFlags = []struct {
 	value  func() bool
 	name   string
@@ -178,6 +183,20 @@ var paperclipOnlyFlags = []struct {
 		reason: "a Paperclip-domain concept with no current analogue"},
 	{name: "billing-code", value: func() bool { return taskCreateBillingCode != "" },
 		reason: "a Paperclip-domain concept with no current analogue"},
+}
+
+// Give the retired flags help text, from the same table that rejects them.
+//
+// Without this the dispatcher hands every schema flag an empty usage string, so
+// `lw task create --help` printed `--prd` and `--label` identically — one always
+// errors, the other works, and the surface said nothing to tell them apart.
+func init() {
+	usage := make(map[string]string, len(paperclipOnlyFlags))
+	for _, f := range paperclipOnlyFlags {
+		usage[f.name] = "RETIRED (#351) — " + f.reason
+	}
+
+	RegisterRetiredFlags("task.create", usage)
 }
 
 // rejectPaperclipOnlyFlags errors on any flag whose only implementation was the
