@@ -195,8 +195,6 @@ func setDefaults() {
 	viper.SetDefault("orchestrator.url", "http://localhost:8080")
 	_ = viper.BindEnv("orchestrator.url", "LW_ORCHESTRATOR_URL")
 
-	// Paperclip defaults
-
 	// Paths — LW_LIGHTWAVE_ROOT overrides default ~/dev (needed for sandboxed e2e + CI).
 	viper.SetDefault("paths.lightwave_root", filepath.Join(home, "dev"))
 	viper.SetDefault("paths.platform", filepath.Join(home, "dev", "lightwave-platform"))

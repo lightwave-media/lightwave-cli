@@ -373,15 +373,28 @@ func checkDockerHandler(_ context.Context, _ []string, _ map[string]any) error {
 	return nil
 }
 
-func checkECSHandler(_ context.Context, args []string, flags map[string]any) error {
+// checkECSHandler reports ECS service health.
+//
+// The cluster comes from deployClusterFor, the same resolver `lw deploy` uses.
+// It derived `"platform-" + env` until now — the Django-era name #368 removed
+// from the deploy group. That fix missed this verb, so `lw check ecs` went on
+// querying a cluster that no longer exists and failing with
+// ClusterNotFoundException, while `lw deploy status` against the same
+// environment worked. The deploy package comment even cited "`lw check ecs`
+// conventions" as precedent for the name, which is how a convention outlives
+// the thing it named.
+//
+// Sharing the resolver rather than copying the default is the point: two copies
+// would drift again the next time the cluster is renamed.
+func checkECSHandler(ctx context.Context, args []string, flags map[string]any) error {
 	if len(args) < 1 {
 		return errors.New("usage: lw check ecs <service> [--environment=<env>]")
 	}
 
 	env := flagStrOr(flags, "environment", "prod")
-	cluster := "platform-" + env
-	c := exec.Command("aws", "ecs", "describe-services",
-		"--cluster", cluster, "--services", args[0],
+
+	c := exec.CommandContext(ctx, "aws", "ecs", "describe-services",
+		"--cluster", deployClusterFor(env), "--services", args[0],
 		"--query", "services[0].{Status:status,Desired:desiredCount,Running:runningCount}",
 		"--output", "table")
 	c.Stdout = os.Stdout
