@@ -15,9 +15,15 @@ import (
 // Schema-driven deploy handlers. commands.yaml v3.0.0 declares 4 commands:
 // run, status, logs, rollback.
 //
-// All target ECS clusters named `platform-<env>` (matches existing
-// `lw aws ecs ...` and `lw check ecs` conventions). Wraps internal/aws
-// helpers — does not duplicate them.
+// The cluster is RESOLVED, not derived from the environment name — see
+// deployClusterFor. This paragraph used to say all four targeted
+// `platform-<env>`, "matching existing `lw aws ecs ...` and `lw check ecs`
+// conventions", which #368 fixed and which the function doc below has
+// contradicted ever since. A reader meets this overview first, so leaving it
+// stale pointed them at the bug rather than the fix. (The `lw aws` it cited for
+// precedent is itself decommissioned.)
+//
+// Wraps internal/aws helpers — does not duplicate them.
 
 func init() {
 	RegisterHandler("deploy.run", deployRunHandler)
