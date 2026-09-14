@@ -205,7 +205,7 @@ func TestWorkspaceGitRepos_ResolvesTheFlatSiblingLayout(t *testing.T) {
 
 	require.NoError(t, os.MkdirAll(filepath.Join(root, "not-a-repo"), 0o750))
 
-	repos, err := workspaceGitRepos(root)
+	repos, err := workspaceGitRepos(t.Context(), root)
 
 	require.NoError(t, err)
 	require.Len(t, repos, 2, "only the git work trees count")
@@ -218,12 +218,45 @@ func TestWorkspaceGitRepos_ResolvesTheFlatSiblingLayout(t *testing.T) {
 	assert.ElementsMatch(t, []string{"alpha", "beta"}, names)
 }
 
+// TestWorkspaceGitRepos_SkipsBareRepos pins a case found by running the fix
+// against the real fleet rather than by reading it: ~/dev/lightwave-plugin is a
+// BARE repository. It has a .git directory and no work tree, so a filesystem
+// test for .git sweeps it in and `git diff` there fails with "this operation
+// must be run in a work tree" (exit 128) — which, under the corrected
+// error handling, took the whole check down with it.
+//
+// A bare repo has no working copy that could be dirty. Skipping it is the
+// answer; erroring on it would trade a false positive for a false blocker.
+func TestWorkspaceGitRepos_SkipsBareRepos(t *testing.T) {
+	t.Parallel()
+
+	root := t.TempDir()
+
+	// A real work tree, so the sweep has something to find.
+	require.NoError(t, os.Symlink(newGitRepo(t), filepath.Join(root, "worktree-repo")))
+
+	bare := filepath.Join(root, "bare-repo")
+	require.NoError(t, os.MkdirAll(bare, 0o750))
+
+	cmd := exec.CommandContext(t.Context(), "git", "init", "--bare")
+	cmd.Dir = bare
+	out, err := cmd.CombinedOutput()
+	require.NoError(t, err, "git init --bare: %s", out)
+
+	repos, err := workspaceGitRepos(t.Context(), root)
+
+	require.NoError(t, err, "a bare repo in the workspace must not fail the sweep")
+	require.Len(t, repos, 1)
+	assert.Equal(t, "worktree-repo", filepath.Base(repos[0]),
+		"only work trees are sweepable; a bare repo has no working copy to be dirty")
+}
+
 func TestWorkspaceGitRepos_ARootThatIsItselfARepoResolvesToItself(t *testing.T) {
 	t.Parallel()
 
 	repo := newGitRepo(t)
 
-	repos, err := workspaceGitRepos(repo)
+	repos, err := workspaceGitRepos(t.Context(), repo)
 
 	require.NoError(t, err)
 	assert.Equal(t, []string{repo}, repos,
@@ -236,7 +269,7 @@ func TestWorkspaceGitRepos_ARootThatIsItselfARepoResolvesToItself(t *testing.T) 
 func TestWorkspaceGitRepos_EmptyWorkspaceIsAnErrorNotASilentPass(t *testing.T) {
 	t.Parallel()
 
-	repos, err := workspaceGitRepos(t.TempDir())
+	repos, err := workspaceGitRepos(t.Context(), t.TempDir())
 
 	require.Error(t, err)
 	assert.Empty(t, repos)
@@ -249,7 +282,7 @@ func TestWorkspaceGitRepos_EmptyWorkspaceIsAnErrorNotASilentPass(t *testing.T) {
 func TestWorkspaceGitRepos_MissingRootErrors(t *testing.T) {
 	t.Parallel()
 
-	_, err := workspaceGitRepos(filepath.Join(t.TempDir(), "does-not-exist"))
+	_, err := workspaceGitRepos(t.Context(), filepath.Join(t.TempDir(), "does-not-exist"))
 
 	require.Error(t, err)
 }

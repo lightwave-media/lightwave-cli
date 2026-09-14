@@ -302,7 +302,7 @@ func checkLocksHandler(ctx context.Context, _ []string, _ map[string]any) error 
 		return errors.New("config not loaded")
 	}
 
-	repos, err := workspaceGitRepos(cfg.Paths.LightwaveRoot)
+	repos, err := workspaceGitRepos(ctx, cfg.Paths.LightwaveRoot)
 	if err != nil {
 		return err
 	}
@@ -368,7 +368,7 @@ func checkGitHandler(ctx context.Context, _ []string, _ map[string]any) error {
 		return errors.New("config not loaded")
 	}
 
-	repos, err := workspaceGitRepos(cfg.Paths.LightwaveRoot)
+	repos, err := workspaceGitRepos(ctx, cfg.Paths.LightwaveRoot)
 	if err != nil {
 		return err
 	}
@@ -557,8 +557,8 @@ func hasUncommittedChanges(ctx context.Context, repo string) (bool, error) {
 // A root with no repositories under it returns an error rather than an empty
 // sweep: a check that silently examines nothing and prints a tick is worse than
 // one that fails, because it reports a guarantee it never established.
-func workspaceGitRepos(root string) ([]string, error) {
-	if isGitWorkTree(root) {
+func workspaceGitRepos(ctx context.Context, root string) ([]string, error) {
+	if isGitWorkTree(ctx, root) {
 		return []string{root}, nil
 	}
 
@@ -575,7 +575,7 @@ func workspaceGitRepos(root string) ([]string, error) {
 	// non-directory entry simply has no .git child, so the work-tree test is
 	// the only test needed.
 	for _, e := range entries {
-		if dir := filepath.Join(root, e.Name()); isGitWorkTree(dir) {
+		if dir := filepath.Join(root, e.Name()); isGitWorkTree(ctx, dir) {
 			repos = append(repos, dir)
 		}
 	}
@@ -587,13 +587,28 @@ func workspaceGitRepos(root string) ([]string, error) {
 	return repos, nil
 }
 
-// isGitWorkTree reports whether dir is the root of a git work tree. A linked
-// worktree carries .git as a FILE rather than a directory, so the entry's type
-// is deliberately not part of the test.
-func isGitWorkTree(dir string) bool {
-	_, err := os.Stat(filepath.Join(dir, ".git"))
+// isGitWorkTree reports whether dir is the root of a git work tree.
+//
+// git is asked rather than the filesystem. Testing for a .git entry looks
+// equivalent and is not: ~/dev/lightwave-plugin is a BARE repository, which has
+// a .git directory and no work tree, so `git diff` there fails with "this
+// operation must be run in a work tree" (exit 128). Under a filesystem test
+// that repo is swept in and the whole check dies on it. A bare repo has no
+// working copy to be dirty, so the honest answer is that it is not a work tree
+// and is skipped — not that the check failed.
+//
+// This also covers the cases a .git test gets wrong in the other direction: a
+// linked worktree carries .git as a FILE, and a submodule as a gitfile.
+func isGitWorkTree(ctx context.Context, dir string) bool {
+	c := exec.CommandContext(ctx, "git", "rev-parse", "--is-inside-work-tree")
+	c.Dir = dir
 
-	return err == nil
+	out, err := c.Output()
+	if err != nil {
+		return false
+	}
+
+	return strings.TrimSpace(string(out)) == "true"
 }
 
 // schemaDriftReport is the JSON shape emitted by `lw check schema --json`.
