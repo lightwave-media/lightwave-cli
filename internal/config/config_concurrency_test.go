@@ -5,32 +5,25 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/spf13/viper"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// isolate gives a test its own HOME and leaves viper as it found it.
+// isolate gives a test its own HOME and a cleared singleton.
 //
-// Reset() clears the cfg singleton and NOT viper's package globals, and Load()
-// calls viper.AddConfigPath, which APPENDS. So a test that loads under its own
-// HOME permanently adds that directory to viper's search order, and a later
-// test loading under a different HOME can resolve to the earlier one's config.
-// That is a real defect in Load rather than a test artifact — tracked
-// separately — but it is not this file's subject, so these tests do not leave
-// it behind for the next one.
+// It used to reset the viper package global too, because Load() wrote to it and
+// its AddConfigPath calls accumulated across loads — so a test that loaded under
+// its own HOME left that directory in viper's search order and a later test
+// under a different HOME resolved to the earlier one's config (#459). Load()
+// now builds its own instance per call, so there is nothing global left to
+// clean up here; config_reload_test.go pins that directly.
 func isolate(t *testing.T) {
 	t.Helper()
 
 	t.Setenv("HOME", t.TempDir())
-
-	viper.Reset()
 	Reset()
 
-	t.Cleanup(func() {
-		viper.Reset()
-		Reset()
-	})
+	t.Cleanup(Reset)
 }
 
 // #400: Get() was an unguarded lazy singleton.

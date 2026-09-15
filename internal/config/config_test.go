@@ -159,33 +159,35 @@ func TestSet_RejectsUnknownKey(t *testing.T) {
 // matches no null* port (nullclaw 3000, nulltickets 7700, nullboiler 8080,
 // nullhub 19800), so the `lw health` orchestrator probe could never pass.
 //
-// Not parallel: setDefaults writes to the process-global viper registry.
-func TestSetDefaults_OrchestratorPort(t *testing.T) { //nolint:paralleltest // global viper state
+// setDefaults takes its own viper instance since #459, so this no longer has to
+// reset the package global — but it still reads process env, so it is not
+// parallel.
+func TestSetDefaults_OrchestratorPort(t *testing.T) { //nolint:paralleltest // t.Setenv
 	// setDefaults binds LW_ORCHESTRATOR_URL, so an operator shell that exports it
 	// (e.g. after `source <(mise run env)`) would otherwise fail this pin even
 	// though the default is correct. viper.AllowEmptyEnv defaults to false, so an
 	// empty value reads as unset and the default wins.
 	t.Setenv("LW_ORCHESTRATOR_URL", "")
-	viper.Reset()
-	t.Cleanup(viper.Reset)
-	setDefaults()
+
+	v := viper.New()
+	setDefaults(v)
 
 	const want = "http://localhost:8080"
-	if got := viper.GetString("orchestrator.url"); got != want {
+	if got := v.GetString("orchestrator.url"); got != want {
 		t.Errorf("orchestrator.url default\n got: %q\nwant: %q (nullboiler)", got, want)
 	}
 }
 
 // TestSetDefaults_OrchestratorURLEnvOverride pins that LW_ORCHESTRATOR_URL still
 // wins over the default, so the port stays overridable per machine.
-func TestSetDefaults_OrchestratorURLEnvOverride(t *testing.T) { //nolint:paralleltest // global viper state
-	viper.Reset()
-	t.Cleanup(viper.Reset)
+func TestSetDefaults_OrchestratorURLEnvOverride(t *testing.T) { //nolint:paralleltest // t.Setenv
 	t.Setenv("LW_ORCHESTRATOR_URL", "http://localhost:19800")
-	setDefaults()
+
+	v := viper.New()
+	setDefaults(v)
 
 	const want = "http://localhost:19800"
-	if got := viper.GetString("orchestrator.url"); got != want {
+	if got := v.GetString("orchestrator.url"); got != want {
 		t.Errorf("LW_ORCHESTRATOR_URL should override the default\n got: %q\nwant: %q", got, want)
 	}
 }
