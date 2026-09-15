@@ -108,6 +108,128 @@ func TestBadRefFailsBeforeGenerating(t *testing.T) {
 	assert.Contains(t, err.Error(), gogen.WorktreeRef, "the error should name the escape hatch")
 }
 
+// newNestedRepo mirrors the stamp's ACTUAL layout: families in subdirectories
+// under src/schemas/data, whose own top level holds nothing but __index.yaml.
+//
+// Every test above lists `src/schemas/data/test` — the leaf directory holding
+// the yaml — so a reader that could not descend still passed. Real callers list
+// `src/schemas/data`, the parent. The fixture modelled a shape the stamp does
+// not have, and the bug lived in that gap.
+func newNestedRepo(t *testing.T) (root, dir string) {
+	t.Helper()
+
+	root = t.TempDir()
+	dir = "src/schemas/data"
+
+	for _, family := range []string{"agile_artifacts", "reference_documents"} {
+		require.NoError(t, os.MkdirAll(filepath.Join(root, dir, family), 0o755))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(root, dir, family, "widget.yaml"), []byte(entityYAML), 0o600))
+		require.NoError(t, os.WriteFile(
+			filepath.Join(root, dir, family, "__index.yaml"), []byte("schemas: {}\n"), 0o600))
+	}
+	// The parent's only file, and it must stay skipped.
+	require.NoError(t, os.WriteFile(
+		filepath.Join(root, dir, "__index.yaml"), []byte("x: 1\n"), 0o600))
+
+	git := func(args ...string) {
+		t.Helper()
+
+		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", root}, args...)...)
+		out, err := cmd.CombinedOutput()
+		require.NoError(t, err, "git %v: %s", args, out)
+	}
+
+	git("init", "-q")
+	git("config", "user.email", "t@t")
+	git("config", "user.name", "t")
+	git("add", "-A")
+	git("commit", "-qm", "committed")
+
+	return root, dir
+}
+
+func TestWorktreeSourceFindsSchemasInSubdirectories(t *testing.T) {
+	t.Parallel()
+
+	root, dir := newNestedRepo(t)
+
+	src, err := gogen.NewSource(t.Context(), root, gogen.WorktreeRef)
+	require.NoError(t, err)
+
+	got, err := src.List(t.Context(), dir)
+	require.NoError(t, err)
+
+	// Listing the parent must reach both families. This returned nil: the
+	// reader skipped directories, so --ref worktree generated nothing for any
+	// nested family and reported "no tabled schemas", which reads as an empty
+	// tree rather than a blind reader.
+	assert.Equal(t, []string{
+		"src/schemas/data/agile_artifacts/widget.yaml",
+		"src/schemas/data/reference_documents/widget.yaml",
+	}, got)
+}
+
+func TestWorktreeAndGitSourcesListIdentically(t *testing.T) {
+	t.Parallel()
+
+	root, dir := newNestedRepo(t)
+
+	fsSrc, err := gogen.NewSource(t.Context(), root, gogen.WorktreeRef)
+	require.NoError(t, err)
+	gitSrc, err := gogen.NewSource(t.Context(), root, "HEAD")
+	require.NoError(t, err)
+
+	fsList, err := fsSrc.List(t.Context(), dir)
+	require.NoError(t, err)
+	gitList, err := gitSrc.List(t.Context(), dir)
+	require.NoError(t, err)
+
+	// The invariant, and the one that would have caught this: on a CLEAN tree
+	// the two sources answer the same question the same way. --ref worktree is
+	// only a preview of a commit if it sees what the commit would.
+	assert.Equal(t, gitList, fsList, "worktree and git sources disagree on a clean tree")
+}
+
+func TestWorktreeSourceStillSkipsIndexFilesAtEveryDepth(t *testing.T) {
+	t.Parallel()
+
+	root, dir := newNestedRepo(t)
+
+	src, err := gogen.NewSource(t.Context(), root, gogen.WorktreeRef)
+	require.NoError(t, err)
+
+	got, err := src.List(t.Context(), dir)
+	require.NoError(t, err)
+
+	for _, p := range got {
+		assert.NotContains(t, p, "__index.yaml",
+			"__index.yaml is a registry, not a schema — recursing must not start listing it")
+	}
+}
+
+func TestWorktreeSourceReadsBackEveryPathItListed(t *testing.T) {
+	t.Parallel()
+
+	root, dir := newNestedRepo(t)
+
+	src, err := gogen.NewSource(t.Context(), root, gogen.WorktreeRef)
+	require.NoError(t, err)
+
+	got, err := src.List(t.Context(), dir)
+	require.NoError(t, err)
+	require.NotEmpty(t, got)
+
+	// List returns repo-relative slash paths; Read joins them back onto Root.
+	// A recursive lister returning absolute or leaf-only names would list fine
+	// and then fail to read — so assert the round trip, not just the list.
+	for _, p := range got {
+		body, readErr := src.Read(t.Context(), p)
+		require.NoError(t, readErr, "listed but could not read: %s", p)
+		assert.Contains(t, string(body), "table_name: widgets")
+	}
+}
+
 func TestLoadFromFiltersByScopeAndReportsWhy(t *testing.T) {
 	t.Parallel()
 
