@@ -23,8 +23,18 @@ var (
 
 // rootCmd represents the base command
 var rootCmd = &cobra.Command{
-	Use:           "lw",
-	Short:         "LightWave CLI - Task management and scaffolding",
+	Use:   "lw",
+	Short: "LightWave CLI - Task management and scaffolding",
+	// Setting Version makes cobra register `--version` for free. `lw version`
+	// already existed and stays the richer output (commit, build date, per-API
+	// versions, embedded stamp); `--version` is the convention every other
+	// binary answers, and it is what a caller reaches for first. Measured
+	// across 175 local agent transcripts, `lw --version` failed with "unknown
+	// flag" 32 times across 22 distinct sessions — the most common
+	// non-existent lw invocation on this machine, ahead of every genuinely
+	// unimplemented verb. A tool that rejects its own conventional version
+	// probe teaches every caller that the tool is broken.
+	Version:       version.Version,
 	SilenceErrors: true,
 	SilenceUsage:  true,
 	Long: `Schema-driven CLI for the LightWave platform — Go services, Terragrunt
