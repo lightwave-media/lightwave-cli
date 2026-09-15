@@ -1,6 +1,7 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -127,40 +128,56 @@ func loadLocked() (*Config, error) {
 		return cfg, nil
 	}
 
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
+	// A FRESH instance per load, never the viper package global (#459).
+	//
+	// viper.AddConfigPath APPENDS to a package-global list and never replaces
+	// it, while Reset() clears only the cfg singleton — so every load after a
+	// Reset() permanently grew viper's search order. Once $HOME differed
+	// between two loads, the list held both homes and ReadInConfig took the
+	// FIRST match, which is the older directory. `Set()` writes the file and
+	// calls Reset() precisely so the next Get() re-reads it; that contract
+	// depends on the second load searching the same place as the first.
+	//
+	// It read as a test-only problem because $HOME does not change inside a
+	// normal `lw` invocation. It is not: an instance per load is what makes
+	// Reset() mean what its docstring says.
+	v := viper.New()
+
+	v.SetConfigName("config")
+	v.SetConfigType("yaml")
 
 	// Config locations
 	home, _ := os.UserHomeDir()
-	viper.AddConfigPath(filepath.Join(home, ".config", "lw"))
-	viper.AddConfigPath(filepath.Join(home, ".lw"))
-	viper.AddConfigPath(".")
+	v.AddConfigPath(filepath.Join(home, ".config", "lw"))
+	v.AddConfigPath(filepath.Join(home, ".lw"))
+	v.AddConfigPath(".")
 
 	// Set defaults
-	setDefaults()
+	setDefaults(v)
 
 	// Read config file (optional)
-	if err := viper.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
+	if err := v.ReadInConfig(); err != nil {
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
 			return nil, fmt.Errorf("error reading config: %w", err)
 		}
 		// Config file not found is OK, use defaults + env
 	}
 
 	// Environment variables override
-	viper.SetEnvPrefix("LW")
-	viper.AutomaticEnv()
+	v.SetEnvPrefix("LW")
+	v.AutomaticEnv()
 
 	// Map specific env vars
-	_ = viper.BindEnv("environment", "LW_ENV")
-	_ = viper.BindEnv("tenant", "LW_TENANT")
-	_ = viper.BindEnv("database.url", "LW_DB_URL")
-	_ = viper.BindEnv("database.host", "LW_DB_HOST")
-	_ = viper.BindEnv("database.port", "LW_DB_PORT")
-	_ = viper.BindEnv("database.name", "LW_DB_NAME")
-	_ = viper.BindEnv("database.user", "LW_DB_USER")
-	_ = viper.BindEnv("database.password", "LW_DB_PASSWORD")
-	_ = viper.BindEnv("api.agent_key", "LW_AGENT_KEY")
+	_ = v.BindEnv("environment", "LW_ENV")
+	_ = v.BindEnv("tenant", "LW_TENANT")
+	_ = v.BindEnv("database.url", "LW_DB_URL")
+	_ = v.BindEnv("database.host", "LW_DB_HOST")
+	_ = v.BindEnv("database.port", "LW_DB_PORT")
+	_ = v.BindEnv("database.name", "LW_DB_NAME")
+	_ = v.BindEnv("database.user", "LW_DB_USER")
+	_ = v.BindEnv("database.password", "LW_DB_PASSWORD")
+	_ = v.BindEnv("api.agent_key", "LW_AGENT_KEY")
 
 	// Built into a LOCAL and published only once it is complete and valid.
 	//
@@ -171,7 +188,7 @@ func loadLocked() (*Config, error) {
 	// the process, silently. The concurrent reader had it worse — it could see
 	// a non-nil cfg whose fields had not been unmarshalled yet.
 	loaded := &Config{}
-	if err := viper.Unmarshal(loaded); err != nil {
+	if err := v.Unmarshal(loaded); err != nil {
 		return nil, fmt.Errorf("error parsing config: %w", err)
 	}
 
@@ -206,12 +223,12 @@ func ApplyDBURL(c *Config, url string) error {
 	return nil
 }
 
-func setDefaults() {
+func setDefaults(v *viper.Viper) {
 	home, _ := os.UserHomeDir()
 
 	// Environment
-	viper.SetDefault("environment", "local")
-	viper.SetDefault("tenant", "lwm_core")
+	v.SetDefault("environment", "local")
+	v.SetDefault("tenant", "lwm_core")
 
 	// Database defaults — local Postgres 17 on the standard port (CORE-0049
 	// §5: one PG major across local, compose and RDS). The old 5433 default
@@ -219,35 +236,35 @@ func setDefaults() {
 	// there, which surfaced as "platform database unavailable" on every data
 	// verb. The compose stack maps 5432:5432; a nonstandard local port is
 	// opt-in via LW_DB_PORT.
-	viper.SetDefault("database.host", "localhost")
-	viper.SetDefault("database.port", defaultPostgresPort)
-	viper.SetDefault("database.name", "lightwave_platform")
-	viper.SetDefault("database.user", "postgres")
-	viper.SetDefault("database.password", "postgres")
+	v.SetDefault("database.host", "localhost")
+	v.SetDefault("database.port", defaultPostgresPort)
+	v.SetDefault("database.name", "lightwave_platform")
+	v.SetDefault("database.user", "postgres")
+	v.SetDefault("database.password", "postgres")
 
 	// API defaults
-	viper.SetDefault("api.local", "http://api.local.lightwave-media.ltd/api/createos")
-	viper.SetDefault("api.staging", "https://api.staging.lightwave-media.ltd/api/createos")
-	viper.SetDefault("api.production", "https://api.lightwave-media.ltd/api/createos")
+	v.SetDefault("api.local", "http://api.local.lightwave-media.ltd/api/createos")
+	v.SetDefault("api.staging", "https://api.staging.lightwave-media.ltd/api/createos")
+	v.SetDefault("api.production", "https://api.lightwave-media.ltd/api/createos")
 
 	// Orchestrator defaults — nullboiler (lightwave-ai src/nullboiler), which
 	// serves :8080. The previous :4000 default pointed at a retired Elixir
 	// Phoenix service and matched no null* port (nullclaw 3000, nulltickets
 	// 7700, nullboiler 8080, nullhub 19800), so `lw health` could never pass.
-	viper.SetDefault("orchestrator.url", "http://localhost:8080")
-	_ = viper.BindEnv("orchestrator.url", "LW_ORCHESTRATOR_URL")
+	v.SetDefault("orchestrator.url", "http://localhost:8080")
+	_ = v.BindEnv("orchestrator.url", "LW_ORCHESTRATOR_URL")
 
 	// Paths — LW_LIGHTWAVE_ROOT overrides default ~/dev (needed for sandboxed e2e + CI).
-	viper.SetDefault("paths.lightwave_root", filepath.Join(home, "dev"))
-	viper.SetDefault("paths.platform", filepath.Join(home, "dev", "lightwave-platform"))
-	_ = viper.BindEnv("paths.lightwave_root", "LW_LIGHTWAVE_ROOT", "LW_DEV_ROOT")
+	v.SetDefault("paths.lightwave_root", filepath.Join(home, "dev"))
+	v.SetDefault("paths.platform", filepath.Join(home, "dev", "lightwave-platform"))
+	_ = v.BindEnv("paths.lightwave_root", "LW_LIGHTWAVE_ROOT", "LW_DEV_ROOT")
 
 	// Deploy — the cluster that exists today (lightwave-infrastructure-live#72),
 	// not the `platform-<env>` name the Django-era stack used. See DeployConfig.
-	viper.SetDefault("deploy.cluster", "lightwave-platform")
+	v.SetDefault("deploy.cluster", "lightwave-platform")
 
-	_ = viper.BindEnv("deploy.cluster", "LW_DEPLOY_CLUSTER")
-	_ = viper.BindEnv("deploy.log_group", "LW_DEPLOY_LOG_GROUP")
+	_ = v.BindEnv("deploy.cluster", "LW_DEPLOY_CLUSTER")
+	_ = v.BindEnv("deploy.log_group", "LW_DEPLOY_LOG_GROUP")
 }
 
 // Get returns the loaded config, loading it if necessary.
