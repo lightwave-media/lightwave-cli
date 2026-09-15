@@ -19,6 +19,7 @@ const (
 	treeFlag   = "tree"
 	jsonFlag   = "json"
 	dryRunFlag = "dry-run"
+	yesFlag    = "yes"
 	coreTree   = "core"
 )
 
