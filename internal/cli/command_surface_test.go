@@ -54,8 +54,40 @@ var assembleOnce = sync.OnceValue(func() error {
 		return err
 	}
 
-	return AssembleSurface(rootCmd)
+	if err := AssembleSurface(rootCmd); err != nil {
+		return err
+	}
+
+	// cobra attaches `help` and `completion` lazily during Execute, not during
+	// AssembleSurface, so a surface that only assembled would be missing two
+	// commands a release binary lists. They belong here rather than in the one
+	// test that needs them: initialising them from a test body writes to the
+	// shared root after other tests have started reading it, which is the race
+	// this once-gate exists to prevent.
+	rootCmd.InitDefaultHelpCmd()
+	rootCmd.InitDefaultCompletionCmd()
+
+	settle(rootCmd)
+
+	return nil
 })
+
+// settle forces cobra's lazy child sort on every node of the assembled tree.
+//
+// (*Command).Commands() is not the read it looks like. On first call per node
+// it sorts c.commands in place and sets c.commandsAreSorted — so the innocent
+// traversal in findChild is a WRITER, and two parallel tests that both only
+// "read" the shared root race each other on cobra's own flag. `go test -race`
+// reported it as reader-vs-reader, naming two different test files and neither
+// of the real writers, which is why it read as unattributable flake.
+//
+// Doing it once here, under the OnceValue's happens-before edge, is what makes
+// every later Commands() call a genuine read.
+func settle(c *cobra.Command) {
+	for _, child := range c.Commands() {
+		settle(child)
+	}
+}
 
 // shippedSurface returns the assembled root — what `lw --help` actually prints.
 //
