@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/spf13/viper"
@@ -90,10 +91,38 @@ type PathsConfig struct {
 // and the compose stack (5432:5432) both serve it (CORE-0049 §5).
 const defaultPostgresPort = 5432
 
-var cfg *Config
+// cfg is the process-wide config singleton, and mu is the only thing that may
+// read or write it.
+//
+// #400: there was no synchronisation here at all. Two goroutines whose FIRST
+// Get() landed together both saw nil, both ran Load(), and both wrote this
+// global plus viper's own package state — 83 race reports from a single
+// `go test -race -run TestMCP ./internal/cli/`. It hid because the race needs
+// two concurrent first calls, and in a full package run something almost always
+// loads config single-threaded first, after which cfg is non-nil forever. Test
+// ordering was the only thing between this and a red suite.
+//
+// Latent rather than live while the CLI is single-goroutine at startup, but
+// `lw mcp serve` is a long-running server surface, which is exactly the shape
+// that turns an init race into a real one.
+//
+// A mutex rather than sync.Once, because Reset() must be able to clear the
+// singleton and have the next call rebuild it; a Once cannot be re-armed.
+var (
+	mu  sync.Mutex
+	cfg *Config
+)
 
-// Load reads configuration from file and environment
+// Load reads configuration from file and environment.
 func Load() (*Config, error) {
+	mu.Lock()
+	defer mu.Unlock()
+
+	return loadLocked()
+}
+
+// loadLocked does the work. Callers must hold mu.
+func loadLocked() (*Config, error) {
 	if cfg != nil {
 		return cfg, nil
 	}
@@ -133,20 +162,33 @@ func Load() (*Config, error) {
 	_ = viper.BindEnv("database.password", "LW_DB_PASSWORD")
 	_ = viper.BindEnv("api.agent_key", "LW_AGENT_KEY")
 
-	cfg = &Config{}
-	if err := viper.Unmarshal(cfg); err != nil {
+	// Built into a LOCAL and published only once it is complete and valid.
+	//
+	// This used to assign `cfg = &Config{}` and then unmarshal and validate
+	// into it, so a failed load left the half-built value cached: the next
+	// Load() short-circuited on `cfg != nil` and returned it with a nil error.
+	// A config that failed validation was then served as valid for the life of
+	// the process, silently. The concurrent reader had it worse — it could see
+	// a non-nil cfg whose fields had not been unmarshalled yet.
+	loaded := &Config{}
+	if err := viper.Unmarshal(loaded); err != nil {
 		return nil, fmt.Errorf("error parsing config: %w", err)
 	}
 
-	if err := cfg.Database.Validate(); err != nil {
+	if err := loaded.Database.Validate(); err != nil {
 		return nil, err
 	}
+
+	cfg = loaded
 
 	return cfg, nil
 }
 
 // Reset clears the cached config. Test-only helper.
 func Reset() {
+	mu.Lock()
+	defer mu.Unlock()
+
 	cfg = nil
 }
 
@@ -208,12 +250,19 @@ func setDefaults() {
 	_ = viper.BindEnv("deploy.log_group", "LW_DEPLOY_LOG_GROUP")
 }
 
-// Get returns the loaded config (loads if not already loaded)
+// Get returns the loaded config, loading it if necessary.
+//
+// The error is deliberately still swallowed — 40 call sites rely on the
+// no-error shape and nil-checking `Get()` is the established contract. What
+// changed is that a failed load no longer leaves a half-built config behind for
+// the next caller to trust (see loadLocked).
 func Get() *Config {
-	if cfg == nil {
-		cfg, _ = Load()
-	}
-	return cfg
+	mu.Lock()
+	defer mu.Unlock()
+
+	c, _ := loadLocked()
+
+	return c
 }
 
 // GetAPIURL returns the API URL for the current environment
