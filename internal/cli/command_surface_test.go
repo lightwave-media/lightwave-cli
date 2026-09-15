@@ -32,7 +32,24 @@ func findChild(parent *cobra.Command, name string) *cobra.Command {
 // irrelevant, which matters under `go test -shuffle=on`: an earlier draft had
 // one test assemble while another read a pristine rootCmd, and the suite failed
 // about 40% of runs depending on which went first.
+// The surface is assembled with LW_CLI_DEV_DOMAINS cleared, because "shipped"
+// has to mean what a release binary shows a user — and a release binary never
+// carries that variable. The operator harness exports it on this machine, so
+// leaving it set makes local and cloud structurally disagree about the shipped
+// surface for every in_development domain: `adr` is hidden in CI and visible
+// here, so the README gate fails in one direction locally and the other
+// direction in CI, on the same commit.
+//
+// This is the same conflation ComputeSchemaDrift was carrying — an
+// in_development command is stamped, but it is NOT shipped, and a check that
+// wants one of those two facts must not read the other.
 var assembleOnce = sync.OnceValue(func() error {
+	// Process-global, but assembly happens exactly once and every consumer of
+	// this surface wants the published view.
+	if err := os.Unsetenv("LW_CLI_DEV_DOMAINS"); err != nil {
+		return err
+	}
+
 	if _, err := config.Load(); err != nil {
 		return err
 	}
