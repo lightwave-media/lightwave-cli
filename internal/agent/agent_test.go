@@ -149,6 +149,9 @@ func TestLoadPersonaPrompt_OverrideDir(t *testing.T) {
 func TestLoadPersonaPrompt_NotFound(t *testing.T) {
 	t.Setenv("LW_PERSONA_DIR", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
+	// $BRAIN participates in resolution now; pin it empty so the real
+	// ~/.lightwave never leaks into the search.
+	t.Setenv("BRAIN", "")
 
 	_, _, err := LoadPersonaPrompt("nonexistent")
 	if err == nil {

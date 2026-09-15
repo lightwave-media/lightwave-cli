@@ -18,6 +18,8 @@ import (
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"github.com/lightwave-media/lightwave-cli/internal/agent"
 )
 
 const councilStatusRunning = "running"
@@ -849,16 +851,18 @@ var councilCancelCmd = &cobra.Command{
 var councilConfigCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Print the council configuration",
-	Long: `Read and display the council configuration from ~/.brain/cortex/engineering/council.yaml.
+	Long: `Read and display the council configuration from
+~/.lightwave/config/skills/council_consult.yaml — EB-007's destination for
+the former ~/.brain/cortex/engineering/council.yaml.
 
 Requires LW_PERSONA=v_core, council, or orchestrator.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		home, err := os.UserHomeDir()
+		root, err := agent.LightwaveHome()
 		if err != nil {
-			return fmt.Errorf("cannot determine home directory: %w", err)
+			return fmt.Errorf("cannot determine lightwave home: %w", err)
 		}
 
-		configPath := filepath.Join(home, ".brain", "cortex", "engineering", "council.yaml")
+		configPath := filepath.Join(root, "config", "skills", "council_consult.yaml")
 		data, err := os.ReadFile(configPath)
 		if err != nil {
 			if os.IsNotExist(err) {
