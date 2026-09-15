@@ -76,13 +76,7 @@ func configLightwaveRoot() string {
 }
 
 func homePrintRoot() string {
-	if p := os.Getenv("LW_HOME_PRINT"); p != "" {
-		return p
-	}
-
-	home, _ := os.UserHomeDir()
-
-	return filepath.Join(home, ".lightwave")
+	return config.PrintRoot()
 }
 
 // SyncBaseline copies policy stamp files from lightwave-home into ~/.lightwave

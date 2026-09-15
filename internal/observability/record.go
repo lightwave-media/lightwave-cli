@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/lightwave-media/lightwave-cli/internal/config"
 )
 
 const (
@@ -166,13 +168,7 @@ func observabilityDir() string {
 }
 
 func homeLightwave() string {
-	if p := os.Getenv("LW_HOME_PRINT"); p != "" {
-		return p
-	}
-
-	home, _ := os.UserHomeDir()
-
-	return filepath.Join(home, ".lightwave")
+	return config.PrintRoot()
 }
 
 func cureForVerb(verb string) string {
