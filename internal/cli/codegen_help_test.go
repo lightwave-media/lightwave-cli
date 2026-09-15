@@ -117,3 +117,38 @@ func TestCodegenHelpDoesNotRestateTheGeneratorList(t *testing.T) {
 	assert.Contains(t, long, "Available Commands",
 		"help should point at the list cobra derives rather than keeping its own")
 }
+
+// TestDecommissionedGeneratorRefusesToRun is the other half of the guard above.
+//
+// The help fix rests on `journeys` being genuinely unavailable rather than
+// merely undocumented. If a decommissioned command silently succeeded, removing
+// it from the help would be hiding a working verb rather than retiring a dead
+// one — and the reader would be worse off than before.
+//
+// So assert the refusal directly: hidden from the surface AND erroring on
+// invocation, naming itself and its reason.
+func TestDecommissionedGeneratorRefusesToRun(t *testing.T) {
+	t.Parallel()
+
+	root := shippedSurface(t)
+
+	codegen := findChild(root, "codegen")
+	require.NotNil(t, codegen, "codegen is not on the shipped surface")
+
+	journeys := findChild(codegen, "journeys")
+	require.NotNil(t, journeys,
+		"journeys should still be attached — decommissioning hides and disables, it does not detach")
+
+	assert.False(t, journeys.IsAvailableCommand(),
+		"a decommissioned command must not appear under Available Commands")
+
+	require.NotNil(t, journeys.RunE, "a decommissioned command needs a RunE that refuses")
+
+	err := journeys.RunE(journeys, nil)
+	require.Error(t, err,
+		"`lw codegen journeys` is decommissioned and must refuse, not silently succeed")
+	assert.Contains(t, err.Error(), "decommissioned",
+		"the refusal should say why, not just fail")
+	assert.Contains(t, err.Error(), "codegen journeys",
+		"the refusal should name the command the user typed")
+}
