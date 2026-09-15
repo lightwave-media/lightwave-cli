@@ -22,19 +22,31 @@ var (
 var codegenCmd = &cobra.Command{
 	Use:   "codegen",
 	Short: "Generate code from lightwave-core YAML schemas",
-	Long: `Generate code artifacts from lightwave-core YAML schemas using boilerplate templates.
+	// Deliberately does NOT restate the generator list. Cobra prints the real
+	// one under "Available Commands", derived from the assembled tree, so a
+	// second copy here can only ever drift away from it — and had:
+	//
+	//   journeys  decommissioned (command_status.go) — refuses to run
+	//   models    "Django models (planned)" — Django retired by #318 / ADR-0009
+	//   api       "Ninja API endpoints (planned)" — same retired stack
+	//   types     marked "(planned)" while it ships
+	//   go        shipped, and absent from the list entirely
+	//
+	// Four of four named generators were wrong, every example invoked the one
+	// command that refuses to run, and the only two that work went unmentioned.
+	// Same class as #426 (a verb that does not exist reporting success) and
+	// #442 (help naming a blueprint path the code never builds): help that
+	// restates the surface instead of deriving it.
+	Long: `Generate code from the lightwave-core schema stamp.
 
-Supported generators:
-  journeys    Generate Playwright E2E tests from journey YAML specs
-  models      Generate Django models from data model YAML specs (planned)
-  api         Generate Ninja API endpoints from route YAML specs (planned)
-  types       Generate TypeScript types from schema YAML specs (planned)
+Each generator reads a schema family and emits source. Run a generator with
+--dry-run first to see what it would write.
+
+See "Available Commands" below for the generators this build ships.
 
 Examples:
-  lw codegen journeys                    # Generate all journey tests
-  lw codegen journeys auth               # Generate auth journey tests
-  lw codegen journeys auth/login         # Generate single journey test
-  lw codegen journeys --dry-run          # Preview without writing files`,
+  lw codegen go --help                   # what the Go generator needs
+  lw codegen types --dry-run             # preview the Zod emit`,
 }
 
 var codegenJourneysCmd = &cobra.Command{
