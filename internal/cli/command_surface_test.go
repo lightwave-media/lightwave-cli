@@ -54,7 +54,26 @@ var assembleOnce = sync.OnceValue(func() error {
 		return err
 	}
 
-	return AssembleSurface(rootCmd)
+	if err := AssembleSurface(rootCmd); err != nil {
+		return err
+	}
+
+	// `help` and `completion` are attached lazily by cobra during Execute, not
+	// by AssembleSurface — so a reader that wants the shipped tree has to
+	// trigger them. Doing that in a HELPER made every caller a writer of the
+	// process-global rootCmd, and `-race -shuffle=on` caught it: a parallel
+	// test calling IsAvailableCommand raced the InitDefault* writes about one
+	// run in seven, reported against whichever four tests happened to be in
+	// flight rather than against either real participant.
+	//
+	// This is the same defect the comment above describes being fixed once
+	// already, surviving in the one mutation that stayed outside the Once.
+	// Initialising here makes assembly the only writer and every test a pure
+	// reader, which is what made the ordering irrelevant the first time.
+	rootCmd.InitDefaultHelpCmd()
+	rootCmd.InitDefaultCompletionCmd()
+
+	return nil
 })
 
 // shippedSurface returns the assembled root — what `lw --help` actually prints.

@@ -3,6 +3,7 @@ package gogen
 import (
 	"context"
 	"fmt"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path"
@@ -49,22 +50,43 @@ const shortSHALen = 12
 // not committed yet; wrong as a default, per the type doc above.
 type FSSource struct{ Root string }
 
+// List walks the tree, because GitSource does. The two must answer the same
+// question the same way or `--ref worktree` is not a preview of anything.
+//
+// This read one directory deep and skipped subdirectories entirely. The stamp
+// is nested — src/schemas/data holds one file (__index.yaml, which is skipped
+// by design) and eleven directories — so listing the canonical `data` family
+// returned zero schemas, every time, for every family. `--ref worktree` is the
+// whole live-iteration path: edit a schema, generate, look. It could not work,
+// and it failed as "no tabled schemas in src/schemas/data at working tree
+// (0 skipped)", which reads like an empty tree rather than a blind reader.
 func (s FSSource) List(_ context.Context, dir string) ([]string, error) {
 	full := filepath.Join(s.Root, dir)
 
-	entries, err := os.ReadDir(full)
-	if err != nil {
-		return nil, err
-	}
-
 	var out []string
 
-	for _, e := range entries {
-		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") || e.Name() == "__index.yaml" {
-			continue
+	err := filepath.WalkDir(full, func(p string, e fs.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
 
-		out = append(out, path.Join(dir, e.Name()))
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".yaml") || e.Name() == "__index.yaml" {
+			return nil
+		}
+
+		rel, relErr := filepath.Rel(s.Root, p)
+		if relErr != nil {
+			return relErr
+		}
+
+		// Repo-relative and slash-separated, matching `git ls-tree` output —
+		// Read() joins these back onto Root, and so does the git source.
+		out = append(out, filepath.ToSlash(rel))
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	sort.Strings(out)

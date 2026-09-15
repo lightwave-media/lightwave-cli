@@ -129,9 +129,9 @@ func TestParseReadmeClaims(t *testing.T) {
 func shippedCommandNames(t *testing.T) []string {
 	t.Helper()
 
+	// assembleOnce does the InitDefault* calls now; doing them here made this
+	// helper a writer of the shared root and raced every parallel reader.
 	root := shippedSurface(t)
-	root.InitDefaultHelpCmd()
-	root.InitDefaultCompletionCmd()
 
 	var names []string
 
