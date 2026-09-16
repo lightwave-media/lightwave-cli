@@ -57,6 +57,21 @@ func TestRescueReturnsNilOnACleanWorktree(t *testing.T) {
 	assert.Nil(t, rescue, "a clean worktree has nothing to rescue, and must not leave a ref behind")
 }
 
+func TestRescueErrorsWhenThePathIsNotAWorktree(t *testing.T) {
+	t.Parallel()
+
+	repo, _ := newRescueRepo(t)
+
+	// The failure that matters most, and the one silence would hide. A rescue
+	// that returns (nil, nil) for a path it could not read is indistinguishable
+	// from "nothing to rescue" — and removeWorktreeSafely proceeds to force the
+	// removal on exactly that answer. It has to be an ERROR so the caller can
+	// refuse instead.
+	_, err := git.NewGit(repo).RescueUncommitted(filepath.Join(t.TempDir(), "not-a-worktree"), "test")
+	require.Error(t, err, "an unreadable worktree must fail loudly, not report nothing to rescue")
+	assert.Contains(t, err.Error(), "status", "the error should name the step that failed")
+}
+
 func TestRescueCapturesModifiedTrackedFiles(t *testing.T) {
 	t.Parallel()
 

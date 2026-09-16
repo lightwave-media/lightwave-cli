@@ -46,6 +46,20 @@ func TestClaimIsVisibleToHolder(t *testing.T) {
 }
 
 //nolint:paralleltest // isolateHome uses t.Setenv, which Go forbids alongside t.Parallel
+func TestClaimErrorsWhenTheLockDirectoryCannotBeCreated(t *testing.T) {
+	// A claim that fails silently is worse than no claim: the caller believes
+	// the worktree is protected while nothing records it, which is precisely
+	// the state that let a sweep delete live work. `lw worktree create` only
+	// warns on this error, but it can only warn if it gets one.
+	blocked := filepath.Join(t.TempDir(), "not-a-dir")
+	require.NoError(t, os.WriteFile(blocked, []byte("i am a file"), 0o600))
+	t.Setenv("LW_HOME_PRINT", blocked) // MkdirAll under a regular file must fail
+
+	err := worktreelock.Claim(filepath.Join(t.TempDir(), "wt"), "session-abc", "main")
+	require.Error(t, err, "an unwritable lock directory must surface, not pass silently")
+}
+
+//nolint:paralleltest // isolateHome uses t.Setenv, which Go forbids alongside t.Parallel
 func TestReleaseClearsTheClaim(t *testing.T) {
 	isolateHome(t)
 
