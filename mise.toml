@@ -53,14 +53,6 @@ run = "go build ./cmd/lw"
 # installer, reachable from every repo, already depended on by lw:sync:home and
 # release:gate. `patch` below is the sandboxed variant for iterating on THIS
 # worktree without touching what other sessions run. Do not add a third.
-[tasks.patch]
-description = "Build THIS worktree into a throwaway sandbox — no global install, no other session affected"
-run = "dev/patch_loop.sh"
-
-[tasks."patch:promote"]
-description = "Install the sandboxed build over ~/.local/bin/lw (explicit; changes what every session runs)"
-run = "dev/patch_loop.sh --promote"
-
 [tasks.codespell]
 description = "Spell-check (matches the CI Codespell job; reads .codespellrc)"
 # CI runs this as a SEPARATE GitHub job (.github/workflows/codespell.yml), not
