@@ -23,8 +23,14 @@ const (
 )
 
 // SwarmRepos is the estate rollout set (mirrors bootstrap-github-org.sh).
-// null*/ micro-services use their own lightweight project boards; the main
-// Lightwave Swarm board only tracks repos with full issue workflow.
+// The main Lightwave Swarm board only tracks repos with full issue workflow.
+//
+// Verified against `gh repo list lightwave-media` on 2026-09-16. `homebrew-tap`
+// was on this list and the repo was deleted, so every sync run would ask the
+// API for a repo that 404s. The null* entries the old comment referred to had
+// already gone the same way — folded into lightwave-ai/src/ and then deleted
+// outright — which is why membership here is now pinned by a test rather than
+// by a comment claiming it mirrors a shell script nothing checks.
 var SwarmRepos = []string{
 	"lightwave-core",
 	"lightwave-cli",
@@ -34,9 +40,11 @@ var SwarmRepos = []string{
 	"lightwave-ai",
 	"lightwave-infrastructure-catalog",
 	"lightwave-infrastructure-live",
+	"lightwave-media-site",
+	"lightwave-plugin",
+	"pipelines-workflows",
 	"createOS",
 	"joelschaeffer-site",
-	"homebrew-tap",
 }
 
 // Options controls bootstrap and scrum sync.
