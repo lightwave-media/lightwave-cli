@@ -76,6 +76,16 @@ mise run lw:sync
 
 The task lives in the fleet-level `~/dev/mise.toml`, not in this repo, so it runs from any checkout under `~/dev` — and `lw:sync:home` and `release:gate` already depend on it. Do not add a second installer here; extend that one.
 
+**Three commands, three scopes — pick by blast radius:**
+
+| Command | Builds from | Affects |
+|---|---|---|
+| `mise run patch` | this worktree | a throwaway sandbox — nobody else (#472) |
+| `mise run patch:promote` | this worktree | `~/.local/bin/lw` — every session on this machine |
+| `mise run lw:sync` | `~/dev/lightwave-cli` | `~/.local/bin/lw` — every session on this machine |
+
+While iterating in a worktree use `patch`: other sessions keep running the `lw` they expect. `lw:sync` is the "install current main" command, and is what to run after merging.
+
 That chain used to be mandatory here, and it was the wrong shape for this tool. `lw` is the command spine of the local shell — the binary and the source sit on the same disk. Routing a three-second build through a release pipeline and a package manager was ceremony that made local iteration cost a tagged release. The release train still exists, but it serves *other* machines, not this one.
 
 **Why `~/.local/bin` specifically.** It precedes `/opt/homebrew/bin` on PATH. That is the whole trick: the build you just made is the `lw` your shell and every project hook resolve, with nothing to uninstall or fight. The task asserts this after installing and warns if anything still shadows it.
