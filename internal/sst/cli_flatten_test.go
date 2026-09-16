@@ -18,7 +18,7 @@ func TestFlattenCommandKeys_Nested(t *testing.T) {
 		{Name: "speak", Description: "speak"},
 	}
 
-	keys := flattenCommandKeys("voice", "", cmds)
+	keys := flattenCommandKeys("voice", "", cmds, false)
 	want := []string{"voice.profile.list", "voice.profile.validate", "voice.speak"}
 	if len(keys) != len(want) {
 		t.Fatalf("got %d keys, want %d: %v", len(keys), len(want), keys)
