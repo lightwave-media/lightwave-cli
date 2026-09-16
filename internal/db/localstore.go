@@ -59,7 +59,7 @@ func OpenLocalStore() (*sql.DB, error) {
 	}
 
 	if _, statErr := os.Stat(path); statErr != nil {
-		return nil, fmt.Errorf("local-first store not found at %s: %w", path, statErr)
+		return nil, missingStoreError(path)
 	}
 
 	handle, err := sql.Open("sqlite", path)
@@ -68,6 +68,41 @@ func OpenLocalStore() (*sql.DB, error) {
 	}
 
 	return handle, nil
+}
+
+// missingStoreError explains a missing store rather than forwarding a bare stat
+// failure.
+//
+// #463: the store was renamed to `lightwave.db.retired-<date>` and every agile
+// read verb began failing with
+//
+//	local-first store not found at …/lightwave.db: stat …: no such file or directory
+//
+// which states the problem twice and none of what the reader needs next. Three
+// things were knowable at the point of failure and none were offered: that
+// LW_LOCAL_STORE redirects the lookup, that a retired copy was sitting in the
+// same directory, and that createOS reads this same path — so whether to
+// restore it is not lw's decision alone (localstore.go's own header records
+// that contract, and createOS reads the path from both Rust and TypeScript).
+//
+// The retired-sibling scan is deliberately narrow: the exact `.retired-*`
+// suffix, in the same directory, nothing else. A broad guess at where a store
+// "might" be is how a wrong path becomes a confident answer — the failure mode
+// this package has already shipped twice.
+func missingStoreError(path string) error {
+	msg := "local-first store not found at " + path
+
+	// Glob's only error is a malformed pattern, and the pattern is a literal
+	// suffix on a path we were just given. No match and a bad pattern both mean
+	// "nothing to offer", which is the same branch.
+	if retired, _ := filepath.Glob(path + ".retired-*"); len(retired) > 0 {
+		return fmt.Errorf("%s\n  a retired copy is beside it: %s\n"+
+			"  read it with: %s=%s\n"+
+			"  createOS reads this same path, so restoring it is not lw's call alone",
+			msg, filepath.Base(retired[0]), localStoreEnv, retired[0])
+	}
+
+	return fmt.Errorf("%s\n  point %s at a store to use a different one", msg, localStoreEnv)
 }
 
 // listLocal runs one query against the local-first store and scans every row.
