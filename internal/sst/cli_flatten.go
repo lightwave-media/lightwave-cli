@@ -4,16 +4,27 @@ package sst
 import "fmt"
 
 // flattenCommandKeys walks nested command groups and yields leaf handler keys.
-func flattenCommandKeys(domain string, prefix string, cmds []CLICommand) []string {
+// flattenCommandKeys walks a command tree into dotted leaf keys.
+//
+// skipInDev drops commands marked `_status: in_development`, and a marked
+// group drops its whole subtree — a verb under an unbuilt group is not
+// reachable either, so counting it as published would report a missing handler
+// for something nothing can call.
+func flattenCommandKeys(domain string, prefix string, cmds []CLICommand, skipInDev bool) []string {
 	out := make([]string, 0, len(cmds))
-	for _, cmd := range cmds {
+	for i := range cmds {
+		cmd := &cmds[i]
+		if skipInDev && cmd.InDevelopment() {
+			continue
+		}
+
 		name := cmd.Name
 		if prefix != "" {
 			name = prefix + "." + cmd.Name
 		}
 
 		if len(cmd.Commands) > 0 {
-			out = append(out, flattenCommandKeys(domain, name, cmd.Commands)...)
+			out = append(out, flattenCommandKeys(domain, name, cmd.Commands, skipInDev)...)
 			continue
 		}
 

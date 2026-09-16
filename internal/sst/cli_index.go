@@ -21,16 +21,21 @@ func (c *CLIConfig) Index() map[string]CLICommand {
 }
 
 // Keys returns the deterministic ordered list of leaf "<domain>.<command>" keys.
+//
+// Every stamped key, in_development included — an in_development command IS
+// stamped, it is simply not shipped. That distinction is what the drift gate's
+// three directions each need a different answer to.
 func (c *CLIConfig) Keys() []string {
 	out := make([]string, 0, len(c.Domains)*8)
 	for _, d := range c.Domains {
-		out = append(out, flattenCommandKeys(d.Name, "", d.Commands)...)
+		out = append(out, flattenCommandKeys(d.Name, "", d.Commands, false)...)
 	}
 
 	return out
 }
 
-// KeysPublished returns leaf keys for domains that are NOT in_development.
+// KeysPublished returns leaf keys a release binary actually exposes: neither
+// the domain nor the command may be in_development.
 func (c *CLIConfig) KeysPublished() []string {
 	out := make([]string, 0, len(c.Domains))
 
@@ -39,7 +44,7 @@ func (c *CLIConfig) KeysPublished() []string {
 			continue
 		}
 
-		out = append(out, flattenCommandKeys(d.Name, "", d.Commands)...)
+		out = append(out, flattenCommandKeys(d.Name, "", d.Commands, true)...)
 	}
 
 	return out

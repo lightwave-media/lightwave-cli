@@ -154,6 +154,14 @@ func buildSubcommand(cmd sst.CLICommand, key string, handler Handler) *cobra.Com
 // attachDomainCommand registers a command or nested group on parent. Returns
 // the number of leaf handlers attached.
 func attachDomainCommand(parent *cobra.Command, domain, prefix string, cmd *sst.CLICommand) int {
+	// Same rule as the domain-level check above, for one verb. Until its
+	// handler exists the LookupHandler miss below already hides it; this is
+	// what keeps it hidden AFTER the handler lands, so `_status` means the same
+	// thing at both levels and a release binary never lists an unproven verb.
+	if cmd.InDevelopment() && !DevDomainsEnabled() {
+		return 0
+	}
+
 	fullName := cmd.Name
 	if prefix != "" {
 		fullName = prefix + "." + cmd.Name
