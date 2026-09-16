@@ -2,68 +2,111 @@ package githuborg_test
 
 import (
 	"os"
-	"regexp"
+	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/lightwave-media/lightwave-cli/internal/githuborg"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gopkg.in/yaml.v3"
+
+	"github.com/lightwave-media/lightwave-cli/internal/githuborg"
 )
 
-// archivedNullStandalones are the six null* repos folded into
-// lightwave-ai/src/<module>/ and archived read-only (lightwave-ai#44). Archived
-// repos reject label and milestone writes, so bootstrapping them fails noisily.
-var archivedNullStandalones = []string{
-	"nullclaw", "nullhub", "nullbuilder", "nulltickets", "nullwatch", "nullboiler",
+// branchProtection is the slice of the governance stamp this test reads.
+type branchProtection struct {
+	Example struct {
+		Excluded []struct {
+			Repo   string `yaml:"repo"`
+			Reason string `yaml:"reason"`
+		} `yaml:"excluded"`
+	} `yaml:"example"`
 }
 
-// swarmReposInScript extracts the SWARM_REPOS bash array from the bootstrap
-// script so the test reads the same list the script actually rolls out over.
-func swarmReposInScript(t *testing.T) []string {
+// excludedRepos reads the stamped governance list of repos deliberately outside
+// CI protection.
+//
+// Entries spell several repos on one line ("nullboiler, nullbuilder, …"), so
+// each value is split rather than compared whole.
+func excludedRepos(t *testing.T) map[string]string {
 	t.Helper()
 
-	const scriptPath = "../../scripts/bootstrap-github-org.sh"
-	raw, err := os.ReadFile(scriptPath)
-	require.NoError(t, err, "read %s", scriptPath)
+	path := filepath.Join(
+		"..", "corestamp", "schemas", "policy", "governance", "branch_protection.yaml")
 
-	block := regexp.MustCompile(`(?s)\nSWARM_REPOS=\((.*?)\n\)`).FindSubmatch(raw)
-	require.Len(t, block, 2, "SWARM_REPOS=( ... ) array not found in %s", scriptPath)
+	data, err := os.ReadFile(path)
+	require.NoError(t, err, "the embedded stamp snapshot is part of this module")
 
-	var repos []string
-	for line := range strings.SplitSeq(string(block[1]), "\n") {
-		if name := strings.TrimSpace(line); name != "" && !strings.HasPrefix(name, "#") {
-			repos = append(repos, name)
+	var doc branchProtection
+	require.NoError(t, yaml.Unmarshal(data, &doc))
+	require.NotEmpty(t, doc.Example.Excluded,
+		"parsed no excluded repos — the stamp shape moved and this test would "+
+			"silently pass against nothing")
+
+	out := map[string]string{}
+
+	for _, entry := range doc.Example.Excluded {
+		for _, name := range strings.Split(entry.Repo, ",") {
+			if name = strings.TrimSpace(name); name != "" {
+				out[name] = entry.Reason
+			}
 		}
 	}
 
-	return repos
+	return out
 }
 
-// TestBootstrapScriptExcludesArchivedNullRepos pins lightwave-cli#294: the
-// script enumerated all six archived null* standalones long after they were
-// folded into lightwave-ai, so every bootstrap run tried to write labels and
-// milestones to read-only repos.
-func TestBootstrapScriptExcludesArchivedNullRepos(t *testing.T) {
+// TestSwarmReposAreNotExcludedFromGovernance is the contradiction that let a
+// deleted repo sit in this list.
+//
+// `homebrew-tap` was a SwarmRepo AND carried a branch_protection exclusion
+// reading "GoReleaser pushes the formula directly; a PR requirement would break
+// the release train" — i.e. the stamp already said this was not a repo with the
+// full issue workflow the board is for. It stayed until the repo was deleted
+// and sync started asking the API for a 404.
+//
+// A repo cannot be both on the swarm board and outside CI governance. Checking
+// that against the stamp is better than a second hand-maintained list, which is
+// what the old "mirrors bootstrap-github-org.sh" comment amounted to.
+func TestSwarmReposAreNotExcludedFromGovernance(t *testing.T) {
 	t.Parallel()
 
-	repos := swarmReposInScript(t)
+	excluded := excludedRepos(t)
 
-	for _, archived := range archivedNullStandalones {
-		assert.NotContains(t, repos, archived,
-			"%s is archived read-only (folded into lightwave-ai/src/%s) — "+
-				"bootstrapping it fails; its issues live on lightwave-ai under package:%s",
-			archived, archived, archived)
+	for _, repo := range githuborg.SwarmRepos {
+		reason, isExcluded := excluded[repo]
+		assert.False(t, isExcluded,
+			"%s is on the swarm board and excluded from branch protection (%q) — "+
+				"pick one", repo, reason)
 	}
 }
 
-// TestBootstrapScriptMatchesSwarmRepos pins the script and the Go constant to
-// the same estate. They drifted apart once already (#294) because nothing
-// compared them; this fails on the next divergence in either direction.
-func TestBootstrapScriptMatchesSwarmRepos(t *testing.T) {
+// TestSwarmReposHasNoDuplicates — the board is iterated per repo, so a
+// duplicate doubles the API calls and the reported counts.
+func TestSwarmReposHasNoDuplicates(t *testing.T) {
 	t.Parallel()
 
-	assert.ElementsMatch(t, githuborg.SwarmRepos, swarmReposInScript(t),
-		"scripts/bootstrap-github-org.sh SWARM_REPOS and githuborg.SwarmRepos must "+
-			"describe the same estate — the script comment says it mirrors the constant")
+	seen := map[string]bool{}
+
+	for _, repo := range githuborg.SwarmRepos {
+		assert.False(t, seen[repo], "%s appears twice", repo)
+		seen[repo] = true
+	}
+
+	assert.NotEmpty(t, githuborg.SwarmRepos, "an empty rollout set syncs nothing, quietly")
+}
+
+// TestGovernanceExclusionsAreReadable guards the reader itself.
+//
+// The check above is only as good as the parse: if the stamp's shape changed
+// and `excluded` came back empty, every SwarmRepo would pass for the wrong
+// reason. The require.NotEmpty in excludedRepos covers that, and this pins the
+// one entry the parse must be able to see through — a multi-repo line.
+func TestGovernanceExclusionsAreReadable(t *testing.T) {
+	t.Parallel()
+
+	excluded := excludedRepos(t)
+
+	assert.Contains(t, excluded, "nullclaw",
+		"a comma-separated repo line must split into its individual names")
 }
