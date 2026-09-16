@@ -76,15 +76,13 @@ mise run lw:sync
 
 The task lives in the fleet-level `~/dev/mise.toml`, not in this repo, so it runs from any checkout under `~/dev` — and `lw:sync:home` and `release:gate` already depend on it. Do not add a second installer here; extend that one.
 
-**Three commands, three scopes — pick by blast radius:**
+**One installer, and it has a blast radius.** `lw:sync` writes `~/.local/bin/lw`, which is the binary every session on this machine resolves — so installing from a worktree mid-experiment changes what other sessions run. Build from a worktree with `LW_CLI_ROOT`, and be deliberate about when you install:
 
-| Command | Builds from | Affects |
-|---|---|---|
-| `mise run patch` | this worktree | a throwaway sandbox — nobody else (#472) |
-| `mise run patch:promote` | this worktree | `~/.local/bin/lw` — every session on this machine |
-| `mise run lw:sync` | `~/dev/lightwave-cli` | `~/.local/bin/lw` — every session on this machine |
+```sh
+LW_CLI_ROOT=~/.worktrees/lightwave-cli/my-branch mise run lw:sync
+```
 
-While iterating in a worktree use `patch`: other sessions keep running the `lw` they expect. `lw:sync` is the "install current main" command, and is what to run after merging.
+A `patch` / `patch:promote` pair briefly existed here (#472) and was removed in #493 — it duplicated `lw:sync` and, lacking the ldflags, produced binaries reporting `dev / none / unknown`. Sandboxing belongs as a target directory on `lw:sync`, not as a second installer.
 
 That chain used to be mandatory here, and it was the wrong shape for this tool. `lw` is the command spine of the local shell — the binary and the source sit on the same disk. Routing a three-second build through a release pipeline and a package manager was ceremony that made local iteration cost a tagged release. The release train still exists, but it serves *other* machines, not this one.
 
