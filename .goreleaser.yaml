@@ -47,15 +47,21 @@ release:
     for the canonical release notes. The commit log below is
     auto-generated from conventional commits.
 
-brews:
-  - name: lw
-    repository:
-      owner: lightwave-media
-      name: homebrew-tap
-      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
-    directory: Formula
-    homepage: "https://github.com/lightwave-media/lightwave-cli"
-    description: "LightWave CLI - Task management and platform operations"
-    license: "MIT"
-    test: |
-      assert_match "lw version", shell_output("#{bin}/lw version")
+# NO `brews:` BLOCK — the Homebrew tap is gone (lightwave-media/homebrew-tap was
+# deleted 2026-09-16) and this block would fail every release trying to push a
+# formula to a repo that 404s.
+#
+# Distribution is unchanged for everyone else: `builds` + `archives` + `release`
+# above still publish signed cross-platform tarballs to the GitHub Releases page,
+# which is where a tap formula pointed anyway.
+#
+# For this machine — where `lw` IS the shell's command spine — install from
+# source instead of round-tripping a binary through tag → CI → GoReleaser → tap
+# → `brew upgrade`:
+#
+#     mise run lw:sync      # ~3s: go build + install to ~/.local/bin
+#
+# If a tap is ever wanted back, recreate lightwave-media/homebrew-tap and restore
+# this block; GoReleaser repopulates the formula on the next tag. The plane-side
+# TAP_APP_* token minting in pipelines-workflows is now unused and can be dropped
+# there separately.
