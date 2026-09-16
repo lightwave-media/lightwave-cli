@@ -21,10 +21,20 @@ import (
 func attachCheckSchema(t *testing.T, status string) (*cobra.Command, int) {
 	t.Helper()
 
-	_, ok := LookupHandler("check.schema")
-	require.True(t, ok, "the control depends on this handler existing")
+	for _, key := range []string{"check.schema", "check.git"} {
+		_, ok := LookupHandler(key)
+		require.True(t, ok, "the fixture depends on %s existing", key)
+	}
 
 	parent := &cobra.Command{Use: "check"}
+
+	// A published sibling, so the fixture is a real domain rather than a
+	// childless parent. cobra only refuses an unknown subcommand on a command
+	// that has subcommands — without this the refusal assertion below passes
+	// vacuously, which is the shape of test that proves nothing.
+	sibling := sst.CLICommand{Name: "git"}
+	require.Equal(t, 1, attachDomainCommand(parent, "check", "", &sibling))
+
 	cmd := sst.CLICommand{Name: "schema", Status: status}
 
 	return parent, attachDomainCommand(parent, "check", "", &cmd)
@@ -46,6 +56,13 @@ func TestInDevelopmentCommandStaysHiddenOnceItsHandlerExists(t *testing.T) {
 
 	assert.Zero(t, attached, "a registered handler does not publish an in_development verb")
 	assert.Nil(t, findChild(parent, "schema"))
+
+	// The refusal a user actually meets. An absent child is the tree shape;
+	// this is cobra resolving the invocation and declining it, which is the
+	// thing the status is supposed to produce.
+	_, _, err := parent.Find([]string{"schema"})
+	require.Error(t, err, "`lw check schema` does not resolve while the verb is in_development")
+	assert.Contains(t, err.Error(), "unknown command")
 }
 
 // TestPublishedCommandWithTheSameHandlerIsAttached is the control. Without it

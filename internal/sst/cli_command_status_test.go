@@ -139,3 +139,27 @@ domains:
 	assert.False(t, domain.Commands[1].InDevelopment(), "`validate` carries no status, so it ships")
 	assert.Equal(t, []string{"schema.validate"}, cfg.KeysPublished())
 }
+
+// TestDecodeRejectsADomainsBlockThatIsNotAMapping is the rejection path of the
+// decoder these tests otherwise only exercise on the happy side.
+//
+// It matters for the same reason the rest of this file does: a stamp that
+// parses into nothing, quietly, is how a command surface reads as empty and
+// every handler reads as an orphan. The decoder refusing is what turns that
+// into a message instead of a confident wrong answer.
+func TestDecodeRejectsADomainsBlockThatIsNotAMapping(t *testing.T) {
+	t.Parallel()
+
+	var raw rawCLIConfig
+	require.NoError(t, yaml.Unmarshal([]byte(`
+_meta:
+  version: "1.7.0"
+domains:
+  - schema
+  - check
+`), &raw))
+
+	_, err := raw.decode()
+	require.Error(t, err, "a sequence is not a domain mapping")
+	assert.Contains(t, err.Error(), "expected mapping")
+}
