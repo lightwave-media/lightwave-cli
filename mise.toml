@@ -172,7 +172,7 @@ description = "Local CI: fmt-check + vet + lint + build + test + codespell + tid
 # The one required-gate job still absent locally is Pre-commit. It is partly
 # covered by the repo-tracked hooks that run on every commit, and `lw check
 # pre-commit` (#381) is the verb that would close it properly.
-depends = ["fmt-check", "vet", "lint", "build", "test", "codespell", "tidy", "schema-drift", "actions-pinned", "failure-digest"]
+depends = ["fmt-check", "vet", "lint", "build", "test", "codespell", "tidy", "schema-drift", "actions-pinned", "failure-digest", "release-ship-destination"]
 
 [tasks.actions-pinned]
 description = "Every third-party GitHub Action is pinned to a commit SHA, not a mutable tag or branch"
@@ -192,6 +192,15 @@ description = "The CI failure digest names the failing test and the shuffle seed
 # of #345 itself. Writing the proof caught exactly that: the first version used
 # only trailing context, so it named the failing test and dropped the assertion.
 run = "bash scripts/failure-digest-test.sh"
+
+[tasks.release-ship-destination]
+description = "release ship resolves the caller's repo and pushes to the branch, never to main (#491)"
+# Both halves matter. A toplevel that follows the caller is what makes the
+# worktree workflow usable at all; an explicit push destination is what keeps an
+# unreviewed commit off main when the branch tracks origin/main — which is what
+# `worktree add -b <branch> origin/main` produces, so it is the normal case and
+# not an edge one. Real git in a temp dir, no network.
+run = "bash scripts/release-ship-destination-test.sh"
 
 [tasks."release:gate"]
 description = "Dry-run lw release merge (autonomous gate)"

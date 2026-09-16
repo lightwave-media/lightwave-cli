@@ -2,12 +2,16 @@
 # Shared helpers for release prepare/ship (ADR-0035 delivery conveyor).
 set -euo pipefail
 
-release_repo_root() {
-  cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd
-}
-
+# The repo the release loop ACTS ON — the caller's, not the one hosting this
+# script. Resolving it from BASH_SOURCE pinned every run to the lightwave-cli
+# checkout that ships these files, so `ship` pushed whatever THAT tree had out
+# (`main`, in the report) instead of the worktree the operator was standing in,
+# and the pre-push gate attested to the wrong content (#491).
+#
+# `--show-toplevel` is worktree-correct: inside a linked worktree it returns the
+# worktree path, which is what every other verb means by "the repo".
 release_git_toplevel() {
-  git -C "$(release_repo_root)" rev-parse --show-toplevel
+  git rev-parse --show-toplevel
 }
 
 release_default_branch() {
@@ -66,7 +70,7 @@ release_format_commit_file() {
 
 release_stage_release_files() {
   local root
-  root="$(release_repo_root)"
+  root="$(release_git_toplevel)"
   cd "${root}"
 
   if [[ -f dev/release_qa_pass.sh ]]; then

@@ -558,8 +558,18 @@ func runReleaseScript(ctx context.Context, name string, args ...string) error {
 		return fmt.Errorf("missing %s (run from lightwave-cli checkout)", script)
 	}
 
+	// The script lives in lightwave-cli; the repo it ACTS ON is the caller's.
+	// Running it in `root` meant prepare/ship always operated on the canonical
+	// lightwave-cli checkout — so ship could not ship the worktree you were
+	// standing in, and from any other repo it acted on lightwave-cli instead
+	// (#491). The script path is absolute, so it still resolves from anywhere.
+	subject, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("resolve working directory: %w", err)
+	}
+
 	cmd := exec.CommandContext(ctx, "bash", append([]string{script}, args...)...)
-	cmd.Dir = root
+	cmd.Dir = subject
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
