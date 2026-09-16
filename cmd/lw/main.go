@@ -24,6 +24,14 @@ func main() {
 			os.Exit(exitDBUnavailable)
 		}
 		fmt.Fprintf(os.Stderr, "lw: %v\n", err)
+
+		// A command that documents its own exit codes gets them honoured here,
+		// AFTER the message is printed. Doing it with os.Exit() inside RunE (as
+		// `worktree create` did) produced the code and swallowed the reason.
+		if code, ok := cli.ExitCode(err); ok {
+			os.Exit(code)
+		}
+
 		os.Exit(1)
 	}
 }
