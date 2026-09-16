@@ -49,6 +49,14 @@ run = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMO
 description = "Build lw"
 run = "go build ./cmd/lw"
 
+[tasks.patch]
+description = "Build THIS worktree into a throwaway sandbox — no global install, no other session affected"
+run = "dev/patch_loop.sh"
+
+[tasks."patch:promote"]
+description = "Install the sandboxed build over ~/.local/bin/lw (explicit; changes what every session runs)"
+run = "dev/patch_loop.sh --promote"
+
 [tasks.codespell]
 description = "Spell-check (matches the CI Codespell job; reads .codespellrc)"
 # CI runs this as a SEPARATE GitHub job (.github/workflows/codespell.yml), not

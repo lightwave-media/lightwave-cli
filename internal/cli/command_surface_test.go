@@ -58,16 +58,20 @@ var assembleOnce = sync.OnceValue(func() error {
 		return err
 	}
 
-	// cobra attaches `help` and `completion` lazily during Execute, not during
-	// AssembleSurface, so a surface that only assembled would be missing two
-	// commands a release binary lists. They belong here rather than in the one
-	// test that needs them: initialising them from a test body writes to the
-	// shared root after other tests have started reading it, which is the race
-	// this once-gate exists to prevent.
+	// `help` and `completion` are attached lazily by cobra during Execute, not
+	// by AssembleSurface — so a reader that wants the shipped tree has to
+	// trigger them. Doing that in a HELPER made every caller a writer of the
+	// process-global rootCmd, and `-race -shuffle=on` caught it: a parallel
+	// test calling IsAvailableCommand raced the InitDefault* writes about one
+	// run in seven, reported against whichever four tests happened to be in
+	// flight rather than against either real participant.
+	//
+	// This is the same defect the comment above describes being fixed once
+	// already, surviving in the one mutation that stayed outside the Once.
+	// Initialising here makes assembly the only writer and every test a pure
+	// reader, which is what made the ordering irrelevant the first time.
 	rootCmd.InitDefaultHelpCmd()
 	rootCmd.InitDefaultCompletionCmd()
-
-	settle(rootCmd)
 
 	return nil
 })
