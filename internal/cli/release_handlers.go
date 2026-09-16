@@ -41,17 +41,25 @@ type signoffLedger struct {
 }
 
 type prCandidate struct {
-	Title     string
+	Title string
+	// GitHub's own mergeStateStatus, computed from the repo's branch
+	// protection. This is the authority on "do the checks this repo REQUIRES
+	// pass?" — see eligibleToMerge.
+	MergeState string
+	// Contexts reporting red, required or not. Used only to make a refusal
+	// name the offender; never to decide.
+	RedChecks []string
 	Number    int
 	Draft     bool
 	Mergeable bool
-	CIGreen   bool
 }
 
 type checkRollupEntry struct {
+	Name       string `json:"name"`
 	Status     string `json:"status"`
 	Conclusion string `json:"conclusion"`
 	State      string `json:"state"`
+	Context    string `json:"context"`
 }
 
 func releaseFlagHandler(_ context.Context, args []string, flags map[string]any) (err error) {
@@ -365,45 +373,87 @@ func releaseMergeHandler(ctx context.Context, args []string, flags map[string]an
 	return nil
 }
 
+// eligibleToMerge defers to branch protection rather than re-deriving a merge
+// policy from the check rollup.
+//
+// This used to demand that EVERY context be green. Branch protection is where
+// "what must pass" is declared, so the stricter private rule meant adding any
+// advisory reporter to a repo silently disabled autonomous merge for every PR
+// in it. That is exactly what `lightwave/local-review` did — it calls itself
+// "advisory, not a gate" and still posts state `failure`, because the Status
+// API has no `neutral` — and the refusal read `CI not green`, naming neither
+// the context nor the fact that no repo required it (#488).
+//
+// UNSTABLE is eligible on purpose: it is GitHub's word for "mergeable, every
+// required check passed, something non-required is red".
 func eligibleToMerge(c prCandidate) (bool, string) {
 	switch {
 	case c.Draft:
 		return false, "draft"
 	case !c.Mergeable:
 		return false, "not mergeable"
-	case !c.CIGreen:
-		return false, "CI not green"
-	default:
+	case c.MergeState == "CLEAN" || c.MergeState == "UNSTABLE":
 		return true, ""
+	case c.MergeState == "BLOCKED":
+		return false, blockedReason(c.RedChecks)
+	// GitHub returns UNKNOWN until it has computed the merge commit, which is
+	// the value a freshly-pushed PR reports. Absent means the field was never
+	// requested. Neither is evidence of green.
+	case c.MergeState == "" || c.MergeState == "UNKNOWN":
+		return false, "merge state not computed yet — re-run"
+	default:
+		return false, strings.ToLower(c.MergeState)
 	}
 }
 
-func checksGreen(rollup []checkRollupEntry) bool {
-	if len(rollup) == 0 {
-		return false
+// blockedReason explains a BLOCKED state without overclaiming. A PR is blocked
+// by a failing required check, by a required check that never reported, or by
+// an unmet review rule — the rollup can only distinguish the first.
+func blockedReason(red []string) string {
+	if len(red) == 0 {
+		return "blocked — a required check has not reported, or review is outstanding"
 	}
 
+	return "blocked — red: " + strings.Join(red, ", ")
+}
+
+// redChecks names every context reporting failure. A check still running is
+// not red; BLOCKED already covers "a required check has not reported".
+//
+// The two rollup shapes label themselves differently and each leaves the
+// other's field null: a check run carries `name`, a legacy status context
+// carries `context`. Reading only one silently drops half the rollup — and the
+// half it drops is the status-context half, which is where the reporter that
+// prompted #488 lives.
+func redChecks(rollup []checkRollupEntry) []string {
+	var red []string
+
 	for _, e := range rollup {
+		label := e.Name
+		if label == "" {
+			label = e.Context
+		}
+
 		switch {
 		case e.State != "":
-			if e.State != "SUCCESS" {
-				return false
+			if e.State == "FAILURE" || e.State == "ERROR" {
+				red = append(red, label)
 			}
-		case e.Status != "COMPLETED":
-			return false
-		case e.Conclusion != "SUCCESS" && e.Conclusion != "NEUTRAL" && e.Conclusion != "SKIPPED":
-			return false
+		case e.Status == "COMPLETED":
+			if e.Conclusion != "SUCCESS" && e.Conclusion != "NEUTRAL" && e.Conclusion != "SKIPPED" {
+				red = append(red, label)
+			}
 		}
 	}
 
-	return true
+	return red
 }
 
 func fetchReleaseCandidates(ctx context.Context, repo string) ([]prCandidate, error) {
 	out, err := exec.CommandContext(ctx, "gh", "pr", "list",
 		"--repo", repo,
 		"--state", "open",
-		"--json", "number,title,isDraft,mergeable,statusCheckRollup",
+		"--json", "number,title,isDraft,mergeable,mergeStateStatus,statusCheckRollup",
 		"--limit", "100",
 	).CombinedOutput()
 	if err != nil {
@@ -413,6 +463,7 @@ func fetchReleaseCandidates(ctx context.Context, repo string) ([]prCandidate, er
 	var raw []struct {
 		Title             string             `json:"title"`
 		Mergeable         string             `json:"mergeable"`
+		MergeStateStatus  string             `json:"mergeStateStatus"`
 		StatusCheckRollup []checkRollupEntry `json:"statusCheckRollup"`
 		Number            int                `json:"number"`
 		IsDraft           bool               `json:"isDraft"`
@@ -424,11 +475,12 @@ func fetchReleaseCandidates(ctx context.Context, repo string) ([]prCandidate, er
 	candidates := make([]prCandidate, 0, len(raw))
 	for _, r := range raw {
 		candidates = append(candidates, prCandidate{
-			Number:    r.Number,
-			Title:     r.Title,
-			Draft:     r.IsDraft,
-			Mergeable: r.Mergeable == "MERGEABLE",
-			CIGreen:   checksGreen(r.StatusCheckRollup),
+			Number:     r.Number,
+			Title:      r.Title,
+			Draft:      r.IsDraft,
+			Mergeable:  r.Mergeable == "MERGEABLE",
+			MergeState: r.MergeStateStatus,
+			RedChecks:  redChecks(r.StatusCheckRollup),
 		})
 	}
 
