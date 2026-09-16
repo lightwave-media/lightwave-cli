@@ -51,8 +51,22 @@ if [[ "${APPLY}" != "true" ]]; then
   exit 0
 fi
 
-git push -u origin "HEAD"
-echo "✓ pushed origin/${BRANCH}"
+# Name the destination explicitly. `git push -u origin HEAD` lets the
+# destination be inherited from the upstream, and a worktree created the way the
+# tooling itself recommends — `worktree add -b <branch> origin/main` — tracks
+# origin/main. That is how this pushed HEAD -> main from a feature branch, and a
+# fast-forwardable main would have taken the commit with no PR (#491).
+git push -u origin "HEAD:refs/heads/${BRANCH}"
+
+# Confirm against the remote rather than reporting the intent. This line used to
+# print unconditionally, so it named the feature branch even on the run that
+# targeted main.
+PUSHED_SHA="$(git ls-remote --heads origin "${BRANCH}" | cut -f1)"
+if [[ "${PUSHED_SHA}" != "$(git rev-parse HEAD)" ]]; then
+  echo "push did not land: origin/${BRANCH} is ${PUSHED_SHA:-absent}, HEAD is $(git rev-parse HEAD)" >&2
+  exit 1
+fi
+echo "✓ pushed origin/${BRANCH} @ ${PUSHED_SHA}"
 
 PR_URL=""
 if gh pr view --json url -q .url 2>/dev/null; then
