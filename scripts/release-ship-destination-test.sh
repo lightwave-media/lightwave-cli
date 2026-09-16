@@ -16,6 +16,14 @@
 # half that can put an unreviewed commit on main.
 set -euo pipefail
 
+# A git hook exports GIT_DIR and friends, and they outrank `cd`. Without this,
+# every git command below addresses the repo that INVOKED the hook rather than
+# the fixture — so the test's own commits land on the caller's branch and its
+# `branch -M main` tries to rewrite the real main. That happened on the first
+# run through the pre-push gate. The other shell gates in mise.toml unset these
+# for the same reason; doing it here keeps the script correct however it is run.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
