@@ -37,17 +37,31 @@ prove their own coverage.
 ## Install
 
 ```sh
-brew install lightwave-media/tap/lw
+mise run install
 ```
 
-Tagged releases ship via the `lightwave-media/homebrew-tap` repository —
-`brew upgrade lw` picks up the latest pinned build.
+Builds from source and installs to `~/.local/bin/lw` in about three
+seconds. That directory precedes `/opt/homebrew/bin` on PATH, so the
+build you just made is the `lw` your shell and the project hooks
+resolve. The task verifies exactly that and warns if something still
+shadows it.
 
-Don't `go install ./cmd/lw` to "use the new version locally": the tap
-binary at `/opt/homebrew/bin/lw` shadows `~/go/bin/lw` on PATH, and
-project hooks shell out to the PATH-resolved `lw`. You will believe your
-change is live when it isn't. See [AGENTS.md](AGENTS.md) →
-*Updating `lw` — Ship Via Tap, Not `go install`*.
+`lw version` reports `git describe` output — e.g. `3.14.0-5-gf91df3c-dirty`
+— so a source build is always distinguishable from a clean tagged
+release. Override the destination with `LW_INSTALL_DIR`.
+
+**Why not Homebrew?** `lw` is the command spine of this machine's shell.
+Moving a binary from this repo onto this machine should not require a
+tag, a CI run, a GoReleaser pipeline, a separate tap repo and a
+`brew upgrade`. That chain exists to serve other people's machines. The
+`lightwave-media/homebrew-tap` repo was deleted on 2026-09-16 and the
+`brews:` block is gone from `.goreleaser.yaml`; tagged releases still
+publish cross-platform tarballs to the GitHub Releases page.
+
+**Still don't `go install ./cmd/lw`.** It writes `~/go/bin/lw`, which is
+*behind* `/opt/homebrew/bin` on PATH — so if a Homebrew `lw` is still
+installed it wins and you will believe your change is live when it
+isn't. `mise run install` exists to make that failure impossible.
 
 ## Quickstart
 

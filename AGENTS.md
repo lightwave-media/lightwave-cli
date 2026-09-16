@@ -66,20 +66,25 @@ Before any commit, branch op, stash, cherry-pick, rebase, merge, or worktree, **
 
 Full reference: `~/.claude/skills/lightwave-git/SKILL.md` (loaded globally in every Claude Code session).
 
-### Updating `lw` — Ship Via Tap, Not `go install`
+### Updating `lw` — Build From Source, Not `go install`
 
-`lw` is distributed via Homebrew tap (`lightwave-media/homebrew-tap`). Every machine running `lw` got it from `brew install lightwave-media/tap/lw`, which pins to a tagged release built by GoReleaser. **Source changes here don't reach any shell until a new tag ships.**
+```sh
+mise run install
+```
 
-Never `go install ./cmd/lw` to "use the new version locally." It produces `~/go/bin/lw`, which PATH order shadows behind `/opt/homebrew/bin/lw` (the tap binary). You'll think your change is live; it isn't. Worse, project hooks (bash-guard, pre-push gates) shell out to the PATH-resolved `lw`, so a stale Homebrew binary silently runs old code while your edits sit unused.
+**This is how a CLI change reaches this machine.** It builds from source and writes `~/.local/bin/lw` in about three seconds. No tag, no CI run, no GoReleaser, no tap, no `brew upgrade`.
 
-To ship a CLI change:
+That chain used to be mandatory here, and it was the wrong shape for this tool. `lw` is the command spine of the local shell — the binary and the source sit on the same disk. Routing a three-second build through a release pipeline and a package manager was ceremony that made local iteration cost a tagged release. The release train still exists, but it serves *other* machines, not this one.
 
-1. Commit + push to `lightwave-cli` main.
-2. Tag a new version: `git tag vX.Y.Z && git push origin vX.Y.Z`.
-3. GoReleaser CI (`.github/workflows/release.yml`) builds binaries, creates the GitHub release, and pushes the formula update to `homebrew-tap`.
-4. `brew upgrade lw` on each machine.
+**Why `~/.local/bin` specifically.** It precedes `/opt/homebrew/bin` on PATH. That is the whole trick: the build you just made is the `lw` your shell and every project hook resolve, with nothing to uninstall or fight. The task asserts this after installing and warns if anything still shadows it.
 
-Never overwrite `/opt/homebrew/bin/lw` by hand with a fresh `go install` build. Even an MD5-identical binary placed there can stall on first launch (macOS `syspolicyd` reputation check on adhoc-signed binaries in trusted prefixes), which hangs every project hook that invokes `lw` until the check completes. If you need the new code in a hook before the tap ships, pin the hook entry to an absolute path of a known-fast build location (e.g. `~/go/bin/lw`) — and remove the pin once the tap update lands.
+`lw version` reports `git describe` (`3.14.0-5-gf91df3c-dirty`), so a source build never masquerades as a clean tagged release. Override the destination with `LW_INSTALL_DIR`.
+
+**Still never `go install ./cmd/lw`.** It writes `~/go/bin/lw`, which sits *behind* `/opt/homebrew/bin` on PATH — so a leftover Homebrew `lw` wins and you believe your change is live when it isn't. Project hooks (bash-guard, pre-push gates) shell out to the PATH-resolved `lw`, so a stale binary silently runs old code against your edits. `mise run install` exists to make that class of mistake impossible.
+
+**Never hand-copy a binary into `/opt/homebrew/bin/lw`.** Even an MD5-identical binary placed there can stall on first launch — macOS `syspolicyd` runs a reputation check on adhoc-signed binaries in trusted prefixes — which hangs every project hook that invokes `lw` until the check completes. `~/.local/bin` is not such a prefix, which is another reason the install task targets it.
+
+To publish a release for other machines: commit to `main`, then `git tag vX.Y.Z && git push origin vX.Y.Z`. GoReleaser builds the cross-platform tarballs and attaches them to the GitHub Release. There is no longer a Homebrew formula step — `lightwave-media/homebrew-tap` was deleted on 2026-09-16.
 
 ### Destructive Commands: `--dry-run` + `--yes` Standard
 Every new destructive `lw` subcommand ships with a `--dry-run` flag (preview only, no side effects) and a `--yes` flag (skip the interactive confirmation prompt for CI/agent use). Default behavior with no flags is interactive: print what will change, prompt, then act on `y`. Established pattern in `db cleanup`, `drift reconcile`, `github sync`, `orchestrator`, `cdn reconcile`.

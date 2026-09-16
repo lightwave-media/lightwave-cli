@@ -1,5 +1,16 @@
 # Release: Homebrew-tap push via GitHub App
 
+> **DECOMMISSIONED 2026-09-16 — nothing below is live.**
+> `lightwave-media/homebrew-tap` was deleted and the `brews:` block was removed
+> from `.goreleaser.yaml`, so no formula is published and no tap token is used.
+> `lw` is now installed from source with `mise run install` (README → Install).
+> The plane-side `TAP_APP_*` secrets in `pipelines-workflows` are unused and can
+> be revoked there.
+>
+> Kept as the record of how the App-minted token worked, in case a tap is ever
+> restored — it is a better pattern than a long-lived PAT and worth not
+> rediscovering from scratch.
+
 GoReleaser publishes the `lw` formula to `lightwave-media/homebrew-tap` on
 every tagged release. Pushing to a *different* repo than the one running CI
 needs a credential the built-in `GITHUB_TOKEN` can't provide (it's scoped to
