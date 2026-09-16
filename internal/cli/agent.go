@@ -35,8 +35,9 @@ var agentCmd = &cobra.Command{
 	Long: `Manages the sealed sub-sessions v_core dispatches per Task.
 
 Each spawn creates a fresh git worktree, loads the persona's system
-prompt from ~/.brain/cortex/agents/createOS-domains/software/ (or
-$LW_PERSONA_DIR), appends the markdown bundle from
+prompt from ~/.lightwave/config/agents/<name>.yaml — v_<name>.yaml is
+tried when the bare name is given — or $LW_PERSONA_DIR, appends the
+markdown bundle from
 ` + "`lw task fetch-context`" + `, and shells the agent binary (claude / pi)
 as a background process with stdout+stderr captured to a log file.
 
@@ -190,7 +191,7 @@ func runAgentSpawn(cmd *cobra.Command, _ []string) error {
 		var pnf *agent.PersonaNotFoundError
 		if errors.As(err, &pnf) {
 			fmt.Fprintf(os.Stderr,
-				"persona %q not found.\nSearched: %s\n\nLightWave canonical personas (per v_core.yaml): platform-engineer, frontend-engineer, infrastructure-engineer, qa-engineer, compliance, triager, research-analyst, brain.\nMissing personas need stub YAML files at ~/.brain/cortex/agents/createOS-domains/software/<name>.yaml (see EB-001 §10 Q1, US-002).\n",
+				"persona %q not found.\nSearched: %s\n\nLightWave canonical personas (per v_core.yaml): platform-engineer, frontend-engineer, infrastructure-engineer, qa-engineer, compliance, triager, research-analyst, brain.\nMissing personas need stub YAML files at ~/.lightwave/config/agents/v_<name>.yaml (see EB-001 §10 Q1, US-002).\n",
 				pnf.Name, strings.Join(pnf.SearchedIn, "\n          "))
 			os.Exit(1)
 		}
