@@ -3,7 +3,7 @@
 > **DECOMMISSIONED 2026-09-16 — nothing below is live.**
 > `lightwave-media/homebrew-tap` was deleted and the `brews:` block was removed
 > from `.goreleaser.yaml`, so no formula is published and no tap token is used.
-> `lw` is now installed from source with `mise run install` (README → Install).
+> `lw` is now installed from source with `mise run lw:sync` (README → Install).
 > The plane-side `TAP_APP_*` secrets in `pipelines-workflows` are unused and can
 > be revoked there.
 >

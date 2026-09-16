@@ -69,18 +69,20 @@ Full reference: `~/.claude/skills/lightwave-git/SKILL.md` (loaded globally in ev
 ### Updating `lw` — Build From Source, Not `go install`
 
 ```sh
-mise run install
+mise run lw:sync
 ```
 
 **This is how a CLI change reaches this machine.** It builds from source and writes `~/.local/bin/lw` in about three seconds. No tag, no CI run, no GoReleaser, no tap, no `brew upgrade`.
+
+The task lives in the fleet-level `~/dev/mise.toml`, not in this repo, so it runs from any checkout under `~/dev` — and `lw:sync:home` and `release:gate` already depend on it. Do not add a second installer here; extend that one.
 
 That chain used to be mandatory here, and it was the wrong shape for this tool. `lw` is the command spine of the local shell — the binary and the source sit on the same disk. Routing a three-second build through a release pipeline and a package manager was ceremony that made local iteration cost a tagged release. The release train still exists, but it serves *other* machines, not this one.
 
 **Why `~/.local/bin` specifically.** It precedes `/opt/homebrew/bin` on PATH. That is the whole trick: the build you just made is the `lw` your shell and every project hook resolve, with nothing to uninstall or fight. The task asserts this after installing and warns if anything still shadows it.
 
-`lw version` reports `git describe` (`3.14.0-5-gf91df3c-dirty`), so a source build never masquerades as a clean tagged release. Override the destination with `LW_INSTALL_DIR`.
+`lw version` reports `git describe` (`3.14.0-5-gf91df3c-dirty`), so a source build never masquerades as a clean tagged release. Without those ldflags the binary reports `dev / none / unknown` and you cannot tell which source built the `lw` you are running. Override the checkout with `LW_CLI_ROOT` to build from a worktree.
 
-**Still never `go install ./cmd/lw`.** It writes `~/go/bin/lw`, which sits *behind* `/opt/homebrew/bin` on PATH — so a leftover Homebrew `lw` wins and you believe your change is live when it isn't. Project hooks (bash-guard, pre-push gates) shell out to the PATH-resolved `lw`, so a stale binary silently runs old code against your edits. `mise run install` exists to make that class of mistake impossible.
+**Still never `go install ./cmd/lw`.** It writes `~/go/bin/lw`, which sits *behind* `/opt/homebrew/bin` on PATH — so a leftover Homebrew `lw` wins and you believe your change is live when it isn't. Project hooks (bash-guard, pre-push gates) shell out to the PATH-resolved `lw`, so a stale binary silently runs old code against your edits. `mise run lw:sync` exists to make that class of mistake impossible.
 
 **Never hand-copy a binary into `/opt/homebrew/bin/lw`.** Even an MD5-identical binary placed there can stall on first launch — macOS `syspolicyd` runs a reputation check on adhoc-signed binaries in trusted prefixes — which hangs every project hook that invokes `lw` until the check completes. `~/.local/bin` is not such a prefix, which is another reason the install task targets it.
 

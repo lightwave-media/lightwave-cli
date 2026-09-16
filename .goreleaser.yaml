@@ -59,7 +59,7 @@ release:
 # source instead of round-tripping a binary through tag → CI → GoReleaser → tap
 # → `brew upgrade`:
 #
-#     mise run install      # ~3s: go build + install to ~/.local/bin
+#     mise run lw:sync      # ~3s: go build + install to ~/.local/bin
 #
 # If a tap is ever wanted back, recreate lightwave-media/homebrew-tap and restore
 # this block; GoReleaser repopulates the formula on the next tag. The plane-side

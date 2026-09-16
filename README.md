@@ -37,18 +37,21 @@ prove their own coverage.
 ## Install
 
 ```sh
-mise run install
+mise run lw:sync
 ```
 
 Builds from source and installs to `~/.local/bin/lw` in about three
-seconds. That directory precedes `/opt/homebrew/bin` on PATH, so the
-build you just made is the `lw` your shell and the project hooks
-resolve. The task verifies exactly that and warns if something still
-shadows it.
+seconds. The task is defined at fleet level in `~/dev/mise.toml`, so it
+runs from any repo under `~/dev`, not just this one.
+
+`~/.local/bin` precedes `/opt/homebrew/bin` on PATH, so the build you
+just made is the `lw` your shell and the project hooks resolve. The task
+verifies exactly that and warns if something still shadows it.
 
 `lw version` reports `git describe` output — e.g. `3.14.0-5-gf91df3c-dirty`
 — so a source build is always distinguishable from a clean tagged
-release. Override the destination with `LW_INSTALL_DIR`.
+release. Override the checkout with `LW_CLI_ROOT` to build from a
+worktree.
 
 **Why not Homebrew?** `lw` is the command spine of this machine's shell.
 Moving a binary from this repo onto this machine should not require a
@@ -61,7 +64,7 @@ publish cross-platform tarballs to the GitHub Releases page.
 **Still don't `go install ./cmd/lw`.** It writes `~/go/bin/lw`, which is
 *behind* `/opt/homebrew/bin` on PATH — so if a Homebrew `lw` is still
 installed it wins and you will believe your change is live when it
-isn't. `mise run install` exists to make that failure impossible.
+isn't. `mise run lw:sync` exists to make that failure impossible.
 
 ## Quickstart
 
@@ -144,8 +147,9 @@ command nobody can invoke.
 ## Releasing
 
 **The tag is the version.** Push a tag and the org release plane does the
-rest — GoReleaser builds the binaries, creates the GitHub release, and
-pushes the formula update to the tap.
+rest — GoReleaser builds the cross-platform binaries and creates the
+GitHub release. There is no longer a Homebrew formula step; releases
+serve other machines, while this one installs from source (see Install).
 
 ```sh
 lw release tag --dry-run   # compute the next SemVer, change nothing

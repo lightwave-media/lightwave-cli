@@ -49,39 +49,10 @@ run = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMO
 description = "Build lw"
 run = "go build ./cmd/lw"
 
-[tasks.install]
-description = "Build from source and install lw onto PATH (~/.local/bin)"
-# `lw` is the command spine of the local shell, so getting a new build onto this
-# machine should not require a tag, a CI run, a GoReleaser pipeline, a Homebrew
-# tap repo and a `brew upgrade`. That chain exists to serve OTHER people's
-# machines; for your own it is ceremony around a 3-second `go build`.
-#
-# Version/Commit/Date use the same ldflags paths GoReleaser injects, so
-# `lw version` stays truthful instead of reporting "dev". The version comes from
-# `git describe`, which appends the commit distance and `-dirty` — a source
-# build therefore never masquerades as a clean tagged release.
-#
-# Install dir is overridable (LW_INSTALL_DIR) and defaults to ~/.local/bin,
-# which already precedes /opt/homebrew/bin on PATH, so this build wins without
-# fighting or uninstalling anything Homebrew owns.
-run = '''
-set -euo pipefail
-dest="${LW_INSTALL_DIR:-$HOME/.local/bin}"
-pkg="github.com/lightwave-media/lightwave-cli/internal/version"
-version="$(git describe --tags --always --dirty 2>/dev/null || echo dev)"
-version="${version#v}"
-mkdir -p "$dest"
-go build -trimpath \
-  -ldflags "-s -w -X ${pkg}.Version=${version} -X ${pkg}.Commit=$(git rev-parse --short HEAD) -X ${pkg}.Date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-  -o "$dest/lw" ./cmd/lw
-printf '\ninstalled -> %s\n' "$dest/lw"
-"$dest/lw" version
-resolved="$(command -v lw || true)"
-if [ "$resolved" != "$dest/lw" ]; then
-  printf '\nWARNING: `lw` on PATH still resolves to %s\n' "${resolved:-<nothing>}"
-  printf 'Put %s earlier on PATH, or remove the shadowing binary.\n' "$dest"
-fi
-'''
+# NOTE: there is no `install` task here on purpose. Installing lw onto this
+# machine is `mise run lw:sync`, defined once in the fleet-level ~/dev/mise.toml
+# so it works from any repo — and already depended on by lw:sync:home and
+# release:gate. A second repo-local installer would fork a load-bearing task.
 
 [tasks.codespell]
 description = "Spell-check (matches the CI Codespell job; reads .codespellrc)"
