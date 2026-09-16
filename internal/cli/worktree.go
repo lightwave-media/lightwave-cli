@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/git"
 	"github.com/lightwave-media/lightwave-cli/internal/worktreelock"
 	"github.com/olekukonko/tablewriter"
@@ -72,44 +71,107 @@ var branchPattern = regexp.MustCompile(`^(feature|fix)/[a-z0-9]+-[a-z0-9][a-z0-9
 // Helpers
 // =============================================================================
 
+// The worktree roots are NOT redeclared here. git_handlers.go already encodes
+// worktree_home_policy.yaml v2.0.0 correctly — canonicalWorktreeHome,
+// harnessWorktreeDir, legacyRepoWorktreeDir — and this file was the half of the
+// binary still on v1.x. Two subsystems disagreeing about where a worktree lives
+// is the defect (#497); a second set of constants would be the same defect with
+// better comments.
 const (
-	// canonicalWorktreeDir is the repo-relative mount from
-	// worktree_home_policy.yaml v1.1.0 (`canonical_root: ".worktrees"`).
-	canonicalWorktreeDir = ".worktrees"
-
-	// legacyWorktreeDir is ADR-0047's draining root: forbidden for new
-	// worktrees, still discovered so list/prune/gc can see the ones already
-	// there rather than stranding them.
-	legacyWorktreeDir = ".claude/worktrees"
-
 	hoursPerDay = 24
+
+	// The exit codes `lw worktree create --help` documents. Named so the help
+	// text and the code cannot drift apart silently.
+	exitBadBranchName    = 2
+	exitWorktreeConflict = 3
 )
 
-// worktreeRoot returns this repo's canonical worktree mount, <repo>/.worktrees.
+// exitCodeError carries a documented exit code alongside a real error.
 //
-// ADR-0047 (CORE-0047) settled one canonical root per repo, resolved relative to
-// the repo rather than to a fixed path under $HOME. This previously returned
-// <lightwave_root>/.worktrees — a path worktree_home_policy.yaml v1.1.0 lists in
-// `forbidden_roots`, and which the 2026-08-08 fleet audit measured at **zero**
-// adoption across 27 worktrees. The same policy names `lw worktree create` as an
-// enforcement surface, so the tool was breaking the rule it is meant to enforce.
-// See #339.
+// `lw worktree create` documents 2 (bad branch name) and 3 (single-owner
+// violation) in its own --help, and the previous implementation produced them
+// with os.Exit() inside RunE — which killed the process before cobra returned
+// and before main printed anything. The code survived; the reason did not.
+//
+// Returning the error instead lets main print it AND honour the code, so the
+// contract in --help stays true without the silence.
+type exitCodeError struct {
+	err  error
+	code int
+}
+
+func (e exitCodeError) Error() string { return e.err.Error() }
+func (e exitCodeError) Unwrap() error { return e.err }
+
+// ExitCode reports the status a command asked the process to exit with, and
+// whether it asked at all.
+func ExitCode(err error) (int, bool) {
+	var coded exitCodeError
+	if errors.As(err, &coded) {
+		return coded.code, true
+	}
+
+	return 0, false
+}
+
+// repoGit binds git to THIS repo.
+//
+// All three mutating verbs used cfg.Paths.LightwaveRoot, which is ~/dev — the
+// directory the repos sit in, not a repository. Every `git worktree add` from
+// `lw worktree create` therefore ran with `fatal: not a git repository`, and
+// the surrounding os.Exit() paths meant that was usually never printed (#497).
+func repoGit() (*git.Git, error) {
+	repoRoot := git.NewGit("").MainRepoRoot()
+	if repoRoot == "" {
+		return nil, errors.New("not inside a git repository: lw worktree is repo-scoped per ADR-0047")
+	}
+
+	return git.NewGit(repoRoot), nil
+}
+
+// worktreeRoot returns where NEW worktrees for this repo belong:
+// ~/.worktrees/<repo>, per worktree_home_policy.yaml v2.0.0.
+//
+// This used to return <repo>/.worktrees, which v1.1.0 called canonical. v2.0.0
+// (CORE-0051) moved the canonical root to the operator-ruled ~/.worktrees with
+// layout {repo}/{slug}, and put the repo-relative `.worktrees` into
+// `forbidden_roots`. The tool was still on v1.1.0, so `lw worktree create` was
+// writing into a root the current policy forbids — while the worktree hook
+// enforces the v2.0.0 path and denies anything else. The verb the checkout-lock
+// denial tells agents to reach for was aimed at a location the rest of the
+// estate rejects. See #497.
 func worktreeRoot() (string, error) {
 	repoRoot := git.NewGit("").MainRepoRoot()
 	if repoRoot == "" {
 		return "", errors.New("not inside a git repository: lw worktree is repo-scoped per ADR-0047")
 	}
 
-	return filepath.Join(repoRoot, canonicalWorktreeDir), nil
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("resolve home for the canonical worktree root: %w", err)
+	}
+
+	return filepath.Join(home, canonicalWorktreeHome, filepath.Base(repoRoot)), nil
 }
 
-// managedWorktreeRoots are the roots lw worktree is responsible for: the
-// canonical mount, plus the legacy harness root while its worktrees drain.
+// managedWorktreeRoots are the roots lw worktree can SEE. Creation only ever
+// targets worktreeRoot(); the rest are discovered so that trees already living
+// in them are listed, pruned and gc'd rather than stranded.
+//
+// Discovery deliberately outlives legality: a root leaving the policy is the
+// moment its worktrees most need to remain visible, and a list that hides them
+// reports a clean estate that is not clean.
 func managedWorktreeRoots(repoRoot string) []string {
-	return []string{
-		filepath.Join(repoRoot, canonicalWorktreeDir),
-		filepath.Join(repoRoot, legacyWorktreeDir),
+	roots := []string{
+		filepath.Join(repoRoot, harnessWorktreeDir),
+		filepath.Join(repoRoot, legacyRepoWorktreeDir),
 	}
+
+	if home, err := os.UserHomeDir(); err == nil {
+		roots = append(roots, filepath.Join(home, canonicalWorktreeHome, filepath.Base(repoRoot)))
+	}
+
+	return roots
 }
 
 func isManagedWorktree(repoRoot, path string) bool {
@@ -342,35 +404,39 @@ Examples:
 		}
 
 		// Resolve branch name
+		// os.Exit() here killed the process BEFORE cobra could print the error
+		// it was about to return, so every one of these paths produced a bare
+		// non-zero exit and not one byte of output. Measured on #497:
+		// `lw worktree create 26` with no --branch/--type exited 2 in silence —
+		// the reporter read that as "exited 0 and did nothing", which is how
+		// undiagnosable it was. Silence is the worst shape for this verb: the
+		// checkout-lock denial names it as the remedy, so an agent can believe
+		// it has an isolated checkout and carry on in the locked one.
+		//
+		// The codes are preserved via exitCodeError, which the root command
+		// turns into the process status AFTER the message is printed.
 		branch := worktreeBranch
 		if branch == "" {
 			var err error
+
 			branch, err = buildBranch(issue, worktreeType, worktreeDescription)
 			if err != nil {
-				os.Exit(2)
-				return err
+				return exitCodeError{code: exitBadBranchName, err: err}
 			}
-		} else {
-			if err := validateBranch(branch); err != nil {
-				os.Exit(2)
-				return err
-			}
+		} else if err := validateBranch(branch); err != nil {
+			return exitCodeError{code: exitBadBranchName, err: err}
 		}
 
-		// Check if path exists with a different branch (exit 3)
 		if _, err := os.Stat(wpath); err == nil {
-			os.Exit(3)
-			return fmt.Errorf("worktree path exists but no metadata found (manual interference?): %s", wpath)
+			return exitCodeError{code: exitWorktreeConflict, err: fmt.Errorf(
+				"worktree path exists but no metadata found (manual interference?): %s", wpath)}
 		}
 
 		// Create the worktree
-		cfg := config.Get()
-		if cfg == nil {
-			return errors.New("config not loaded")
+		g, err := repoGit()
+		if err != nil {
+			return err
 		}
-
-		repoRoot := cfg.Paths.LightwaveRoot
-		g := git.NewGit(repoRoot)
 
 		if err := g.WorktreeAddFromRef(wpath, branch, "origin/main"); err != nil {
 			return fmt.Errorf("git worktree add: %w", err)
@@ -601,9 +667,9 @@ Examples:
 			return nil
 		}
 
-		cfg := config.Get()
-		if cfg == nil {
-			return errors.New("config not loaded")
+		g, err := repoGit()
+		if err != nil {
+			return err
 		}
 
 		repoRoot := cfg.Paths.LightwaveRoot
@@ -650,13 +716,10 @@ Examples:
 		}
 		var results []pruneResult
 
-		cfg := config.Get()
-		if cfg == nil {
-			return errors.New("config not loaded")
+		g, err := repoGit()
+		if err != nil {
+			return err
 		}
-
-		repoRoot := cfg.Paths.LightwaveRoot
-		g := git.NewGit(repoRoot)
 
 		for _, w := range infos {
 			if w.IdleDays <= worktreeIdleDays {
