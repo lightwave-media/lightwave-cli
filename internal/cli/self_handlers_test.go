@@ -7,6 +7,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// AssembleSurface already applies the decommission policy (root.go), so this
+// used to call applyDecommissions a second time — from a parallel test body,
+// against the process-global rootCmd. disableSubtree writes to the commands it
+// walks, so that redundant call raced every other parallel test reading the
+// same tree. Going through shippedSurface instead gets the same policy applied
+// once, under the assembleOnce happens-before edge.
 func TestSelfSyncCmd_Registered(t *testing.T) {
 	t.Parallel()
 

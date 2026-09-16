@@ -122,10 +122,12 @@ func TestParseReadmeClaims(t *testing.T) {
 // shippedCommandNames returns what `lw --help` lists: available (non-hidden)
 // children of the assembled root, including cobra's own help and completion.
 //
-// Both of those are attached lazily during Execute, not by AssembleSurface, so
-// a test that only assembles would report them missing and fail against a
-// README that correctly lists them. Initialising them here is what makes the
-// test tree match the shipped binary rather than an internal halfway state.
+// Those two are attached by assembleOnce rather than here. They used to be
+// initialised in this function, which made it a WRITER to the process-global
+// rootCmd sitting outside the once-gate — so it raced every parallel test that
+// read the same tree, and `go test -race -shuffle=on` failed intermittently
+// naming whichever reader happened to lose. See assembleOnce's comment: this is
+// the same defect it was written to fix, one layer out.
 func shippedCommandNames(t *testing.T) []string {
 	t.Helper()
 

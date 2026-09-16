@@ -76,6 +76,23 @@ var assembleOnce = sync.OnceValue(func() error {
 	return nil
 })
 
+// settle forces cobra's lazy child sort on every node of the assembled tree.
+//
+// (*Command).Commands() is not the read it looks like. On first call per node
+// it sorts c.commands in place and sets c.commandsAreSorted — so the innocent
+// traversal in findChild is a WRITER, and two parallel tests that both only
+// "read" the shared root race each other on cobra's own flag. `go test -race`
+// reported it as reader-vs-reader, naming two different test files and neither
+// of the real writers, which is why it read as unattributable flake.
+//
+// Doing it once here, under the OnceValue's happens-before edge, is what makes
+// every later Commands() call a genuine read.
+func settle(c *cobra.Command) {
+	for _, child := range c.Commands() {
+		settle(child)
+	}
+}
+
 // shippedSurface returns the assembled root — what `lw --help` actually prints.
 //
 // When commands.yaml is unreachable, BuildDispatched warns and attaches
