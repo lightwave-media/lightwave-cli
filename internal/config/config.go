@@ -342,3 +342,28 @@ func (c *Config) DisplayPort() int {
 	}
 	return c.Database.Port
 }
+
+// PrintRoot is the rendered ~/.lightwave home, honouring LW_HOME_PRINT.
+//
+// It lives here because config is the one internal package that imports no
+// other, so every consumer can reach it without a cycle. internal/homepolicy
+// and internal/observability each carried a private copy of these six lines;
+// a resolver that disagrees between packages points two halves of the same
+// operation at two different trees, which for a hygiene verb means measuring
+// one home and repairing another.
+//
+// Deliberately independent of Get(): callers reach for this before the config
+// singleton is loaded, and a print root that returns "" until Load() succeeds
+// is a footgun for exactly the diagnostic paths that run when Load() failed.
+func PrintRoot() string {
+	if root := os.Getenv("LW_HOME_PRINT"); root != "" {
+		return root
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	return filepath.Join(home, ".lightwave")
+}
