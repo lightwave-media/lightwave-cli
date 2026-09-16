@@ -2,6 +2,7 @@ package db_test
 
 import (
 	"database/sql"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -246,4 +247,73 @@ func TestListEpicsLocalMissingStore(t *testing.T) {
 	// so the missing file must surface rather than read as an empty listing.
 	require.Error(t, err, "a missing store is an error, not an empty result")
 	assert.Contains(t, err.Error(), "local-first store not found")
+	// Naming the problem is not the same as naming the way out (#463).
+	assert.Contains(t, err.Error(), "LW_LOCAL_STORE",
+		"the error must name the override, since that is the reader's next move")
+}
+
+// TestMissingStoreNamesARetiredCopy is the case that actually happened.
+//
+// #463: the store was renamed to `lightwave.db.retired-<date>` and three read
+// verbs began failing with a bare stat error, while a complete copy of the data
+// sat in the same directory under a name one glob away. The reader was told the
+// file was absent and nothing else — not that a retired copy was there, not
+// that LW_LOCAL_STORE would read it, and not that createOS reads the same path
+// so restoring it is not lw's decision alone.
+//
+//nolint:paralleltest // t.Setenv
+func TestMissingStoreNamesARetiredCopy(t *testing.T) {
+	dir := t.TempDir()
+	store := filepath.Join(dir, "lightwave.db")
+	retired := store + ".retired-2026-09-14"
+
+	require.NoError(t, os.WriteFile(retired, []byte("not really sqlite"), 0o600))
+	t.Setenv("LW_LOCAL_STORE", store)
+
+	_, err := db.ListEpicsLocal(t.Context(), db.EpicListOptions{})
+	require.Error(t, err)
+
+	msg := err.Error()
+	assert.Contains(t, msg, "retired copy is beside it")
+	assert.Contains(t, msg, filepath.Base(retired), "name the file, so the reader can see the date it was retired")
+	assert.Contains(t, msg, "LW_LOCAL_STORE="+retired, "give the command, not a hint at one")
+	assert.Contains(t, msg, "createOS",
+		"restoring the store affects another product; an error that omits that invites a one-sided fix")
+}
+
+// TestMissingStoreStaysQuietAboutAbsentSiblings — the other direction. With no
+// retired copy there is nothing to point at, and inventing one would be the
+// confident-wrong-answer failure this package has already shipped twice.
+//
+//nolint:paralleltest // t.Setenv
+func TestMissingStoreStaysQuietAboutAbsentSiblings(t *testing.T) {
+	t.Setenv("LW_LOCAL_STORE", filepath.Join(t.TempDir(), "lightwave.db"))
+
+	_, err := db.ListEpicsLocal(t.Context(), db.EpicListOptions{})
+	require.Error(t, err)
+
+	msg := err.Error()
+	assert.NotContains(t, msg, "retired copy", "there is no retired copy; claiming one sends the reader nowhere")
+	assert.Contains(t, msg, "LW_LOCAL_STORE", "the override is still the way out")
+}
+
+// TestMissingStoreIgnoresUnrelatedNeighbours pins the narrowness of the scan.
+// Only the `.retired-*` suffix counts: SQLite's own -shm and -wal sidecars live
+// beside the store and are not a copy of anything.
+//
+//nolint:paralleltest // t.Setenv
+func TestMissingStoreIgnoresUnrelatedNeighbours(t *testing.T) {
+	dir := t.TempDir()
+	store := filepath.Join(dir, "lightwave.db")
+
+	for _, name := range []string{"lightwave.db-shm", "lightwave.db-wal", "lightwave.db.bak", "schema.sql"} {
+		require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o600))
+	}
+
+	t.Setenv("LW_LOCAL_STORE", store)
+
+	_, err := db.ListEpicsLocal(t.Context(), db.EpicListOptions{})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "retired copy",
+		"a sidecar or a .bak is not a retired store, and offering one as the fix is worse than saying nothing")
 }
