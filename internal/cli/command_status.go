@@ -19,6 +19,8 @@ import (
 // decommissioned command = verify it, add a test, move it here, delete its row
 // from DecommissionedCommands.
 var VerifiedCommands = map[string]bool{
+	"knowledge": true, // handler tests + HTTP round-trip and Postgres recovery in internal/knowledge
+
 	// cobra built-ins
 	"help":       true,
 	"completion": true,
