@@ -12,6 +12,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/lightwave-media/lightwave-cli/internal/git"
+	"github.com/lightwave-media/lightwave-cli/internal/worktreelock"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -456,6 +457,16 @@ Examples:
 			return fmt.Errorf("writing metadata: %w", err)
 		}
 
+		// Claim it immediately. A worktree is at its most vulnerable in the
+		// minutes after creation — nothing is committed yet, and by every
+		// idle-days metric it looks brand new rather than in use. Claiming
+		// here means a sweep that runs sixty seconds later can see a holder
+		// instead of guessing. Non-fatal: an unwritable lock directory should
+		// not stop the worktree from existing.
+		if err := worktreelock.Claim(wpath, sessionID(), branch); err != nil {
+			fmt.Fprintf(os.Stderr, "warning: could not record worktree liveness: %v\n", err)
+		}
+
 		info := worktreeInfo{
 			Path:      wpath,
 			Issue:     issue,
@@ -661,13 +672,10 @@ Examples:
 			return err
 		}
 
-		if err := g.WorktreeRemove(wpath, worktreeForce); err != nil {
-			return fmt.Errorf("git worktree remove: %w\n  (use --force to remove dirty worktree)", err)
-		}
-
-		if err := g.WorktreePrune(); err != nil {
-			// Non-fatal: prune failure doesn't invalidate the remove
-			fmt.Fprintf(os.Stderr, "warning: git worktree prune: %v\n", err)
+		// removeWorktreeSafely prunes on success, so the separate
+		// WorktreePrune call that stood here is gone rather than duplicated.
+		if err := removeWorktreeSafely(g, wpath, "lw worktree gc", worktreeForce); err != nil {
+			return err
 		}
 
 		color.Green("✓ removed worktree for issue %s", issue)
@@ -711,6 +719,18 @@ Examples:
 			if w.IdleDays <= worktreeIdleDays {
 				continue
 			}
+
+			// Idle days measure the BRANCH, not the session. A worktree can be
+			// weeks idle by that metric and have an agent editing it right now
+			// — which is how a sweep deletes live work. The lock is the fact;
+			// idleness was only ever a hint.
+			if holder := worktreelock.Holder(w.Path); holder != nil {
+				fmt.Fprintf(os.Stderr, "skipping %s: held by a live session (%s, active %s ago)\n",
+					w.Path, shortSession(holder.SessionID), holder.Age().Round(time.Second))
+
+				continue
+			}
+
 			reason := fmt.Sprintf("idle %d days (threshold: %d)", w.IdleDays, worktreeIdleDays)
 			results = append(results, pruneResult{
 				Issue:  w.Issue,
@@ -718,7 +738,11 @@ Examples:
 				Path:   w.Path,
 				Reason: reason,
 			})
+
 			if !worktreeDryRun {
+				// force stays false: prune must never be the thing that
+				// discards uncommitted work. A dirty worktree it cannot
+				// remove is reported and left alone.
 				if err := g.WorktreeRemove(w.Path, false); err != nil {
 					fmt.Fprintf(os.Stderr, "warning: skipping %s: %v\n", w.Path, err)
 					continue
