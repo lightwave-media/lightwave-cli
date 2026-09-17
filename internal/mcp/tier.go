@@ -15,10 +15,14 @@ const (
 	TierDeveloper Tier = "developer"
 	TierEngineer  Tier = "engineer"
 	TierSingular  Tier = "singular"
-)
 
-// DefaultTier is ADR-0002: operator day-to-day with no --persona flag.
-const DefaultTier = TierEngineer
+	// TierNone means identity did not resolve — no persona was given, the
+	// persona file was missing/unreadable, or its declared tier value was
+	// unrecognized. It is the empty string deliberately: it is Tier's zero
+	// value, so a caller that forgets to check ResolveTier's result still
+	// fails closed rather than defaulting to something permissive.
+	TierNone Tier = ""
+)
 
 type personaFrontmatter struct {
 	Tier string `yaml:"tier"`
@@ -26,23 +30,29 @@ type personaFrontmatter struct {
 }
 
 // ResolveTier reads ~/.lightwave/config/agents/<persona>.yaml.
-// Empty persona → engineer. Unknown/unreadable persona → engineer with no error
-// (the serve loop must start; tool filtering stays conservative).
+//
+// Fails closed uniformly: no persona given, an unreadable/missing file, or an
+// unrecognized declared tier all return TierNone. This used to default an
+// unresolved persona to TierEngineer (ADR-0002's operator-day-to-day
+// convenience for running `lw mcp serve` with no --persona flag) — including
+// on a TYPO'D persona name, which meant a mistyped --persona silently bought
+// the write tier. Identity must resolve before any tool is served; there is
+// no "safe default" tier for an identity the server couldn't establish.
 func ResolveTier(home, persona string) Tier {
 	if persona == "" {
-		return DefaultTier
+		return TierNone
 	}
 
 	path := filepath.Join(home, ".lightwave", "config", "agents", persona+".yaml")
 
 	body, err := os.ReadFile(path)
 	if err != nil {
-		return DefaultTier
+		return TierNone
 	}
 
 	var fm personaFrontmatter
 	if err := yaml.Unmarshal(body, &fm); err != nil {
-		return DefaultTier
+		return TierNone
 	}
 
 	tier := Tier(strings.ToLower(strings.TrimSpace(fm.Tier)))
@@ -50,7 +60,7 @@ func ResolveTier(home, persona string) Tier {
 	case TierDeveloper, TierEngineer, TierSingular:
 		return tier
 	default:
-		return DefaultTier
+		return TierNone
 	}
 }
 

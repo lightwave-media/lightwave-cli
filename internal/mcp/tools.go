@@ -64,6 +64,14 @@ func objectSchema(props map[string]any, required []string) map[string]any {
 }
 
 func toolsFor(tier Tier) []toolDef {
+	// Identity did not resolve — deny entirely, including the read-only
+	// library tools. toolAllowed and callTool both key off this list, so an
+	// empty result here is the single point that fails the whole server
+	// closed; nothing downstream needs its own TierNone check.
+	if tier == TierNone {
+		return nil
+	}
+
 	read := libraryTools()
 
 	read = append(read, []toolDef{
