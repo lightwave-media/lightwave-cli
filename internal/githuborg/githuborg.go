@@ -19,7 +19,14 @@ const (
 	DefaultProjectNumber = 3
 	DefaultProjectNodeID = "PVT_kwDODlnoUM4BbDql"
 	DefaultStatusFieldID = "PVTSSF_lADODlnoUM4BbDqlzhV25Fs"
-	BootstrapScriptRel   = "lightwave-infrastructure-catalog/scripts/bootstrap-github-org.sh"
+	// The bootstrap script moved into this repo's own scripts/ as a
+	// self-checkout (#281, 2026-07-27) so the org-sync workflow no longer
+	// clones a private sibling. This constant still pointed at the old
+	// sibling-repo path, so every CI run — which checks out only
+	// lightwave-cli (+ lightwave-core for the schema) — failed to resolve
+	// it while a dev machine's ~/dev/lightwave-infrastructure-catalog
+	// leftover masked the same bug locally.
+	BootstrapScriptRel = "lightwave-cli/scripts/bootstrap-github-org.sh"
 )
 
 // SwarmRepos is the estate rollout set (mirrors bootstrap-github-org.sh).
