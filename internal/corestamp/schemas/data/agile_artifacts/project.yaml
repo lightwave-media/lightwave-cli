@@ -22,7 +22,7 @@ _meta:
   - lightwave://schemas/data/agile_artifacts/goal
   table_kind: entity
   table_name: projects
-status_enum: project_statuses
+status_enum: agile_statuses
 priority_enum: epic_priorities
 primary_key:
   column: id

@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/kickoff_interview
   title: Kickoff Interview Transcript
+  table_kind: entity
+  scope: local
   description: 'Shared artifact for createOS Kickoff Hub and `lw kickoff` CLI.
 
     Lives at .tasks/<session-id>/kickoff/interview_transcript.yaml

@@ -19,6 +19,8 @@ import (
 // decommissioned command = verify it, add a test, move it here, delete its row
 // from DecommissionedCommands.
 var VerifiedCommands = map[string]bool{
+	"knowledge": true, // handler tests + HTTP round-trip and Postgres recovery in internal/knowledge
+
 	// cobra built-ins
 	"help":       true,
 	"completion": true,
@@ -46,19 +48,23 @@ var VerifiedCommands = map[string]bool{
 // The value is what's required to bring it back. Kept in source (not deleted)
 // so restoration is a one-line move once a verification harness for it exists.
 var DecommissionedCommands = map[string]string{
-	"aws":     "live AWS credentials + ECS; needs an e2e harness",
-	"github":  "gh CLI + platform repo + Postgres",
-	"council": "Augusta service (localhost:9700)",
-	"msg":     "gateway service (localhost:9701)",
-	"v_core":  "vcore daemon binary (lightwave-sys)",
-	"agent":   "spawns real agent processes; provision path is a stub",
-	"make":    "monorepo Makefiles (absent in this repo)",
-	"test":    "monorepo make targets",
-	"setup":   "monorepo make targets",
-	"cdn":     "make + live S3",
-	"content": "make + Django stack",
-	"drift":   "make + Django stack",
-	"email":   "make + Django stack",
+	"home diff":   "requires a real baseline comparison; the former handler always reported no drift",
+	"home pin":    "requires a durable release pin writer; the former handler wrote no file",
+	"home reset":  "requires a verified preservation manifest and lossless restore; rendering alone cannot reset a runtime",
+	"home reboot": "requires service ownership, restart and useful-output verification",
+	"aws":         "live AWS credentials + ECS; needs an e2e harness",
+	"github":      "gh CLI + platform repo + Postgres",
+	"council":     "Augusta service (localhost:9700)",
+	"msg":         "gateway service (localhost:9701)",
+	"v_core":      "vcore daemon binary (lightwave-sys)",
+	"agent":       "spawns real agent processes; provision path is a stub",
+	"make":        "monorepo Makefiles (absent in this repo)",
+	"test":        "monorepo make targets",
+	"setup":       "monorepo make targets",
+	"cdn":         "make + live S3",
+	"content":     "make + Django stack",
+	"drift":       "make + Django stack",
+	"email":       "make + Django stack",
 	// Subtree keys (space-separated) decommission a single subcommand while
 	// the parent stays verified.
 	"codegen journeys": "journey YAMLs not yet restamped under lightwave-core/src/schemas/flows/journeys; restore when fixtures land",

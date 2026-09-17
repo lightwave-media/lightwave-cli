@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/ui/ui_node"
   title: "UI Node — recursive component-tree node for DB-driven rendering"
+  table_kind: value_object
+  scope: local
   description: |
     A single node in a renderable component tree, and the core unit of the
     DB-driven UI protocol (ADR-0020). It names a component by registry key,

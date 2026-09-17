@@ -1,0 +1,143 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/policy_decision
+  title: Policy Decision
+  table_kind: entity
+  scope: local
+  description: |
+    One record of the deny-first policy gauntlet running against one request:
+    which stage evaluation stopped at, on what inputs, with what verdict.
+
+    WHY THIS EXISTS. Every gate on this machine already decides; almost none
+    can say WHY in a form anything can query. A refusal arrives as a bare
+    boolean plus prose, so an agent cannot tell a legal prohibition from an
+    unmet precondition, and neither can an audit. Measured on the host hooks:
+    25 checkout-lock denials, thousands from the bash guard, and no field
+    anywhere naming which rule fired. That is what makes a deny read as an
+    obstacle rather than a development signal.
+
+    ONE FIELD CARRIES THE EXPLANATION. `stage` is where evaluation stopped, and
+    its meaning is fixed by the verdict:
+      deny  — the stage that refused
+      pause — always `approval`, awaiting human authority
+      allow — always `receipt`, the terminal stage of a full pass
+    So a decision that claims `allow` without having reached `receipt` is
+    malformed by construction, not by a separate assertion. There is no second
+    `denied_at_stage` field: one stage, one meaning, nothing to keep in sync.
+
+    THIS IS NOT THE APPROVAL RECORD. data/meta/auth_gate_event owns human
+    authority and binds it to Touch ID, never to LLM output. A `pause` here
+    POINTS AT that record via approval_ref; it does not restate it. Stamping a
+    second approval shape is the naming collision EPIC-ONTO-001 §WS0 warns
+    about, and the approval half is explicitly not a gap.
+
+    THIS IS NOT THE LEDGER ROW EITHER. data/meta/ledger_event stays the
+    append-only INTENT/ACTION/OUTCOME envelope; a ledger row references a
+    policy decision by id and shares its correlation_id. A gate that allowed a
+    call and a call that then failed remain two facts (ADR-0037).
+  generates:
+  - pydantic:PolicyDecision
+  depends_on:
+  - lightwave://schemas/data/enums/policy_decision_stages
+  - lightwave://schemas/data/enums/policy_verdicts
+  - lightwave://schemas/data/meta/auth_gate_event
+
+required_fields:
+- name: id
+  type: str
+  description: Stable decision id, unique within the trail. Never reused.
+- name: ts
+  type: str
+  description: ISO 8601 timestamp at which evaluation concluded.
+- name: correlation_id
+  type: str
+  description: >
+    Joins this decision to every other row caused by the same unit of work, per
+    ADR-0037. Load-bearing: a decision without it cannot be attached to the
+    action it governed, and explains nothing.
+- name: subject
+  type: str
+  description: Who or what is asking — agent persona, session, or human identity.
+- name: action
+  type: str
+  description: What was requested, in the requesting surface's own vocabulary (Bash, pr.merge, ssm:PutParameter).
+- name: verdict
+  type: enum
+  values_ref: lightwave://schemas/data/enums/policy_verdicts
+  description: What the gauntlet concluded. Defaults deny, because an evaluator that cannot conclude must not permit.
+- name: stage
+  type: enum
+  values_ref: lightwave://schemas/data/enums/policy_decision_stages
+  description: >
+    The stage evaluation stopped at. For deny, the stage that refused; for
+    pause, `approval`; for allow, `receipt`. An unrecognised value denies — a
+    gauntlet that skips a stage it cannot parse is not a gauntlet.
+
+optional_fields:
+- name: target
+  type: str
+  description: The specific object, path or resource addressed, where the action names one.
+- name: reason
+  type: str
+  description: >
+    Human-readable explanation from the deciding stage. Supplements `stage`,
+    never substitutes for it: prose is for the reader, the stage is for the query.
+- name: rule_id
+  type: str
+  description: Identifier of the specific rule within the stage that fired — an R-rule id, an rbac entry, a hook name.
+- name: approval_ref
+  type: str
+  description: auth_gate_event id this decision is waiting on or was resumed by. Required in practice when verdict is pause.
+- name: tenant
+  type: str
+  description: Tenant the subject acted on behalf of, resolved at the identity stage.
+- name: role
+  type: str
+  description: Role resolved at the role stage. Bound to policy/security/rbac user_type, not re-derived per call.
+- name: environment
+  type: str
+  description: Environment the request targeted — prod, staging, local.
+- name: risk_tier
+  type: str
+  description: Risk tier assigned at the risk stage. The first input that is an estimate rather than a fact.
+- name: idempotency_key
+  type: str
+  description: Caller-supplied key checked at the idempotency stage. A duplicate returns the original receipt rather than acting twice.
+- name: stages_evaluated
+  type: list[str]
+  description: >
+    Ordered stages actually run before stopping. Makes a short-circuit visible:
+    a deny at `safety` evaluating one stage and a deny at `risk` evaluating
+    eight are different facts about cost and about what was examined.
+- name: evidence_ref
+  type: str
+  description: evidence_ref id backing a stage that required proof rather than assertion.
+- name: duration_ms
+  type: int
+  description: Wall-clock duration of evaluation in milliseconds.
+- name: metadata
+  type: map[str, str]
+  description: Stage-specific payload that does not earn a column.
+
+example:
+  id: pol-2026-09-13-4b17ca02
+  ts: '2026-09-13T17:04:42Z'
+  correlation_id: corr-2026-09-13-onto-ws1
+  subject: v_core-package-developer
+  action: Bash
+  verdict: deny
+  stage: preconditions
+  target: git commit -m "stamp the WS1 records"
+  reason: mise run ci has not run in this session; the pre-flight required by CLAUDE.md §11 is unmet.
+  rule_id: reuse-check:row-A
+  role: agent
+  environment: local
+  stages_evaluated:
+  - safety
+  - identity
+  - role
+  - capability
+  - object_permissions
+  - environment
+  - preconditions
+  duration_ms: 12

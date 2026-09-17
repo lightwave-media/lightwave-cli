@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/org_wiki_manifest
   title: Org Wiki Manifest
+  table_kind: value_object
+  scope: local
   description: 'Declares stamp→print pages for the org-wide wiki rendered by lightwave-home.
 
     Enables lw home validate and scripting to depend on stable paths/terms.

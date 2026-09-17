@@ -1,0 +1,49 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/runbook_actors"
+  title: "Runbook Actors"
+  description: |
+    Who may execute a single runbook step.
+
+    The dual-surface model already chooses a renderer for a WHOLE runbook —
+    one boilerplate.yml variable contract renders as a human form in the
+    Runbooks app or headlessly via --non-interactive for an agent. This enum
+    is finer than that: it lets one run begin headless, reach a step that
+    needs human judgement, surface that step as a panel, and resume headless.
+
+    It answers "who MAY run this step". What actually happened — who did run
+    it, when the run suspended, how long it waited, what the human chose — is
+    an execution fact and belongs in the append-only evidence record, not
+    here. Per the three-artifact separation, the definition stays immutable.
+  generates:
+    - "pydantic:RunbookActor"
+  depends_on: []
+
+name: runbook_actors
+description: "Which actor may execute a runbook step"
+default: either
+closed: true
+
+options:
+  - value: agent
+    label: "Agent"
+    description: >-
+      Headless-executable. An agent may run this step unattended with no
+      human present. Deterministic work: validation, scripted commands,
+      template rendering.
+
+  - value: human
+    label: "Human"
+    description: >-
+      Requires a person. A headless run SUSPENDS here and surfaces the step
+      as a panel; it must never be auto-satisfied. Use for irreversible or
+      judgement-bearing steps — approving a production change, choosing
+      between valid options, reviewing a diff. A step whose only obstacle is
+      a missing value an agent could supply is not this; it is `agent`.
+
+  - value: either
+    label: "Either"
+    description: >-
+      Agent-executable, and also meaningful to surface when the run is
+      human-driven. The default, so a step that does not declare an actor
+      never blocks a headless run — existing runbooks stay valid unchanged.

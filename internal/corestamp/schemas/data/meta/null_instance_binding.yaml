@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/null_instance_binding"
   title: "Null Instance Binding"
+  table_kind: value_object
+  scope: local
   description: |
     Two-path contract for lightwave-ui read-only Mission Control views.
     config_path + data_path (SQLite .db or data_dir for nullwatch).

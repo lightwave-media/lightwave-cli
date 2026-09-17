@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/project_workspace"
   title: "Project Workspace — identity record for one writable task workspace"
+  table_kind: entity
+  scope: local
   description: |
     The registered identity of ONE writable workspace for ONE task in ONE
     repository (CORE-0051, Notion task GTD-1305). The invariant the broker

@@ -1,7 +1,9 @@
 _meta:
-  version: "1.2.0"
+  version: "1.4.0"
   schema_id: "lightwave://schemas/data/meta/skill_definition"
   title: "Skill Definition"
+  table_kind: document
+  scope: local
   description: |
     SCHEMA for SKILL.md files at ~/.lightwave/skills/<slug>/SKILL.md.
     Formalises the YAML frontmatter that R-21 (skill-compliance)
@@ -94,6 +96,24 @@ _meta:
     plus `authority_includes`, `consumes`, `produces`, which skills already
     carried undeclared. Breaking for consumers that read `category` or
     `agents` at the top level: read `metadata.<key>` instead.
+
+    v1.3 (2026-09-15): skills and runbooks become first-class to each other.
+    Adds `metadata.runbooks` — the runbooks a skill authors or governs — whose
+    reverse edge is runbook_definition.authoring_skill. Each side must RESOLVE
+    (R-21 for this one); neither has to enumerate the other — see that field
+    for why. Replaces the evals "Format TBD" with the actual contract,
+    adopting Anthropic's skill-creator evals.json schema verbatim so their
+    harness runs on a Lightwave skill unmodified. Additive: every v1.2 skill
+    stays valid, since both fields are optional.
+
+    v1.4 (2026-09-15): print_targets is the closed list of harness skill
+    directories the generator fans out to — Cursor, Codex, and OpenCode
+    join Claude Code and Zed. `src/io/prints/skills.py` reads this list
+    from the stamp (it does not hard-code destinations). Default is print
+    every target. Never print into vendor trees (e.g. ~/.cursor/skills-cursor).
+    An unmarked harness directory whose SKILL.md body matches canonical is
+    an unmarked copy, not a fork: the printer adopts it by writing the
+    provenance header rather than leaving it unmanaged forever.
   generates:
     - "rust:SkillDefinition"
     - "pydantic:SkillDefinition"
@@ -179,6 +199,20 @@ sub_schemas:
       type: str
       required: false
       description: "schema_id of the artefact this skill emits (e.g. lightwave://schemas/data/meta/testing_strategy_plan). Consumers validate the output against that stamp."
+    runbooks:
+      type: "list[str]"
+      required: false
+      description: >
+        Runbook slugs (from src/runbooks/__index.yaml) this skill authors,
+        governs or teaches. A skill states HOW to think about a class of work;
+        a runbook is the executable procedure for one instance of it. Declaring
+        the edge makes that relationship checkable instead of prose: R-21
+        resolves every slug against the runbook library, so a renamed or
+        deleted runbook fails loudly rather than leaving a skill pointing at
+        nothing. The reverse edge is runbook_definition.authoring_skill, and
+        the two must agree. Omit for skills that govern no operational
+        procedure — a review lens or a reference has no runbook, and inventing
+        one to fill the field is worse than leaving it empty.
     disable_model_invocation:
       type: bool
       required: false
@@ -186,12 +220,24 @@ sub_schemas:
 
 # Harness directories that receive generated prints of the canonical
 # skills. Produced and drift-checked by src/io/prints/skills.py; a
-# directory here without the provenance header is unmanaged and untouched.
+# directory here without the provenance header is unmanaged and untouched
+# unless its SKILL.md body is byte-identical to canonical (unmarked copy
+# → adopt by writing the header). Vendor trees are not targets.
 print_targets:
   - harness: claude-code
     path: "~/.claude/skills/<slug>/"
   - harness: zed
     path: "~/.agents/skills/<slug>/"
+  - harness: cursor
+    path: "~/.cursor/skills/<slug>/"
+    note: >
+      User skills home. Never ~/.cursor/skills-cursor/ (vendor). If this
+      path is a symlink to ~/.lightwave/skills, the generator no-ops —
+      Cursor is already reading the canonical home.
+  - harness: codex
+    path: "~/.codex/skills/<slug>/"
+  - harness: opencode
+    path: "~/.config/opencode/skills/<slug>/"
 
 # Sub-directories the skill loader recognises. Presence is optional;
 # when present, the directory contents follow the convention below.
@@ -205,7 +251,20 @@ sub_directories:
   - name: agents/
     description: "Sub-agent definitions following Anthropic's nested-agent pattern. Each file is a sub-SKILL.md scoped to a narrower task."
   - name: evals/
-    description: "Eval cases for measuring whether the skill achieves its stated outcome. Format TBD per evals contract (lands when testing-efficacy skill + eval harness mature)."
+    description: >
+      Eval cases measuring whether the skill achieves its stated outcome.
+      CONTRACT (v1.3, was "Format TBD"): a single evals/evals.json object with
+      `skill_name` (matching the skill slug) and `evals`, a list of cases each
+      carrying `id`, `prompt`, `expected_output`, and `expectations` — a list
+      of observable assertions, one per line, phrased so a grader can mark each
+      pass or fail without judgement calls. Optional `files` lists fixture
+      paths relative to the skill root. This is Anthropic's skill-creator eval
+      schema adopted verbatim rather than a parallel Lightwave format, so the
+      harness that runs it (run_eval.py, aggregate_benchmark.py and the grader
+      sub-agent, carried by the canonical create-skill skill) works on a
+      Lightwave skill with no adaptation. A skill whose output is not
+      checkable from the outside should ship no evals rather than vacuous
+      ones — an eval that cannot fail measures nothing.
 
 example:
   name: code-review

@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/session_context"
   title: "Session Context"
+  table_kind: entity
+  scope: local
   description: |
     Per-session runtime metadata composed at spawn time and refreshed
     on demand by `compose_user_prompt` / `compose_system_prompt` (per

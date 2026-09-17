@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/operator_cli_event
   title: Operator CLI event
+  table_kind: entity
+  scope: local
   description: 'Measured lw command outcome — append-only sink operator-cli.jsonl.
 
     Failures also emit tool-feedback/lw lessons for agent harness recall.

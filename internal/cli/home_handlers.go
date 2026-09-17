@@ -136,28 +136,19 @@ func homeValidateHandler(_ context.Context, _ []string, _ map[string]any) error 
 }
 
 func homeDiffHandler(_ context.Context, _ []string, _ map[string]any) error {
-	fmt.Println("home diff: no drift (baseline match)")
-	return nil
+	return errors.New("home diff is decommissioned: no baseline comparison is implemented; runtime drift has not been measured")
 }
 
-func homePinHandler(_ context.Context, _ []string, flags map[string]any) error {
-	if flagStr(flags, "write") != "" {
-		fmt.Println("home pin: wrote home/pin.yaml")
-	}
-
-	return nil
+func homePinHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errors.New("home pin is decommissioned: no pin writer is implemented; no release pin was changed")
 }
 
-func homeResetHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	if err := homeRenderHandler(ctx, nil, flags); err != nil {
-		return err
-	}
-
-	return homeValidateHandler(ctx, nil, flags)
+func homeResetHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errors.New("home reset is decommissioned: template rendering is not a verified runtime reset; preserve canonical files and bindings and rehearse recovery first")
 }
 
-func homeRebootHandler(ctx context.Context, _ []string, flags map[string]any) error {
-	return homeResetHandler(ctx, nil, flags)
+func homeRebootHandler(_ context.Context, _ []string, _ map[string]any) error {
+	return errors.New("home reboot is decommissioned: service restart and recovery verification are not implemented")
 }
 
 func lightwaveRoot() string {

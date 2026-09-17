@@ -14,7 +14,7 @@ _meta:
   - lightwave://schemas/data/agile_artifacts/prd
   table_kind: entity
   table_name: epics
-status_enum: epic_statuses
+status_enum: agile_statuses
 priority_enum: epic_priorities
 primary_key:
   column: id

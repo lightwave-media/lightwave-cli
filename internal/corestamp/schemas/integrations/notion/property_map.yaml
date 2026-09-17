@@ -1,5 +1,5 @@
 _meta:
-  version: "1.0.0"
+  version: "1.1.0"
   schema_id: "lightwave://schemas/integrations/notion/property_map"
   title: "Notion Property Map"
   description: |
@@ -45,6 +45,12 @@ sub_schemas:
         type: bool
         description: "Whether absence of the Notion property is an error"
     optional_fields:
+      - name: authority
+        type: str
+        description: "local | external | reconcile. Runtime evidence uses local; human-authored planning uses reconcile so simultaneous edits are surfaced."
+      - name: writable
+        type: bool
+        description: "Whether this mapped property may be updated outbound. Calculated/source metadata properties are read-only."
       - name: local_kind
         type: str
         description: "Target SST kind when promoting a DB row (e.g. task)"
@@ -68,4 +74,4 @@ example:
       local_field: domain
       local_kind: task
       required: false
-  notes: "Legacy Notion-as-inbox; prefer local Ready-Task inbox going forward."
+  notes: "Notion authoring reconciles into canonical prints; record discovery never dispatches work."

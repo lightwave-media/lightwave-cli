@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/agent_identity
   title: Agent Identity — Database-Driven, UUID-Immutable
+  table_kind: entity
+  scope: local
   description: 'Database-driven agent identity. UUID is immutable (assigned at creation).
 
     Persona slug and display name are renamable. Provider API keys are shared

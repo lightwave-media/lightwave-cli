@@ -23,6 +23,7 @@ _meta:
     semantics — prior v0.1.0 materialized bundles to ~/.lightwave/bundles/tools/).
 
 schemas:
+  workspace_context: workspace_context.yaml
   tool_filter_groups: tool_filter_groups.yaml
   claude_code: claude_code.yaml
   claude_code_runner: claude_code_runner.yaml

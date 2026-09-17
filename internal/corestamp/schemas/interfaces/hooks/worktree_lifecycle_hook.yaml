@@ -1,5 +1,5 @@
 _meta:
-  version: "2.0.0"
+  version: "2.1.0"
   schema_id: "lightwave://schemas/interfaces/hooks/worktree_lifecycle_hook"
   title: "Worktree Lifecycle Hook Contract — WorktreeCreate / WorktreeRemove"
   description: |
@@ -8,9 +8,36 @@ _meta:
     git worktree creation for --worktree sessions, --spawn=worktree, and
     Agent(isolation:"worktree") alike — the hook decides WHERE worktrees
     live, so this contract is what pins the canonical root, naming, marker,
-    and lock invariants. Print implementations live in ~/.claude/hooks/
-    (worktree-create.ts, worktree-remove.ts) registered in settings.json.
+    and lock invariants.
 
+    STATUS — this contract is NOT YET MATERIALISED (verified 2026-09-12).
+    Neither ~/.claude/hooks/worktree-create.ts nor worktree-remove.ts exists,
+    and neither WorktreeCreate nor WorktreeRemove appears in settings.json.
+    Earlier versions of this description asserted those prints as present,
+    which is the more dangerous direction for a contract to drift: a reader
+    concludes placement is enforced and stops checking.
+
+    What actually enforces placement today is ~/.claude/hooks/
+    pre-tool-use-worktree.ts, registered on PreToolUse:Bash. It intercepts the
+    `git worktree add` VERB and rejects destinations outside the canonical root
+    — so a worktree an agent creates by running git is gated, and everything
+    below is not:
+
+      - native harness creation (--worktree sessions, --spawn=worktree,
+        Agent(isolation:"worktree")) never runs a Bash command, so no
+        PreToolUse hook sees it;
+      - `lw workspace prepare` / `release` are therefore not delegated to by
+        any registered surface, so the broker adapter described below is a
+        design, not a running component.
+
+    Registering the two events is an operator action (an agent may not register
+    a permission-decision hook), which is why this sits unmaterialised rather
+    than half-built.
+
+    v2.1.0 (2026-09-12): STATUS block above added — the contract described two
+    prints that do not exist and two events that are not registered, so it
+    asserted an enforcement surface nobody had built (lightwave-core#571). The
+    field contract below is unchanged; only the claim about what is running is.
     v2.0.0 (CORE-0051): the hook is the Claude Code adapter of the workspace
     broker. It delegates allocation to `lw workspace prepare` and returns the
     brokered path (~/.worktrees/<repo>/<slug>) as hookSpecificOutput.worktree_path;

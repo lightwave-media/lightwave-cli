@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/interview_export
   title: Interview Export Bundle
+  table_kind: entity
+  scope: local
   description: 'Typed export from living-interview or kickoff interview. Dual job:
 
     agent enrichment payload + user_instance materialization deltas (ADR-0041).

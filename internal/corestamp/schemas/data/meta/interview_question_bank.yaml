@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/interview_question_bank"
   title: "Kickoff Interview Question Bank"
+  table_kind: document
+  scope: local
   description: |
     Backup questions keyed by interview_round for agent clarification rounds.
   generates:

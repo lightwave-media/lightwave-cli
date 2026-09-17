@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/audit_event
   title: Audit Event Base
+  table_kind: entity
+  scope: local
   description: 'Base audit row shape for CreateOS command-plane emitters. Gateway,
 
     runbook, auth inbox, and shell emitters extend with surface-specific fields.

@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/lightwave-settings"
   title: ".lightwave/settings.yaml shape"
+  table_kind: value_object
+  scope: local
   description: |
     Per-repo LightWave metadata. Declares which agents work in this repo,
     which integration surfaces are wired (AGENTS.md vs CLAUDE.md, CI runner,

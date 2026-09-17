@@ -4,6 +4,8 @@
 _meta:
   schema_id: lightwave://schemas/data/meta/docs_structure
   title: Docs Structure Blueprint
+  table_kind: value_object
+  scope: local
   version: 1.0.0
   description: Mirrors Tauri v2 docs hierarchy 1:1.
   generates:

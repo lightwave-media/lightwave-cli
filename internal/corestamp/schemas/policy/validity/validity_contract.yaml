@@ -1,5 +1,5 @@
 _meta:
-  version: "0.1.0"
+  version: "0.2.0"
   schema_id: "lightwave://schemas/policy/validity/validity_contract"
   title: "Validity Contract"
   description: |
@@ -17,6 +17,13 @@ _meta:
     produced content faithful to its upstream. upstream_artefacts is the load-
     bearing field — it names the sources the work must not drift from, and an
     empty list makes the contract unfalsifiable.
+
+    v0.2.0 (2026-09-12): recalibrated to the shipped print. The host lib moved
+    from jaccard to containment on 2026-09-08 (n=7,065) and raised its
+    recommended floor to 0.45, but this stamp still described the jaccard scale
+    and its example still carried 0.05 — so it taught every new contract author
+    to write a threshold that cannot fire. `metric` is now declared, because a
+    threshold without its scale is not a number anyone can act on.
   generates:
     - "pydantic:ValidityContract"
   depends_on:
@@ -40,13 +47,26 @@ required_fields:
     min_length: 1
   - name: min_fidelity_score
     type: float
-    description: "Score below which `action` fires, in [0.0, 1.0]. Observed contracts sit at 0.05-0.15; soak the distribution before raising one, because the score is corpus-relative and not comparable across contracts."
+    description: "Score below which `action` fires, in [0.0, 1.0], on the `metric` scale. For the current `containment` metric the recommended floor is 0.45 (RECOMMENDED_MIN_FIDELITY in ~/.lightwave/lib/validity/validity.ts). Thresholds written for the retired jaccard scale sat at 0.05-0.15 and warn on nothing under containment, so a value in that range is almost certainly a stale copy rather than a deliberate choice. Soak the distribution before raising one: the score is corpus-relative and not comparable across contracts."
   - name: action
     type: enum
     values_ref: "lightwave://schemas/data/enums/validity_gate_actions"
     description: "What happens below threshold. Default new contracts to `warn`; `block` only after the score distribution is known."
 
 optional_fields:
+  - name: metric
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/validity_metrics"
+    default: "containment"
+    description: |
+      Which similarity function produces min_fidelity_score. Declared because
+      the two are on different scales, so a threshold is meaningless without it.
+
+      containment = |content ∩ upstream| / |content| — asks "is what I wrote
+      supported by the upstream?" and is the metric the host lib scores with.
+      jaccard = |∩| / |∪| — symmetric, so any vocabulary-expanding edit tanks
+      it however faithful the addition is. It is retained in the record details
+      for continuity, never as the score.
   - name: scope
     type: object
     description: |
@@ -71,7 +91,8 @@ example:
     - "~/.lightwave/specs/adr/ADR-0006-ui-schema-family-and-zod-codegen-split.md"
     - "~/dev/lightwave-core/src/schemas/data/ui/section_contract.yaml"
     - "~/dev/lightwave-cli/AGENTS.md"
-  min_fidelity_score: 0.05
+  metric: "containment"
+  min_fidelity_score: 0.45
   action: "warn"
   scope:
     tools: ["Write", "Edit", "write", "edit"]

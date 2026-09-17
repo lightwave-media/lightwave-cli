@@ -1,12 +1,57 @@
 _meta:
-  version: "3.10.0"
+  version: "3.13.0"
   schema_id: "lightwave://schemas/data/meta/homedir"
   title: "HomeDir Structure"
+  table_kind: value_object
+  scope: local
+  # This schema's example IS its contract: example.dirs is the declaration of
+  # what ~/.lightwave/ contains, read by R-35 and reproduced by `lw home init`.
+  # Trimming it to "2-3 representative entries" would not reduce duplication,
+  # it would delete the registry. R-44 reads this to classify the population as
+  # ARCHITECTURAL rather than a catalog to trim; R-12 exempts the same file from
+  # its line cap for the same reason, but still by hardcoded path.
+  registry: true
   description: |
     Canonical structure of ~/.lightwave/* — the LightWave Media PRINT filesystem.
     Defines top-level dirs, recursive sub-structure, kind→dir mapping, ephemeral
     runtime files, and consolidation paths from external homes. lightwave-core
     defines the SHAPE; the actual filesystem is the PRINT.
+
+    v3.13.0 (2026-09-16): ADD top-level memory/ DirSpec — `lw memory`'s
+    filesystem KV (~/.lightwave/memory/<namespace>/<key>) shipped with no
+    DirSpec of its own. It is NOT the same directory as the pre-existing
+    v_core/memory/ nested entry (a single SQLite database); R-35 had nothing
+    to match ~/.lightwave/memory/ against until this entry, and the CLI verb
+    creating it on first use failed every pre-push R-35 run fleet-wide.
+
+    v3.12.0 (2026-09-12): ADD 39 nested DirSpecs — the 10 lib/ sub-dirs v3.11.0
+    deferred, plus 14 under config/, 13 under observability/ and 2 under
+    sources/. R-35 now walks nested_dirs recursively, so the list that was
+    written once and never compared to disk again is checked every run
+    (lightwave-core#624).
+
+    The recursive check is scoped on two axes, both declared here rather than in
+    the test. It reaches only dirs that DECLARE nested_dirs — a dir whose
+    children are dynamic declares none (observability/sessions/ is one sub-dir
+    per session_id), so the rule enforces that a declared list is COMPLETE, not
+    that a list exists. And it enforces only trees claiming
+    `migration_status: current`; a tree still migrating has said so in the
+    stamp, which is what separates a declared deferral from a carve-out. brain/
+    is the only tree using that today, with 10 sub-dirs still undeclared.
+
+    Also MERGES the duplicate `reports` DirSpec. It was declared twice with
+    different read_consumers — two contradictory claims about one directory —
+    and nothing could see it, because the completeness checks build a set of
+    declared paths and a set silently collapses the second. Now tested.
+
+    v3.11.0 (2026-09-12): ADD lib/ledger nested DirSpec + ledger.jsonl to the
+    observability channel list. The outcome ledger is the print of
+    data/meta/ledger_event (v1.0.0): one append-only row per action joining
+    intent to outcome by correlation_id. Declared on the way in rather than
+    discovered later by R-35 — 11 of 15 lib sub-dirs are currently undeclared
+    (gate, harvest, host, index, infra, ingest, maintenance, observability,
+    prompt-grooming, swarm, plus this one before this change), which is
+    tracked separately rather than swept in here.
 
     v3.10.0 (2026-09-10): ADD hcr/ DirSpec — Harness Change Requests
     (CORE-0045) awaiting operator review, observed undeclared by R-35 within
@@ -218,6 +263,20 @@ example:
             ~/.lightwave/config/contracts/active symlink.
           write_authority: operator
           read_consumers: [claude-code-hooks, pi-extensions, validity-runtime]
+        - path: "models"
+          purpose: |
+            Model catalog — one file per model (capability, tier, cost,
+            availability), keyed by provider API id so tier↔cost attribution
+            joins against cost_record.jsonl and sessions.jsonl. Stamp ships the
+            SHAPE at lightwave-core src/schemas/integrations/llm_providers/
+            models/model_capabilities.yaml; this print holds the entries,
+            because a price sheet is DATA and the stamp does not define data
+            (CLAUDE.md §7). Read by loadModelCatalog() in model-matcher.ts to
+            resolve a persona's required tier to a concrete model. Added
+            2026-09-13: the catalog had never been populated anywhere, so
+            resolveModel() returned null on 619 of 619 sessions.
+          write_authority: operator
+          read_consumers: [claude-code-hooks, validity-runtime, agent-harness]
         - path: "principles"
           purpose: |
             Per-principle YAML files declaring engineering principles
@@ -232,6 +291,114 @@ example:
             print. Per-hook sub-files: pre-commit, pre-tool-use, etc.
           write_authority: operator
           read_consumers: [git-hooks-runtime, claude-code-hooks, pi-extensions]
+        - path: "agent-harnesses"
+          purpose: |
+            Per-harness configuration prints (claude, codex, ...) rendered from
+            the lightwave-core stamp through lw cli. One sub-dir per harness so
+            one harness's settings are replaceable without touching the others.
+          write_authority: lw-cli
+          read_consumers: [agent-harness, lw-cli, operator]
+        - path: "codebase"
+          purpose: |
+            Per-repo persona overlays that narrow a global persona to one
+            codebase's stack and direction. Separate from config/agents/ because
+            these are scoped by REPO, not by role: the same persona reads a
+            different overlay depending on which checkout it is working in.
+          write_authority: operator
+          read_consumers: [agent-harness, lw-cli]
+        - path: "cron"
+          purpose: |
+            Scheduled-routine definitions — WHAT runs on a schedule and at what
+            cadence. config/launchagents/ holds the macOS plists that actually
+            fire them; split so a routine's contract survives a change of
+            scheduler.
+          write_authority: operator
+          read_consumers: [v_core, lw-cli, agent-harness]
+        - path: "flags"
+          purpose: |
+            Feature-flag registry (ADR-0035) — the declared set of flags, their
+            meaning and default. Live on/off state is a separate print at
+            config/flags.toml flipped by lw release flag, so toggling a flag is
+            never a schema edit.
+          write_authority: operator
+          read_consumers: [lw-cli, agent-harness]
+        - path: "governance"
+          purpose: |
+            The governing contracts every session must follow — agile framework,
+            release protocol, spec authoring, messaging safety — plus per-domain
+            sub-folders. Distinct from config/principles/ (how to think) and
+            config/soul/ (what the operator values): governance is procedural
+            and binding.
+          write_authority: operator
+          read_consumers: [agent-harness, lw-cli, operator]
+        - path: "launchagents"
+          purpose: |
+            macOS launchd plists for the routines declared in config/cron/, plus
+            a _retired/ holding area so a disabled agent is visibly retired
+            rather than deleted. The scheduler-specific half of the cron split.
+          write_authority: operator
+          read_consumers: [operator, v_core]
+        - path: "lightwave-ai"
+          purpose: |
+            Client config for the lightwave-ai nullstack runtime — repo and
+            module roots, local model base URL, blueprint version, instance
+            registry. Points the harness at a checkout, so it is machine-local
+            and never committed anywhere.
+          write_authority: operator
+          read_consumers: [agent-harness, v_core]
+        - path: "local-staging"
+          purpose: |
+            Local AWS emulation (Docker Compose, LocalStack, dnsmasq) for
+            iterating before touching real infrastructure. Config only — the
+            stack it describes runs outside ~/.lightwave/.
+          write_authority: operator
+          read_consumers: [operator, lw-cli]
+        - path: "media-ops"
+          purpose: |
+            Autonomy contract for the media-ops agent (NAS health, catalog,
+            lifecycle) — the print of the media data doctrine and the
+            media_backup_archive SOP. Authored after the 2026-08-25 Synology
+            volume crash; it bounds what that agent may do unattended.
+          write_authority: operator
+          read_consumers: [agent-harness, v_core]
+        - path: "nullclaw"
+          purpose: |
+            Seed cron definitions for the nullclaw agent executor, which lives at
+            lightwave-ai/src/nullclaw after the null* fold (epic lightwave-ai#44).
+            Kept as a seed rather than live state so a rebuilt runtime starts
+            from a known schedule.
+          write_authority: operator
+          read_consumers: [v_core, agent-harness]
+        - path: "skills"
+          purpose: |
+            Operator skill definitions in YAML with an __index.yaml registry —
+            the print side of the stamp's workflows/skills family. Distinct from
+            ~/.claude/skills/, which is Claude Code's own SKILL.md surface.
+          write_authority: operator
+          read_consumers: [agent-harness, lw-cli]
+        - path: "soul"
+          purpose: |
+            The operator's durable positions — thesis, aesthetic, judgment, mind
+            — that personas inherit so taste survives across sessions and models.
+            Held apart from config/principles/ (engineering rules) and
+            config/governance/ (binding procedure) because this is what the
+            operator VALUES, and it changes on a different clock than either.
+          write_authority: operator
+          read_consumers: [agent-harness, v_core]
+        - path: "user_instance"
+          purpose: |
+            Per-operator instance settings — handle, enabled domains, voice-first
+            preference. One file per operator so the same machine config can
+            serve more than one identity without rewriting the config above it.
+          write_authority: operator
+          read_consumers: [agent-harness, lw-cli, v_core]
+        - path: "voice"
+          purpose: |
+            Voice synthesis configuration managed by v_speak — the profile
+            registry, per-persona bindings and cached clips. Bindings map a
+            persona to a voice so spoken output is attributable by ear.
+          write_authority: operator
+          read_consumers: [v_core, agent-harness]
       accepts_files: ["workspace.yaml"]
     - path: "index"
       purpose: |
@@ -264,6 +431,29 @@ example:
             the active contract per CLAUDE.md §6 doctrine.
           write_authority: operator
           read_consumers: [claude-code-hooks, pi-extensions]
+        - path: "ledger"
+          purpose: |
+            Outcome-ledger writer (TypeScript) — the print of
+            data/meta/ledger_event. One append-only row per action joining
+            intent to outcome by correlation_id, so "which surfaces saw this
+            one unit of work, and what did each decide?" is answerable.
+            Consumed by lib/gate/run.sh (CI rows for six repos' pre-push
+            hooks) and, progressively, the Claude Code hooks. Enum values are
+            bound to the stamp by test rather than read from ~/dev at runtime,
+            because that checkout is shared and mutating (CLAUDE.md §16).
+          write_authority: operator
+          read_consumers: [claude-code-hooks, git-hooks, lw-cli]
+        - path: "forgejo"
+          purpose: |
+            Forgejo rendering library. fleet_status.py renders a query over the
+            ledger (observability/ledger.jsonl) into a Forgejo repo so fleet
+            pipeline state is visible in the UI and its history comes free from
+            git. Per ADR-0049 applied to monitoring: files are truth, the
+            rendered surface is derived and droppable — delete the repo and
+            nothing is lost, rerun the script. Declared 2026-09-13; it existed
+            on disk undeclared, which is the drift R-35 exists to catch.
+          write_authority: operator
+          read_consumers: [forgejo, lw-cli]
         - path: "doc"
           purpose: |
             Document-validation library code. Used by pre-commit hooks to
@@ -283,6 +473,111 @@ example:
             enforce branch naming conventions.
           write_authority: operator
           read_consumers: [git-hooks]
+        - path: "gate"
+          purpose: |
+            The harness-agnostic gate entrypoint. run.sh is the single call any
+            actor makes — a git pre-push hook, a Claude/Pi Stop-hook adapter,
+            cron, or a human — to run a repo's gate AND record the result to
+            shared telemetry, so enforcement and feedback-data converge
+            identically across harnesses. Six repos' pre-push hooks call it.
+            Ships its own installer, conformance check and reporter.
+          write_authority: operator
+          read_consumers: [git-hooks, claude-code-hooks, pi-extensions, lw-cli]
+        - path: "harvest"
+          purpose: |
+            Converters that turn an external source's fetched payload into
+            stamp-shaped YAML under ~/.lightwave/harvest/. Keeps vendor response
+            parsing out of the harness: the harness persists a raw tool result,
+            this library renders it. First inhabitant converts a Notion
+            data-source fetch into a harvest schema YAML.
+          write_authority: operator
+          read_consumers: [agent-harness, lw-cli]
+        - path: "host"
+          purpose: |
+            Host telemetry collection for the v_core swarm-context stream — the
+            print of data/meta/host_snapshot. Separate from lib/observability
+            (which records what AGENTS did) because this records what the MACHINE
+            did: load, memory, network, disk. Runs under a LaunchAgent and
+            therefore sets PATH explicitly; a minimal launchd environment
+            silently nulls every reading otherwise.
+          write_authority: operator
+          read_consumers: [v_core, agent-harness]
+        - path: "index"
+          purpose: |
+            Generator and seeder for the local spec index (ADR-0002, modernized
+            per ADR-0030). schema_gen.ts derives the SQLite DDL from the stamp's
+            agile_artifacts and reference_documents shapes; seed.ts fills it from
+            the vault print at ~/.lightwave/specs/. The stamp defines shapes and
+            this derives the print's DDL, which is why it is a library here
+            rather than content under ~/.lightwave/index/.
+          write_authority: operator
+          read_consumers: [lw-cli, agent-harness]
+        - path: "infra"
+          purpose: |
+            Read-only triage for operator-owned physical infrastructure — today
+            the Synology NAS (volume/disk/beep state, DSM triage, event
+            collection). Read-only by construction: vendor-facing destructive
+            operations go behind lw subcommands, never a shared library agents
+            can call directly.
+          write_authority: operator
+          read_consumers: [operator, agent-harness]
+        - path: "ingest"
+          purpose: |
+            The deterministic intake pipeline — scan, scrub, classify, route,
+            archive, log — that moves material from ~/.lightwave/inbox/ and from
+            session transcripts into their filed homes. Composed of deterministic
+            primitives rather than a model call (ADR-0043), because the
+            cheap/local tier runs it unattended on a daily cron. Carries its own
+            tests, being the library whose output nobody reviews.
+          write_authority: operator
+          read_consumers: [inbox-groomer, agent-harness, lw-cli]
+        - path: "maintenance"
+          purpose: |
+            The v_core maintenance loop's library — health scoring across every
+            observability channel, plus the reconcile, heal and apply verbs and
+            slop detection. Backs the launchd 900s cycle, which is why a new
+            detector rides this cycle instead of registering a schedule of its
+            own. The health WEIGHTS map is load-bearing: an unlisted subsystem
+            defaults to 0.1 and inflates the composite score.
+          write_authority: operator
+          read_consumers: [v_core, lw-cli, operator]
+        - path: "observability"
+          purpose: |
+            Writers for the observability channels — session registration and
+            webhook delivery. This is the code that PRODUCES
+            ~/.lightwave/observability/ records; that directory is the data.
+            Agents call the session tracker from shell hooks so the dashboard can
+            show what the swarm is working on in real time.
+          write_authority: operator
+          read_consumers: [agent-harness, claude-code-hooks, v_core]
+        - path: "prompt-grooming"
+          purpose: |
+            Classifies and validates every operator-to-agent interaction against
+            the stamp's interaction_types enum before it reaches a model, so that
+            surface is structured rather than free text. Reads its vocabulary
+            from the lightwave-core stamp.
+          write_authority: operator
+          read_consumers: [agent-harness, claude-code]
+        - path: "runbook"
+          purpose: |
+            Runbook catalog discovery — answers "is there already a runbook for
+            this?", which `lw runbook` cannot: it publishes only apply, start,
+            status, step-complete and cancel, every one of which needs a slug the
+            caller already knows (lightwave-cli#417). Resolves by git REF rather
+            than the working tree, because ~/dev/lightwave-core is shared and
+            routinely parked on a feature branch. Retire when #417 ships.
+          write_authority: operator
+          read_consumers: [agent-harness, operator]
+        - path: "swarm"
+          purpose: |
+            Fleet-level wiring and monitoring: hook registration into
+            ~/.claude/settings.json (idempotent), a health check that flags
+            routines silent past their expected interval, label seeding and
+            routine validation. The registration half is operator-invoked by
+            design — CLAUDE.md section 9 forbids an agent registering its own
+            permission-decision hooks.
+          write_authority: operator
+          read_consumers: [operator, agent-harness]
     - path: "hcr"
       purpose: |
         Harness Change Requests (CORE-0045) awaiting operator review — one YAML
@@ -320,6 +615,7 @@ example:
           cron.jsonl,
           operator-cli.jsonl,
           release-qa.jsonl,
+          ledger.jsonl,
         ]
       write_authority: lightwave-sys
       read_consumers: [lw-cli, operator]
@@ -339,6 +635,128 @@ example:
             the files live directly in sessions/ rather than one level deeper).
           write_authority: lightwave-sys
           read_consumers: [operator, lw-cli]
+          migration_status: current
+        - path: "archive"
+          purpose: |
+            Compressed and retired channel history — rotated jsonl and
+            retirement records. Keeps the live channel dir readable without
+            destroying the trail, which matters because any audit that reads
+            history goes blind when records rotate away.
+          write_authority: operator
+          read_consumers: [operator, lw-cli]
+          migration_status: current
+        - path: "checkout-locks"
+          purpose: |
+            Per-checkout lock records for the two-agents-one-checkout guard —
+            which session currently holds a canonical ~/dev checkout, so a second
+            session's mutating git call can be refused before it relocates the
+            first session's staged work. Empty until the hook is registered
+            (lightwave-core#618); declared ahead of it so the guard has a home
+            the moment an operator switches it on.
+          write_authority: agent
+          read_consumers: [claude-code-hooks, operator]
+          migration_status: current
+        - path: "cli-gaps"
+          purpose: |
+            The CLI-gap detector's record of which missing lw verbs it has
+            already filed as issues, so a gap hit repeatedly produces one issue
+            rather than one per session.
+          write_authority: agent
+          read_consumers: [agent-harness, operator]
+          migration_status: current
+        - path: "contracts"
+          purpose: |
+            Validity contracts scoped to a routine or session — the per-task
+            upstream declarations CLAUDE.md section 6 resolves ahead of the
+            global active symlink, so concurrent agents stop fighting over one
+            pointer.
+          write_authority: operator
+          read_consumers: [claude-code-hooks, pi-extensions, agent-harness]
+          migration_status: current
+        - path: "email"
+          purpose: |
+            Append-only audit of every send attempted through the lw-email
+            wrapper. Records body hash and preview only, never the full body, so
+            the trail is auditable without becoming a second copy of the mail.
+          write_authority: lw-cli
+          read_consumers: [operator]
+          migration_status: current
+        - path: "handoffs"
+          purpose: |
+            Session-to-session handoff notes — what one session leaves for the
+            next when work crosses a context boundary. A swarm-visible channel
+            rather than private scratch, so a sibling session can read it.
+          write_authority: agent
+          read_consumers: [agent-harness, operator]
+          migration_status: current
+        - path: "launchd"
+          purpose: |
+            stdout and stderr tees from the LaunchAgents declared in
+            config/launchagents/. launchd discards output that has nowhere to
+            go, so a scheduled routine that fails silently is diagnosable only
+            because these files exist.
+          write_authority: lightwave-sys
+          read_consumers: [operator, v_core]
+          migration_status: current
+        - path: "ledger-passes"
+          purpose: |
+            Per-correlation-id gate pass records — one json per unit of work
+            joining the surfaces that saw it to what each decided. The
+            per-record sidecar of the ledger.jsonl channel.
+          write_authority: agent
+          read_consumers: [lw-cli, operator]
+          migration_status: current
+        - path: "maintenance"
+          purpose: |
+            State, backups and kickoff artifacts for the v_core maintenance
+            cycle. The largest channel by file count, because it holds the
+            cycle's own working set and not just its events.
+          write_authority: lightwave-sys
+          read_consumers: [v_core, operator]
+          migration_status: current
+        - path: "readable-check"
+          purpose: |
+            Per-session state for the readable-code nudge — one file per session
+            recording whether a code edit was observed, which is the fact its
+            commit and push warnings gate on.
+          write_authority: agent
+          read_consumers: [claude-code-hooks]
+          migration_status: current
+        - path: "reuse-check"
+          purpose: |
+            Per-session state for the reuse-first gate (CLAUDE.md section 11) —
+            which mandatory pre-flight verbs this session has run, which is what
+            decides whether a commit or push may proceed.
+          write_authority: agent
+          read_consumers: [claude-code-hooks]
+          migration_status: current
+        - path: "reviews"
+          purpose: |
+            Full persona review text, one file per review under a per-repo
+            sub-dir. The pr-reviews.jsonl channel records that a review happened
+            and what it concluded; this holds what it actually said, which is
+            what a human needs to judge whether the reviewer is any good.
+          write_authority: agent
+          read_consumers: [operator, lw-cli]
+          migration_status: current
+        - path: "spawn-gate"
+          purpose: |
+            Per-session task plan artifacts for the spawn brake (CLAUDE.md
+            section 9). A plan of at least 200 bytes is one of the four
+            preconditions for agent fan-out, so these files are the evidence the
+            brake reads rather than a log of what it decided.
+          write_authority: agent
+          read_consumers: [claude-code-hooks]
+          migration_status: current
+        - path: "release-advisor"
+          purpose: |
+            Pre-tag release-readiness audits, one timestamped .md per candidate
+            version — consumer blast radius, which schema changes are genuinely
+            breaking versus additive, and gaps in the R-13 deprecation safety net
+            that a diff-only review would miss. Read before tagging, not
+            generated automatically by any registered hook or scheduled task.
+          write_authority: agent
+          read_consumers: [operator, v_release-engineer]
           migration_status: current
     - path: "brain"
       purpose: |
@@ -402,12 +820,14 @@ example:
       migration_status: current
     - path: "reports"
       purpose: |
-        Generated audit / validity / drift / spend reports. Output of lw cli
-        report verbs (lw report drift, lw report validity, etc.). Distinct from
+        Generated audit / validity / drift / spend reports, plus CI summaries,
+        sprint retrospectives, quality scores and token-budget variance
+        analyses. Output of the lw cli report verbs (lw report drift, lw report
+        validity, etc.); regenerable from the database on reset. Distinct from
         observability/ (raw event streams) because reports are SYNTHESIZED
         artifacts; observability is the source they're synthesized from.
       write_authority: lw-cli
-      read_consumers: [operator, agent-harness]
+      read_consumers: [operator, lw-cli, agent-harness]
       migration_status: current
     - path: "sources"
       purpose: |
@@ -455,6 +875,20 @@ example:
             Long-form books, papers, theses. PDFs or markdown. Same role as
             standards/ but for less-formalized canonical material (e.g. SICP,
             DDD by Eric Evans).
+          write_authority: operator
+          read_consumers: [agent-harness, llm-wiki-ingest]
+        - path: "research"
+          purpose: |
+            Dated research notes gathered while investigating a question, kept
+            apart from brain/ because these are raw external findings rather
+            than the operator's own synthesized memory.
+          write_authority: operator
+          read_consumers: [agent-harness, operator]
+        - path: "youtube"
+          purpose: |
+            Transcript-derived notes from video sources, filed by video id so a
+            second pass over the same video lands on the same file rather than
+            creating a near-duplicate.
           write_authority: operator
           read_consumers: [agent-harness, llm-wiki-ingest]
     - path: "skills"
@@ -559,14 +993,6 @@ example:
         (third-party material). Populated by lw doc write.
       write_authority: lw-cli
       read_consumers: [agent-harness, lw-cli, claude-code, pi]
-      migration_status: current
-    - path: "reports"
-      purpose: |
-        Generated reports — CI summaries, sprint retrospectives, quality
-        scores, token budget variance analyses. Generated by lw report
-        verbs; regenerable from database on reset.
-      write_authority: lw-cli
-      read_consumers: [operator, lw-cli, agent-harness]
       migration_status: current
     - path: "reviews"
       purpose: |
@@ -715,6 +1141,19 @@ example:
         durable graduates from here, so it is RUNTIME.
       write_authority: agent
       read_consumers: [claude-code, agent-harness]
+      migration_status: current
+    - path: "memory"
+      purpose: |
+        `lw memory`'s filesystem KV store — ~/.lightwave/memory/<namespace>/<key>,
+        one file per key, namespaces are agent user-ids. Undeclared until this
+        entry: the CLI verb (interfaces/cli/commands.yaml `memory` domain) shipped
+        writing here, but the stamp only ever declared a DIFFERENT `memory` — the
+        nested SQLite store at v_core/memory/ (memory.db/-wal/-shm) — so R-35's
+        completeness check had nothing to match this path against.
+        Do not conflate the two: this is loose per-key files at the home root,
+        v_core/memory/ is a single SQLite database owned by the resident daemon.
+      write_authority: lw-cli
+      read_consumers: [lw-cli, lightwave-sys]
       migration_status: current
     - path: "sessions"
       purpose: |

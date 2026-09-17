@@ -1,12 +1,36 @@
 _meta:
-  version: "0.1.0"
+  version: "0.2.0"
   schema_id: "lightwave://schemas/integrations/llm_providers/models/__index"
   title: "Model Catalog Registry"
   description: |
-    Per-model capability+cost entries. Referenced by the `downgrade_chain`
-    in policy/compliance/llm_budgets.yaml and by the model-selection
-    strategy in workflows/strategies/model_selection.yaml. Each file is a
-    single model entry conforming to the model_capabilities schema shape.
-    Add a model = add a file + a row here.
+    The model catalog SHAPE. Referenced by the `downgrade_chain` in
+    policy/compliance/llm_budgets.yaml and by the model-selection strategy in
+    workflows/strategies/model_selection.yaml.
+
+    THE ENTRIES ARE NOT HERE. They are a print, at ~/.lightwave/config/models/,
+    loaded by loadModelCatalog() in model-matcher.ts. This tree holds the shape
+    (model_capabilities.yaml); the values are runtime data and the stamp does
+    not define data (CLAUDE.md §7). model_capabilities.yaml says so itself:
+    "This is DATA (price sheet), not shape."
+
+    That split was established 2026-09-13. The entries were first written here
+    and this repo's own CI rejected them, correctly: R-3 requires _meta on every
+    schema, and the complete-structure test requires every schema to be an enum,
+    a registry, or to carry required_fields + example. Model entries are
+    instances and are none of those. There is no precedent for data instances
+    under src/schemas/ — only __index files.
+
+    HISTORY worth keeping: until that date this registry listed only
+    model_capabilities — the schema describing the rows, with no rows anywhere.
+    loadModelCatalog() therefore returned an empty catalog, resolveModel()
+    returned null, and sessions.jsonl recorded `tier: null` on 619 of 619
+    sessions. The selection machinery was fully stamped, fully wired, and
+    structurally unable to decide. A registry whose only entry is its own schema
+    is an empty registry — and nothing measured that, because a matcher that
+    never resolves emits no error.
+
+    Add a model: add a file + a row in ~/.lightwave/config/models/__index.yaml.
+    Pricing is owned by v_data-engineer. Never delete an entry — old cost
+    records refer to deprecated ones.
 schemas:
   model_capabilities: model_capabilities.yaml

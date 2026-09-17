@@ -1,0 +1,44 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/cineos_doc_categories"
+  title: "CineOS Doc Category Enum"
+  description: |
+    The seven sections a production document belongs to, as approved in
+    US-CINE-DOC-001. A category groups the document-type vocabulary so the
+    Production Documents matrix can be read a section at a time instead of as
+    one 77-row wall.
+
+    Closed: a new section is a product decision, not a runtime one.
+  generates:
+    - "go:CineDocCategory"
+    - "typescript:CineDocCategory"
+    - "zig:CineDocCategory"
+    - "json_schema:cineos_doc_categories"
+  depends_on: []
+
+name: cineos_doc_categories
+description: "Section a production document type belongs to"
+default: production_planning
+closed: true
+options:
+  - value: production_planning
+    label: "Production Planning"
+    description: "Scheduling, budget, paperwork and department lists that make the shoot happen."
+  - value: creative_development
+    label: "Creative Development"
+    description: "The story and look intent a production is built from."
+  - value: technical_preparation
+    label: "Technical Preparation"
+    description: "Scout, package and pipeline decisions made before the camera rolls."
+  - value: safety_and_logistics
+    label: "Safety and Logistics"
+    description: "Risk, medical, movement and special-conditions planning."
+  - value: on_set_records
+    label: "On-Set Records"
+    description: "What actually happened on the day, recorded as it happened."
+  - value: post_production
+    label: "Post-Production"
+    description: "Turnover, conform, sound, colour and QC through to master delivery."
+  - value: business_and_release
+    label: "Business and Release"
+    description: "Rights, financing, festival, marketing and distribution tracking."

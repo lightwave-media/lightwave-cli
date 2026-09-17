@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/definition_of_done"
   title: "Definition of Done"
+  table_kind: value_object
+  scope: local
   description: |
     The verifiable acceptance criteria for a unit of work. Composed
     into the user_prompt's <definition_of_done> block at session

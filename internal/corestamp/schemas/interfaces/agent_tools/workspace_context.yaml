@@ -1,0 +1,72 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/agent_tools/workspace_context"
+  title: "Cross-harness workspace context"
+  description: |
+    Read-only context_get/context_refresh response from lightwave-cli MCP.
+    Uses existing ~/.lightwave instance bindings, validity contracts, agent
+    records and session lifecycle channel. No parallel runtime registry.
+    Callers pass absolute cwd, session_id, task_id and harness when known.
+    Explicit task identity is not inferred from repo or branch names.
+    Standard stdio is newline-delimited JSON-RPC; legacy Content-Length
+    framing remains supported for existing consumers.
+required_fields:
+  - name: schema_version
+    type: str
+    description: "Response contract version."
+  - name: workspace
+    type: "dict[str, str]"
+    description: "cwd, cwd_source (caller/server_fallback), repo_root and branch."
+  - name: job
+    type: "dict[str, str]"
+    description: |
+      task_id, session_id, harness, persona, contract, contract_source;
+      contract_task and objective when the active contract can be read.
+      Empty fields are unknown. Contract task is not a database task ID.
+  - name: runtime
+    type: "dict[str, str]"
+    description: "home, core_root, nullhub, instances_path and datastore_path."
+  - name: agents
+    type: "list[dict]"
+    description: |
+      Existing lw agent records: id, task_id, persona, repo, worktree, branch,
+      shell, pid, status, started_at and process_alive. PID existence alone
+      does not prove agent identity or progress. No prompts or credentials.
+  - name: sessions
+    type: "list[dict]"
+    description: |
+      Latest observations from observability/sessions.jsonl, capped at 50.
+      state is unconfirmed or end_observed; never claim liveness from a
+      missing end record. Preserve harness/cwd/task_id only when recorded.
+  - name: fleet
+    type: "list[dict]"
+    description: "Live nullhub /api/instances observations: module, name, status, pid, uptime_seconds and launch_mode when present."
+  - name: sources
+    type: "dict[str, str]"
+    description: "agents, sessions and fleet availability/truncation diagnostics."
+  - name: guidance
+    type: str
+    description: "Explain unknown assignments and observation limits."
+optional_fields:
+  - name: instances
+    type: str
+    description: "Existing instance-binding YAML for backward compatibility."
+  - name: path
+    type: str
+    description: "Existing instance-binding path for backward compatibility."
+  - name: composer
+    type: str
+    description: "Existing composer availability diagnostic."
+  - name: instances_error
+    type: str
+    description: "Instance-binding read failure, if any."
+example:
+  schema_version: "1.0.0"
+  workspace: {cwd: /workspace/example, cwd_source: caller, repo_root: /workspace/example, branch: feature/example}
+  job: {task_id: "", session_id: example-session, harness: codex, persona: v_lightwave-ai-engineer, contract: "", contract_source: none}
+  runtime: {home: /home/operator/.lightwave, core_root: /workspace/lightwave-core, nullhub: "http://127.0.0.1:19800", instances_path: /home/operator/.lightwave/config/lightwave-ai/instances.yaml, datastore_path: /home/operator/.lightwave/config/datastore.yaml}
+  agents: []
+  sessions: []
+  fleet: []
+  sources: {agents: ok, sessions: ok, fleet: ok}
+  guidance: "Empty task_id means no explicit assignment."

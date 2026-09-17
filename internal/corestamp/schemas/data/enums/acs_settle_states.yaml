@@ -1,0 +1,31 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/acs_settle_states"
+  title: "ACS Settle States"
+  description: |
+    Terminal reasons recorded on turn.settled. Closed. Adding a reason is a
+    minor stamp bump; renaming or removing one is major.
+  generates:
+    - "pydantic:AcsSettleState"
+    - "ts:AcsSettleState"
+    - "rust:AcsSettleState"
+    - "c:LwAcsSettleState"
+  depends_on: []
+
+name: acs_settle_states
+description: "Terminal reason for a settled agent turn"
+default: completed
+closed: true
+options:
+  - value: completed
+    label: "Completed"
+    description: "The turn finished with a usable assistant result."
+    abi_value: 1
+  - value: failed
+    label: "Failed"
+    description: "The turn ended because the provider or runtime failed. Payload carries a redacted error class, never a raw secret."
+    abi_value: 2
+  - value: cancelled
+    label: "Cancelled"
+    description: "The turn ended because cancel was accepted and applied."
+    abi_value: 3

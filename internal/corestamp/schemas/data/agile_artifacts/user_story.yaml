@@ -17,7 +17,7 @@ _meta:
   - lightwave://schemas/data/agile_artifacts/epic
   table_kind: entity
   table_name: user_stories
-status_enum: user_story_statuses
+status_enum: agile_statuses
 priority_enum: user_story_priorities
 primary_key:
   column: id
@@ -180,7 +180,7 @@ example:
     polling Notion or round-tripping to cloud Postgres.
   epic_ref: v-core-v1-ready-task-dispatch
   domain: software-development
-  status: ready
+  status: approved_for_work
   acceptance_criteria:
   - given: A Task with status='next_up' and is_ready()=True
     when: v_core runs its poll loop

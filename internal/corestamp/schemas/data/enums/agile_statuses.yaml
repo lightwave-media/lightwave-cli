@@ -1,0 +1,63 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/agile_statuses"
+  title: "Agile Artifact Status Enum"
+  description: |
+    The one status vocabulary shared by every agile artifact — task, user
+    story, sprint, epic and project. Defined once, centrally, never
+    redefined per kind.
+
+    Adopted from the live workspace 2026-09-12 by operator ruling. The
+    previous per-kind enums encoded an issue-tracker triage lifecycle
+    (triage, not_a_bug, cannot_reproduce, awaiting_prioritization) that
+    nothing ran on: 882 of 888 task rows, and every user story, sprint,
+    epic and project row, carried a value those closed enums did not
+    contain. Measuring all four kinds showed they already share one
+    vocabulary, so one enum replaces five.
+
+    Values are snake_case per the stamp's own convention; `label` carries
+    the workspace's display string verbatim, which is what a projection
+    renders and matches on.
+
+    Ordering is the board's left-to-right flow, not alphabetical:
+    backlog -> next_up -> approved_for_work -> in_progress -> in_review
+    -> done, with on_hold, cancelled and archived as exits. Consumers
+    grouping into planes should derive from that order rather than
+    hardcoding a second list.
+  generates:
+    - "typescript:AgileStatus"
+    - "go:AgileStatus"
+  depends_on: []
+
+name: agile_statuses
+description: "Shared kanban status vocabulary for agile artifacts"
+default: backlog
+closed: true
+options:
+  - value: backlog
+    label: "Backlog"
+    description: "Captured and accepted as real work, not yet scheduled"
+  - value: next_up
+    label: "Next Up"
+    description: "Scheduled for the near term; the queue the board pulls from"
+  - value: approved_for_work
+    label: "Approved for Work"
+    description: "Cleared to start — scope and acceptance agreed, awaiting a worker"
+  - value: in_progress
+    label: "In Progress"
+    description: "Actively being worked"
+  - value: in_review
+    label: "In Review"
+    description: "Implementation finished and under evaluation. Not accepted — acceptance is the review gate's decision, not an implementation event"
+  - value: done
+    label: "Done"
+    description: "Accepted through review and complete"
+  - value: on_hold
+    label: "On Hold"
+    description: "Deliberately paused; still intended, blocked or deprioritised"
+  - value: cancelled
+    label: "Cancelled"
+    description: "Will not be done, decided before completion"
+  - value: archived
+    label: "Archived"
+    description: "Removed from the working set and retained for history"

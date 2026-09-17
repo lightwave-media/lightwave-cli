@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/lightwave-contract"
   title: ".lightwave/contract.json shape"
+  table_kind: value_object
+  scope: local
   description: |
     Per-repo validity-gate contract pointer. Lives at <repo>/.lightwave/
     contract.json. Read by the validity-gate library at ~/.lightwave/lib/

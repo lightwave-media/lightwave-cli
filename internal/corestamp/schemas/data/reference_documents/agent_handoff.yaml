@@ -2,6 +2,8 @@ _meta:
   version: "1.2.0"
   schema_id: "lightwave://schemas/data/reference_documents/agent_handoff"
   title: "Agent Handoff"
+  table_kind: document
+  scope: local
   description: |
     Structured inter-agent communication artifact: what the sender
     did/discovered, what they ask the receiver to do (requests + triage,

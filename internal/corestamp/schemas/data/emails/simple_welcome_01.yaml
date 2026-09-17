@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/emails/simple_welcome_01"
   title: "Simple Welcome 01 — email template props"
+  table_kind: value_object
+  scope: local
   description: "Clean text-focused welcome email for new user signups. Production-shaped (fully parameterized)."
   generates:
     - "go:SimpleWelcome01Props"          # lightwave-platform email renderer

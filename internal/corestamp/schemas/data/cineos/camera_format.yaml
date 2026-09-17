@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/camera_format"
   title: "Camera Format"
+  table_kind: value_object
+  scope: local
   description: |
     The SHAPE of a capture format definition: resolution ladder, named aspect
     masks, output mappings, pixel aspect — framing as data, not code (the

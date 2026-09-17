@@ -12,7 +12,7 @@
 # =============================================================================
 
 _meta:
-  version: "0.4.0"
+  version: "0.5.0"
   schema_id: "lightwave://schemas/data/ui/__index"
   title: "UI Schema Registry"
   description: "Sub-registry for UI factory contracts: component contracts, section contracts, page types, site/domain configuration, and app shells. The typescript binding for this family emits Zod schemas via `lw codegen types`."
@@ -35,6 +35,9 @@ _meta:
     - version: "0.4.0"
       date: "2026-06-20"
       summary: "add tenant — the multi-tenant site/instance entity above site_config: ties slug (RLS org id = app.current_org + /v1/{tenant}/ segment) + domains + lifecycle status to the UI contract it renders. kind enum {control_plane, tenant_site} distinguishes lightwave-media.ltd (backend/admin/CEO) from peer tenant sites. References site_config + app_shell; does not duplicate them"
+    - version: "0.5.0"
+      date: "2026-09-12"
+      summary: "add shell_template — the runtime section/mode/role contract, distinct from app_shell (which scaffolds the React app: package, router, providers, auth posture). Stamps the shape hardcoded in the createOS prototype shell-contract.js so DOMAINS/TEMPLATE/MODES/LAYERS become generated rather than authored. unmapped_status is deliberately {error|collect} with no fall-back-to-a-real-mode option: the prototype's modeOf() returned \"home\" on every miss, placing 564 of 888 archived or cancelled tasks in the active dashboard"
 
 schemas:
   component_contract: component_contract.yaml
@@ -43,5 +46,7 @@ schemas:
   site_config: site_config.yaml
   app_shell: app_shell.yaml
   collection: collection.yaml
+  mode_render_contract: mode_render_contract.yaml
   ui_node: ui_node.yaml
   tenant: tenant.yaml
+  shell_template: shell_template.yaml

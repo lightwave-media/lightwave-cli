@@ -1,7 +1,9 @@
 _meta:
-  version: "1.0.0"
+  version: "1.2.1"
   schema_id: "lightwave://schemas/data/runbooks/runbook_definition"
   title: "Runbook Definition (The Negative)"
+  table_kind: document
+  scope: local
   description: |
     What a runbook IS — the stamp (negative) from which all prints
     (editions, executions) are made. A runbook is an interactive MDX
@@ -22,6 +24,28 @@ _meta:
   depends_on:
     - "lightwave://schemas/data/enums/runbook_statuses"
     - "lightwave://schemas/data/enums/handoff_block_kinds"
+    - "lightwave://schemas/data/enums/runbook_actors"
+  changelog:
+    - version: "1.2.1"
+      date: "2026-09-16"
+      summary: >-
+        authoring_skill must RESOLVE, not be reciprocated. #700 claimed R-21
+        checked the pair agreed both ways; that is unenforceable, because the
+        two halves live in different trees and a PR can carry only one. Held
+        strictly it deadlocks the merge and fails whichever session runs tests
+        next. Resolution of each half is kept and now genuinely enforced:
+        skill -> runbook by R-21, runbook -> skill by test_runbook_registry.
+    - version: "1.2.0"
+      date: "2026-09-15"
+      summary: >-
+        RunbookStep gains actor + actor_reason, so one run can begin headless,
+        suspend at a step needing human judgement, and resume headless. The
+        dual-surface model already picked a renderer per RUNBOOK; this is per
+        STEP. Additive — actor defaults to `either`, so every existing runbook
+        stays valid unedited. Headless-capability is DERIVED (no step is
+        `human`), never stored, so it cannot drift from the steps it
+        summarises. Lands on 1.1.0's authoring_skill (#700). Resolves
+        lightwave-core#577.
 
 status_enum: "runbook_statuses"
 
@@ -46,7 +70,7 @@ required_fields:
     description: "Named outputs the runbook produces — mapped from RUNBOOK_OUTPUT key=value semantics in Command blocks"
   - name: steps
     type: "list[RunbookStep]"
-    description: "Ordered sequence of typed blocks the runbook executes. Kinds per handoff_block_kinds: check, command, inputs, template, admonition"
+    description: "Ordered sequence of typed blocks the runbook executes. Kinds per handoff_block_kinds: check, command, inputs, template, admonition. Each step declares an actor (runbook_actors) naming who may execute it; a runbook is headless-capable when no step is `human`"
   - name: component_count
     type: "object[ComponentCounts]"
     description: "Summary counts by block kind — enables quick scan of runbook complexity"
@@ -55,6 +79,21 @@ optional_fields:
   - name: status
     type: str
     description: "Lifecycle state; validated against runbook_statuses. Default: draft"
+  - name: authoring_skill
+    type: str
+    description: >
+      Slug of the skill (~/.lightwave/skills/<slug>/) that teaches how to write
+      and maintain this runbook. The reverse edge of
+      skill_definition.metadata.runbooks. Must name a skill in the registry;
+      it does NOT have to be named back. Mutual enumeration was declared in
+      #700 and is unenforceable: `runbooks` lives in the operator's home and
+      `authoring_skill` in this repo, so a PR can only ever carry one half —
+      requiring both deadlocks the merge, and the violation lands on whichever
+      session runs tests next rather than the one that caused it. A skill
+      states HOW to think about a class of work, a runbook is the executable
+      procedure for one instance — declaring the edge is what stops the two
+      drifting into separate vocabularies for the same job. Omit only for a
+      runbook authored before any skill governed its family.
   - name: dependencies
     type: "list[DependencyRef]"
     description: "External dependencies (other runbooks, CLIs, vendor services) this runbook requires"
@@ -88,6 +127,8 @@ sub_schemas:
   RunbookStep:
     id: "str"
     kind: "str" # validated against handoff_block_kinds
+    actor: "str" # validated against runbook_actors; default "either"
+    actor_reason: "str | null" # why a human is required; rendered in the panel
     label: "str"
     description: "str"
     depends_on: "list[str] | null" # step IDs that must complete first
@@ -141,25 +182,32 @@ example:
     - name: task_definition_arn
       description: "ARN of the registered task definition"
       type: string
+  # Actors interleave: the run executes headless, suspends at approve-release
+  # for a person, then resumes headless. That suspension is an execution fact
+  # — it is recorded in the evidence record, never written back here.
   steps:
-    - id: validate-inputs
-      kind: check
-      label: "Validate inputs"
-      description: "Check that all required inputs are present and valid"
-      script_ref: "checks/validate-inputs.sh"
     - id: register-task-def
       kind: command
+      actor: agent
       label: "Register task definition"
       description: "Register the ECS task definition with the service configuration"
       script_ref: "scripts/register-task-def.sh"
-      depends_on: ["validate-inputs"]
       produces: ["task_definition_arn"]
+    - id: approve-release
+      kind: check
+      actor: human
+      actor_reason: "Shifting live traffic is irreversible; a person confirms the task definition diff before rollout"
+      label: "Approve release"
+      description: "Review the registered task definition against the running service and approve rollout"
+      depends_on: ["register-task-def"]
+      consumes: ["task_definition_arn"]
     - id: deploy-service
       kind: command
+      actor: agent
       label: "Deploy Fargate service"
       description: "Create or update the ECS Fargate service"
       script_ref: "scripts/deploy-service.sh"
-      depends_on: ["register-task-def"]
+      depends_on: ["approve-release"]
       produces: ["service_url"]
   component_count:
     checks: 1

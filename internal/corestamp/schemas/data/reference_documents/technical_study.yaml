@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/reference_documents/technical_study"
   title: "Technical Study"
+  table_kind: document
+  scope: local
   description: "First-hand study of an external or existing system — what it stores, how it is structured, and what we should emulate. Research INPUT to a PRD or ADR, not a decision record: a study reports what is, an ADR records what we chose. Repo-local like ADR; not a Django Document. Distinct from market_analysis, which is about markets (TAM/SAM/SOM, competitors, positioning) and hangs off a product_vision — a technical study has neither."
   generates:
     - "pydantic:TechnicalStudy"

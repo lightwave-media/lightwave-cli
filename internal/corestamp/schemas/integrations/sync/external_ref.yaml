@@ -1,5 +1,5 @@
 _meta:
-  version: "2.0.0"
+  version: "2.1.0"
   schema_id: "lightwave://schemas/integrations/sync/external_ref"
   title: "External Reference — id map, outbox, and echo suppression"
   description: |
@@ -74,12 +74,13 @@ required_fields:
   - name: authority
     type: str
     description: |
-      Who wins structured-field conflicts: local | external (default local).
-      NOTE: the per-field default is CONTESTED and not resolved by this schema —
-      CORE-0048 says local wins on structured columns; LWAI-0003 §2 gives Notion
-      title/description/acceptance-criteria/priority/points/timeline. This column
-      records the decision per binding; the policy that populates it is tracked
-      separately. Adapters MUST read it rather than assuming.
+      Conflict policy: local | external | reconcile (CORE-0048 section 4,
+      amended 2026-09-17). Reconcile performs a
+      three-way comparison against base_content_json: independent changes
+      merge; divergent edits to the same field remain drift with both values
+      preserved. New Notion bindings use reconcile. Explicit field ownership
+      in the property map overrides this binding policy. Never silently use
+      whole-record last-write-wins for human planning and runtime execution.
     storage: db
   - name: local_kind
     type: str
@@ -118,6 +119,24 @@ required_fields:
     storage: db
 
 optional_fields:
+  - name: base_content_json
+    type: object
+    description: |
+      Last jointly observed projection content for three-way reconciliation.
+      Includes property values and page Markdown, not a raw webhook payload.
+      Persist in the canonical external_ref print before indexing in Postgres
+      so reconstruction does not lose conflict history or replay protection.
+    storage: db
+    column_type: jsonb
+  - name: pending_content_json
+    type: object
+    description: |
+      Durable intended projection written before an outbound request. On an
+      interrupted request, compare the provider's current content to this
+      intent before retrying. Clear only after read-back verification. This
+      is state on the existing binding, not a second outbox.
+    storage: db
+    column_type: jsonb
   - name: external_id
     type: str
     description: "Provider-native ID (GitHub node/number string, Notion page UUID, etc.)"

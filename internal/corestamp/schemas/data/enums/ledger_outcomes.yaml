@@ -1,0 +1,41 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/ledger_outcomes
+  title: Ledger Outcomes
+  description: |
+    Closed enum for ledger_event.outcome — what actually happened, as distinct
+    from audit_event.decision, which records what a gate permitted.
+
+    The separation is the point. A gate that allowed a call and a call that
+    then succeeded are two facts, and collapsing them is how an absent result
+    comes to read as a clean one. ADR-0050 and lightwave-core#556 both name
+    that failure mode: an absent review is indistinguishable from a review with
+    no findings, so `skipped` and `unavailable` are distinct terminal values
+    here rather than an absence of rows.
+  closed: true
+  generates:
+  - pydantic:LedgerOutcome
+  depends_on: []
+name: ledger_outcomes
+default: pass
+options:
+- value: pass
+  label: Pass
+  description: The action completed and its check, if any, was satisfied.
+- value: fail
+  label: Fail
+  description: The action ran and its check rejected it. Carries the failure payload.
+- value: skipped
+  label: Skipped
+  description: The action was deliberately not run — a path filter, an unmet precondition, a no-op.
+- value: unavailable
+  label: Unavailable
+  description: >
+    The action could not run for a reason unrelated to the work — a starved
+    host, an exhausted quota, an unreachable provider. Never counts as a pass.
+- value: bypass
+  label: Bypass
+  description: An operator escape hatch was used. Requires bypass_reason.
+- value: revert
+  label: Revert
+  description: A previously-passing change was rolled back.

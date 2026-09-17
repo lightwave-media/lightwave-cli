@@ -1,0 +1,28 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/acs_receipt_statuses"
+  title: "ACS Receipt Statuses"
+  description: |
+    Idempotency receipt statuses returned by mutating ACS commands.
+    A committed receipt and a duplicate replay of the same idempotency_key
+    are both durable; the caller cannot tell them apart except by this field.
+  generates:
+    - "pydantic:AcsReceiptStatus"
+    - "ts:AcsReceiptStatus"
+    - "rust:AcsReceiptStatus"
+    - "c:LwAcsReceiptStatus"
+  depends_on: []
+
+name: acs_receipt_statuses
+description: "Idempotency receipt status for a mutating ACS command"
+default: committed
+closed: true
+options:
+  - value: committed
+    label: "Committed"
+    description: "This call performed the append and assigned seq."
+    abi_value: 1
+  - value: duplicate
+    label: "Duplicate"
+    description: "This call matched an existing receipt; no second write. The returned seq/ids are the original's."
+    abi_value: 2

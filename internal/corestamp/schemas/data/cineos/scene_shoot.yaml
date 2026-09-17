@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/scene_shoot"
   title: "Scene Shoot"
+  table_kind: entity
+  scope: local
   description: |
     The scene↔shoot-day assignment — the junction that schedules a Scene onto a
     ShootDay with planned times and order. The Schedule Builder creates these when

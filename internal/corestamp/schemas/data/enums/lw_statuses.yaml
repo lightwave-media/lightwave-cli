@@ -1,0 +1,59 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/lw_statuses"
+  title: "libLightwave Status Codes"
+  description: |
+    C ABI status codes for libLightwave v1 (API-ACS-0001). Values are
+    explicit, signed, and never reused. `ok` is 0; negatives are errors.
+    The C identifier is LW_<VALUE_UPPER>.
+  generates:
+    - "c:LwStatus"
+    - "rust:LwStatus"
+    - "ts:LwStatus"
+  depends_on: []
+
+name: lw_statuses
+description: "libLightwave C ABI status codes"
+default: ok
+closed: true
+options:
+  - value: ok
+    label: "OK"
+    description: "Call succeeded."
+    abi_value: 0
+  - value: invalid_argument
+    label: "Invalid argument"
+    description: "Caller input was malformed (bad UTF-8, null required pointer, relative path, etc.)."
+    abi_value: -1
+  - value: out_of_memory
+    label: "Out of memory"
+    description: "Allocation failed inside the library."
+    abi_value: -2
+  - value: out_of_space
+    label: "Out of space"
+    description: "Caller buffer was too small. On this status, LwBuffer.len is the required capacity."
+    abi_value: -3
+  - value: not_found
+    label: "Not found"
+    description: "Requested sequence, path, or handle target does not exist."
+    abi_value: -4
+  - value: io_error
+    label: "I/O error"
+    description: "Filesystem or SQLite I/O failed. No secret or raw payload in diagnostics."
+    abi_value: -5
+  - value: busy
+    label: "Busy"
+    description: "A second writer attempted to open the store. One writer per store in v1."
+    abi_value: -6
+  - value: version_mismatch
+    label: "Version mismatch"
+    description: "Runtime ABI major does not match the header the caller compiled against."
+    abi_value: -7
+  - value: corrupt
+    label: "Corrupt"
+    description: "Store bytes are not a readable lightwave.db."
+    abi_value: -8
+  - value: internal
+    label: "Internal"
+    description: "Unexpected fault contained at the ABI boundary. Maps Zig panics/traps so they do not unwind across C."
+    abi_value: -9

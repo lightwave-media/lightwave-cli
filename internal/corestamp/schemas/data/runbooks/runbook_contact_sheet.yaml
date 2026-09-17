@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/runbooks/runbook_contact_sheet"
   title: "Runbook Contact Sheet (The AI Analysis)"
+  table_kind: document
+  scope: local
   description: |
     The AI-generated analysis document for a runbook — the CONTACT SHEET
     produced when a runbook undergoes analysis. Like a photographer's

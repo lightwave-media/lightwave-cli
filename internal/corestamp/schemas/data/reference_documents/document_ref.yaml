@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/reference_documents/document_ref"
   title: "Document Reference"
+  table_kind: value_object
+  scope: local
   description: |
     A lightweight pointer to a document artifact identified by category + slug.
     Used in `related_documents: list[DocumentRef]` fields across agile_artifact

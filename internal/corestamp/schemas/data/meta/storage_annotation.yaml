@@ -1,0 +1,67 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/storage_annotation
+  title: Storage Annotation
+  table_kind: value_object
+  scope: local
+  description: |
+    The storage-semantic block of a schema's `_meta` — what this shape becomes
+    in a relational store, and which store holds it.
+
+    These annotations already governed behaviour before they were stamped.
+    `lw codegen go` reads `_meta.table_kind` and emits DDL only for `entity`,
+    deriving the table name, primary key and foreign keys from the rest. But
+    the vocabulary lived in one family's CHANGELOG as prose, so it was
+    reachable by imitation and nothing else: an author who had not read
+    agile_artifacts had no way to know the field existed, and an author who
+    guessed a value got silence rather than an error, because FindEntities
+    skips anything that does not parse as an entity.
+
+    That is the failure this schema closes. The annotations are declared once,
+    their values are bound enums, and a schema that omits them is now omitting
+    something nameable rather than something nobody wrote down.
+
+    WHAT THIS IS NOT. Not a migration format and not an ORM mapping. It says
+    what a shape IS for storage purposes; the generator decides how to render
+    that, and ADR-0049 decides that the rendering is derived and droppable.
+
+required_fields:
+- name: table_kind
+  type: enum
+  values_ref: lightwave://schemas/data/enums/table_kinds
+  description: >
+    What this schema becomes when materialised. Only `entity` produces a
+    table of its own. Declaring `value_object` or `document` is a positive
+    statement that the shape was considered and is deliberately not a row —
+    which an absent annotation cannot express.
+
+optional_fields:
+- name: scope
+  type: enum
+  values_ref: lightwave://schemas/data/enums/storage_scopes
+  description: >
+    Which store owns the rows — the multi-tenant platform database, this
+    host's local derived index, or both. Required in practice for `entity`:
+    without it a local print has no way to exclude tenant-scoped tables, and
+    the exclusion list ends up hand-maintained in the generator (R-5).
+- name: table_name
+  type: str
+  description: >
+    Explicit table name, when the default pluralisation of the schema's
+    trailing id segment is wrong (`ddd` -> `ddds`, not `dddes`). Omit and let
+    the generator derive it wherever the derivation is correct.
+- name: primary_key
+  type: str
+  description: Primary key column. Defaults to `id`, a UUID.
+- name: natural_key
+  type: str
+  description: >
+    Human-readable unique column — usually `slug`. What an operator or an
+    agent addresses a row by when it does not hold the UUID.
+
+example:
+  table_kind: entity
+  scope: local
+  table_name: ledger_events
+  primary_key: id
+  natural_key: correlation_id

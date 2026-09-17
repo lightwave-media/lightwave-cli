@@ -2,6 +2,8 @@ _meta:
   version: "1.1.0"
   schema_id: "lightwave://schemas/data/reference_documents/domain_charter"
   title: "Domain Charter"
+  table_kind: document
+  scope: local
   description: "Bounded-context charter for a domain in the LightWave ecosystem. Defines what's in scope, what's NOT in scope (boundary clarity), ubiquitous language, owners, entities owned, and cross-domain relationships. Modeled after Eric Evans' DDD bounded-context pattern. Migrated 2026-05-25 from governance/reference/domain_charter.yaml (Phase 4 file #16)."
   generates:
     - "pydantic:DomainCharter"

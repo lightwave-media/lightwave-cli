@@ -16,7 +16,7 @@
 name: "core-self-continued"
 
 _meta:
-  version: "1.16.0"
+  version: "1.18.0"
   schema_id: "lightwave://schemas/policy/validity/core-self-continued"
   title: "lightwave-core self-validity contract — rules R-18+"
   description: |
@@ -110,11 +110,11 @@ rules:
       ~/.lightwave/config/agents/v_*.yaml MUST list this skill in their
       own `skills:` field.
 
-      Skills are Anthropic SKILL.md format verbatim; that format fixes the
-      top-level keys and reserves `metadata:` for author-defined fields, so
-      the lightwave additions live there (migrated 2026-09-09). The
-      published format decides what a SKILL.md IS and the stamp follows, as
-      with CLI commands (#317/#318). Home layout: homedir.yaml v3.1.
+      Skills are Anthropic SKILL.md format verbatim: that format fixes the
+      top-level keys and reserves `metadata:` for lightwave additions; the
+      published format decides what a SKILL.md IS and the stamp follows
+      (#317/#318). v1.3 adds `metadata.runbooks`, whose slugs MUST resolve
+      in src/runbooks/__index.yaml. Home layout: homedir.yaml v3.1.
 
       Note: R-21 is the first R-rule that enforces OUT-OF-REPO — checks
       ~/.lightwave/ (operator's home), not src/. The package scope.paths
@@ -250,12 +250,10 @@ rules:
   - id: R-27
     name: "boilerplate-extensions-match-template-kinds"
     severity: error
-    description: "Every file under src/boilerplate/ has an extension matching its template_kind. Closes R-1 scope-down gap (PR #110). Deferred to Phase 6; tracked lightwave-core#111."
+    description: "Every file under src/boilerplate/ has an extension matching its template_kind. Closes R-1 scope-down gap (PR #110). Scope is derived from template_kinds.yaml: kinds declaring a literal extension whose lives_in points into this repo. Renderer templates (.tpl/.tmpl) are boilerplate_file/matches-output and exempt."
     enforced_by: "tests/validation/test_r27_boilerplate_extensions.py"
     enforces: ["src/boilerplate/**"]
     rationale: "Extension is the first signal a tool uses to parse a file. A template_kind: markdown file with a .yaml extension confuses editors and the boilerplate renderer; stamp-time enforcement prevents silent mismatches."
-    status: deferred
-    target_phase: 6
   - id: R-28
     name: "detector-negative-fixture-floor"
     severity: error
@@ -465,6 +463,8 @@ rules:
       populations. Detection: arrays with ≥4 dict items and an identifying
       field (name, path, id, …) whose values are all-unique are classified:
         - policy/ → ARCHITECTURAL (contracts ARE examples)
+        - `_meta.registry: true` → ARCHITECTURAL (the example IS the
+          declaration; trimming it deletes the registry) — #624
         - data/ in diff → DEVELOPMENT (block PR — trim now)
         - data/ pre-existing → MAINTENANCE (file chore)
     enforced_by: "tests/meta/test_r44_example_cardinality.py"

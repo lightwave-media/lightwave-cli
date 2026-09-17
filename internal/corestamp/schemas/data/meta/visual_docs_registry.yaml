@@ -2,6 +2,8 @@ _meta:
   version: 0.1.0
   schema_id: lightwave://schemas/data/meta/visual_docs_registry
   title: Visual Docs Registry
+  table_kind: value_object
+  scope: local
   description: Version-locked mermaid documents. Each .mmd file carries YAML frontmatter. Agents diff .mmd between versions
     to understand high-level system changes.
 name: visual_docs_registry

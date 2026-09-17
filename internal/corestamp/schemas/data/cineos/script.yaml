@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/script"
   title: "Script"
+  table_kind: entity
+  scope: local
   description: |
     A film's script under a Project. Holds the screenplay body (or a reference to
     it) and is the parent of Scenes. Versioning (the 'version BLUE.pdf' in the

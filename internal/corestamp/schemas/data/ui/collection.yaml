@@ -2,6 +2,8 @@ _meta:
   version: 0.1.0
   schema_id: lightwave://schemas/data/ui/collection
   title: Collection — content collection primitive
+  table_kind: value_object
+  scope: local
   description: 'The typed envelope a data-driven site declares for a family of records
 
     (projects in v1). It owns the collection SHAPE — slug, kind, labels,

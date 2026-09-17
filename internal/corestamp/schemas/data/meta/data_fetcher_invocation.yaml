@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/data_fetcher_invocation"
   title: "Data Fetcher Invocation"
+  table_kind: entity
+  scope: local
   description: |
     Element shape for items in user_prompt's <data_fetchers_invoked>
     list. Each entry records that the composer dispatched a named

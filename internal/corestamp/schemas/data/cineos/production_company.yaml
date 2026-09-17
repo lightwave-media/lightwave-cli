@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/production_company"
   title: "Production Company"
+  table_kind: entity
+  scope: local
   description: |
     A production company / studio associated with a Project — producer, financier,
     distributor, or rental house (ER: PROJECT ||--o{ PRODUCTION_COMPANY). The

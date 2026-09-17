@@ -1,0 +1,49 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/acs/receipt"
+  title: "ACS Receipt"
+  description: |
+    Durable idempotency receipt for a mutating ACS command. Append,
+    projection apply, and receipt commit happen in one libLightwave-owned
+    transaction. Crash before commit leaves no event, projection, or
+    receipt. Retry after commit returns this receipt with status duplicate.
+  generates:
+    - "ts:AcsReceipt"
+    - "rust:AcsReceipt"
+    - "c:LwAcsReceipt"
+    - "go:AcsReceipt"
+  depends_on:
+    - "lightwave://schemas/data/enums/acs_command_kinds"
+    - "lightwave://schemas/data/enums/acs_receipt_statuses"
+
+required_fields:
+  - name: command_kind
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/acs_command_kinds"
+    description: "Command this receipt answers."
+  - name: idempotency_key
+    type: str
+    description: "The key the caller supplied."
+  - name: status
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/acs_receipt_statuses"
+    description: "committed on first write; duplicate on replay."
+  - name: thread_id
+    type: str
+    description: "Thread the command affected or created."
+  - name: seq
+    type: int
+    description: "seq of the event this command appended (or the original seq on duplicate)."
+
+optional_fields:
+  - name: turn_id
+    type: str
+    description: "Turn created or cancelled. Absent for agent_thread_create."
+
+example:
+  command_kind: agent_turn_start
+  idempotency_key: "example-idempotency-key-1"
+  status: committed
+  thread_id: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+  turn_id: "3fa85f64-5717-4562-b3fc-2c963f66afa6"
+  seq: 2

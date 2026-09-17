@@ -1,0 +1,35 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/validity_metrics"
+  title: "Validity Metrics"
+  description: |
+    Closed enum of the similarity functions that can produce a contract's
+    `min_fidelity_score`. Consumed by
+    `policy/validity/validity_contract.yaml#/optional_fields/metric`.
+
+    Declared as a field rather than assumed because the two are on DIFFERENT
+    SCALES, so a threshold is not an actionable number without knowing which
+    one produced it. That is not hypothetical: the host lib moved from jaccard
+    to containment on 2026-09-08 (n=7,065) and raised its recommended floor to
+    0.45, while contracts written earlier kept thresholds calibrated for
+    jaccard — around 0.05-0.15 — which under containment warn on nothing. A
+    silently retuned metric turns a live gate inert without changing a line of
+    the contract.
+
+    Wire encoding lowercase, matching what ~/.lightwave/lib/validity/ writes
+    into observability/validity.jsonl.
+  generates:
+    - "pydantic:ValidityMetric"
+  depends_on: []
+
+name: validity_metrics
+description: "Similarity function behind min_fidelity_score — containment | jaccard"
+default: "containment"
+closed: true
+options:
+  - value: containment
+    label: "Containment"
+    description: "|content ∩ upstream| / |content|. Asks whether what was written is supported by the upstream, which is the question a fidelity gate is actually asking. Asymmetric, so adding faithful new material does not depress the score. This is what the host lib scores with."
+  - value: jaccard
+    label: "Jaccard"
+    description: "|content ∩ upstream| / |content ∪ upstream|. Symmetric, so any vocabulary-expanding edit tanks it however faithful the addition is — which is why it was retired as the score. Retained in the measurement record's details for continuity with pre-2026-09-08 history, never as the threshold."

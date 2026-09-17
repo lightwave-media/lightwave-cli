@@ -220,6 +220,7 @@ func buildUseString(cmd sst.CLICommand) string {
 // the single source of truth for shape disambiguation.
 var booleanFlags = map[string]bool{
 	"dry-run": true,
+	"full":    true,
 	"json":    true,
 	"top":     true,
 	"pretty":  true,

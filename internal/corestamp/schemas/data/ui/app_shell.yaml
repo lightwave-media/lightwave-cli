@@ -2,6 +2,8 @@ _meta:
   version: 0.1.0
   schema_id: lightwave://schemas/data/ui/app_shell
   title: App Shell — application scaffold contract
+  table_kind: value_object
+  scope: local
   description: 'The contract for scaffolding a whole React application (unblocks the
 
     app-react-vite blueprint, Stage 0): shell kind, routing, providers, and

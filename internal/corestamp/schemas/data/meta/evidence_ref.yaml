@@ -1,0 +1,140 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/meta/evidence_ref
+  title: Evidence Ref
+  table_kind: value_object
+  scope: local
+  description: |
+    A pointer to a run that actually happened: what was executed, at which
+    revision, producing which result, and where the artifact lives.
+
+    WHY THIS EXISTS. EPIC-ONTO-001's promotion rule says a provisional contract
+    becomes stable Core only with executable evidence plus either two
+    independent consumers or three materially different uses. That gate has
+    lived entirely in prose, so "has executable evidence" has been a judgement
+    call rather than a queryable fact — which means the promotion rule cannot
+    be enforced, only asserted.
+
+    REVISION-BOUND, AND THAT IS THE POINT. `revision` pins evidence to the exact
+    tree it was produced against. A later commit does not inherit the claim; it
+    invalidates it and requires a new run. Evidence that floats is the same
+    defect as an action pinned to a mutable tag — what was verified and what
+    ships stop being the same thing, silently.
+
+    A SKIP IS NOT A PASS. `outcome` reuses data/enums/ledger_outcomes precisely
+    because that vocabulary already separates `skipped` and `unavailable` from
+    `pass`. This is the failure mode lightwave-cli#350 records and that
+    ADR-0050 names: an absent check is indistinguishable from a clean one, so a
+    starved host reads as a green gate. Only `pass` is evidence. A row with any
+    other outcome is a record that the check did not vouch for anything, and
+    must never satisfy a promotion gate.
+
+    WHAT THIS IS NOT. Not a second DecisionTrace — data/meta/ledger_event is
+    the append-only INTENT/ACTION/OUTCOME envelope and stays it; §13 already
+    ruled that, and a second name for it is the collision this epic's WS0
+    matrix warns about. An EvidenceRef is narrower: a citable pointer, quoted
+    BY a ledger row or a policy decision, not a replacement for either.
+  generates:
+  - pydantic:EvidenceRef
+  depends_on:
+  - lightwave://schemas/data/enums/ledger_outcomes
+  - lightwave://schemas/data/enums/ledger_surfaces
+
+required_fields:
+- name: id
+  type: str
+  description: Stable evidence id, unique within the trail. Never reused, so a citation stays resolvable.
+- name: ts
+  type: str
+  description: ISO 8601 timestamp at which the run completed.
+- name: claim
+  type: str
+  description: >
+    What this run is offered as evidence FOR, in one line. Without it a row
+    proves only that something ran — the reader has to infer the claim, and an
+    inferred claim is how unrelated green output comes to back an unrelated
+    assertion.
+- name: repo
+  type: str
+  description: Repository the run was executed against, resolved from the origin remote — never from the directory name.
+- name: revision
+  type: str
+  description: >
+    Full commit SHA of the tree the run executed against. A revision that does
+    not resolve in `repo` invalidates the row: evidence for a tree nobody has
+    is not evidence.
+- name: surface
+  type: enum
+  values_ref: lightwave://schemas/data/enums/ledger_surfaces
+  description: Which plane produced the evidence — ci, review, eval, gate, runbook. Bound vocabulary, not free text.
+- name: command
+  type: str
+  description: The exact command executed, verbatim and re-runnable. A paraphrase is not reproducible and is not evidence.
+- name: outcome
+  type: enum
+  values_ref: lightwave://schemas/data/enums/ledger_outcomes
+  description: >
+    What the run produced. Only `pass` vouches for the claim; `skipped` and
+    `unavailable` are recorded so an absent check can never be read as a clean one.
+
+optional_fields:
+- name: artifact_uri
+  type: str
+  description: >
+    Where the output lives — a log path, an Actions run URL, a JSONL offset.
+    Absent when the run produced only an exit code; present is strictly better,
+    because it is what lets a reader re-check rather than trust the row.
+- name: correlation_id
+  type: str
+  description: Joins this evidence to the unit of work that produced it, per ADR-0037.
+- name: exit_code
+  type: int
+  description: Process exit code, where the run was a process.
+- name: duration_ms
+  type: int
+  description: Wall-clock duration of the run in milliseconds.
+- name: branch
+  type: str
+  description: Branch the revision was reached on. Context only — `revision` is what binds the evidence.
+- name: promotes
+  type: str
+  description: >
+    schema_id or contract this row is offered toward promoting from provisional
+    to stable Core. The join the promotion rule needs to become a query.
+- name: consumer
+  type: str
+  description: >
+    Independent consumer this run exercised, where the promotion rule is being
+    satisfied by consumer count rather than by distinct uses.
+- name: model_id
+  type: str
+  description: >
+    Model that served the run, for review and eval surfaces. A verdict from a
+    degraded local fallback must not read as equal to the primary
+    (lightwave-core#556).
+- name: synthetic
+  type: bool
+  description: >
+    True when the run was a gate proof or fixture rather than real traffic.
+    Proofs deliberately score as failures to demonstrate a gate fires, so a
+    trail that cannot mark them biases every rate computed over it — the exact
+    error CLAUDE.md §19's corollary records.
+- name: metadata
+  type: map[str, str]
+  description: Surface-specific payload that does not earn a column.
+
+example:
+  id: ev-2026-09-13-9c02f1ab
+  ts: '2026-09-13T17:12:55Z'
+  claim: lightwave-platform has no third-party GitHub Action on a mutable tag.
+  repo: lightwave-platform
+  revision: 6beb78370c1d4f2a9e5b8a3c7d41e6f0a2b9c8d5
+  surface: ci
+  command: mise run ci
+  outcome: pass
+  artifact_uri: https://github.com/lightwave-media/lightwave-platform/actions/runs/000000
+  correlation_id: corr-2026-09-13-pin-actions
+  exit_code: 0
+  duration_ms: 118400
+  branch: ci/178-pin-actions
+  promotes: lightwave://schemas/policy/governance/repo-infra

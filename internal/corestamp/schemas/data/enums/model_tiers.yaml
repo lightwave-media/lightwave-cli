@@ -1,5 +1,5 @@
 _meta:
-  version: "1.0.0"
+  version: "1.1.0"
   schema_id: "lightwave://schemas/data/enums/model_tiers"
   title: "Model Tier Enum"
   description: |
@@ -22,7 +22,7 @@ _meta:
   depends_on: []
 
 name: model_tiers
-description: "Model intelligence tier — frontier | powerful | standard | local | economic"
+description: "Model intelligence tier — frontier | powerful | standard | local | economic | none"
 default: "standard"
 closed: true
 options:
@@ -41,3 +41,6 @@ options:
   - value: economic
     label: "Economic"
     description: "Hosted inference at lowest available cost. Batch processing, formatting, simple transformations. Cost: lowest remote tier."
+  - value: none
+    label: "None — deterministic"
+    description: "No model. The work is arithmetic, an exit code, or a threshold, and carries no judgement: sprint capacity sums, token-budget gates over cost_record, ci_green, metric aggregation. Routing these to a model costs tokens AND makes a gate nondeterministic. Cost: $0. Not selectable by the matcher — it means 'do not call a model', so resolveModel must not be asked."
