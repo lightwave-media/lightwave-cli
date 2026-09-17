@@ -69,7 +69,7 @@ func toolsFor(tier Tier) []toolDef {
 	// empty result here is the single point that fails the whole server
 	// closed; nothing downstream needs its own TierNone check.
 	if tier == TierNone {
-		return nil
+		return []toolDef{}
 	}
 
 	read := libraryTools()
@@ -89,8 +89,8 @@ func toolsFor(tier Tier) []toolDef {
 			"id":     map[string]any{"type": "string"},
 			"status": map[string]any{"type": "string"},
 		}, nil)},
-		{Name: "context_get", Description: "Show Lightwave runtime context (instance bindings + composer status).", InputSchema: objectSchema(map[string]any{}, nil)},
-		{Name: "context_refresh", Description: "Refresh Lightwave runtime context (same surface as lw context refresh).", InputSchema: objectSchema(map[string]any{}, nil)},
+		{Name: "context_get", Description: "Start here: discover your workspace, job, runtime paths and other agents across applications. Pass your actual cwd and session_id; the MCP process working directory may differ.", InputSchema: contextSchema()},
+		{Name: "context_refresh", Description: "Re-read workspace, job and cross-application agent observations from Lightwave runtime sources.", InputSchema: contextSchema()},
 	}...)
 	if !tier.allowsWrite() {
 		return read
@@ -173,7 +173,7 @@ func (s Server) callTool(ctx context.Context, tier Tier, raw json.RawMessage) to
 	case "task_write":
 		return s.taskWrite(ctx, args)
 	case "context_get", "context_refresh":
-		return s.contextGet()
+		return s.workspaceContext(ctx, args)
 	case "dispatch_agent":
 		return s.dispatchAgent(ctx, args)
 	default:

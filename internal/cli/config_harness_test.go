@@ -47,6 +47,32 @@ func TestEnsureCodexShellEnvironmentCreatesSection(t *testing.T) {
 	assert.Contains(t, next, "\n[shell_environment_policy.set]\nAWS_PROFILE = \"lightwave-admin\"\n")
 }
 
+func TestCodexMCPMergePreservesOtherSettings(t *testing.T) {
+	t.Parallel()
+	current := "# keep my settings\nmodel = \"gpt-5.6-sol\"\n[mcp_servers.other]\ncommand = \"other\"\n[mcp_servers.lightwave]\ncommand = \"old\"\n[mcp_servers.lightwave.env]\nOLD = \"stale\"\n[hooks.state]\ntrusted_hash = \"unchanged\"\n"
+	fragment := []byte("[mcp_servers.lightwave]\ncommand = \"/home/user/.local/bin/lw\"\nargs = [\"mcp\", \"serve\", \"--persona\", \"v_lightwave-ai-engineer\"]\n")
+	next, err := ensureCodexMCP(current, fragment)
+	require.NoError(t, err)
+	assert.Contains(t, next, "# keep my settings")
+	assert.Contains(t, next, "trusted_hash = \"unchanged\"")
+	assert.Contains(t, next, "[mcp_servers.other]")
+	assert.NotContains(t, next, "stale")
+	again, err := ensureCodexMCP(next, fragment)
+	require.NoError(t, err)
+	assert.Equal(t, next, again)
+}
+
+func TestCodexMCPMergeRejectsInvalidTOML(t *testing.T) {
+	t.Parallel()
+	fragment := []byte("[mcp_servers.lightwave]\ncommand = \"lw\"\n")
+	next, err := ensureCodexMCP("[broken", fragment)
+	require.ErrorContains(t, err, "invalid existing Codex config")
+	assert.Empty(t, next)
+	next, err = ensureCodexMCP("model = \"unchanged\"", []byte("[broken"))
+	require.Error(t, err)
+	assert.Empty(t, next)
+}
+
 func TestValidateHarnessPrint(t *testing.T) {
 	t.Parallel()
 

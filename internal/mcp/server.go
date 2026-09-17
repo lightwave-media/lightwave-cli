@@ -54,7 +54,8 @@ type Server struct {
 	CoreRoot string
 }
 
-// Serve reads Content-Length framed JSON-RPC from in until EOF.
+// Serve accepts standard newline-delimited MCP and legacy Content-Length
+// clients. Replies use the request framing so existing consumers keep working.
 func Serve(ctx context.Context, in io.Reader, out io.Writer, s Server) error {
 	if s.HomeDir == "" {
 		s.HomeDir, _ = os.UserHomeDir()
@@ -72,7 +73,6 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, s Server) error {
 		s.Connect = connectDB
 	}
 
-	tier := ResolveTier(s.HomeDir, s.Persona)
 	r := bufio.NewReader(in)
 
 	for {
@@ -80,7 +80,18 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, s Server) error {
 			return err
 		}
 
-		msg, err := readFrame(r)
+		first, err := r.Peek(1)
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
+
+		if err != nil {
+			return err
+		}
+
+		legacy := first[0] == 'C' || first[0] == 'c'
+
+		msg, err := readMessage(r, legacy)
 		if errors.Is(err, io.EOF) {
 			return nil
 		}
@@ -92,7 +103,10 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, s Server) error {
 		var req rpcRequest
 
 		if err := json.Unmarshal(msg, &req); err != nil {
-			if writeErr := writeParseError(out); writeErr != nil {
+			if writeErr := writeMessage(out, rpcResponse{
+				JSONRPC: jsonRPCVersion,
+				Error:   &rpcError{Code: parseErrorCode, Message: "parse error"},
+			}, legacy); writeErr != nil {
 				return writeErr
 			}
 
@@ -103,17 +117,29 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, s Server) error {
 			continue
 		}
 
-		if err := writeFrame(out, s.handle(ctx, tier, &req)); err != nil {
+		// Re-resolve at each request boundary so a long-lived connection does
+		// not retain permissions after the operator revokes or changes its role.
+		tier := ResolveTier(s.HomeDir, s.Persona)
+		if err := writeMessage(out, s.handle(ctx, tier, &req), legacy); err != nil {
 			return err
 		}
 	}
 }
 
-func writeParseError(out io.Writer) error {
-	return writeFrame(out, rpcResponse{
-		JSONRPC: jsonRPCVersion,
-		Error:   &rpcError{Code: parseErrorCode, Message: "parse error"},
-	})
+func readMessage(r *bufio.Reader, legacy bool) ([]byte, error) {
+	if legacy {
+		return readFrame(r)
+	}
+
+	return r.ReadBytes('\n')
+}
+
+func writeMessage(w io.Writer, resp rpcResponse, legacy bool) error {
+	if legacy {
+		return writeFrame(w, resp)
+	}
+
+	return json.NewEncoder(w).Encode(resp)
 }
 
 func (s Server) handle(ctx context.Context, tier Tier, req *rpcRequest) rpcResponse {
@@ -125,6 +151,7 @@ func (s Server) handle(ctx context.Context, tier Tier, req *rpcRequest) rpcRespo
 			"protocolVersion": protocolVersion,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
 			"serverInfo":      map[string]any{"name": "lightwave", "version": "1.0.0"},
+			"instructions":    "Call context_get with your current cwd and session_id at the start of each task. It returns Lightwave runtime paths, the active validity contract, task identity, and cross-application agent observations. Use the stamp library and existing task tools before inventing files or workflows. Missing or stale observations are not proof that an agent is running.",
 		}}
 	case "ping":
 		return rpcResponse{JSONRPC: jsonRPCVersion, ID: id, Result: map[string]any{}}

@@ -3,6 +3,7 @@ package mcp
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -29,6 +30,8 @@ type personaFrontmatter struct {
 	Name string `yaml:"name"`
 }
 
+var personaSlug = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]*$`)
+
 // ResolveTier reads ~/.lightwave/config/agents/<persona>.yaml.
 //
 // Fails closed uniformly: no persona given, an unreadable/missing file, or an
@@ -39,19 +42,30 @@ type personaFrontmatter struct {
 // the write tier. Identity must resolve before any tool is served; there is
 // no "safe default" tier for an identity the server couldn't establish.
 func ResolveTier(home, persona string) Tier {
-	if persona == "" {
+	if !personaSlug.MatchString(persona) {
 		return TierNone
 	}
 
-	path := filepath.Join(home, ".lightwave", "config", "agents", persona+".yaml")
+	// Root confines reads even through symlinks; a path pre-check followed by
+	// os.ReadFile would leave a check/use race. This is containment, not proof
+	// that the caller is authorized to select this persona.
+	root, err := os.OpenRoot(filepath.Join(home, ".lightwave", "config", "agents"))
+	if err != nil {
+		return TierNone
+	}
+	defer func() { _ = root.Close() }()
 
-	body, err := os.ReadFile(path)
+	body, err := root.ReadFile(persona + ".yaml")
 	if err != nil {
 		return TierNone
 	}
 
 	var fm personaFrontmatter
 	if err := yaml.Unmarshal(body, &fm); err != nil {
+		return TierNone
+	}
+
+	if fm.Name != persona {
 		return TierNone
 	}
 

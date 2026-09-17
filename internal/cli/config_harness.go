@@ -217,11 +217,17 @@ func applyCodexHarness() error {
 
 	next := ensureCodexShellEnvironment(string(current), settings)
 
+	next, err = ensureCodexMCP(next, fragment)
+	if err != nil {
+		return err
+	}
+
 	if harnessDryRun {
 		fmt.Printf("Codex config: %s\n", configPath)
 		fmt.Printf("Fragment:     %s\n\n", fragmentPath)
 		fmt.Println("Would ensure [shell_environment_policy.set] contains:")
 		printSettings(settings)
+		fmt.Println("Would merge the fragment's Lightwave MCP connection, preserving other servers.")
 
 		if string(current) == next {
 			fmt.Println("\nNo changes needed.")

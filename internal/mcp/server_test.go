@@ -88,6 +88,85 @@ func TestDispatchAgentPlaneDown(t *testing.T) {
 	assert.Contains(t, out.Content[0]["text"], "runtime_plane_down")
 }
 
+func TestResolveTierRejectsInvalidIdentity(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name    string
+		persona string
+		body    string
+		symlink bool
+	}{
+		{"parent traversal", "../v_outside", "name: ../v_outside\ntier: singular\n", false},
+		{"mismatched name", "v_test", "name: v_other\ntier: singular\n", false},
+		{"missing name", "v_test", "tier: singular\n", false},
+		{"external symlink", "v_test", "name: v_test\ntier: singular\n", true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			home := t.TempDir()
+			dir := filepath.Join(home, ".lightwave", "config", "agents")
+			require.NoError(t, os.MkdirAll(dir, 0o755))
+			path := filepath.Join(dir, tc.persona+".yaml")
+			if tc.symlink {
+				target := filepath.Join(t.TempDir(), "persona.yaml")
+				require.NoError(t, os.WriteFile(target, []byte(tc.body), 0o600))
+				require.NoError(t, os.Symlink(target, path))
+			} else {
+				require.NoError(t, os.WriteFile(path, []byte(tc.body), 0o600))
+			}
+			assert.Equal(t, TierNone, ResolveTier(home, tc.persona))
+		})
+	}
+}
+
+func TestServeRevokesPersonaWithoutRestart(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	writePersonaFixture(t, home, "v_test", "engineer")
+	in, requests := io.Pipe()
+	responses, out := io.Pipe()
+	t.Cleanup(func() {
+		_ = requests.Close()
+		_ = in.Close()
+		_ = responses.Close()
+		_ = out.Close()
+	})
+	finished := make(chan error, 1)
+	go func() {
+		finished <- Serve(t.Context(), in, out, Server{
+			HomeDir: home,
+			Persona: "v_test",
+			Connect: func(_ context.Context) (*pgxpool.Pool, error) {
+				t.Error("revoked write reached the database")
+				return nil, db.ErrDBUnavailable
+			},
+		})
+	}()
+	encoder := json.NewEncoder(requests)
+	decoder := json.NewDecoder(responses)
+	list := map[string]any{"jsonrpc": "2.0", "id": 1, "method": "tools/list"}
+	require.NoError(t, encoder.Encode(list))
+	var before json.RawMessage
+	require.NoError(t, decoder.Decode(&before))
+	require.Contains(t, string(before), "epic_write", "positive control: role initially permits writes")
+	require.NoError(t, os.Remove(filepath.Join(home, ".lightwave", "config", "agents", "v_test.yaml")))
+	require.NoError(t, encoder.Encode(list))
+	var after json.RawMessage
+	require.NoError(t, decoder.Decode(&after))
+	assert.NotContains(t, string(after), "epic_write")
+	require.NoError(t, encoder.Encode(map[string]any{
+		"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+		"params": map[string]any{"name": "epic_write", "arguments": map[string]any{}},
+	}))
+	var denied json.RawMessage
+	require.NoError(t, decoder.Decode(&denied))
+	assert.Contains(t, string(denied), "not advertised")
+	require.NoError(t, requests.Close())
+	require.NoError(t, <-finished)
+}
+
 func TestDispatchAgentSuccess(t *testing.T) {
 	t.Parallel()
 	mux := http.NewServeMux()
