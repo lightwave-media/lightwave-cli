@@ -90,7 +90,7 @@ func TestUncertainAcceptedWriteRecoversWithoutReplay(t *testing.T) {
 	require.Error(t, err)
 	binding, err := engine.Files.LoadBinding(local.NotionId)
 	require.NoError(t, err)
-	assert.Equal(t, "pending", binding.SyncStatus)
+	assert.Equal(t, "error", binding.SyncStatus)
 	assert.NotEmpty(t, binding.PendingContentJson)
 	_, err = engine.Run(t.Context(), Options{})
 	require.NoError(t, err)
@@ -222,4 +222,36 @@ func TestUnchangedPagesAreSkippedUnlessFullRefresh(t *testing.T) {
 	_, err = engine.Run(t.Context(), Options{Full: true})
 	require.NoError(t, err)
 	assert.Greater(t, remote.fetches, first)
+}
+
+func TestInboundBindingDoesNotInheritDatabaseWritePermission(t *testing.T) {
+	t.Parallel()
+	engine, remote := engineFixture(t)
+	_, err := engine.Run(t.Context(), Options{})
+	require.NoError(t, err)
+	binding, err := engine.Files.LoadBinding(remote.page.NotionId)
+	require.NoError(t, err)
+	binding.Direction = "inbound"
+	require.NoError(t, engine.Files.SaveBinding(binding))
+	local, err := engine.Files.LoadPage(remote.page.NotionId)
+	require.NoError(t, err)
+	local.Markdown = ptr("local edit")
+	_, err = engine.Files.SavePage(local)
+	require.NoError(t, err)
+	report, err := engine.Run(t.Context(), Options{})
+	require.NoError(t, err)
+	assert.Equal(t, StatusPending, report.Changes[0].Action)
+	assert.Zero(t, remote.writes)
+}
+
+func TestPropertyMapCannotChangeAnotherDatabaseAuthority(t *testing.T) {
+	t.Parallel()
+	engine, _ := engineFixture(t)
+	databases, err := engine.Files.Databases()
+	require.NoError(t, err)
+	databases[0].PropertyMapRef = ptr("wrong-database")
+	_, err = writePrint(filepath.Join(engine.Files.Root, "specs", "notion_property_map", "wrong-database.yaml"), map[string]any{"database_notion_id": uuid.NewString(), "mappings": []any{}})
+	require.NoError(t, err)
+	_, err = engine.Files.PropertyPolicy(databases[0])
+	require.ErrorContains(t, err, "different database")
 }

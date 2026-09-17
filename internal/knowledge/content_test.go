@@ -62,3 +62,18 @@ func TestStatusAndPeopleProviderMetadataDoNotCauseEcho(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, equalContent(remoteContent, localContent))
 }
+
+func TestContentRejectsMalformedProperties(t *testing.T) {
+	t.Parallel()
+	_, err := ContentOf(Page{NotionId: "fixture", PropertiesJson: ptr(`{"Status":`)})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "properties")
+}
+
+func TestPropertyMapRejectsMissingOrChangedRequiredField(t *testing.T) {
+	t.Parallel()
+	rules := &PropertyRules{Types: map[string]string{"Status": "status"}, Required: map[string]bool{"Status": true}}
+	require.ErrorContains(t, rules.Validate(Content{}), "required mapped property")
+	require.ErrorContains(t, rules.Validate(Content{Properties: map[string]json.RawMessage{"Status": json.RawMessage(`{"type":"number","number":1}`)}}), "expected status")
+	require.NoError(t, rules.Validate(Content{Properties: map[string]json.RawMessage{"Status": json.RawMessage(`{"type":"status","status":{"name":"Done"}}`)}}))
+}

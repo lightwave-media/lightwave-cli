@@ -14,9 +14,11 @@ import (
 )
 
 const (
-	StatusPending = "pending"
-	StatusSynced  = "synced"
-	StatusDrift   = "drift"
+	StatusPending  = "pending"
+	StatusError    = "error"
+	ProviderNotion = "notion"
+	StatusSynced   = "synced"
+	StatusDrift    = "drift"
 )
 
 type Change struct {
@@ -138,7 +140,7 @@ func (engine Engine) runDatabase(ctx context.Context, database Database, binding
 	// a missing/inaccessible page is an error, never an inferred deletion.
 	for index := range bindings {
 		binding := &bindings[index]
-		if binding.Provider != "notion" || binding.ExternalId == nil {
+		if binding.Provider != ProviderNotion || binding.ExternalId == nil {
 			continue
 		}
 
@@ -178,10 +180,22 @@ func (engine Engine) runDatabase(ctx context.Context, database Database, binding
 		if !full && !set[id].IsZero() {
 			cached, binding, unchanged := engine.unchanged(id, set[id], database.TenantID)
 			if unchanged {
+				content, err := ContentOf(cached)
+				if err == nil {
+					err = policy.Validate(content)
+				}
+
+				if err != nil {
+					failures = append(failures, err)
+					changes = append(changes, Change{PageID: id, Action: StatusError, Error: err.Error()})
+
+					continue
+				}
+
 				if !dryRun && engine.Projector != nil {
 					if err := engine.Projector.Project(ctx, cached, binding); err != nil {
 						failures = append(failures, err)
-						changes = append(changes, Change{PageID: id, Action: "error", Error: err.Error()})
+						changes = append(changes, Change{PageID: id, Action: StatusError, Error: err.Error()})
 
 						continue
 					}
@@ -195,8 +209,18 @@ func (engine Engine) runDatabase(ctx context.Context, database Database, binding
 
 		change, err := engine.reconcile(ctx, database, id, policy, dryRun)
 		if err != nil {
+			if !dryRun {
+				binding, loadErr := engine.Files.LoadBinding(id)
+				if loadErr == nil && binding.TenantID == database.TenantID && binding.Provider == ProviderNotion {
+					binding.SyncStatus = StatusError
+					binding.LastError = ptr(err.Error())
+					binding.UpdatedAt = time.Now().UTC()
+					err = errors.Join(err, engine.Files.SaveBinding(binding))
+				}
+			}
+
 			change.Error = err.Error()
-			change.Action = "error"
+			change.Action = StatusError
 
 			failures = append(failures, err)
 		}
@@ -208,7 +232,7 @@ func (engine Engine) runDatabase(ctx context.Context, database Database, binding
 }
 
 //nolint:gocritic // Value snapshots isolate reconciliation from mutations of generated records.
-func (engine Engine) reconcile(ctx context.Context, database Database, id string, policy map[string]string, dryRun bool) (Change, error) {
+func (engine Engine) reconcile(ctx context.Context, database Database, id string, policy *PropertyRules, dryRun bool) (Change, error) {
 	change := Change{PageID: id}
 
 	external, err := engine.Remote.Fetch(ctx, id)
@@ -227,6 +251,10 @@ func (engine Engine) reconcile(ctx context.Context, database Database, id string
 
 	remote, err := ContentOf(external)
 	if err != nil {
+		return change, err
+	}
+
+	if err := policy.Validate(remote); err != nil {
 		return change, err
 	}
 
@@ -255,7 +283,7 @@ func (engine Engine) reconcile(ctx context.Context, database Database, id string
 	}
 
 	// Recover a first import interrupted between its identity and page writes.
-	if errors.Is(localErr, os.ErrNotExist) && bindingErr == nil && binding.LastWrittenSha256 == nil && binding.SyncStatus == StatusPending && binding.TenantID == database.TenantID {
+	if errors.Is(localErr, os.ErrNotExist) && bindingErr == nil && binding.LastWrittenSha256 == nil && len(binding.PendingContentJson) == 0 && binding.TenantID == database.TenantID && binding.Provider == ProviderNotion && binding.ExternalId != nil && *binding.ExternalId == id && binding.LocalId == external.ID.String() {
 		change.Action = "import"
 		if dryRun {
 			return change, nil
@@ -272,8 +300,12 @@ func (engine Engine) reconcile(ctx context.Context, database Database, id string
 		return change, errors.New("binding tenant does not match configured database")
 	}
 
-	if binding.Provider != "notion" || binding.ExternalId == nil || *binding.ExternalId != id || binding.LocalId != local.ID.String() || binding.PrintPath != filepath.Join("notion_page", id+".yaml") {
+	if binding.Provider != ProviderNotion || binding.ExternalId == nil || *binding.ExternalId != id || binding.LocalId != local.ID.String() || binding.PrintPath != filepath.Join("notion_page", id+".yaml") {
 		return change, errors.New("binding identity does not match page print")
+	}
+
+	if binding.Direction != "inbound" && binding.Direction != "bidirectional" {
+		return change, errors.New("unsupported binding direction for page reconciliation")
 	}
 
 	current, err := ContentOf(local)
@@ -286,7 +318,7 @@ func (engine Engine) reconcile(ctx context.Context, database Database, id string
 		return change, fmt.Errorf("missing or invalid reconciliation base: %w", err)
 	}
 
-	effectivePolicy, err := bindingPolicy(binding.Authority, policy, base, current, remote)
+	effectivePolicy, err := bindingPolicy(binding.Authority, policy.Owners, base, current, remote)
 	if err != nil {
 		return change, err
 	}
@@ -317,14 +349,14 @@ func (engine Engine) reconcile(ctx context.Context, database Database, id string
 		return change, errors.New("archived page has local edits; preserve them for explicit reconciliation")
 	}
 
-	if outbound && *database.Direction != "bidirectional" {
+	if outbound && (*database.Direction != "bidirectional" || binding.Direction != "bidirectional") {
 		change.Action = StatusPending
 		if dryRun {
 			return change, nil
 		}
 
 		binding.SyncStatus = StatusPending
-		binding.LastError = ptr("local changes retained; database direction is inbound")
+		binding.LastError = ptr("local changes retained; both database and binding must authorize bidirectional delivery")
 
 		return change, engine.Files.SaveBinding(binding)
 	}
@@ -355,8 +387,6 @@ func (engine Engine) reconcile(ctx context.Context, database Database, id string
 		if err != nil {
 			return change, err
 		}
-
-		binding.Direction = *database.Direction
 
 		binding.IdempotencyKey = ptr(digest(binding.PendingContentJson))
 		if err := engine.Files.SaveBinding(binding); err != nil {
@@ -452,7 +482,7 @@ func newBinding(page Page, direction string) Binding {
 	now := time.Now().UTC()
 
 	return Binding{ID: uuid.MustParse(bindingID(page.NotionId)), TenantID: page.TenantID,
-		BindingKey: "notion:page:" + page.NotionId, Provider: "notion", Direction: direction, Authority: "reconcile",
+		BindingKey: "notion:page:" + page.NotionId, Provider: ProviderNotion, Direction: direction, Authority: "reconcile",
 		LocalKind: "notion_page", LocalId: page.ID.String(), PrintPath: filepath.Join("notion_page", page.NotionId+".yaml"),
 		ExternalType: "page", ExternalId: ptr(page.NotionId), ExternalUrl: ptr(page.Url),
 		SyncStatus: StatusSynced, CreatedAt: now, UpdatedAt: now}

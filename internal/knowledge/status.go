@@ -20,7 +20,7 @@ func Status(files Files) ([]StatusEntry, error) {
 	entries := make([]StatusEntry, 0, len(bindings))
 	for index := range bindings {
 		binding := &bindings[index]
-		if binding.Provider != "notion" || binding.ExternalId == nil {
+		if binding.Provider != ProviderNotion || binding.ExternalId == nil {
 			continue
 		}
 
@@ -35,7 +35,7 @@ func Status(files Files) ([]StatusEntry, error) {
 
 		page, err := files.LoadPage(entry.PageID)
 		if err != nil {
-			entry.Status = "error"
+			entry.Status = StatusError
 			entry.Error = err.Error()
 		} else {
 			entry.Complete = page.ContentComplete != nil && *page.ContentComplete

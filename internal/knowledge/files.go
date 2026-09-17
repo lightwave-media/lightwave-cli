@@ -266,14 +266,46 @@ func (files Files) Lock() (func(), error) {
 	return func() { _ = file.Close() }, nil
 }
 
-// PropertyPolicy reads the existing Notion property-map shape. Omitted
-// ownership uses three-way reconciliation; no field inherits a silent winner.
+// PropertyRules retains the property-map constraints used by reconciliation.
+type PropertyRules struct {
+	Owners   map[string]string
+	Types    map[string]string
+	Required map[string]bool
+}
+
+func (rules *PropertyRules) Validate(content Content) error {
+	for name, kind := range rules.Types {
+		raw, exists := content.Properties[name]
+		if !exists {
+			if rules.Required[name] {
+				return fmt.Errorf("required mapped property %s is missing", name)
+			}
+
+			continue
+		}
+
+		var property struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(raw, &property); err != nil {
+			return err
+		}
+
+		if property.Type != kind {
+			return fmt.Errorf("mapped property %s has type %s, expected %s", name, property.Type, kind)
+		}
+	}
+
+	return nil
+}
+
+// PropertyPolicy reads ownership and required/type constraints from the stamp.
 //
 //nolint:gocritic // Value snapshots isolate reconciliation from mutations of generated records.
-func (files Files) PropertyPolicy(database Database) (map[string]string, error) {
-	policy := make(map[string]string)
+func (files Files) PropertyPolicy(database Database) (*PropertyRules, error) {
+	rules := &PropertyRules{Owners: make(map[string]string), Types: make(map[string]string), Required: make(map[string]bool)}
 	if database.PropertyMapRef == nil || *database.PropertyMapRef == "" {
-		return policy, nil
+		return rules, nil
 	}
 
 	slug := *database.PropertyMapRef
@@ -282,29 +314,51 @@ func (files Files) PropertyPolicy(database Database) (map[string]string, error) 
 	}
 
 	var mapping struct {
-		Mappings []struct {
+		DatabaseID string `json:"database_notion_id"`
+		Mappings   []struct {
 			Writable  *bool  `json:"writable"`
 			Property  string `json:"notion_property"`
+			Type      string `json:"notion_type"`
 			Authority string `json:"authority"`
+			Required  bool   `json:"required"`
 		} `json:"mappings"`
 	}
 	if err := readPrint(filepath.Join(files.Root, "specs", "notion_property_map", slug+".yaml"), &mapping); err != nil {
 		return nil, err
 	}
 
+	mappedID, err := uuid.Parse(mapping.DatabaseID)
+	if err != nil {
+		return nil, fmt.Errorf("property map database identity: %w", err)
+	}
+
+	configuredID, err := uuid.Parse(database.NotionId)
+	if err != nil || mappedID != configuredID {
+		return nil, errors.New("property map belongs to a different database")
+	}
+
 	for _, field := range mapping.Mappings {
+		if field.Property == "" || field.Type == "" {
+			return nil, errors.New("property map requires property name and type")
+		}
+
+		if _, exists := rules.Types[field.Property]; exists {
+			return nil, fmt.Errorf("duplicate property mapping for %s", field.Property)
+		}
+
+		rules.Types[field.Property], rules.Required[field.Property] = field.Type, field.Required
 		if field.Writable != nil && !*field.Writable {
-			policy[field.Property] = "read_only"
+			rules.Owners[field.Property] = "read_only"
 			continue
 		}
 
 		switch field.Authority {
 		case "", "reconcile", "local", "external":
-			policy[field.Property] = field.Authority
+			rules.Owners[field.Property] = field.Authority
 		default:
 			return nil, fmt.Errorf("unknown authority for %s", field.Property)
 		}
 	}
 
-	return policy, nil
+	return rules, nil
 }

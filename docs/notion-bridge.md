@@ -3,7 +3,8 @@
 This implementation depends on Core PR #755 and a coordinated versioned binding
 release. The packaged embedded stamp remains on v0.7.0 until that release. For
 development verification, build this branch and select the matching Core worktree
-with `LW_CLI_LIVE_SCHEMAS=1` and the configured Lightwave workspace root. Do not
+with `LW_CLI_LIVE_SCHEMAS=1`, `LW_CLI_DEV_DOMAINS=1` and the configured Lightwave
+workspace root. Do not
 claim the currently installed release has these commands.
 
 The bridge imports existing Notion pages into canonical files under
@@ -56,8 +57,9 @@ never means deletion. Relation and rich-text property lists are paginated when
 the page response is incomplete. Unknown or truncated Markdown is marked
 `content_complete: false`; it must not be used as a complete reset seed.
 
-Switch a source to `bidirectional` only after reviewing its imported records and
-field ownership. Edit `properties_json` and `markdown` in the page print to stage
+Switch the source and each approved page binding to `bidirectional` only after
+reviewing its imported records and field ownership. Both must authorize delivery.
+Edit `properties_json` and `markdown` in the page print to stage
 local changes. Titles derive from the title property; editing the convenience
 `title` field alone does not rename a Notion page. Status/select values use their
 names; system IDs, colors and user display metadata are normalized for comparison.

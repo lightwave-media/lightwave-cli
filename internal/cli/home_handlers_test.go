@@ -47,3 +47,16 @@ func TestHomeDoctorHandler_MissingBun(t *testing.T) {
 	require.Error(t, err, "home doctor must fail when bun is not on PATH")
 	assert.Contains(t, err.Error(), "bun not found")
 }
+
+//nolint:paralleltest // RunHandler captures stdout; Setenv isolates the prospective reset target.
+func TestHomeUnimplementedRecoveryCommandsRefuseWithoutMutation(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, verb := range []string{"home.diff", "home.pin", "home.reset", "home.reboot"} {
+		output, err := testutil.RunHandler(t, verb, nil, map[string]any{"write": "pin.yaml", "output": filepath.Join(home, "print")})
+		require.ErrorContains(t, err, "decommissioned", verb)
+		assert.Empty(t, output, verb)
+	}
+	assert.NoFileExists(t, filepath.Join(home, "pin.yaml"))
+	assert.NoDirExists(t, filepath.Join(home, "print"))
+}
