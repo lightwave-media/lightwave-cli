@@ -13,6 +13,15 @@
 # Exit: 0 when the notice speaks and stays quiet correctly, 1 otherwise.
 
 set -uo pipefail
+
+# A git hook run to reach this script exports GIT_DIR/GIT_WORK_TREE, and they
+# outrank -C/cwd for every git command below — including the fixture's own
+# `git init`/`git -C "$repo"` calls, which would then silently target the
+# real checkout instead of the temp dir. Belt-and-suspenders with the same
+# strip in mise.toml's [tasks.lw-current], since this script is also runnable
+# directly. Same defect class release-ship-destination-test.sh guards against.
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS
+
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
 NOTICE="$(pwd)/scripts/lw-current.sh"

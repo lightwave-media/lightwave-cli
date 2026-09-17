@@ -208,9 +208,18 @@ description = "Notice when the installed lw is older than this checkout (never b
 # Deliberately non-blocking. main moves several times an hour here, so failing
 # on drift would fail constantly for reasons unrelated to the change in hand,
 # which is how gates get bypassed rather than fixed.
+#
+# Strip the same inherited git location vars [tasks.test] already documents
+# needing to: when this runs from the pre-push gate, git has exported
+# GIT_DIR/GIT_WORK_TREE pointing at the real repo, and both scripts below
+# shell out to plain `git` — the test's own fixture repo included. Without
+# this the test's fixture commands silently target the real checkout instead
+# of its temp dir, which is how `core.bare` on the canonical checkout was
+# found flipped to true three times in one session before this was traced
+# here.
 run = [
-    "bash scripts/lw-current-test.sh",
-    "bash scripts/lw-current.sh",
+    "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS; bash scripts/lw-current-test.sh",
+    "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS; bash scripts/lw-current.sh",
 ]
 
 [tasks."release:gate"]
