@@ -73,7 +73,6 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, s Server) error {
 		s.Connect = connectDB
 	}
 
-	tier := ResolveTier(s.HomeDir, s.Persona)
 	r := bufio.NewReader(in)
 
 	for {
@@ -118,6 +117,9 @@ func Serve(ctx context.Context, in io.Reader, out io.Writer, s Server) error {
 			continue
 		}
 
+		// Re-resolve at each request boundary so a long-lived connection does
+		// not retain permissions after the operator revokes or changes its role.
+		tier := ResolveTier(s.HomeDir, s.Persona)
 		if err := writeMessage(out, s.handle(ctx, tier, &req), legacy); err != nil {
 			return err
 		}
