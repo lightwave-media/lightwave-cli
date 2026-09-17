@@ -37,16 +37,40 @@ func TestToolsForTierFiltering(t *testing.T) {
 	assert.True(t, contains(sing, "task_write"), "singular gets writes, got %v", sing)
 }
 
-func TestResolveTierDefaultAndFile(t *testing.T) {
+func TestToolsForUnresolvedIdentityDeniesEverything(t *testing.T) {
 	t.Parallel()
-	assert.Equal(t, DefaultTier, ResolveTier("", ""))
+	none := toolsFor(TierNone)
+	assert.Empty(t, none, "an unresolved identity must get zero tools, including the read-only stamp library")
+	assert.False(t, toolAllowed(TierNone, "stamp_list"), "even a read-only tool must be denied with no resolved identity")
+}
+
+func TestResolveTierFailsClosed(t *testing.T) {
+	t.Parallel()
 
 	dir := t.TempDir()
 	agentDir := filepath.Join(dir, ".lightwave", "config", "agents")
 	require.NoError(t, os.MkdirAll(agentDir, 0o755))
 	require.NoError(t, os.WriteFile(filepath.Join(agentDir, "v_cto.yaml"), []byte("tier: singular\nname: v_cto\n"), 0o644))
-	assert.Equal(t, TierSingular, ResolveTier(dir, "v_cto"))
-	assert.Equal(t, DefaultTier, ResolveTier(dir, "missing"))
+	require.NoError(t, os.WriteFile(filepath.Join(agentDir, "v_bad-tier.yaml"), []byte("tier: made_up_tier\nname: v_bad-tier\n"), 0o644))
+
+	cases := []struct {
+		name    string
+		home    string
+		persona string
+		want    Tier
+	}{
+		{"no persona given at all", dir, "", TierNone},
+		{"a real, resolvable persona", dir, "v_cto", TierSingular},
+		{"a persona name with no matching file", dir, "does-not-exist", TierNone},
+		{"a persona file whose declared tier is not a known value", dir, "v_bad-tier", TierNone},
+		{"a persona name matched against an unreadable home dir", filepath.Join(dir, "no-such-dir"), "v_cto", TierNone},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, tc.want, ResolveTier(tc.home, tc.persona))
+		})
+	}
 }
 
 func TestDispatchAgentPlaneDown(t *testing.T) {
@@ -116,6 +140,9 @@ func TestCallToolDeniedForTier(t *testing.T) {
 
 func TestServeInitializeAndToolList(t *testing.T) {
 	t.Parallel()
+	home := t.TempDir()
+	writePersonaFixture(t, home, "v_test-engineer", "engineer")
+
 	var in bytes.Buffer
 	writeTestFrame(t, &in, map[string]any{
 		"jsonrpc": "2.0",
@@ -129,13 +156,29 @@ func TestServeInitializeAndToolList(t *testing.T) {
 		"method":  "tools/list",
 	})
 	var out bytes.Buffer
-	require.NoError(t, Serve(t.Context(), &in, &out, Server{HomeDir: t.TempDir()}))
+	require.NoError(t, Serve(t.Context(), &in, &out, Server{HomeDir: home, Persona: "v_test-engineer"}))
 	frames := splitFrames(out.Bytes())
 	require.Len(t, frames, 2, "body=%s", out.String())
 	assert.Contains(t, string(frames[0]), `"protocolVersion"`)
 	assert.Contains(t, string(frames[1]), `"queue_read"`)
 	assert.Contains(t, string(frames[1]), `"stamp_list"`)
-	assert.NotContains(t, string(frames[1]), `"dispatch_agent"`, "default engineer tier must not advertise dispatch_agent")
+	assert.NotContains(t, string(frames[1]), `"dispatch_agent"`, "engineer tier must not advertise dispatch_agent")
+}
+
+// writePersonaFixture writes a minimal resolvable persona YAML under home's
+// .lightwave/config/agents/, for tests that exercise the real Serve/tools-list
+// pipeline and need identity to actually resolve — an empty Server.Persona
+// now denies everything (ResolveTier fails closed), so a test verifying what
+// a REAL tier sees must give it one.
+func writePersonaFixture(t *testing.T, home, name, tier string) {
+	t.Helper()
+	dir := filepath.Join(home, ".lightwave", "config", "agents")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(
+		filepath.Join(dir, name+".yaml"),
+		[]byte("tier: "+tier+"\nname: "+name+"\n"),
+		0o644,
+	))
 }
 
 func names(tools []toolDef) []string {

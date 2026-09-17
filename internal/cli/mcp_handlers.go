@@ -127,8 +127,16 @@ func confirmMCPDestruct(flags map[string]any, question string) error {
 func mcpServerFromFlags(flags map[string]any) mcp.Server {
 	home, _ := os.UserHomeDir()
 
+	// --persona wins when both are given; $LW_PERSONA lets a nullhub-spawned
+	// nullclaw instance (which sets it at process env, not argv — see
+	// lightwave-ai's buildExtraSpawnEnv) resolve identity with no flag at all.
+	persona := flagStr(flags, "persona")
+	if persona == "" {
+		persona = os.Getenv("LW_PERSONA")
+	}
+
 	return mcp.Server{
-		Persona:  flagStr(flags, "persona"),
+		Persona:  persona,
 		HomeDir:  home,
 		CoreRoot: mcpCoreRoot(),
 	}

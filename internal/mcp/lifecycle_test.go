@@ -111,7 +111,9 @@ func TestServeListenerHealthAndJSONRPC(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	t.Cleanup(cancel)
 
-	s := Server{HomeDir: t.TempDir()}
+	home := t.TempDir()
+	writePersonaFixture(t, home, "v_test-engineer", "engineer")
+	s := Server{HomeDir: home, Persona: "v_test-engineer"}
 	errCh := make(chan error, 1)
 	go func() {
 		errCh <- s.serveListener(ctx, ln)
