@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/home_baseline
   title: Lightwave Home Baseline
+  table_kind: value_object
+  scope: local
   description: 'Declares BASELINE zone dirs/files rendered by lightwave-home blueprint
 
     on `lw home render`. OPERATOR and RUNTIME zones defined in homedir.yaml.

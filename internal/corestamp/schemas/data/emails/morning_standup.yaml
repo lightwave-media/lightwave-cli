@@ -2,6 +2,8 @@ _meta:
   version: 0.1.0
   schema_id: lightwave://schemas/data/emails/morning_standup
   title: Morning Standup — daily agent-meeting minutes email props
+  table_kind: value_object
+  scope: local
   description: 'Daily agent-fleet standup minutes from v_general-manager@lightwave-media.ltd.
 
     Production-shaped (full StandupMinutesProps with nested types). The

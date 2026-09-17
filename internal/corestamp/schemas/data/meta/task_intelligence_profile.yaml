@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/task_intelligence_profile"
   title: "Task Intelligence Profile"
+  table_kind: value_object
+  scope: local
   description: |
     Per-task intelligence requirements and cost estimates. Companion to
     task.yaml — extends a task with the fields needed for model selection

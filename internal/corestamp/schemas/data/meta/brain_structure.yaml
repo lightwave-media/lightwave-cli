@@ -1,7 +1,9 @@
 _meta:
-  version: "2.0.0"
+  version: "2.1.0"
   schema_id: "lightwave://schemas/data/meta/brain_structure"
   title: "Brain Structure — DB Domains + File Zones + Sync"
+  table_kind: value_object
+  scope: local
   description: |
     Declares the LightWave brain architecture — the local-first knowledge layer
     for agents. Three layers, not two (CORE-0049):
@@ -40,6 +42,11 @@ _meta:
     v1.1.0: Document knowledge-domain Notion mirror + external projection hop.
     v2.0.0: CORE-0049 — Postgres replaces per-domain SQLite as the queryable
     store; `~/.lightwave/specs/` named as canonical truth; PowerSync removed.
+    v2.1.0: CORE-0054 — `regions` block names the brain's anatomy (cortex,
+    hippocampus, thalamus, brainstem, amygdala, cerebellum, prefrontal,
+    afferent, efferent, vitals) as a vocabulary over EXISTING paths, channels
+    and verbs. No directory renamed. `cortex` zone re-described: the
+    structured prints it held moved to `~/.lightwave/config/` in EB-007.
   generates:
     - "pydantic:BrainStructure"
     - "postgres:DDL" # PostgreSQL CREATE TABLE statements (tenant_id + RLS)
@@ -65,6 +72,12 @@ optional_fields:
   - name: print_rules
     type: object
     description: "Rules for what gets printed from core→~/.lightwave/."
+  - name: regions
+    type: "list[brain_region]"
+    description: |
+      The brain's anatomy as vocabulary (CORE-0054). Each region maps a
+      function to the paths, channels and verbs that ALREADY implement it.
+      Regions never introduce a path segment; a rename is a separate ADR.
 
 # =============================================================================
 # Sub-schemas
@@ -127,6 +140,44 @@ sub_schemas:
       - name: batch_size
         type: int
         description: "Max rows per reindex batch."
+
+  brain_region:
+    description: |
+      One anatomical region (CORE-0054). Names a FUNCTION of the organism and
+      points at what already performs it. Every region has an owner and at
+      least one channel, or it is archived: a region with no channel cannot
+      report silence, a region with no owner drifts.
+    required_fields:
+      - name: name
+        type: str
+        description: |
+          Region slug from the closed set: cortex | hippocampus | thalamus |
+          brainstem | amygdala | cerebellum | prefrontal | afferent |
+          efferent | vitals.
+      - name: function
+        type: str
+        description: "What this region does for the organism, one sentence."
+      - name: paths
+        type: "list[str]"
+        description: "Existing directories, files or launchd labels that implement it."
+      - name: owner
+        type: str
+        description: "Persona accountable for the region (v_* agent id) or `operator`."
+      - name: channels
+        type: "list[str]"
+        description: "Observability channels the region writes (relative to ~/.lightwave/observability/)."
+      - name: layer
+        type: str
+        description: |
+          EPIC-ONTO-001 layer: semantic | kinetic | governance |
+          operational_feedback | surfaces.
+    optional_fields:
+      - name: verbs
+        type: "list[str]"
+        description: "lw verbs, hooks or scripts that are this region's motor output."
+      - name: status
+        type: str
+        description: "live | degraded | dead — as observed, not as intended."
 
   print_rules:
     description: "What gets printed from core SST → ~/.lightwave/."
@@ -223,12 +274,15 @@ example:
 
       - name: cortex
         description: |
-          Agent context layers — per-role inputs consumed by v_core's compose_*
-          functions at session spawn. File-based because compose reads them as
-          raw text/markdown; not structured enough for DB.
+          Unstructured context layers only — knowledge notes and reading
+          material an agent pulls in as raw text. The structured prints that
+          used to live here (personas, principles, soul, council) moved to
+          `~/.lightwave/config/` in EB-007 (2026-05-12) and are resolved from
+          there by `lw agent`, `lw council` and the review composer. The
+          pre-EB-007 fork is archived under `brain/_archive/` (CORE-0054).
         sub_zones: []
         write_authority: operator
-        read_consumers: [agent-harness, lightwave-sys]
+        read_consumers: [agent-harness]
 
   sync:
     print_root: "~/.lightwave/specs"
@@ -279,6 +333,41 @@ example:
       # ~/.lightwave/index/ holds the legacy SQLite index, retired per CORE-0049.
       - "~/.lightwave/specs/.cache" # derived artefacts — never authoritative
       - "~/.lightwave/brain" # unstructured zone — never holds schema-shaped rows
+
+  # Anatomy as vocabulary (CORE-0054). Three representative regions, not the
+  # map: which regions THIS machine has is filled content, and R-9 puts that
+  # at ~/.lightwave/specs/brain/regions.yaml. These three carry the shape —
+  # the region whose stamp description had gone stale, the autonomic loop, and
+  # the region that makes the belief state visible.
+  #
+  # `status` is what was OBSERVED, never what was intended: a region recorded
+  # as live because it ought to be is the exact defect CORE-0054 was opened to
+  # correct.
+  regions:
+    - name: cortex
+      function: "Who the agents are and what they believe — identity, principles, soul, knowledge."
+      paths: ["~/.lightwave/config/agents", "~/.lightwave/config/principles", "~/.lightwave/config/soul", "~/.lightwave/brain/knowledge"]
+      owner: v_brain
+      channels: ["validity.jsonl"]
+      layer: semantic
+      verbs: ["lw agent", "lw council", "dev/engineering/composer.py"]
+      status: live
+    - name: brainstem
+      function: "Autonomic loop — breathes every 900 s, computes the health composite, heals what it can."
+      paths: ["~/.lightwave/lib/maintenance", "~/Library/LaunchAgents/com.lightwave.maintenance.fast.plist", "~/.local/bin/lw-maintenance"]
+      owner: v_core
+      channels: ["maintenance.jsonl", "vitals.jsonl"]
+      layer: operational_feedback
+      verbs: ["lw-maintenance --once"]
+      status: live
+    - name: vitals
+      function: "Interoception — the organism's felt sense of its own state, emitted every cycle and rendered by createOS."
+      paths: ["~/.lightwave/lib/maintenance/vitals.py", "~/.lightwave/observability/vitals.latest.json"]
+      owner: v_core
+      channels: ["vitals.jsonl"]
+      layer: surfaces
+      verbs: ["vitals.py --json"]
+      status: live
 
 relations:
   parent: null

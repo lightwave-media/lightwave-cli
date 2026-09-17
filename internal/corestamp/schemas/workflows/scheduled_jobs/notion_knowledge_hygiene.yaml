@@ -9,7 +9,9 @@ _meta:
 
     Owner persona: v_scrum-manager (daemon-class). CLI surface: lw knowledge sync.
     Observability: ~/.lightwave/observability/notion-sync.jsonl
-    Authority: local last-write-wins on structured fields (CORE-0048).
+    Authority: three-way reconciliation through external_ref; concurrent edits
+    remain visible drift. Mapped runtime evidence is locally owned. Discovery
+    never authorizes agent dispatch. Missing credentials fail visibly.
 
 name: "notion_knowledge_hygiene"
 

@@ -2,6 +2,22 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/ui/tenant"
   title: "Tenant — multi-tenant site/instance entity"
+  table_kind: entity
+  table_name: tenants
+  # `both`, which the enum says to use sparingly and only with a named
+  # reconciliation direction. Here it is: the PLATFORM owns tenant identity —
+  # slug is the RLS org id (app.current_org) and the /v1/{tenant}/ path
+  # segment. The LOCAL index carries the same table because every generated
+  # table FKs to tenants; without it the local print has no FK target and the
+  # migration will not apply. Reconciliation is one-way, platform -> local, and
+  # the local copy is derived like everything else in that store.
+  #
+  # This schema sits under data/ui/ for historical reasons and was first
+  # annotated value_object by a rule applied per-directory — but its own title
+  # says "multi-tenant site/instance entity", it owns identity, routing and
+  # lifecycle, and it already declares `go:Tenant`. A directory is not a
+  # classification.
+  scope: both
   description: |
     The instance entity each domain becomes on the platform: it ties a slug
     (the RLS org identifier = app.current_org and the /v1/{tenant}/ path

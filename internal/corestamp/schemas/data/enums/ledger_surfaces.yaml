@@ -1,0 +1,60 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/ledger_surfaces
+  title: Ledger Surfaces
+  description: |
+    Closed enum for ledger_event.surface — which plane of the fleet produced
+    the event. Extends the free-text surface list that audit_event carried in
+    prose (agent_gateway | auth_inbox | runbook | shell | validity |
+    compliance_fitness) into a bound vocabulary per R-5, so one join key means
+    the same thing to every emitter.
+
+    Adding a surface is a stamp change, deliberately: an emitter that does not
+    fit an existing value is a new plane, and a new plane needs a decision, not
+    a string.
+  closed: true
+  generates:
+  - pydantic:LedgerSurface
+  depends_on: []
+name: ledger_surfaces
+default: tool
+options:
+- value: tool
+  label: Tool
+  description: A single agent tool call — Write, Edit, Bash, Task, apply_patch.
+- value: ci
+  label: CI
+  description: A gate phase from mise run ci, pre-commit, pre-push, or GitHub Actions.
+- value: gate
+  label: Gate
+  description: A host hook decision — validity, spawn brake, reuse check, bash guard.
+- value: review
+  label: Review
+  description: A persona or bot code review, including the verdict and the model that served it.
+- value: pr
+  label: Pull Request
+  description: A pull-request lifecycle transition — opened, merged, closed unmerged.
+- value: release
+  label: Release
+  description: A tag or release-plane step.
+- value: deploy
+  label: Deploy
+  description: A deployment step — migration gate, canary rollout, rollback.
+- value: eval
+  label: Eval
+  description: A replay or grader result scoring a routine against known outcomes.
+- value: runbook
+  label: Runbook
+  description: A runbook step execution.
+- value: shell
+  label: Shell
+  description: An operator shell action recorded for attribution.
+- value: session
+  label: Session
+  description: >
+    An agent session's own lifecycle — start, prompt, compaction, stop. Not a
+    gate decision and not a tool call: these rows anchor a unit of work so the
+    tool, gate and ci rows that follow have something to hang off. Added when
+    the session hooks were wired and had no truthful surface; labelling them
+    `gate` would have recorded six emitters as gates and reproduced exactly the
+    population confusion the reachability audit had to unpick.

@@ -1,0 +1,51 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/persona_lifecycle_classes"
+  title: "Persona Lifecycle Class Enum"
+  description: |
+    How a persona's process actually starts, runs, and ends — orthogonal to
+    `tier` (persona_tiers.yaml), which answers WHAT a persona does (wide /
+    deep / executive), not how its process is supervised over time.
+
+    This distinction existed only in prose before this file: v_scrum-manager's
+    own comment block says "DAEMON-CLASS — runtime implementation is a
+    separate multi-PR lift," and persona_tiers.yaml's `singular` option
+    parenthetically calls it a "(queue daemon)" — but nothing validated that
+    claim against a real supervisor, and no other persona could declare the
+    same property even where it was true. A comment is not a contract; this
+    enum is.
+
+    Closed enum. Wire encoding is lowercase.
+  generates:
+    - "rust:PersonaLifecycleClass"
+    - "pydantic:PersonaLifecycleClass"
+  depends_on: []
+
+name: persona_lifecycle_classes
+description: "How a persona's process starts, runs, and ends — orthogonal to tier"
+default: "ephemeral"
+closed: true
+options:
+  - value: ephemeral
+    label: "Ephemeral"
+    description: >-
+      Spawned per task or session by a dispatcher (almost always v_core via
+      the fleet's delegated_by chain — 34 of 39 personas), does its work,
+      exits. No standing process between dispatches. This is the default and
+      covers the large majority of the fleet.
+  - value: daemon
+    label: "Daemon"
+    description: >-
+      Long-running, never-ending process — supervises a queue or fleet
+      continuously rather than being invoked per task. Declaring this value
+      is a claim that a real supervisor keeps the process alive (nullhub,
+      launchd, or equivalent); a persona marked daemon with no such
+      supervisor wired is a stamp/print violation to fix, not a valid state.
+  - value: scheduled
+    label: "Scheduled"
+    description: >-
+      Ephemeral between runs, but invoked on a fixed cadence by an external
+      scheduler (a launchd job or a Claude Code scheduled task under
+      ~/.claude/scheduled-tasks/) rather than by another persona's dispatch.
+      Exits after each run; the schedule — not a standing process — is what
+      makes this "background."

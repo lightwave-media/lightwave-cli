@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/meta/field_annotations"
   title: "Field Annotation Vocabulary"
+  table_kind: value_object
+  scope: local
   description: |
     Controlled vocabulary for per-field governance annotations. Any schema may
     mark a field with `annotations: [<term>, ...]`; the terms are defined here

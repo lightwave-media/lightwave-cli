@@ -13,7 +13,7 @@ _meta:
   - lightwave://schemas/data/agile_artifacts/user_story
   table_kind: entity
   table_name: tasks
-status_enum: task_statuses
+status_enum: agile_statuses
 priority_enum: task_priorities
 state_machine_ref: lightwave://schemas/data/enums/task_statuses#options[].can_transition_to
 primary_key:
@@ -184,7 +184,7 @@ example:
   user_story_ref: v-core-polls-ready-tasks
   epic_ref: v-core-v1-ready-task-dispatch
   domain: software-development
-  status: prioritized
+  status: next_up
   priority: high
   task_type: feature
   task_category: software_dev

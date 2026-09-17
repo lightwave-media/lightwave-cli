@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/clip"
   title: "Clip"
+  table_kind: entity
+  scope: local
   description: |
     A captured media unit — one recorded take of (usually) a planned Shot
     (ADR-0001: the entity is clip; take is a field on it). Carries the media

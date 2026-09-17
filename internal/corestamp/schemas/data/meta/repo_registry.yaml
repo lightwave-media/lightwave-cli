@@ -15,6 +15,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/meta/repo_registry"
   title: "Repo Registry"
+  table_kind: value_object
+  scope: local
   description: |
     Estate-level inventory of LightWave repos. Stamp; the print materializes
     at ~/.lightwave/repos.yaml on first read by nullclaw.

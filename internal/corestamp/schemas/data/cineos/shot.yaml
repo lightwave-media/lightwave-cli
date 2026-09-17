@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/shot"
   title: "Shot"
+  table_kind: entity
+  scope: local
   description: |
     A shot within a Scene — the cinematographer's unit of coverage. Carries the
     camera/lens/lighting spec that drives the shot list and on-set logging.

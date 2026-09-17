@@ -2,6 +2,8 @@ _meta:
   version: 0.1.0
   schema_id: lightwave://schemas/data/ui/page_definition
   title: Page Definition — typed page instance for a site
+  table_kind: value_object
+  scope: local
   description: 'A page in a site''s manifest: its type (marketing, legal, admin, app),
 
     the ordered sections that compose it, and its SEO contract. Legal pages

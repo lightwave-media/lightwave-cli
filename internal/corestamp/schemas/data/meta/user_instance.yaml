@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/user_instance
   title: CreateOS User Instance
+  table_kind: value_object
+  scope: local
   description: 'Alive operator configuration materialized from interview exports.
 
     Each approved interview patches this instance — apps, APIs, integrations,

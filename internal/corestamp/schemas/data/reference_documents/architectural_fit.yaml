@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/reference_documents/architectural_fit"
   title: "Architectural Fit"
+  table_kind: document
+  scope: local
   description: |
     Comparative audit of an external system's surface against a canonical
     Lightwave surface — which members subsume cleanly into ours, which stay

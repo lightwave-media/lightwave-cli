@@ -14,3 +14,4 @@ _meta:
 schemas:
   crud_routes: crud_routes.yaml
   codegen_targets: codegen_targets.yaml
+  agent_gateway: agent_gateway.yaml

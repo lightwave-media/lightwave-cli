@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/render_op"
   title: "Render Operation"
+  table_kind: entity
+  scope: local
   description: |
     A render/export request and its outcome for one Deliverable — the
     production-domain view of a queue run. When the data/queue family lands

@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/script_version"
   title: "Script Version"
+  table_kind: entity
+  scope: local
   description: |
     A revision of a Script — the 'version BLUE.pdf' in the dashboard. Captures the
     industry revision color/label and the file, so scene breakdowns can be pinned

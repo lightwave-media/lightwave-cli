@@ -11,7 +11,7 @@ _meta:
   table_kind: entity
   table_name: sprints
 
-status_enum: "sprint_statuses"
+status_enum: agile_statuses
 
 primary_key:
   column: id
@@ -91,7 +91,7 @@ example:
   slug: "v-core-v1-ready-task-dispatch-sprint"
   name: "v_core v1 — Ready-Task dispatch sprint"
   domain: "software-development"
-  status: "active"
+  status: in_progress
   start_date: "2026-06-01"
   end_date: "2026-06-30"
   epic_ref: "v-core-v1-ready-task-dispatch"

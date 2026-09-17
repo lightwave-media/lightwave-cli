@@ -1,11 +1,12 @@
 _meta:
-  version: "1.0.0"
+  version: "1.1.0"
   schema_id: "lightwave://schemas/integrations/notion/page"
   title: "Notion Page — projection shape"
   description: |
-    Shape of a Notion page as mirrored into local knowledge.db. Local SQLite
-    is authoritative for structured fields (CORE-0048); Notion is the human
-    collaboration projection. Adapters upsert by notion_id.
+    Durable Notion page print under specs/notion_page, projected into Postgres
+    per CORE-0049. Notion is the human authoring and collaboration surface.
+    Adapters reconcile by notion_id, preserve unmapped properties and page
+    content, and never infer deletion from an incomplete listing.
   generates:
     - "pydantic:NotionPage"
     - "postgres:DDL"
@@ -32,7 +33,7 @@ required_fields:
     storage: db
   - name: parent_type
     type: str
-    description: "workspace | page_id | database_id"
+    description: "workspace | page_id | database_id | data_source_id"
     storage: db
   - name: url
     type: str
@@ -54,6 +55,22 @@ required_fields:
     storage: db
 
 optional_fields:
+  - name: markdown
+    type: str
+    description: "Enhanced Markdown page body, including transcripts when available."
+    storage: db
+  - name: content_complete
+    type: bool
+    description: "False for truncated, inaccessible or unknown blocks; incomplete bodies must never be written back."
+    storage: db
+  - name: unknown_block_ids
+    type: "list[str]"
+    description: "Source blocks needing additional capture; never silently discarded."
+    storage: db
+  - name: data_source_id
+    type: str
+    description: "Notion data source UUID used for paginated discovery; distinct from database block ID."
+    storage: db
   - name: parent_id
     type: str
     description: "Parent page or database Notion ID when parent_type is not workspace"

@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/release_pin"
   title: "Release Pin"
+  table_kind: value_object
+  scope: local
   description: |
     Per-repo stable-release pin for the mise release train (ADR-0032). Records
     the last GREEN release each repo's worktrees should spawn from, so the swarm

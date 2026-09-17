@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/operator_interaction"
   title: "Operator Interaction"
+  table_kind: entity
+  scope: local
   description: |
     A single operator → agent interaction event within an active
     session. Rendered into user_prompt's <interaction> block on every

@@ -1,0 +1,100 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/agent_spawn_env_contract"
+  title: "Agent Spawn Environment Contract"
+  table_kind: value_object
+  scope: local
+  registry: true
+  description: |
+    The environment variables that carry agent/persona identity from a
+    spawning supervisor process to the child process it launches, and from
+    that child to whatever it re-execs or shells out to next. This schema's
+    example.vars IS the contract, same pattern as data/meta/homedir.yaml.
+
+    Traced from source 2026-09-17: nullhub (lightwave-ai) spawns one
+    nullclaw/nullboiler instance per persona and injects a fixed set of env
+    vars via a hand-written Zig function. lightwave-cli's `lw` binary, running
+    inside that spawned process, reads those same var names back via
+    os.Getenv with no schema in between. Verified live via `ps eww <pid>` on
+    a running instance: the env vars this schema declares are exactly what a
+    real spawned process carries.
+
+    THE GAP THIS CLOSES: nothing enforced that nullhub's Zig and lw's Go
+    agree on these names. They agreed because two people typed the same
+    string, not because a schema said they must. This is the same silent-
+    drift shape as the stamp/print and lib-copy drift found elsewhere in the
+    estate (CLAUDE.md workspace file, sections 7 and 23) — just not yet
+    broken here, because nobody has renamed either side yet.
+
+    THIS IS DECLARATION, NOT ENFORCEMENT YET. Neither lightwave-ai nor
+    lightwave-cli currently reads this schema at build or runtime — the
+    actual env-var strings still live only in each repo's source. Closing
+    that (codegen, or a conformance test that fails when either side drifts
+    from this list) is deliberately scoped out of this change; see notes on
+    each var below.
+  generates: []
+  depends_on:
+    - "data/meta/null_instance_binding"
+    - "data/meta/agent_identity"
+
+required_fields:
+  - name: vars
+    type: "list[SpawnEnvVar]"
+    description: "The full, current set of environment variables in this contract. See SpawnEnvVar sub-schema below."
+
+# =============================================================================
+# Sub-schema SpawnEnvVar (each entry in vars:)
+# Required: var_name, set_by, read_by, purpose
+# Optional: applies_to_component, resolution_order, notes
+# =============================================================================
+
+example:
+  vars:
+    - var_name: NULLCLAW_HOME
+      set_by: "lightwave-ai/src/nullhub/src/supervisor/manager.zig — buildExtraSpawnEnv, always set for any nullclaw-component instance"
+      read_by:
+        - "lightwave-ai/src/nullclaw/src/from_json.zig — resolves config home: JSON home > NULLCLAW_HOME env > default ~/.nullclaw/"
+      purpose: "Points a spawned nullclaw instance at its own isolated config/state dir (~/.nullhub/instances/nullclaw/<persona>/) instead of the shared, vestigial ~/.nullclaw/ default."
+      applies_to_component: nullclaw
+      notes: "Bare ~/.nullclaw/ (no per-instance suffix) was found vestigial 2026-09-17 — every live instance already resolves through this var, not the default path."
+
+    - var_name: NULLBOILER_HOME
+      set_by: "lightwave-ai/src/nullhub/src/supervisor/manager.zig — buildExtraSpawnEnv, always set for any nullboiler-component instance"
+      read_by:
+        - "lightwave-ai/src/nullboiler/src/config.zig — home_env_var constant, same override-else-default pattern as NULLCLAW_HOME"
+      purpose: "Same role as NULLCLAW_HOME, for the nullboiler component."
+      applies_to_component: nullboiler
+
+    - var_name: LW_PERSONA
+      set_by: "lightwave-ai/src/nullhub/src/supervisor/manager.zig — buildExtraSpawnEnv, only when component == nullclaw and the instance name matches a known persona slug"
+      read_by:
+        - "lightwave-cli/internal/agent/persona.go — LoadPersonaPrompt/personaCandidatePaths falls back to $LW_PERSONA when the --persona flag is empty"
+        - "lightwave-cli/internal/cli/council.go — gates `lw council` access; requires LW_PERSONA in {v_core, council, orchestrator}"
+      purpose: "Identifies which persona slug (e.g. v_cto) a spawned agent process is, so `lw` resolves the matching config/agents/<name>.yaml print without needing an explicit flag."
+      applies_to_component: nullclaw
+      resolution_order: 2
+      notes: "Read-side resolution order in persona.go: (1) $LW_PERSONA_DIR/<name>.yaml override, (2) <LightwaveHome>/config/agents/<name>.yaml. This var supplies <name>; it does not touch the override path itself."
+
+    - var_name: NULLCLAW_PERSONA_TEMPLATE
+      set_by: "lightwave-ai/src/nullhub/src/supervisor/manager.zig — buildExtraSpawnEnv, same condition as LW_PERSONA (nullclaw component, known persona slug)"
+      read_by:
+        - "lightwave-ai/src/nullclaw/src/agent/persona.zig — native persona behavior built into nullclaw itself, independent of lw"
+      purpose: "Activates nullclaw's own built-in persona template selection, so identity is honored even by callers that never invoke lw."
+      applies_to_component: nullclaw
+
+    - var_name: LW_PERSONA_DIR
+      set_by: "operator or launch environment — not set by nullhub's spawn logic; a manual override path"
+      read_by:
+        - "lightwave-cli/internal/agent/persona.go — personaCandidatePaths, tried before the LightwaveHome default"
+      purpose: "Lets an operator or test harness point persona resolution at an alternate directory instead of ~/.lightwave/config/agents/, without touching LW_PERSONA."
+      resolution_order: 1
+      notes: "Independent of nullhub's spawn contract above — documented here because it's part of the same resolution chain a reader would otherwise have to trace across two repos to find."
+
+notes: |
+  Follow-up, deliberately not done in this change: wire a conformance check
+  on at least one side (e.g. a lightwave-cli test asserting its LW_PERSONA
+  read matches this schema's declared var_name) so a future rename on either
+  side fails CI instead of silently breaking a spawned agent's identity at
+  runtime. Filed as a tracked issue on lightwave-ai and lightwave-cli rather
+  than rushed into this pass, since it touches the same source paths that
+  currently spawn 20+ live production agent instances.

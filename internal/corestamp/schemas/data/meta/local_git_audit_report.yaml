@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/local_git_audit_report"
   title: "Local Git Audit Report"
+  table_kind: entity
+  scope: local
   description: |
     Aggregate report from `lw git audit`. Written to
     ~/.lightwave/reports/git-audit-<timestamp>.json and emitted on stdout

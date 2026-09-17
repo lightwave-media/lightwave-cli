@@ -1,0 +1,129 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/ui/mode_render_contract"
+  title: "Mode Render Contract — per-mode UI and write rules"
+  table_kind: value_object
+  scope: local
+  description: |
+    Declares what a given operating_mode renders for a given artifact kind:
+    which fields are visible, which are deliberately hidden, how rows are
+    sorted and limited, and which writes are permitted. Carries lightwave-ui
+    variant values as data so that new mode chrome is a YAML edit rather than
+    a new component.
+
+    LC-03, completing the series LC-01 (operating_modes) and LC-02
+    (mode_signal_sources) began. Those two say which mode the operator is in
+    and why; this says what that mode actually does to the screen.
+
+    WHY THIS SHAPE, AND NOT phase_relevance ON EVERY PROPERTY. Tagging each
+    property in all 18 agile_artifacts schemas was considered and rejected: it
+    requires editing every current stamp and every future one, so the cost is
+    paid forever and the rule ends up smeared across 18 files where no one can
+    read it whole. Keying one contract by (mode, artifact_kind) states the same
+    thing in one file and touches nothing existing.
+
+    TWO HARD INVARIANTS, both enforced by
+    tests/conformance/test_mode_render_contract.py rather than left as prose:
+
+      1. `hidden_fields` is non-empty. A mode that hides nothing is not a mode,
+         it is a theme — and "every mode shows the same columns" is the exact
+         complaint this contract exists to answer.
+      2. Write scope is mode-scoped and its allowed/forbidden sets are
+         disjoint. A field that is both writable and locked is not a contract,
+         it is an unresolved argument.
+
+    The escape hatch is what makes invariant 2 liveable. Execute mode must not
+    permit reprioritisation — that is the whole point of being in execute —
+    but an operator who spots a mis-priority mid-task should not have to change
+    mode to record it. `write_scope.escape_hatch` names an action that flags
+    the artifact back to an earlier phase while leaving the operator where they
+    are.
+  generates:
+    - "typescript:ModeRenderContract"
+    - "go:ModeRenderContract"
+    - "json_schema:mode_render_contract"
+  depends_on:
+    - "lightwave://schemas/data/enums/operating_modes"
+    - "lightwave://schemas/data/enums/ui_densities"
+
+required_fields:
+  - name: mode
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/operating_modes"
+    description: "The operating mode this contract applies to. Subject-owned: the mode the human is in, not the artifact's lifecycle_phase."
+  - name: artifact_kind
+    type: str
+    description: "Artifact this contract renders — task, user_story, sprint, epic. A plain string rather than an enum because the agile artifact registry is the authority on what kinds exist, and duplicating it here would be a second source of truth."
+  - name: description
+    type: str
+    description: "One line stating what this mode shows AND what it refuses to show. The refusal half is the load-bearing half; a description that only lists columns does not explain the mode."
+  - name: visible_fields
+    type: "list[str]"
+    description: "Ordered property names rendered as table columns. Order is the render order, so this is a layout decision as well as a visibility one."
+    min_length: 1
+  - name: hidden_fields
+    type: "list[str]"
+    description: "Properties deliberately withheld in this mode. MUST be non-empty — see invariant 1. This is the field that makes a mode a mode."
+    min_length: 1
+  - name: sort_key
+    type: str
+    description: "Property name used as the default sort. Should be a field the mode's question is answered by — execute sorts by what to do next, not by created_at."
+  - name: density
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/ui_densities"
+    description: "Row density, mapping 1:1 onto the lightwave-ui Table size axis. Focus is expressed via row_limit, not via a third density value."
+  - name: write_scope
+    type: WriteScope
+    description: "Which fields may be written while in this mode, and the escape hatch for the ones that may not."
+
+optional_fields:
+  - name: row_limit
+    type: int
+    description: "Maximum rows rendered. Execute mode sets this to 1 — one next thing is the mode's entire premise, and a list of five is a different mode wearing execute's name."
+  - name: empty_state_title
+    type: str
+    description: "Title passed to the lightwave-ui EmptyState component. Worth setting per mode: an empty execute queue is good news, an empty capture inbox is not."
+  - name: empty_state_body
+    type: str
+    description: "Body copy passed to the lightwave-ui EmptyState component."
+  - name: tab_type
+    type: str
+    description: "lightwave-ui Tabs type value — button-brand, button-gray, button-border, button-minimal, underline, or line. A string rather than a stamped enum because the vocabulary is lightwave-ui's to change; stamping it here would fork the component's own contract."
+  - name: phase_badge_color
+    type: str
+    description: "lightwave-ui Badge color for the phase indicator — gray, brand, error, warning, success, slate, sky, blue, indigo, purple, pink, or orange. Same reasoning as tab_type: lightwave-ui owns this vocabulary."
+  - name: agent_role
+    type: str
+    description: "What agents are permitted to do FOR the operator in this mode. Distinct from write_scope, which governs the operator's own writes."
+
+sub_schemas:
+  WriteScope:
+    allowed_fields:
+      type: "list[str]"
+      description: "Properties writable in this mode."
+    forbidden_fields:
+      type: "list[str]"
+      description: "Properties locked in this mode. Must be disjoint from allowed_fields — see invariant 2."
+    escape_hatch:
+      type: str
+      nullable: true
+      description: "Label for the action that flags an artifact back to an earlier phase WITHOUT forcing the operator to change mode. Null when the mode locks nothing worth escaping."
+
+example:
+  mode: "execute"
+  artifact_kind: "task"
+  description: "Shows the one next task and its acceptance criteria; refuses to show the backlog, so reordering is not even offered."
+  visible_fields: ["title", "acceptance_criteria", "assigned_agent", "agent_status"]
+  hidden_fields: ["priority", "story_points", "created_at", "epic_ref"]
+  sort_key: "priority"
+  density: "comfortable"
+  row_limit: 1
+  empty_state_title: "Nothing queued"
+  empty_state_body: "No task is in progress. Switch to plan mode to pick the next one."
+  tab_type: "button-minimal"
+  phase_badge_color: "brand"
+  agent_role: "Agents may update agent_status and append notes; they may not reassign or reprioritise."
+  write_scope:
+    allowed_fields: ["agent_status", "notes", "acceptance_criteria"]
+    forbidden_fields: ["priority", "story_points", "epic_ref"]
+    escape_hatch: "Flag for replanning"

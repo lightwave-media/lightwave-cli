@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/plan_file"
   title: "Plan File Contract"
+  table_kind: document
+  scope: local
   description: |
     Canonical plan file paths, naming grammar, and visual-first requirements.
     Joel reads Mermaid/ASCII before prose. Planned R-41 tests path conformance.

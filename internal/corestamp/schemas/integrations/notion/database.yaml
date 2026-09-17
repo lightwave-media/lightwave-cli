@@ -1,5 +1,5 @@
 _meta:
-  version: "1.0.0"
+  version: "1.1.0"
   schema_id: "lightwave://schemas/integrations/notion/database"
   title: "Notion Database — projection shape"
   description: |
@@ -49,6 +49,14 @@ required_fields:
     storage: db
 
 optional_fields:
+  - name: data_source_id
+    type: str
+    description: "UUID of the data source queried under the 2026-03-11 Notion API."
+    storage: db
+  - name: direction
+    type: str
+    description: "inbound | bidirectional; initial capture uses inbound until its merge manifest is reviewed."
+    storage: db
   - name: property_map_ref
     type: str
     description: "Slug of the property_map stamp for this database"

@@ -28,6 +28,7 @@ schemas:
   related_spec_ref: related_spec_ref.yaml
   agent_session_cap: agent_session_cap.yaml
   audit_event: audit_event.yaml
+  bypass_event: bypass_event.yaml
   auth_gate_event: auth_gate_event.yaml
   docs_gate_failure: docs_gate_failure.yaml
   failure_record: failure_record.yaml
@@ -36,6 +37,7 @@ schemas:
   interview_export: interview_export.yaml
   interview_question_bank: interview_question_bank.yaml
   kickoff_interview: kickoff_interview.yaml
+  ledger_event: ledger_event.yaml
   local_git_audit_report: local_git_audit_report.yaml
   local_git_topology: local_git_topology.yaml
   local_setup_profile: local_setup_profile.yaml
@@ -60,3 +62,8 @@ schemas:
   docs_structure: docs_structure.yaml
   spec_package: spec_package.yaml
   brain_structure: brain_structure.yaml
+  # EPIC-ONTO-001 WS1 — the governance records the families were missing
+  policy_decision: policy_decision.yaml
+  evidence_ref: evidence_ref.yaml
+  storage_annotation: storage_annotation.yaml
+  agent_spawn_env_contract: agent_spawn_env_contract.yaml

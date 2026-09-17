@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/screenplay_scene"
   title: "Screenplay Scene (Parsed)"
+  table_kind: entity
+  scope: local
   description: |
     The parsed CONTENT of one scene — the output of the rules-based screenplay
     parser (createOS src/cineos/parse.ts; FDX first, Fountain, text-layer PDF)

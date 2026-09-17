@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/voice_ceremony_session
   title: Voice Ceremony Session
+  table_kind: entity
+  scope: local
   description: 'Human-led voice session at .tasks/<session-id>/voice/ceremony.yaml.
 
     '

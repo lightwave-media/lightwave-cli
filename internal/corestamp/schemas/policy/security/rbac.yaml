@@ -107,6 +107,7 @@ example:
         - "v_staff-engineer"
         - "v_qa-engineer"
         - "v_security-compliance"
+        - "v_lightwave-ai-engineer"
 
     - slug: "architect-agent"
       label: "Architect / CTO Agent"
@@ -135,7 +136,6 @@ example:
         - "v_product-manager"
         - "v_marketing-content-lead"
         - "v_accountant"
-        - "v_legal-advisor"
         - "v_legal-officer"
         - "v_scrum-manager"
 

@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/agent_session
   title: Agent Session — Short-Lived, Token-Bound
+  table_kind: entity
+  scope: local
   description: 'Short-lived session bound to an agent identity. Sessions are issued by
 
     nullhub at activation time and refreshed periodically. Tokens have a 24h

@@ -1,7 +1,9 @@
 _meta:
-  version: "1.0.0"
+  version: "1.1.0"
   schema_id: "lightwave://schemas/data/meta/agent_definition"
   title: "Agent Definition (Persona)"
+  table_kind: document
+  scope: local
   description: |
     SCHEMA for ~/.lightwave/config/agents/v_*.yaml persona files. The
     DATA contract that lightwave-sys::compose_system_prompt + Pi's
@@ -34,6 +36,7 @@ _meta:
     - "pydantic:AgentDefinition"
   depends_on:
     - "lightwave://schemas/data/enums/persona_tiers"
+    - "lightwave://schemas/data/enums/persona_lifecycle_classes"
     - "lightwave://schemas/data/meta/skill_definition"
 
 required_fields:
@@ -82,6 +85,21 @@ optional_fields:
   - name: pi
     type: "object<Pi>"
     description: "Pi-side persona config. Omit if Pi doesn't dispatch this persona."
+  - name: lifecycle_class
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/persona_lifecycle_classes"
+    description: |
+      How this persona's process actually starts, runs, and ends (see the
+      enum). Defaults to `ephemeral` when omitted. Orthogonal to `tier`
+      (WHAT the persona does) and `scrum.cadence` (agile ceremony
+      participation) — a persona can be `cadence: continuous` while still
+      being `ephemeral` here (each dispatch spawns and exits).
+
+      Declaring `daemon` is a factual claim: a real supervisor (launchd,
+      nullhub, or equivalent) must keep the process alive between
+      dispatches, not merely be intended to. Reviewed by hand at each
+      persona edit until a mechanical check can verify it against a
+      declared supervisor.
 
 # =============================================================================
 # Sub-schemas
@@ -101,9 +119,15 @@ sub_schemas:
     environments: "list[str]" # [development, staging]; prod requires explicit RBAC grant
 
   Scrum:
-    role: "str" # developer | scrum_manager | observer | product_owner
+    # Vocabularies below reconciled against the 34 live persona prints in
+    # ~/.lightwave/config/agents/ on 2026-09-13. Both comments previously
+    # omitted a value that personas were already using, so the documented
+    # vocabulary and the deployed one disagreed with nothing to catch it —
+    # these are free-text `list[str]`/`str` fields, validated by no enum.
+    role: "str" # developer(21) | observer(7) | stakeholder(3) | scrum_manager(2) | product_owner(1)
     domains: "list[str]" # LifeDomain slugs the persona participates in
-    ceremonies: "list[str]" # sprint_planning | daily_standup | sprint_review | retrospective
+    # `refinement` is declared by 21 personas and was absent from this list.
+    ceremonies: "list[str]" # sprint_review(26) | sprint_planning(22) | refinement(21) | retrospective(18) | daily_standup(18)
     cadence: "str" # per_sprint | continuous
 
   Dependencies:
@@ -145,7 +169,14 @@ sub_schemas:
     forbidden: "list[str]" # ENGINEER: [Edit, Write]; DEVELOPER: []; observer-SINGULAR: [Edit, Write, Bash]
 
   ClaudeCode:
-    model: "str" # e.g. claude-sonnet-4-6
+    # PREFER `tier` over `model`. Model ids are runtime data with a short
+    # half-life; 33 persona prints each hardcoding one is why they all went
+    # stale together — as of 2026-09-13, 31 of 33 name a model that no longer
+    # exists (28 x claude-sonnet-4-6, 2 x claude-opus-4-7, 1 x claude-opus-4-6).
+    # A tier is stable; the tier -> model mapping lives in ONE place,
+    # integrations/llm_providers/models/, resolved by model-matcher.ts.
+    tier: "str" # model_tiers enum; the durable way to declare intelligence
+    model: "str" # OPTIONAL pin to a specific model id; overrides tier. Goes stale — use sparingly.
     extended_thinking: "bool"
     min_version: "str" # semver
     env: "dict[str, str]"
@@ -191,7 +222,7 @@ example:
   scrum:
     role: developer
     domains: [software, example-domain]
-    ceremonies: [sprint_planning, daily_standup, sprint_review, retrospective]
+    ceremonies: [sprint_planning, daily_standup, sprint_review, refinement, retrospective]
     cadence: per_sprint
   dependencies:
     lightwave_cli:
@@ -225,7 +256,7 @@ example:
     allowed: [Read, Glob, Grep, Edit, Write, lw]
     forbidden: []
   claude_code:
-    model: claude-sonnet-4-6
+    tier: standard   # resolved to a model by model-matcher.ts; no stale id to rot
     extended_thinking: false
     min_version: "2.1.15"
     env:

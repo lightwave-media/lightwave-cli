@@ -1,5 +1,5 @@
 _meta:
-  version: "1.0.0"
+  version: "1.1.0"
   schema_id: "lightwave://schemas/workflows/sops/agile_orchestration"
   title: "Agile Orchestration — Sprint Cycle State Machine"
   description: |
@@ -25,6 +25,40 @@ _meta:
     - "lightwave://schemas/data/agile_artifacts/sprint"
     - "lightwave://schemas/data/agile_artifacts/task"
     - "lightwave://schemas/policy/governance/developer_sandbox"
+    - "lightwave://schemas/data/enums/model_tiers"
+    - "lightwave://schemas/workflows/strategies/model_selection"
+
+# ── Intelligence placement (added v1.1.0) ─────────────────────────────────────
+#
+# Each phase carries an `intelligence:` block naming TIERS from
+# data/enums/model_tiers.yaml — never model ids. Model ids are runtime data
+# with a short half-life; 33 persona files each hardcoding one is exactly why
+# they all went stale together (28 still name `claude-sonnet-4-6`, which is not
+# a valid model). Tier -> model resolution belongs to the catalog at
+# integrations/llm_providers/models/ and the matcher that reads it.
+#
+# The rule these assignments follow:
+#
+#   Place intelligence by irreversibility x volume — never by prestige.
+#     frontier  high irreversibility, low volume  (release sign-off, sprint
+#               goal, architecture, doctrine)
+#     powerful  bounded blast radius, medium volume (refactors, code review,
+#               test-efficacy judgement)
+#     standard  recoverable, routine (single-file edits, bug fixes,
+#               estimation, synthesis)
+#     local     high volume, cheap to be wrong, $0 (first-pass review,
+#               dedupe, extraction, boilerplate)
+#     none      NO JUDGEMENT INVOLVED — arithmetic, exit codes, thresholds.
+#
+# `none` is the tier most likely to be skipped and it matters most: a gate
+# that calls a model is both more expensive and less deterministic than one
+# that computes. ci_green is an exit code. v_cfo_token_budget is arithmetic
+# over cost_record.jsonl. Neither should ever reach an LLM.
+#
+# These assignments are a reasoned starting hypothesis, NOT a measurement.
+# They should be corrected once cost_record.jsonl actually carries
+# intelligence_tier_used / intelligence_tier_required — which as of
+# 2026-09-13 it does not, on any of 301 records.
 
 required_fields:
   - name: sprint_slug
@@ -52,7 +86,7 @@ phases:
     order: 0
     lifecycle_phase: planning
     description: |
-      Product ideas and requests enter the backlog. v_product-owner and
+      Product ideas and requests enter the backlog. v_product-manager and
       v_scrum-manager groom the backlog: Can we do it? Is it worth it?
       Items move through Open → Considering → Scoping → Prioritized.
     allowed_transitions:
@@ -60,8 +94,20 @@ phases:
     outputs:
       - prioritized_backlog
     personas:
-      - v_product-owner
+      - v_product-manager
       - v_scrum-manager
+    # Grooming is high-volume and cheap to get wrong — a bad call is reversed
+    # at the next grooming. Dedupe/classify/extract carry no judgement worth
+    # paying for; only the feasibility and worth-it calls do.
+    intelligence:
+      default_tier: local
+      policy: local_first
+      tasks:
+        dedupe_and_classify: local
+        extract_acceptance_criteria: local
+        feasibility_assessment: standard
+        worth_it_prioritisation: standard
+        epic_level_scoping: powerful
 
   sprint_planning:
     order: 1
@@ -81,8 +127,23 @@ phases:
       - token_budget
     personas:
       - v_scrum-manager
-      - v_product-owner
+      - v_product-manager
       - v_cfo
+    # The sprint goal commits the whole team for the sprint and is expensive
+    # to reverse — that is what frontier is for. The v_cfo token-budget gate
+    # is arithmetic over cost_record.jsonl: running a model on it would cost
+    # tokens AND make a gate nondeterministic.
+    intelligence:
+      default_tier: standard
+      policy: cheapest_adequate
+      tasks:
+        token_budget_gate: none
+        capacity_arithmetic: none
+        estimation: standard
+        task_assignment: standard
+        sprint_goal_commitment: frontier
+      gate_tiers:
+        v_cfo_token_budget: none
 
   sprint_execution:
     order: 2
@@ -107,6 +168,37 @@ phases:
       - v_infra-developer
       - v_staff-engineer
     cron_schedule: "*/15 * * * *"
+    # THE VOLUME CENTRE. Measured 2026-09-13: claude-opus-5 carried 99.0% of
+    # all notional spend ($56,912 of $57,498) because nothing routed anything
+    # — not because the work needed frontier. Ponytail's first pass runs
+    # local (measured 11.82 tok/s, $0, and it caught a bare except, a
+    # hardcoded sk-live- token and an unused parameter on a fixture);
+    # escalate to powerful only once that pass reports blockers.
+    # NOTE: the local reviewer's context ceiling is 32k — escalate diffs
+    # larger than that instead of truncating them.
+    intelligence:
+      default_tier: standard
+      policy: cheapest_adequate
+      tasks:
+        boilerplate_scaffold: local
+        single_file_edit: standard
+        bug_fix: standard
+        multi_file_refactor: powerful
+        architecture_decision: frontier      # escalation only
+        ponytail_audit_first_pass: local
+        ponytail_audit_on_blockers: powerful
+        mechanical_test_presence_check: economic
+      gate_tiers:
+        ci_green: none                        # exit code
+        code_review: none                     # threshold on the review verdict
+      escalation:
+        policy: local_with_failover
+        from: local
+        to: powerful
+        triggers:
+          - local_reports_blockers
+          - diff_exceeds_local_context_window
+          - local_unavailable_or_degraded
 
   sprint_review:
     order: 3
@@ -126,6 +218,23 @@ phases:
       - v_staff-engineer
       - v_qa-engineer
       - v_cto
+    # v_cto_signoff releases to main and deploys. It is the most irreversible
+    # act in the cycle and the lowest-volume — one per sprint. This is the
+    # place frontier plainly earns its cost, and the reason the rest of the
+    # cycle can afford not to use it.
+    intelligence:
+      default_tier: powerful
+      policy: cheapest_adequate
+      tasks:
+        coverage_sweep: local
+        test_efficacy_judgement: powerful
+        ponytail_second_pass: powerful
+        release_notes_generation: standard
+        release_signoff: frontier
+      gate_tiers:
+        v_staff-engineer_ponytail: powerful
+        v_qa-engineer_verify: powerful
+        v_cto_signoff: frontier
 
   sprint_retrospective:
     order: 4
@@ -142,7 +251,17 @@ phases:
       - improvements
     personas:
       - v_scrum-manager
-      - v_product-owner
+      - v_product-manager
+    # Quality scores and sprint metrics are arithmetic. Only the synthesis
+    # is judgement, and a retro insight is revisited next sprint — amending
+    # standing doctrine is the one irreversible act here.
+    intelligence:
+      default_tier: standard
+      policy: cheapest_adequate
+      tasks:
+        metric_aggregation: none
+        insight_synthesis: standard
+        doctrine_amendment: frontier
 
 # ── Task State Machine (within Sprint Execution) ──────────────────────────────
 

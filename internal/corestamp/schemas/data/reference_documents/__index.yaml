@@ -9,7 +9,7 @@
 # =============================================================================
 
 _meta:
-  version: "0.3.0"
+  version: "0.4.0"
   schema_id: "lightwave://schemas/data/reference_documents/__index"
   title: "Reference Documents Schema Registry"
   description: "Maps reference-document kinds to their schema files. Distinct from agile_artifacts/ (R-P-I-V-R lineage) — these are independent reference doc kinds."
@@ -23,3 +23,4 @@ schemas:
   technical_study: technical_study.yaml
   architectural_fit: architectural_fit.yaml
   knowledge_source: knowledge_source.yaml
+  document: document.yaml

@@ -1,0 +1,56 @@
+_meta:
+  version: 1.0.0
+  schema_id: lightwave://schemas/data/enums/storage_scopes
+  title: Storage Scopes
+  description: |
+    Closed enum for the `_meta.scope` storage annotation — WHERE an entity's
+    rows live.
+
+    WHY THIS EXISTS. The stamp described shapes and never said which store
+    holds them, so two genuinely different populations were indistinguishable:
+    agile artifacts are multi-tenant server-side records reached through the
+    Go API ("Agile artifacts are PostgreSQL records — NOT files in repos"),
+    while data/meta is this machine's own fleet state and data/cineos is
+    createOS's local domain. Both are `table_kind: entity`; they belong in
+    different databases.
+
+    Without the discriminator, "print the stamp locally" has no answer to
+    which schemas it means, and the honest options were to print everything —
+    putting tenant-scoped platform tables on a laptop — or to keep hand-
+    maintaining the list in the generator, which is a second place the
+    decision lives and a second place it drifts (R-5).
+
+    SCOPE IS NOT SENSITIVITY. `platform` does not mean secret and `local` does
+    not mean scratch. It answers one question: which store owns the rows.
+  closed: true
+  generates:
+  - pydantic:StorageScope
+  depends_on: []
+name: storage_scopes
+default: platform
+options:
+- value: platform
+  label: Platform
+  description: >
+    Rows live in the multi-tenant platform database behind the Go API, subject
+    to RLS and tenant_id. Agile artifacts, tenancy, product and billing shapes.
+    A local print of these would be a copy of tenant data on a workstation.
+- value: local
+  label: Local
+  description: >
+    Rows live in the local derived index on this host, serving local services
+    — the fleet's own observability and agent state (data/meta), createOS's
+    domain (data/cineos), runbook execution state. Local rows are derived from
+    files under ~/.lightwave per ADR-0049 and are droppable: the store is
+    rebuilt from truth, never migrated.
+- value: both
+  label: Both
+  description: >
+    The same shape is materialised in both stores for different reasons — the
+    platform holds the tenant-scoped record, the local index holds this host's
+    view. Use sparingly and say why in the schema's description: two stores
+    for one shape is a synchronisation problem, and claiming `both` without a
+    named reconciliation direction is how one silently becomes stale.
+
+example:
+  scope: local

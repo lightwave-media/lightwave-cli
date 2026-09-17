@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/set"
   title: "Set"
+  table_kind: entity
+  scope: local
   description: |
     A dressed space within a Location that scenes play on (e.g. the kitchen, the
     backyard). Scenes reference the Set they shoot on (scene.set_ref).

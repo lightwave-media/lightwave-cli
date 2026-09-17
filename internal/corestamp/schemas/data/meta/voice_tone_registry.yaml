@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/voice_tone_registry
   title: Voice Tone Registry
+  table_kind: value_object
+  scope: local
   description: 'v_speak-owned mapping from persona id to voice profile id.
 
     '

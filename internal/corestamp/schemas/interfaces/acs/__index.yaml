@@ -1,0 +1,22 @@
+# =============================================================================
+# ACS INTERFACE SCHEMA REGISTRY
+# =============================================================================
+# Agent Control Surface contracts consumed by createOS (Zod/TS + serde/Rust)
+# and libLightwave (generated C header). One stamp, three renderers.
+# Distinct from interfaces/a2a (harness dispatch) and agent_tools (prompt
+# tool catalogs).
+# =============================================================================
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/acs/__index"
+  title: "ACS Interface Registry"
+  description: |
+    Command, event, receipt, and libLightwave ABI shapes for the Agent
+    Control Surface. Generated Wave 2 targets live under bindings/.
+
+schemas:
+  command: command.yaml
+  event: event.yaml
+  receipt: receipt.yaml
+  abi: abi.yaml

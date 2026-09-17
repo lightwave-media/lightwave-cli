@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/grade"
   title: "Grade"
+  table_kind: entity
+  scope: local
   description: |
     A portable grade attached to a Clip — the look as an exchangeable
     artifact, not the operator node graph (that stays in the grading tool).

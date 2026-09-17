@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/deliverable"
   title: "Deliverable"
+  table_kind: entity
+  scope: local
   description: |
     A named output specification for a Timeline — what gets rendered, in what
     format, colour space, and naming. Filename templates use the {token}

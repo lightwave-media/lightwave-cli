@@ -2,6 +2,8 @@ _meta:
   version: 0.3.0
   schema_id: lightwave://schemas/data/cineos/project
   title: Project (Film)
+  table_kind: entity
+  scope: local
   description: 'A film/production project — the top of the CineOS domain tree
 
     (Project → Script → Scene → Shot, and Project → Schedule). Distinct from the
@@ -42,7 +44,19 @@ optional_fields:
   description: Genre tag(s) (e.g. 'Neo-Noir')
 - name: format
   type: str
-  description: Production format (e.g. 'Feature film', 'Short', 'Series')
+  values_ref: "lightwave://schemas/data/enums/project_types"
+  description: |
+    What kind of production this is. Bound to project_types, whose vocabulary
+    is the Notion `Global Projects & Epics DB` `Type of Project` select — the
+    place a human maintains it. A CineProject may only carry an option whose
+    `category` is `production`; the software/business/personal options exist on
+    the same enum because one work spine covers all of them, and excluding them
+    here would fork the vocabulary.
+
+    Was free text with three illustrative examples, which let downstream
+    consumers invent their own lists — createOS's folder census had five
+    formats including one ('Breakdown Project') that Notion has never had, and
+    was missing 'Online Content', 'Episodic' and 'Music Video' that it does.
 - name: start_date
   type: date
   description: ISO 8601 date when this cineos project begins.
@@ -74,7 +88,7 @@ example:
   title: Wet under blue sky
   logline: A boxer prepares for the greatest fight of his life, outside of the ring.
   genre: Neo-Noir
-  format: Feature film
+  format: feature_film
   owner_ref: joel
   publish:
   - website

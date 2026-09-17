@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/agent_session_cap
   title: Agent Session Cap
+  table_kind: entity
+  scope: local
   description: 'Mitchell mayor model caps for CreateOS concurrent agent runbooks and harness
 
     sessions. Complements llm_concurrency.yaml GPU/LLM slots.

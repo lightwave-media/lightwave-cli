@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/element_categories"
   title: "Element Category"
+  table_kind: value_object
+  scope: local
   description: |
     A breakdown-category bucket under a ScriptElementsTag — the standard film
     breakdown taxonomy (cast, props, vehicles, wardrobe, SFX, …) the tagged

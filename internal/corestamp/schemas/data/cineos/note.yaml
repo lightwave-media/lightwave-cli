@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/note"
   title: "Note"
+  table_kind: entity
+  scope: local
   description: |
     A note attached to a Doc — a comment, revision remark, or annotation on a
     production document (ER: DOC ||--o{ NOTE). Generates CineNote to avoid colliding

@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/meta/review_panel_verdict"
   title: "Review Panel Verdict"
+  table_kind: entity
+  scope: local
   description: |
     Structured verdict record produced by ONE persona's review in a review
     panel run (workflows/orchestration/review_panel.yaml). Formalizes the

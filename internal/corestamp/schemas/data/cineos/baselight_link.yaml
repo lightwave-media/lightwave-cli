@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/baselight_link"
   title: "Baselight Link"
+  table_kind: entity
+  scope: local
   description: |
     Sync-state record binding a cineOS Project/Timeline to a Baselight scene
     via the FilmLight universal address triple (host:job:scene). Tracks the

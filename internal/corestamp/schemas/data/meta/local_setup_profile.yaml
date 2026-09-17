@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/local_setup_profile"
   title: "Local Setup Profile"
+  table_kind: value_object
+  scope: local
   description: |
     Target state for the operator's machine — git topology, hook expectations,
     GPU/session budgets. Print lives at ~/.lightwave/config/workspace.yaml;

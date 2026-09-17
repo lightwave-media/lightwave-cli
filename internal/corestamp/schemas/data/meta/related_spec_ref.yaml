@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/related_spec_ref"
   title: "Related Spec Reference"
+  table_kind: value_object
+  scope: local
   description: |
     Element shape for items in user_prompt's <related_specs> list. Each
     entry is a {kind, ref, title} tuple identifying an agile artifact

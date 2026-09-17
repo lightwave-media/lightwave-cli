@@ -2,6 +2,8 @@ _meta:
   version: 0.1.0
   schema_id: lightwave://schemas/data/ui/section_contract
   title: Section Contract — marketing section prop declaration
+  table_kind: value_object
+  scope: local
   description: 'The contract a marketing section variant declares. Sections are keyed
 
     "<family>/<variant>" and auto-registered by the consuming site''s glob

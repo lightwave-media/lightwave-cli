@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/runbooks/runbook_library"
   title: "Runbook Library (The Gallery)"
+  table_kind: value_object
+  scope: local
   description: |
     The searchable collection of all runbook editions available for
     discovery and execution — the GALLERY where prints are exhibited.

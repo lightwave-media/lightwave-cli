@@ -2,6 +2,8 @@ _meta:
   version: "1.1.0"
   schema_id: "lightwave://schemas/data/reference_documents/ubiquitous_language"
   title: "Ubiquitous-Language Glossary"
+  table_kind: document
+  scope: local
   description: "Defines the shared language inside a bounded context (DDD ubiquitous-language). Parents to a Domain Charter for domain-level glossaries, or to a Package/Epic for narrower scope. Each term carries definition, aliases, anti-terms (words to AVOID), and examples. Migrated 2026-05-25 from governance/reference/ubiquitous_language.yaml (Phase 4 file #18)."
   generates:
     - "pydantic:UbiquitousLanguageGlossary"
@@ -67,24 +69,11 @@ example:
       anti_terms: ["task (overloaded with R-P-I-V-R Task entity)"]
       examples:
         - "gen-yaml-stub, register-index, format-lint, trigger-local-ci"
-    - term: "Blueprint"
-      definition: "Ordered composition of actions executed by lw cli. Declared as YAML in lightwave-core."
-      aliases: ["workflow", "recipe"]
-      anti_terms: ["script (implies imperative)", "automation (too vague)"]
-      examples:
-        - "scaffold-schema blueprint orchestrates gen-yaml-stub → register-index → ... → trigger-local-ci"
-    - term: "Binding"
-      definition: "Thin per-language loader package that reads YAML schemas and returns language-native typed objects. Zero business logic."
-      aliases: ["loader", "adapter"]
-      anti_terms: ["SDK (implies fat library)"]
-      examples:
-        - "bindings/python/, bindings/typescript/, bindings/go/, bindings/rust/"
-    - term: "Conformance test"
-      definition: "Cross-binding test that verifies every language binding loads every schema and returns equivalent shape."
-      aliases: ["cross-binding test"]
-      anti_terms: ["unit test (too narrow)", "integration test (overloaded)"]
-      examples:
-        - "tests/conformance/test_all_bindings_load_epic.py"
+    # Three terms, not the glossary. R-44: an example block demonstrates the
+    # SHAPE; a filled catalog in the stamp is content, and content lives in the
+    # print (R-9). The lightwave-core glossary's six terms — these three plus
+    # Blueprint, Binding and Conformance test — moved to
+    # ~/.lightwave/specs/glossary/lightwave-core.yaml on 2026-09-13.
   related_glossaries:
     - "lightwave://specs/glossary/software-development"
   last_reviewed_at: "2026-05-25"

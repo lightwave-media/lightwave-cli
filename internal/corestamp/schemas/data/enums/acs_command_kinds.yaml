@@ -1,0 +1,37 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/acs_command_kinds"
+  title: "ACS Command Kinds"
+  description: |
+    Closed command vocabulary for the Agent Control Surface. createOS
+    invokes these; libLightwave executes them. Numeric `abi_value` is the
+    C enum discriminant and is never reused or renumbered (ACS-012 / DDD-ACS-0001).
+  generates:
+    - "pydantic:AcsCommandKind"
+    - "go:AcsCommandKind"
+    - "ts:AcsCommandKind"
+    - "rust:AcsCommandKind"
+    - "c:LwAcsCommandKind"
+  depends_on: []
+
+name: acs_command_kinds
+description: "Commands a consumer may issue against the agent control surface"
+default: agent_thread_create
+closed: true
+options:
+  - value: agent_thread_create
+    label: "Create thread"
+    description: "Open a new agent thread bound to a ShellNode (life-domain + layer + scope). Returns a thread id."
+    abi_value: 1
+  - value: agent_turn_start
+    label: "Start turn"
+    description: "Start a user turn on an existing thread. Idempotent on idempotency_key. Returns a receipt."
+    abi_value: 2
+  - value: agent_turn_cancel
+    label: "Cancel turn"
+    description: "Cancel an in-flight turn. Returns a receipt; settle still writes turn.cancelled then turn.settled."
+    abi_value: 3
+  - value: agent_subscribe_thread
+    label: "Subscribe thread"
+    description: "Replay events from from_seq and follow the thread. Does not write the store."
+    abi_value: 4

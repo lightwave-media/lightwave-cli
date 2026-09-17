@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/timeline"
   title: "Timeline"
+  table_kind: entity
+  scope: local
   description: |
     An ordered edit of clips — the post-production working unit (what
     Baselight calls a "scene": a strip sequence, not a script scene). Events

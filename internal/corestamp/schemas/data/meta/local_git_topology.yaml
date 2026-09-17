@@ -2,6 +2,8 @@ _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/meta/local_git_topology"
   title: "Local Git Topology Node"
+  table_kind: value_object
+  scope: local
   description: |
     Wire shape for one discovered git repository or linked worktree on the
     operator machine. Consumed by `lw git audit`, `lw git map`, and the

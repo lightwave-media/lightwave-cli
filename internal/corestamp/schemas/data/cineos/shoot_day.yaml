@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/shoot_day"
   title: "Shoot Day"
+  table_kind: entity
+  scope: local
   description: |
     A single day of principal photography within a Schedule — call/wrap times and
     the location worked. Scenes are assigned to a day via SceneShoot (slice 2);

@@ -6,6 +6,8 @@
 _meta:
   schema_id: lightwave://schemas/data/meta/spec_package
   title: SPEC Package Blueprint
+  table_kind: value_object
+  scope: local
   version: 1.0.0
   description: The SPEC package is the control plane for the Lightwave software factory. Engineers write here. Developers read from here.
   generates:

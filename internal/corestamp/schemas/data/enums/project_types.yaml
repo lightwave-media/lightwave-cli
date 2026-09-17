@@ -1,0 +1,88 @@
+_meta:
+  version: "0.1.0"
+  schema_id: "lightwave://schemas/data/enums/project_types"
+  title: "Project Type Enum"
+  description: |
+    What KIND of thing a Project is — the deliverable, not its lifecycle
+    (project_statuses) and not its work-spine position (Goal → Project → Epic →
+    Sprint → Task). Closed.
+
+    Harvested from the Notion `Global Projects & Epics DB` `Type of Project`
+    select (collection://16edae69-e2ef-4bd9-92f9-fbf6e16d087a, captured
+    2026-08-01 in ~/.lightwave/harvest/notion/schemas/global-projects-epics.yaml).
+    Notion is where this vocabulary is maintained by hand; this file is the
+    stamp of it. All eleven options are carried, including `episodic` and
+    `music_video`, which are declared there but currently unused — an option
+    with no rows is still approved vocabulary, and dropping it would silently
+    narrow what the product accepts.
+
+    `category` groups the eleven so consumers can ask "is this a cineOS
+    production?" without a second lookup table. Four values, declared here
+    rather than in a sibling enum because four is not a taxonomy:
+
+      production — a screen deliverable; the cineOS domain owns these
+      software    — a codebase
+      business    — an operating or administrative initiative
+      personal    — a self-directed goal, tracked on the same spine
+
+    Only `category: production` is a cineOS project. That is the distinction
+    `cineos/project.yaml`'s `format` needs and the one a folder-name census
+    needs, so it is data here rather than a hardcoded list downstream.
+  generates:
+    - "go:ProjectType"
+    - "typescript:ProjectType"
+    - "json_schema:project_types"
+  depends_on: []
+
+name: project_types
+description: "What kind of deliverable a Project is"
+default: software
+closed: true
+options:
+  # Production — the cineOS domain. Labels match the Notion select exactly;
+  # machine ids are derived from them.
+  - value: feature_film
+    label: "Feature Film"
+    category: production
+    description: "Feature-length narrative film"
+  - value: short_film
+    label: "Short Film"
+    category: production
+    description: "Short-form narrative film"
+  - value: documentary
+    label: "Documentary"
+    category: production
+    description: "Documentary film"
+  - value: commercial
+    label: "Commercial"
+    category: production
+    description: "Advertising or branded spot"
+  - value: episodic
+    label: "Episodic"
+    category: production
+    description: "Series or episodic work"
+  - value: music_video
+    label: "Music Video"
+    category: production
+    description: "Music video"
+  - value: online_content
+    label: "Online Content"
+    category: production
+    description: "Web-native or social deliverable"
+  # Everything else on the same spine.
+  - value: software
+    label: "Software"
+    category: software
+    description: "A codebase or technical product"
+  - value: business_initiative
+    label: "Business Initiative"
+    category: business
+    description: "An operating initiative of the company"
+  - value: tax_admin
+    label: "Tax Admin"
+    category: business
+    description: "Tax or statutory administration"
+  - value: person_goal
+    label: "Person Goal"
+    category: personal
+    description: "A self-directed goal tracked on the work spine"

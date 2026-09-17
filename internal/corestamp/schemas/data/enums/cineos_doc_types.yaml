@@ -1,39 +1,354 @@
 _meta:
-  version: "0.1.0"
+  version: "0.2.0"
   schema_id: "lightwave://schemas/data/enums/cineos_doc_types"
   title: "CineOS Doc Type Enum"
   description: |
     Kind of production document a CineDoc holds (doc.doc_type). Closed.
+
+    The 77 display names and their category membership are approved product
+    vocabulary (US-CINE-DOC-001); machine ids are derived from them. Each option
+    carries `category`, bound to cineos_doc_categories, so the Production
+    Documents matrix groups by section without a second lookup table.
+
+    This replaces a v0.1.0 placeholder of seven generic values. `breakdown`
+    became `script_breakdown` and `release` became `talent_release_forms`;
+    `contract` had no single successor and resolves to the specific agreement
+    types (crew_deal_memos, location_agreements). `other` is retained as the
+    default so an unclassified import is never lost.
+
+    Applicability (required / optional / not applicable) is NOT here: it is a
+    per-production decision, so it is runtime state, not vocabulary.
   generates:
     - "go:CineDocType"
     - "typescript:CineDocType"
     - "zig:CineDocType"
     - "json_schema:cineos_doc_types"
-  depends_on: []
+  depends_on:
+    - "lightwave://schemas/data/enums/cineos_doc_categories"
 
 name: cineos_doc_types
 description: "Kind of production document"
 default: other
 closed: true
 options:
+  # Production Planning
   - value: call_sheet
-    label: "Call Sheet"
-    description: "Daily call sheet"
+    label: "Call sheet"
+    category: production_planning
+    description: "Call sheet"
+  - value: production_schedule
+    label: "Production schedule"
+    category: production_planning
+    description: "Production schedule"
+  - value: stripboard
+    label: "Stripboard"
+    category: production_planning
+    description: "Stripboard"
+  - value: day_out_of_days
+    label: "Day Out of Days (DOOD)"
+    category: production_planning
+    description: "Day Out of Days (DOOD)"
+  - value: one_liner_schedule
+    label: "One-liner schedule"
+    category: production_planning
+    description: "One-liner schedule"
+  - value: script_breakdown
+    label: "Script breakdown"
+    category: production_planning
+    description: "Script breakdown"
+  - value: shot_list
+    label: "Shot list"
+    category: production_planning
+    description: "Shot list"
+  - value: storyboards
+    label: "Storyboards"
+    category: production_planning
+    description: "Storyboards"
   - value: treatment
     label: "Treatment"
-    description: "Story treatment"
-  - value: contract
-    label: "Contract"
-    description: "Contract / agreement"
-  - value: breakdown
-    label: "Breakdown"
-    description: "Scene breakdown sheet"
-  - value: shot_list
-    label: "Shot List"
-    description: "Shot list"
-  - value: release
-    label: "Release"
-    description: "Location or talent release"
+    category: production_planning
+    description: "Treatment"
+  - value: mood_board
+    label: "Mood board"
+    category: production_planning
+    description: "Mood board"
+  - value: lookbook
+    label: "Lookbook"
+    category: production_planning
+    description: "Lookbook"
+  - value: color_palette
+    label: "Color palette"
+    category: production_planning
+    description: "Color palette"
+  - value: talent_release_forms
+    label: "Talent release forms"
+    category: production_planning
+    description: "Talent release forms"
+  - value: location_agreements
+    label: "Location agreements"
+    category: production_planning
+    description: "Location agreements"
+  - value: crew_deal_memos
+    label: "Crew deal memos"
+    category: production_planning
+    description: "Crew deal memos"
+  - value: certificates_of_insurance
+    label: "Certificates of insurance"
+    category: production_planning
+    description: "Certificates of insurance"
+  - value: filming_permits
+    label: "Filming permits"
+    category: production_planning
+    description: "Filming permits"
+  - value: production_budget
+    label: "Production budget"
+    category: production_planning
+    description: "Production budget"
+  - value: purchase_orders
+    label: "Purchase orders"
+    category: production_planning
+    description: "Purchase orders"
+  - value: invoice_tracker
+    label: "Invoice tracker"
+    category: production_planning
+    description: "Invoice tracker"
+  - value: equipment_list
+    label: "Equipment list"
+    category: production_planning
+    description: "Equipment list"
+  - value: wardrobe_list
+    label: "Wardrobe list"
+    category: production_planning
+    description: "Wardrobe list"
+  - value: props_list
+    label: "Props list"
+    category: production_planning
+    description: "Props list"
+  - value: hair_and_makeup_reference_sheet
+    label: "Hair and makeup reference sheet"
+    category: production_planning
+    description: "Hair and makeup reference sheet"
+  - value: art_department_breakdown
+    label: "Art department breakdown"
+    category: production_planning
+    description: "Art department breakdown"
+  - value: catering_and_craft_service_orders
+    label: "Catering and craft-service orders"
+    category: production_planning
+    description: "Catering and craft-service orders"
+  - value: weather_contingency_plan
+    label: "Weather contingency plan"
+    category: production_planning
+    description: "Weather contingency plan"
+  - value: travel_and_accommodation_plan
+    label: "Travel and accommodation plan"
+    category: production_planning
+    description: "Travel and accommodation plan"
+  - value: post_production_schedule
+    label: "Post-production schedule"
+    category: production_planning
+    description: "Post-production schedule"
+  - value: final_deliverables_list
+    label: "Final deliverables list"
+    category: production_planning
+    description: "Final deliverables list"
+  # Creative Development
+  - value: logline_and_synopsis
+    label: "Logline and synopsis"
+    category: creative_development
+    description: "Logline and synopsis"
+  - value: character_breakdown
+    label: "Character breakdown"
+    category: creative_development
+    description: "Character breakdown"
+  - value: directors_statement
+    label: "Director's statement"
+    category: creative_development
+    description: "Director's statement"
+  - value: cinematographers_visual_strategy
+    label: "Cinematographer's visual strategy"
+    category: creative_development
+    description: "Cinematographer's visual strategy"
+  - value: script_revision_log
+    label: "Script revision log"
+    category: creative_development
+    description: "Script revision log"
+  - value: visual_references_by_scene
+    label: "Visual references by scene"
+    category: creative_development
+    description: "Visual references by scene"
+  # Technical Preparation
+  - value: tech_scout_report
+    label: "Tech-scout report"
+    category: technical_preparation
+    description: "Tech-scout report"
+  - value: location_photo_survey
+    label: "Location photo survey"
+    category: technical_preparation
+    description: "Location photo survey"
+  - value: floor_plans_and_lighting_diagrams
+    label: "Floor plans and lighting diagrams"
+    category: technical_preparation
+    description: "Floor plans and lighting diagrams"
+  - value: camera_and_lens_package_plan
+    label: "Camera and lens package plan"
+    category: technical_preparation
+    description: "Camera and lens package plan"
+  - value: lighting_and_grip_package_plan
+    label: "Lighting and grip package plan"
+    category: technical_preparation
+    description: "Lighting and grip package plan"
+  - value: data_management_workflow
+    label: "Data-management workflow"
+    category: technical_preparation
+    description: "Data-management workflow"
+  - value: workflow_and_color_pipeline_specification
+    label: "Workflow and color-pipeline specification"
+    category: technical_preparation
+    description: "Workflow and color-pipeline specification"
+  - value: pre_production_camera_test_report
+    label: "Pre-production camera-test report"
+    category: technical_preparation
+    description: "Pre-production camera-test report"
+  # Safety and Logistics
+  - value: risk_assessment
+    label: "Risk assessment"
+    category: safety_and_logistics
+    description: "Risk assessment"
+  - value: safety_plan_and_emergency_contacts
+    label: "Safety plan and emergency contacts"
+    category: safety_and_logistics
+    description: "Safety plan and emergency contacts"
+  - value: stunt_intimacy_weapons_or_special_effects_plan
+    label: "Stunt, intimacy, weapons, or special-effects plan"
+    category: safety_and_logistics
+    description: "Stunt, intimacy, weapons, or special-effects plan"
+  - value: medical_and_incident_report
+    label: "Medical and incident report"
+    category: safety_and_logistics
+    description: "Medical and incident report"
+  - value: transportation_and_parking_plan
+    label: "Transportation and parking plan"
+    category: safety_and_logistics
+    description: "Transportation and parking plan"
+  - value: unit_movement_and_company_move_plan
+    label: "Unit movement and company-move plan"
+    category: safety_and_logistics
+    description: "Unit movement and company-move plan"
+  # On-Set Records
+  - value: daily_production_report
+    label: "Daily production report"
+    category: on_set_records
+    description: "Daily production report"
+  - value: camera_report
+    label: "Camera report"
+    category: on_set_records
+    description: "Camera report"
+  - value: sound_report
+    label: "Sound report"
+    category: on_set_records
+    description: "Sound report"
+  - value: script_supervisors_continuity_report
+    label: "Script supervisor's continuity report"
+    category: on_set_records
+    description: "Script supervisor's continuity report"
+  - value: lined_script
+    label: "Lined script"
+    category: on_set_records
+    description: "Lined script"
+  - value: daily_progress_and_schedule_variance_report
+    label: "Daily progress and schedule variance report"
+    category: on_set_records
+    description: "Daily progress and schedule variance report"
+  - value: media_inventory_and_checksum_report
+    label: "Media inventory and checksum report"
+    category: on_set_records
+    description: "Media inventory and checksum report"
+  - value: dailies_report
+    label: "Dailies report"
+    category: on_set_records
+    description: "Dailies report"
+  - value: incident_and_equipment_damage_report
+    label: "Incident and equipment-damage report"
+    category: on_set_records
+    description: "Incident and equipment-damage report"
+  # Post-Production
+  - value: editorial_turnover_manifest
+    label: "Editorial turnover manifest"
+    category: post_production
+    description: "Editorial turnover manifest"
+  - value: vfx_shot_list_and_turnover_package
+    label: "VFX shot list and turnover package"
+    category: post_production
+    description: "VFX shot list and turnover package"
+  - value: music_cue_sheet
+    label: "Music cue sheet"
+    category: post_production
+    description: "Music cue sheet"
+  - value: adr_and_pickup_list
+    label: "ADR and pickup list"
+    category: post_production
+    description: "ADR and pickup list"
+  - value: color_notes_and_approval_log
+    label: "Color notes and approval log"
+    category: post_production
+    description: "Color notes and approval log"
+  - value: sound_mix_notes
+    label: "Sound-mix notes"
+    category: post_production
+    description: "Sound-mix notes"
+  - value: credits_list
+    label: "Credits list"
+    category: post_production
+    description: "Credits list"
+  - value: qc_report
+    label: "QC report"
+    category: post_production
+    description: "QC report"
+  - value: master_delivery_specification
+    label: "Master delivery specification"
+    category: post_production
+    description: "Master delivery specification"
+  - value: archive_and_preservation_manifest
+    label: "Archive and preservation manifest"
+    category: post_production
+    description: "Archive and preservation manifest"
+  # Business and Release
+  - value: chain_of_title_checklist
+    label: "Chain-of-title checklist"
+    category: business_and_release
+    description: "Chain-of-title checklist"
+  - value: rights_and_clearances_tracker
+    label: "Rights and clearances tracker"
+    category: business_and_release
+    description: "Rights and clearances tracker"
+  - value: financing_plan
+    label: "Financing plan"
+    category: business_and_release
+    description: "Financing plan"
+  - value: recoupment_schedule
+    label: "Recoupment schedule"
+    category: business_and_release
+    description: "Recoupment schedule"
+  - value: festival_submission_tracker
+    label: "Festival submission tracker"
+    category: business_and_release
+    description: "Festival submission tracker"
+  - value: marketing_and_publicity_plan
+    label: "Marketing and publicity plan"
+    category: business_and_release
+    description: "Marketing and publicity plan"
+  - value: distribution_deliverables_matrix
+    label: "Distribution deliverables matrix"
+    category: business_and_release
+    description: "Distribution deliverables matrix"
+  - value: sales_agent_and_distributor_contact_tracker
+    label: "Sales-agent and distributor contact tracker"
+    category: business_and_release
+    description: "Sales-agent and distributor contact tracker"
+  # Fallback — an import that matches no approved type is filed here,
+  # never silently dropped.
   - value: other
     label: "Other"
-    description: "Other document"
+    category: production_planning
+    description: "A document that matches no approved type; needs filing."

@@ -2,6 +2,8 @@ _meta:
   version: "1.1.0"
   schema_id: "lightwave://schemas/data/reference_documents/adr"
   title: "Architectural Decision Record"
+  table_kind: document
+  scope: local
   description: "Captures one architectural decision atomically — context, decision, consequences, alternatives considered. Modeled after Michael Nygard's ADR format. Stable identity via sequential ADR-NNNN id. Independent of R-P-I-V-R lineage; an ADR may be anchored to a domain, repo, or stand alone. Migrated 2026-05-25 from governance/reference/adr.yaml (Phase 4 file #17)."
   generates:
     - "pydantic:ADR"

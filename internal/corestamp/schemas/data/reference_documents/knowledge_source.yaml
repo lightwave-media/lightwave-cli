@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/reference_documents/knowledge_source"
   title: "Knowledge Source"
+  table_kind: document
+  scope: local
   description: |
     An external work — talk, book, paper, article — read once and distilled into
     reusable claims. The raw capture stays at content_ref; this record is the

@@ -2,6 +2,8 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/meta/agent_action
   title: Agent Action — Attribution Record
+  table_kind: entity
+  scope: local
   description: 'Every agent decision, structured and queryable. This is the compliance
 
     record: who did what, when, in which runbook phase, with what outcome,

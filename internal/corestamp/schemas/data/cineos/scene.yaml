@@ -2,6 +2,8 @@ _meta:
   version: "0.1.0"
   schema_id: "lightwave://schemas/data/cineos/scene"
   title: "Scene"
+  table_kind: entity
+  scope: local
   description: |
     A scene in a script — the unit broken down, scheduled, and shot. Parent of
     Shots; referenced by SceneShoot (scheduling, slice 2) and tagged by

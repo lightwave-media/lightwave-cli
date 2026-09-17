@@ -1,11 +1,11 @@
 # Notion bridge: operate, recover and verify
 
-This implementation depends on Core PR #755 and a coordinated versioned binding
-release. The packaged embedded stamp remains on v0.7.0 until that release. For
-development verification, build this branch and select the matching Core worktree
-with `LW_CLI_LIVE_SCHEMAS=1`, `LW_CLI_DEV_DOMAINS=1` and the configured Lightwave
-workspace root. Do not
-claim the currently installed release has these commands.
+This implementation uses the published Core `bindings/go/v0.8.0` stamp, including
+the contracts merged in Core PR #755. The knowledge domain remains in development
+pending live commissioning. Build this branch and set `LW_CLI_DEV_DOMAINS=1` to
+exercise it; its packaged stamp does not require a Core checkout. If iterating on
+future contract changes, select the matching workspace with
+`LW_CLI_LIVE_SCHEMAS=1` and `LW_LIGHTWAVE_ROOT`.
 
 The bridge imports existing Notion pages into canonical files under
 `$LW_HOME_PRINT/specs/notion_page/` and preserves their identities and recovery
