@@ -62,6 +62,17 @@ func TestCodexMCPMergePreservesOtherSettings(t *testing.T) {
 	assert.Equal(t, next, again)
 }
 
+func TestCodexMCPMergeRejectsInvalidTOML(t *testing.T) {
+	t.Parallel()
+	fragment := []byte("[mcp_servers.lightwave]\ncommand = \"lw\"\n")
+	next, err := ensureCodexMCP("[broken", fragment)
+	require.ErrorContains(t, err, "invalid existing Codex config")
+	assert.Empty(t, next)
+	next, err = ensureCodexMCP("model = \"unchanged\"", []byte("[broken"))
+	require.Error(t, err)
+	assert.Empty(t, next)
+}
+
 func TestValidateHarnessPrint(t *testing.T) {
 	t.Parallel()
 
