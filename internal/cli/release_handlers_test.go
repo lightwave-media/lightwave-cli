@@ -1,4 +1,4 @@
-package cli //nolint:testpackage // exercises unexported gate logic (eligibleToMerge/checksGreen/ledger)
+package cli //nolint:testpackage // exercises unexported gate logic (eligibleToMerge/redChecks/ledger)
 
 import (
 	"context"
@@ -10,6 +10,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// Repeated fixture values. goconst flags the duplication, and naming them also
+// says what they are: the context below is the advisory reporter from #488,
+// whose red status must not by itself stop a merge.
+const (
+	advisoryReviewContext = "lightwave/local-review"
+	checkCompleted        = "COMPLETED"
+)
+
 func TestEligibleToMerge(t *testing.T) {
 	t.Parallel()
 
@@ -19,10 +27,45 @@ func TestEligibleToMerge(t *testing.T) {
 		pr         prCandidate
 		wantOK     bool
 	}{
-		{name: "ready", pr: prCandidate{Mergeable: true, CIGreen: true}, wantOK: true},
-		{name: "draft", pr: prCandidate{Draft: true, Mergeable: true, CIGreen: true}, wantReason: "draft"},
-		{name: "conflicted", pr: prCandidate{CIGreen: true}, wantReason: "not mergeable"},
-		{name: "red ci", pr: prCandidate{Mergeable: true}, wantReason: "CI not green"},
+		{name: "clean", pr: prCandidate{Mergeable: true, MergeState: "CLEAN"}, wantOK: true},
+		{
+			name:       "draft",
+			pr:         prCandidate{Draft: true, Mergeable: true, MergeState: "CLEAN"},
+			wantReason: "draft",
+		},
+		{name: "conflicted", pr: prCandidate{MergeState: "DIRTY"}, wantReason: "not mergeable"},
+		// The #488 case: every REQUIRED check passed and one advisory
+		// reporter is red. GitHub says UNSTABLE and would merge it; so do we.
+		{
+			name:   "only a non-required check is red",
+			pr:     prCandidate{Mergeable: true, MergeState: "UNSTABLE", RedChecks: []string{advisoryReviewContext}},
+			wantOK: true,
+		},
+		{
+			name:       "a required check is red",
+			pr:         prCandidate{Mergeable: true, MergeState: "BLOCKED", RedChecks: []string{"Tests"}},
+			wantReason: "blocked — red: Tests",
+		},
+		{
+			name:       "blocked with nothing red",
+			pr:         prCandidate{Mergeable: true, MergeState: "BLOCKED"},
+			wantReason: "blocked — a required check has not reported, or review is outstanding",
+		},
+		{
+			name:       "merge state still computing",
+			pr:         prCandidate{Mergeable: true, MergeState: "UNKNOWN"},
+			wantReason: "merge state not computed yet — re-run",
+		},
+		{
+			name:       "merge state absent",
+			pr:         prCandidate{Mergeable: true},
+			wantReason: "merge state not computed yet — re-run",
+		},
+		{
+			name:       "behind main",
+			pr:         prCandidate{Mergeable: true, MergeState: "BEHIND"},
+			wantReason: "behind",
+		},
 	}
 
 	for _, tc := range cases {
@@ -37,28 +80,65 @@ func TestEligibleToMerge(t *testing.T) {
 	}
 }
 
-func TestChecksGreen(t *testing.T) {
+func TestRedChecks(t *testing.T) {
 	t.Parallel()
 
 	cases := []struct {
 		name   string
 		rollup []checkRollupEntry
-		want   bool
+		want   []string
 	}{
-		{name: "empty is not green", rollup: nil, want: false},
-		{name: "checkrun success", rollup: []checkRollupEntry{{Status: "COMPLETED", Conclusion: "SUCCESS"}}, want: true},
-		{name: "checkrun neutral+skipped", rollup: []checkRollupEntry{
-			{Status: "COMPLETED", Conclusion: "NEUTRAL"},
-			{Status: "COMPLETED", Conclusion: "SKIPPED"},
-		}, want: true},
-		{name: "checkrun running", rollup: []checkRollupEntry{{Status: "IN_PROGRESS"}}, want: false},
-		{name: "checkrun failure", rollup: []checkRollupEntry{{Status: "COMPLETED", Conclusion: "FAILURE"}}, want: false},
-		{name: "statuscontext success", rollup: []checkRollupEntry{{State: "SUCCESS"}}, want: true},
-		{name: "statuscontext pending", rollup: []checkRollupEntry{{State: "PENDING"}}, want: false},
-		{name: "mixed one red", rollup: []checkRollupEntry{
-			{Status: "COMPLETED", Conclusion: "SUCCESS"},
-			{State: "FAILURE"},
-		}, want: false},
+		{name: "empty", rollup: nil, want: nil},
+		{
+			name:   "green check run",
+			rollup: []checkRollupEntry{{Name: "Tests", Status: checkCompleted, Conclusion: "SUCCESS"}},
+			want:   nil,
+		},
+		{
+			name: "neutral and skipped are not red",
+			rollup: []checkRollupEntry{
+				{Name: "Bugbot", Status: checkCompleted, Conclusion: "NEUTRAL"},
+				{Name: "Mermaid", Status: checkCompleted, Conclusion: "SKIPPED"},
+			},
+			want: nil,
+		},
+		{
+			name:   "a running check is not red",
+			rollup: []checkRollupEntry{{Name: "mise run ci", Status: "IN_PROGRESS"}},
+			want:   nil,
+		},
+		{
+			name:   "failed check run",
+			rollup: []checkRollupEntry{{Name: "rust", Status: checkCompleted, Conclusion: "FAILURE"}},
+			want:   []string{"rust"},
+		},
+		// The two rollup shapes label themselves in different fields and null
+		// the other. Reading only `name` dropped every status context — the
+		// shape `lightwave/local-review` reports in.
+		{
+			name:   "status context is labelled by context, not name",
+			rollup: []checkRollupEntry{{Context: advisoryReviewContext, State: "FAILURE"}},
+			want:   []string{advisoryReviewContext},
+		},
+		{
+			name:   "status context error counts as red",
+			rollup: []checkRollupEntry{{Context: "legacy/thing", State: "ERROR"}},
+			want:   []string{"legacy/thing"},
+		},
+		{
+			name:   "pending status context is not red",
+			rollup: []checkRollupEntry{{Context: "legacy/thing", State: "PENDING"}},
+			want:   nil,
+		},
+		{
+			name: "both shapes at once",
+			rollup: []checkRollupEntry{
+				{Name: "Tests", Status: checkCompleted, Conclusion: "SUCCESS"},
+				{Name: "web", Status: checkCompleted, Conclusion: "FAILURE"},
+				{Context: advisoryReviewContext, State: "FAILURE"},
+			},
+			want: []string{"web", advisoryReviewContext},
+		},
 	}
 
 	for _, tc := range cases {
@@ -66,7 +146,7 @@ func TestChecksGreen(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			assert.Equal(t, tc.want, checksGreen(tc.rollup))
+			assert.Equal(t, tc.want, redChecks(tc.rollup))
 		})
 	}
 }
