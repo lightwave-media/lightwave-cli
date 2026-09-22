@@ -3,6 +3,7 @@ package secrets_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"testing"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
@@ -40,6 +41,27 @@ func (f *fakePager) GetParametersByPath(
 			{Name: aws.String(secrets.Path + "JWT_PRIVATE_KEY"), Value: aws.String("it's multi\nline")},
 		},
 	}, nil
+}
+
+type failingPager struct{}
+
+func (failingPager) GetParametersByPath(
+	_ context.Context,
+	_ *ssm.GetParametersByPathInput,
+	_ ...func(*ssm.Options),
+) (*ssm.GetParametersByPathOutput, error) {
+	return nil, errors.New("AccessDeniedException: not authorized to perform ssm:GetParametersByPath")
+}
+
+// A caller that eval's the output must get nothing at all when the store
+// cannot be read — never a partial page that looks like a full environment.
+func TestFetchFailsClosedWhenTheStoreCannotBeRead(t *testing.T) {
+	t.Parallel()
+
+	params, err := secrets.Fetch(context.Background(), failingPager{})
+	require.ErrorContains(t, err, secrets.Path)
+	require.ErrorContains(t, err, "AccessDeniedException")
+	assert.Nil(t, params)
 }
 
 func TestFetchFollowsEveryPageWithDecryption(t *testing.T) {
