@@ -89,6 +89,29 @@ func (files Files) Databases() ([]Database, error) {
 	return readPrints[Database](filepath.Join(files.Root, "specs", "notion_database"))
 }
 
+// LoadDatabase reads one notion_database instance by its Notion database id
+// (the file is keyed by it — CORE-0048 instances of record).
+func (files Files) LoadDatabase(notionID string) (Database, error) {
+	path, err := files.path("notion_database", notionID)
+
+	var database Database
+	if err == nil {
+		err = readPrint(path, &database)
+	}
+
+	return database, err
+}
+
+//nolint:gocritic // Value snapshots isolate reconciliation from mutations of generated records.
+func (files Files) SaveDatabase(database Database) (string, error) {
+	path, err := files.path("notion_database", database.NotionId)
+	if err != nil {
+		return "", err
+	}
+
+	return writePrint(path, database)
+}
+
 func readPrints[T any](dir string) ([]T, error) {
 	paths, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
 	if err != nil {
