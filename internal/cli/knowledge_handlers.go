@@ -19,6 +19,55 @@ func init() {
 	RegisterHandler("knowledge.status", knowledgeStatusHandler)
 	RegisterHandler("knowledge.reindex", knowledgeReindexHandler)
 	RegisterHandler("knowledge.migrate", knowledgeMigrateHandler)
+	RegisterHandler("knowledge.bind", knowledgeBindHandler)
+}
+
+// knowledgeBindHandler sets property_map_ref (and optionally title) on one
+// notion_database instance. The instance files are CLI-written and keyed by
+// UUID; before this verb the only way to bind a map was to hand-edit them
+// (lightwave-cli#532). The map must resolve and must claim this database —
+// PropertyPolicy is the same check sync runs, so a bind that passes here is a
+// bind sync will accept. Never contacts Notion.
+func knowledgeBindHandler(_ context.Context, args []string, flags map[string]any) error {
+	if len(args) < 1 {
+		return errors.New("usage: lw knowledge bind <notion_id> --property-map <slug> [--title <title>]")
+	}
+
+	slug := flagStr(flags, "property-map")
+	title := flagStr(flags, "title")
+
+	if slug == "" && title == "" {
+		return errors.New("nothing to bind: pass --property-map and/or --title")
+	}
+
+	files := knowledge.Files{Root: config.PrintRoot()}
+
+	database, err := files.LoadDatabase(args[0])
+	if err != nil {
+		return err
+	}
+
+	if slug != "" {
+		database.PropertyMapRef = &slug
+		if _, err := files.PropertyPolicy(database); err != nil {
+			return fmt.Errorf("property map %q: %w", slug, err)
+		}
+	}
+
+	if title != "" {
+		database.Title = title
+	}
+
+	database.UpdatedAt = time.Now().UTC()
+	if _, err := files.SaveDatabase(database); err != nil {
+		return err
+	}
+
+	return printKnowledge(struct {
+		PropertyMapRef *string `json:"property_map_ref"`
+		NotionID       string  `json:"notion_id"`
+		Title          string  `json:"title"`
+	}{PropertyMapRef: database.PropertyMapRef, NotionID: database.NotionId, Title: database.Title}, flags)
 }
 
 func knowledgeSyncHandler(ctx context.Context, _ []string, flags map[string]any) error {
