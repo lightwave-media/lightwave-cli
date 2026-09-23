@@ -104,6 +104,25 @@ func TestKnowledgeBindWritesPropertyMapRefAndTitle(t *testing.T) {
 }
 
 //nolint:paralleltest // RunHandler captures stdout and Setenv changes the print root.
+func TestKnowledgePromoteFailsOfflineBeforeAnyCredentialLookup(t *testing.T) {
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	require.NoError(t, err)
+	t.Setenv("LW_HOME_PRINT", root)
+	writeBindFixture(t, root)
+
+	_, err = testutil.RunHandler(t, "knowledge.promote", nil, map[string]any{"pipeline": "pipe-1"})
+	require.ErrorContains(t, err, "usage: lw knowledge promote")
+
+	_, err = testutil.RunHandler(t, "knowledge.promote", nil, map[string]any{"database": bindDatabaseID})
+	require.ErrorContains(t, err, "usage: lw knowledge promote")
+
+	// An instance that does not exist fails before the Notion credential is even looked up.
+	_, err = testutil.RunHandler(t, "knowledge.promote", nil, map[string]any{"database": bindOtherID, "pipeline": "pipe-1"})
+	require.Error(t, err)
+	assert.NotContains(t, err.Error(), "credential")
+}
+
+//nolint:paralleltest // RunHandler captures stdout and Setenv changes the print root.
 func TestKnowledgeBindRejectsWhatSyncWouldReject(t *testing.T) {
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	require.NoError(t, err)

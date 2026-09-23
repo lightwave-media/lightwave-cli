@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -20,6 +21,45 @@ func init() {
 	RegisterHandler("knowledge.reindex", knowledgeReindexHandler)
 	RegisterHandler("knowledge.migrate", knowledgeMigrateHandler)
 	RegisterHandler("knowledge.bind", knowledgeBindHandler)
+	RegisterHandler("knowledge.promote", knowledgePromoteHandler)
+}
+
+// knowledgePromoteHandler is the Notion → nulltickets hop: every row of the
+// bound database that is run_session_ready with a verified context packet
+// becomes one nulltickets task, recorded as a nulltickets external_ref.
+// nulltickets is located the way the lw-webhook GitHub hop locates it —
+// NULLTICKETS_URL and NULLTICKETS_API_TOKEN — so the two adapters share one
+// vocabulary. The Notion token comes from SSM like every knowledge verb.
+func knowledgePromoteHandler(ctx context.Context, _ []string, flags map[string]any) error {
+	database, pipeline := flagStr(flags, "database"), flagStr(flags, "pipeline")
+	if database == "" || pipeline == "" {
+		return errors.New("usage: lw knowledge promote --database <notion_id> --pipeline <nulltickets_pipeline_id> [--dry-run] [--json]")
+	}
+
+	files := knowledge.Files{Root: config.PrintRoot()}
+	if _, err := files.LoadDatabase(database); err != nil {
+		return err
+	}
+
+	token, err := knowledge.RuntimeToken(ctx)
+	if err != nil {
+		return err
+	}
+
+	remote, err := knowledge.NewClient(token)
+	if err != nil {
+		return err
+	}
+
+	promoter := knowledge.Promoter{Rows: remote, Files: files,
+		Queue: knowledge.NewNulltickets(os.Getenv("NULLTICKETS_URL"), os.Getenv("NULLTICKETS_API_TOKEN"))}
+
+	report, runErr := promoter.Run(ctx, knowledge.PromoteOptions{Database: database, Pipeline: pipeline, DryRun: flagBool(flags, "dry-run")})
+	if err := printKnowledge(report, flags); err != nil {
+		return err
+	}
+
+	return runErr
 }
 
 // knowledgeBindHandler sets property_map_ref (and optionally title) on one

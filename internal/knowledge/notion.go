@@ -144,12 +144,49 @@ func (client *Client) request(ctx context.Context, method, path string, value, o
 	return errors.New("notion retry budget exhausted")
 }
 
+// queryResult is one data-source query hit: the listing already carries the
+// page's properties, which is what lets promotion skip per-page fetches.
+type queryResult struct {
+	Edited     time.Time                  `json:"last_edited_time"`
+	Properties map[string]json.RawMessage `json:"properties"`
+	ID         string                     `json:"id"`
+	URL        string                     `json:"url"`
+}
+
 func (client *Client) List(ctx context.Context, source string) ([]RemotePage, error) {
+	results, err := client.query(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+
+	ids := make([]RemotePage, 0, len(results))
+	for _, result := range results {
+		ids = append(ids, RemotePage{Edited: result.Edited, ID: result.ID})
+	}
+
+	return ids, nil
+}
+
+func (client *Client) Rows(ctx context.Context, source string) ([]Row, error) {
+	results, err := client.query(ctx, source)
+	if err != nil {
+		return nil, err
+	}
+
+	rows := make([]Row, 0, len(results))
+	for _, result := range results {
+		rows = append(rows, Row{Properties: result.Properties, ID: result.ID, URL: result.URL})
+	}
+
+	return rows, nil
+}
+
+func (client *Client) query(ctx context.Context, source string) ([]queryResult, error) {
 	if _, err := uuid.Parse(source); err != nil {
 		return nil, fmt.Errorf("data source ID: %w", err)
 	}
 
-	var ids []RemotePage
+	var results []queryResult
 
 	cursor := ""
 	seen := make(map[string]bool)
@@ -161,9 +198,9 @@ func (client *Client) List(ctx context.Context, source string) ([]RemotePage, er
 		}
 
 		var page struct {
-			NextCursor string       `json:"next_cursor"`
-			Results    []RemotePage `json:"results"`
-			HasMore    bool         `json:"has_more"`
+			NextCursor string        `json:"next_cursor"`
+			Results    []queryResult `json:"results"`
+			HasMore    bool          `json:"has_more"`
 		}
 		if err := client.request(ctx, http.MethodPost, "/data_sources/"+source+"/query", body, &page); err != nil {
 			return nil, err
@@ -174,11 +211,11 @@ func (client *Client) List(ctx context.Context, source string) ([]RemotePage, er
 				return nil, err
 			}
 
-			ids = append(ids, result)
+			results = append(results, result)
 		}
 
 		if !page.HasMore {
-			return ids, nil
+			return results, nil
 		}
 
 		if page.NextCursor == "" || seen[page.NextCursor] {
