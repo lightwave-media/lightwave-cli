@@ -1,7 +1,7 @@
-// Package secrets turns the SSM /lightwave/prod/ tree into a session's
-// environment. It is the one loader behind `lw config env`; every harness
-// adapter (Claude Code session-start hook, Pi extension, a shell's
-// `eval "$(lw config env)"`) calls that verb rather than reading SSM itself.
+// Package secrets turns SSM /lightwave/prod/ parameters into environment
+// variables. Fetch reads the whole tree for `lw config env`, the
+// human-terminal verb; FetchNamed reads a declared set of keys by name for
+// `lw config exec`, the loader every harness and service wrapper uses.
 //
 // Values are returned to the caller and rendered to stdout only. Nothing in
 // this package logs, caches or writes them.

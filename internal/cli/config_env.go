@@ -26,7 +26,7 @@ var configEnvJSON bool
 
 var configEnvCmd = &cobra.Command{
 	Use:   "env",
-	Short: "Print SSM /lightwave/prod/* as shell exports (or JSON) for harness session start",
+	Short: "Print SSM /lightwave/prod/* as shell exports (or JSON) for a human terminal",
 	Long: `Print every SSM parameter under /lightwave/prod/ as shell export lines,
 decrypted, so a shell or harness can load the runtime secrets in one step:
 
@@ -36,7 +36,11 @@ decrypted, so a shell or harness can load the runtime secrets in one step:
 Credentials come from the default AWS chain (AWS_PROFILE is set by the
 harness configuration). Values go to stdout and nowhere else — no file is
 written and nothing is logged. Two parameter names that map to the same
-variable are reported on stderr; the flat name wins.`,
+variable are reported on stderr; the flat name wins.
+
+This is for a human at a terminal. Harnesses, service wrappers and agent
+sessions use ` + "`lw config exec --only KEY,... -- cmd`" + `, which grants a process
+only the keys it names (CLAUDE.md §24).`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE:         runConfigEnv,
