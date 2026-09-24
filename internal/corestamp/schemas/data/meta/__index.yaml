@@ -14,8 +14,12 @@ schemas:
   diagnostic_result: diagnostic_result.yaml
   agent_definition: agent_definition.yaml
   field_annotations: field_annotations.yaml
+  identity: identity.yaml
   agent_identity: agent_identity.yaml
+  legal_entity: legal_entity.yaml
+  time_period: time_period.yaml
   agent_session: agent_session.yaml
+  session_endpoint: session_endpoint.yaml
   agent_watch_session: agent_watch_session.yaml
   agent_action: agent_action.yaml
   skill_definition: skill_definition.yaml

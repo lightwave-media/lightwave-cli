@@ -1,0 +1,28 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/context_packet_statuses"
+  title: "Context Packet Status"
+  description: |
+    Whether a Task's context packet is complete enough to dispatch.
+    Live column on SemanticTasks. Horizon 1 coding waits for verified.
+  generates:
+    - "pydantic:ContextPacketStatus"
+    - "go:ContextPacketStatus"
+  depends_on: []
+name: context_packet_statuses
+description: "Dispatch-readiness of a task context packet"
+default: incomplete
+closed: true
+options:
+  - value: incomplete
+    label: "Incomplete"
+    description: "Packet has not been filled."
+  - value: in_progress
+    label: "In Progress"
+    description: "Packet is being assembled."
+  - value: complete
+    label: "Complete"
+    description: "Packet is filled; not yet verified."
+  - value: verified
+    label: "Verified"
+    description: "Packet passed the dispatch gate."

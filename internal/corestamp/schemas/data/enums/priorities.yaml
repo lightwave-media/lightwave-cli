@@ -1,0 +1,43 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/priorities"
+  title: "Priority"
+  description: |
+    Shared P-tier for every agile artifact (goal, project, epic, user_story,
+    task). p0–p5. Notion already uses this ladder. There is not a second
+    priority vocabulary per kind.
+
+    Replaces epic_priorities, task_priorities, and user_story_priorities.
+  generates:
+    - "pydantic:Priority"
+    - "go:Priority"
+  depends_on: []
+name: priorities
+description: "Shared P-tier priority for agile artifacts"
+default: p2
+closed: true
+options:
+  - value: p0
+    label: "P0"
+    numeric_value: 0
+    description: "Actively breaking. Drop other work."
+  - value: p1
+    label: "P1"
+    numeric_value: 1
+    description: "Committed work for the current quarter."
+  - value: p2
+    label: "P2"
+    numeric_value: 2
+    description: "Should happen soon. Not quarter-critical."
+  - value: p3
+    label: "P3"
+    numeric_value: 3
+    description: "Nice to have. Fill-in work."
+  - value: p4
+    label: "P4"
+    numeric_value: 4
+    description: "Not scheduled. Revisit at planning."
+  - value: p5
+    label: "P5"
+    numeric_value: 5
+    description: "Parked indefinitely."

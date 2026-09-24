@@ -3,9 +3,10 @@ _meta:
   schema_id: "lightwave://schemas/data/agents/__index"
   title: "Agent Schemas Registry"
   description: |
-    Agent-related SST schemas. Agents are first-class principals (ADR-0012/ADR-0013)
-    with their own identity, registration, and lifecycle management. Schemas here
-    define the shape for agent runners, task assignment, and capability routing.
+    Forgejo-shaped CI action-runner registration only. Live agent
+    runtime_status is agent_identity + a nullclaw instance under nullhub
+    (SAD-0002).
+    Do not read `agent_runner` as a nulltickets worker or a nullclaw process.
 
 schemas:
   agent_runner: agent_runner.yaml

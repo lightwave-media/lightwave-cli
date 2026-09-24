@@ -1,0 +1,34 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/legal_entity_kinds"
+  title: "Legal Entity Kinds"
+  description: |
+    How a legal entity relates to LightWave Media. Money direction and
+    liability follow from the kind: we pay vendors, clients pay us, the
+    `self` row owns the agents' work and answers for it. Research and
+    dependency rows carry no payment relationship — they exist so a
+    document or a codebase can be linked to the entity behind it.
+    Wire encoding is lowercase.
+  generates:
+    - "go:LegalEntityKind"
+  depends_on: []
+name: legal_entity_kinds
+description: "Relationship of a Legal Entities row to LightWave Media"
+default: "vendor"
+closed: true
+options:
+  - value: self
+    label: "Self"
+    description: "LightWave Media itself. Exactly one row. Employs the agents, owns their work, is legally responsible for it."
+  - value: client
+    label: "Client"
+    description: "Pays us. Projects carry a client_ref to one of these."
+  - value: vendor
+    label: "Vendor"
+    description: "We pay them — hosting, tooling, services, subscriptions, API platforms (GitHub, Cloudflare, Stripe, OpenAI)."
+  - value: dependency
+    label: "Dependency"
+    description: "Provides code we ship or build on (an open-source project's steward, an SDK publisher). No payment relationship."
+  - value: research
+    label: "Research"
+    description: "An outside entity we cite — a standards body, a lab, an author's organisation. Linked from documentation and specifications."

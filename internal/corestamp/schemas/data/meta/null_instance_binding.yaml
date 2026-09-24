@@ -1,20 +1,27 @@
 _meta:
-  version: "1.0.0"
+  version: "1.1.0"
   schema_id: "lightwave://schemas/data/meta/null_instance_binding"
-  title: "Null Instance Binding"
+  title: "nullhub Instance Binding"
   table_kind: value_object
   scope: local
   description: |
-    Two-path contract for lightwave-ui read-only Mission Control views.
-    config_path + data_path (SQLite .db or data_dir for nullwatch).
+    Bind a named instance of one null* module for read-only Mission Control
+    (config_path + data_path). `module` is a null_modules value.
+    Runtime status of that instance is nullhub_instance_statuses, not runner_statuses.
+
+    Live instance dirs: ~/.nullhub/instances/{module}/{name}/.
+    SAD-0002 is the name contract.
   generates:
     - "pydantic:NullInstanceBinding"
-  depends_on: []
+  depends_on:
+    - "lightwave://schemas/data/enums/null_modules"
+    - "lightwave://schemas/data/enums/nullhub_instance_statuses"
 
 required_fields:
   - name: module
     type: str
-    description: "nullclaw|nullhub|nullboiler|nulltickets|nullwatch|nullvoice"
+    values_ref: "lightwave://schemas/data/enums/null_modules"
+    description: "Which null* module this bind names. Not a synonym — use the directory name."
   - name: config_path
     type: str
     description: "Absolute path to config.json"
@@ -25,7 +32,11 @@ required_fields:
 optional_fields:
   - name: name
     type: str
-    description: "Instance display name"
+    description: "Instance name under ~/.nullhub/instances/{module}/{name}/ (persona slug for agent gateways)."
+  - name: runtime_status
+    type: str
+    values_ref: "lightwave://schemas/data/enums/nullhub_instance_statuses"
+    description: "Live supervisor status from GET /api/instances (Zig Status)."
   - name: nullhub_instance
     type: str
     description: "Parent nullhub instance slug when nested"
@@ -40,10 +51,13 @@ optional_fields:
     description: "persistent | ephemeral — auto_start gateways vs on-demand agent jobs"
   - name: launch_mode
     type: str
-    description: "nullhub launch_mode token (gateway, server, serve, agent, …)"
+    description: "nullhub launch_mode token as stored in ~/.nullhub/state.json (gateway, server, serve, agent, …)"
 
 example:
-  module: nullhub
-  config_path: /Users/dev/.nullhub/instances/nullclaw/default/config.json
-  data_path: /Users/dev/.nullhub/instances/nullclaw/default/state.db
-  name: default
+  module: nullclaw
+  name: v_staff-engineer
+  runtime_status: stopped
+  persona_ref: v_staff-engineer
+  launch_mode: gateway
+  config_path: /Users/dev/.nullhub/instances/nullclaw/v_staff-engineer/config.json
+  data_path: /Users/dev/.nullhub/instances/nullclaw/v_staff-engineer/state.db

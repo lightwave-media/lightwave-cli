@@ -1,5 +1,5 @@
 _meta:
-  version: "3.13.0"
+  version: "3.17.0"
   schema_id: "lightwave://schemas/data/meta/homedir"
   title: "HomeDir Structure"
   table_kind: value_object
@@ -16,6 +16,27 @@ _meta:
     Defines top-level dirs, recursive sub-structure, kind→dir mapping, ephemeral
     runtime files, and consolidation paths from external homes. lightwave-core
     defines the SHAPE; the actual filesystem is the PRINT.
+
+    v3.17.0 (2026-09-23): REMOVE the provisional observability/logs entry and
+    settle runtime/ as current. The owning session (nullstack rebuild,
+    lightwave-ai#132) repointed the WhatsApp bridge's LaunchAgent tees to
+    observability/launchd/whatsapp-bridge.{stdout,stderr}.log — the home the
+    stamp already had for launchd output — and observability/logs/ no longer
+    exists on disk, so the RECORDED-NOT-BLESSED entry v3.16.0 added has nothing
+    left to measure. runtime/ keeps v3.16.0's shape; its status flips to
+    current with the commissioning facts filled in: the bridge process (launchd
+    job com.lightwave.whatsapp-bridge, run as the operator) is the writer,
+    nullclaw's whatsapp-web adapter and launchd are the readers, and it stays
+    RETAINED because state/whatsmeow.db is pairing material only the operator
+    can re-mint by scanning a QR on the phone.
+
+    v3.16.0 (2026-09-23): ADD top-level runtime/ DirSpec. CLAUDE.md §23 names
+    ~/.lightwave/runtime as a sanctioned home for new Lightwave state, and the
+    first tenant (nullclaw's WhatsApp channel bridge: vendor/<upstream> source
+    plus <bridge>/ token, run.sh and session db) landed there on 2026-09-23 —
+    but the stamp had no entry, so R-35 failed on every core checkout on the
+    host the moment it existed. Declared provisional: the owning session
+    refines purpose and write_authority when the bridge is commissioned.
 
     v3.13.0 (2026-09-16): ADD top-level memory/ DirSpec — `lw memory`'s
     filesystem KV (~/.lightwave/memory/<namespace>/<key>) shipped with no
@@ -454,6 +475,17 @@ example:
             on disk undeclared, which is the drift R-35 exists to catch.
           write_authority: operator
           read_consumers: [forgejo, lw-cli]
+        - path: "notion"
+          purpose: |
+            Notion projection maintenance scripts. rename_options.py renames
+            select options BY ID through the public API so page values
+            survive — the MCP's ALTER COLUMN is drop-and-add. Credential is
+            SSM /lightwave/prod/NOTION_API_KEY, then NOTION_API_KEY in the
+            environment, the same precedence as lightwave-cli's resolver.
+            Interim for lightwave-cli#525; superseded by the verb, not forked.
+            Declared 2026-09-21, the day it was created.
+          write_authority: operator
+          read_consumers: [lw-cli, operator]
         - path: "doc"
           purpose: |
             Document-validation library code. Used by pre-commit hooks to
@@ -621,6 +653,18 @@ example:
       read_consumers: [lw-cli, operator]
       migration_status: current
       nested_dirs:
+        - path: "notion-webhook"
+          purpose: |
+            The Notion webhook handshake's one-time handoff. The lw-webhook
+            receiver writes verification_token (0600) here when Notion POSTs
+            it, so the operator can paste it back into Notion; the
+            notion-webhook-subscribe runbook then provisions it into SSM
+            (/lightwave/prod/NOTION_WEBHOOK_VERIFICATION_TOKEN) and deletes the
+            file. A file present here means the handshake is mid-flight, not
+            that a secret lives on disk — SSM is the store, this is the relay.
+          write_authority: lightwave-sys
+          read_consumers: [operator]
+          migration_status: current
         - path: "sessions"
           purpose: |
             Per-session debug tees of composed context. Each session gets its
@@ -736,6 +780,10 @@ example:
             sub-dir. The pr-reviews.jsonl channel records that a review happened
             and what it concluded; this holds what it actually said, which is
             what a human needs to judge whether the reviewer is any good.
+
+            Both are written by the review VERB (dev/development/cli.sh review)
+            since #798. pr_review.py owned pr-reviews.jsonl until #793 removed
+            it, and for that window the channel had no writer at all.
           write_authority: agent
           read_consumers: [operator, lw-cli]
           migration_status: current
@@ -1141,6 +1189,24 @@ example:
         durable graduates from here, so it is RUNTIME.
       write_authority: agent
       read_consumers: [claude-code, agent-harness]
+      migration_status: current
+    - path: "runtime"
+      purpose: |
+        Host-side homes for vendored channel bridges and other long-running
+        helpers the null* modules need at rest but do not own as source —
+        runtime/vendor/<upstream-module>/ holds the checked-out third-party
+        code, runtime/<bridge>/ its token, launcher and session state (first
+        tenant 2026-09-23: nullclaw's WhatsApp bridge, whatsmeow session db).
+        Session state here is pairing material: wiping it re-pairs the device
+        by hand (a QR scan on the dedicated phone), so the zone is RETAINED.
+        Children are dynamic (one per bridge); no nested_dirs declared. Secrets
+        still belong in SSM — the bridge's bearer token file is a loopback-only
+        relay between launchd and the adapter, not a vendor credential.
+        Commissioned 2026-09-23 (lightwave-ai#132): the writer is the bridge
+        process itself, run by launchd (com.lightwave.whatsapp-bridge) as the
+        operator; launchd tees go to observability/launchd/, never here.
+      write_authority: operator
+      read_consumers: [nullclaw, launchd, operator, lightwave-ai]
       migration_status: current
     - path: "memory"
       purpose: |

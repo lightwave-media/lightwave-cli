@@ -1,0 +1,35 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/context_priorities"
+  title: "Context Priorities"
+  description: |
+    How eagerly an agent loads an article_object into its context window.
+    Adopted from [DB] ArticleObjects → Context Priority System; `label` is
+    the Notion display string. Ordered from always-loaded to never
+    auto-loaded. Wire encoding is lowercase.
+  generates:
+    - "go:ContextPriority"
+  depends_on: []
+name: context_priorities
+description: "Context-loading priority of an article_object row"
+default: "standard"
+closed: true
+options:
+  - value: critical
+    label: "Priority 1 - Critical (Always Load)"
+    description: "Loaded into every session's context."
+  - value: high
+    label: "Priority 2 - High (Load SOP):"
+    description: "Loaded when the SOP it belongs to is invoked."
+  - value: medium
+    label: "Priority 3 - Medium (Knowledge)"
+    description: "Loaded on demand as knowledge."
+  - value: low
+    label: "Priority 4 - Low (Reference only)"
+    description: "Referenced, never pre-loaded."
+  - value: archive
+    label: "Priority 5 - Archive (Never auto-load)"
+    description: "Kept for history; never auto-loaded."
+  - value: standard
+    label: "Standard"
+    description: "No special loading behaviour."

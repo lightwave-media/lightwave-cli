@@ -38,4 +38,4 @@ options:
     description: "OpenCode; runs in the directory it is launched in and exposes directory + worktree to plugins, creates no worktree of its own."
   - value: lightwave_runtime
     label: "LightWave local runtime"
-    description: "First-party agent runtime (lightwave-ai nullclaw / nullhub); calls the broker directly and defines no second policy."
+    description: "First-party agent runtime: a nullclaw instance supervised by nullhub (SAD-0002). Not a Forgejo action-runner."

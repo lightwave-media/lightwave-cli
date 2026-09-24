@@ -1,0 +1,21 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/actor_types"
+  title: "Actor Types"
+  description: |
+    Discriminator for the mixed Identities table (Human + Agent). Wire
+    encoding is lowercase. Not tenant_role. Not rbac_role.
+  generates:
+    - "go:ActorType"
+  depends_on: []
+name: actor_types
+description: "Principal kind on an Identities row"
+default: "agent"
+closed: true
+options:
+  - value: human
+    label: "Human"
+    description: "A person. identity_id format usr_*."
+  - value: agent
+    label: "Agent"
+    description: "An agent principal or shared module instance. identity_id format agt_*."

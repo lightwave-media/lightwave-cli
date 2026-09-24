@@ -1,5 +1,5 @@
 _meta:
-  version: "1.8.0"
+  version: "1.9.0"
   schema_id: "lightwave://schemas/data/meta/homedir_zones"
   title: "HomeDir Zones"
   table_kind: value_object
@@ -10,6 +10,12 @@ _meta:
     "Zones:" line under notes) into a queryable shape so hygiene tooling and
     `lw home reset` can READ which dirs are wipeable instead of hard-coding
     the list. Every dir name MUST be a top-level dir declared in homedir.yaml.
+
+    v1.9.0 (2026-09-23): ADD runtime/ to RETAINED — vendored channel-bridge
+    homes (homedir.yaml v3.16.0 lockstep). The first tenant's whatsmeow
+    session db is device-pairing material: wiping it re-pairs the phone, so
+    it is not wipe-safe until the owning session says otherwise
+    (lightwave-ai#132).
 
     v1.8.0 (2026-09-16): ADD memory/ (top-level) to RETAINED — `lw memory`'s
     filesystem KV, undeclared until homedir.yaml v3.13.0 added its DirSpec.
@@ -92,7 +98,7 @@ required_fields:
 # =============================================================================
 
 example:
-  version: "1.8.0"
+  version: "1.9.0"
   zones:
     AUTHORED:
       wipe_on_reset: false
@@ -134,8 +140,8 @@ example:
       rationale: "Transient daemon/tool output; task_done archives artefacts to archive/ first, so these are GC-safe to wipe and re-render. inbox/ is the groom queue — processed items are routed to brain/knowledge or archived first. session-env/ + sessions/ are per-session harness state, superseded on the next launch. Worktrees are NOT here — they are repo-scoped per worktree_policy.yaml."
     RETAINED:
       wipe_on_reset: false
-      dirs: [archive, v_core, secrets, forgejo-runner, backups, plugins, memory]
-      rationale: "Durable runtime that must survive reset: archive/ holds retained monthly task tarballs; v_core/ holds operator daemon config (providers, channels, plugins, cron) + KV memory; secrets/ holds host-side credential material; forgejo-runner/ holds the CI runner registration; backups/ holds the only rollback for a bad coding-agent config; plugins/ holds the harness plugin registry, which reinstalls rather than regenerates; memory/ (top-level) is `lw memory`'s filesystem KV — an agent's persisted values, put there deliberately via a CLI verb, same durability class as v_core/'s KV memory. Wiping any is data loss."
+      dirs: [archive, v_core, secrets, forgejo-runner, backups, plugins, memory, runtime]
+      rationale: "Durable runtime that must survive reset: archive/ holds retained monthly task tarballs; v_core/ holds operator daemon config (providers, channels, plugins, cron) + KV memory; secrets/ holds host-side credential material; forgejo-runner/ holds the CI runner registration; backups/ holds the only rollback for a bad coding-agent config; plugins/ holds the harness plugin registry, which reinstalls rather than regenerates; memory/ (top-level) is `lw memory`'s filesystem KV — an agent's persisted values, put there deliberately via a CLI verb, same durability class as v_core/'s KV memory; runtime/ holds vendored channel-bridge homes whose session state is device-pairing material (lightwave-ai#132). Wiping any is data loss."
     SHARED:
       wipe_on_reset: false
       dirs: [lib, bin]

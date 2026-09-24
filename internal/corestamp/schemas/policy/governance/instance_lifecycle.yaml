@@ -18,6 +18,7 @@ _meta:
     - "lightwave://schemas/workflows/sops/software_lifecycle"
     - "lightwave://schemas/data/meta/agent_identity"
     - "lightwave://schemas/data/meta/agent_session"
+    - "lightwave://schemas/data/enums/null_modules"
 
 required_fields:
   - name: instance_name
@@ -25,7 +26,8 @@ required_fields:
     description: "Nullclaw instance name (e.g. v_core-package-developer)"
   - name: component
     type: str
-    description: "nullhub component (e.g. nullclaw)"
+    values_ref: "lightwave://schemas/data/enums/null_modules"
+    description: "null* module this instance belongs to (e.g. nullclaw)."
   - name: lifecycle_phase
     type: str
     description: "Software lifecycle phase this instance belongs to"

@@ -47,8 +47,8 @@ if [ -z "$core" ]; then
   core="${core:-$repo/../lightwave-core}"
 fi
 
-[ -d "$core/bindings/go" ] || {
-  echo "no lightwave-core Go binding at $core/bindings/go" >&2
+[ -d "$core/.git" ] || git -C "$core" rev-parse --git-dir >/dev/null 2>&1 || {
+  echo "no lightwave-core checkout at $core" >&2
   echo "pass the checkout path: scripts/sync-core-stamp.sh /path/to/lightwave-core" >&2
   exit 1
 }
@@ -88,27 +88,43 @@ if [ -n "$(git -C "$core" status --porcelain)" ] && [ "$allow_dirty" -eq 0 ]; th
   echo "note: $core has uncommitted changes; syncing from $ref ($(git -C "$core" rev-parse --short "$sha")) regardless — the working tree is not read."
 fi
 
+# Where the schemas and the declared version live AT THE REF. Releases up to
+# bindings/go/v0.8.0 carried a Go binding (bindings/go/schemas, Version in
+# bindings/go/loader.go); lightwave-core retired it, and from v0.9.0 the only
+# copy is src/schemas with the version in pyproject.toml. Decide per ref, so
+# an old tag still syncs and a new one does not need a binding that is gone.
+if git -C "$core" cat-file -e "$ref:bindings/go/schemas" 2>/dev/null; then
+  schemas_path="bindings/go/schemas"
+  version="$(git -C "$core" show "$ref:bindings/go/loader.go" \
+    | sed -n 's/^const Version = "\(.*\)"$/\1/p')"
+  version_source="bindings/go/loader.go"
+else
+  schemas_path="src/schemas"
+  version="$(git -C "$core" show "$ref:pyproject.toml" \
+    | sed -n 's/^version = "\(.*\)"$/\1/p' | head -1)"
+  version_source="pyproject.toml"
+fi
+strip="$(printf '%s' "$schemas_path" | awk -F/ '{print NF}')"
+
 # Atomic swap: stage beside the target, then replace — so a mid-extract failure
 # (disk full, perms) leaves the existing mirror intact rather than half-gone.
 rm -rf "${dst}/schemas.tmp"
 mkdir -p "${dst}/schemas.tmp"
-git -C "$core" archive "$ref" -- bindings/go/schemas \
-  | tar -x -C "${dst}/schemas.tmp" --strip-components=3
+git -C "$core" archive "$ref" -- "$schemas_path" \
+  | tar -x -C "${dst}/schemas.tmp" --strip-components="$strip"
 [ -n "$(ls -A "${dst}/schemas.tmp")" ] || {
-  echo "extracted nothing from $ref:bindings/go/schemas" >&2
+  echo "extracted nothing from $ref:$schemas_path" >&2
   rm -rf "${dst}/schemas.tmp"
   exit 1
 }
 
 # Three facts travel with the schemas, all read from the ref — never the tree:
-#   Version       what core declares its release to be (bindings/go/loader.go)
+#   Version       what core declares its release to be ($version_source)
 #   SourceTag     the ref this mirror was extracted from
 #   SchemasSHA256 digest of the embedded tree, so a hand-edit is detectable
 # Version and SourceTag come from independent places on purpose: comparing them
 # is what catches a tag published without its version bump (lightwave-core#552).
-version="$(git -C "$core" show "$ref:bindings/go/loader.go" \
-  | sed -n 's/^const Version = "\(.*\)"$/\1/p')"
-[ -n "$version" ] || { echo "could not read Version from $ref:bindings/go/loader.go" >&2; exit 1; }
+[ -n "$version" ] || { echo "could not read the version from $ref:$version_source" >&2; exit 1; }
 
 # Digest is order-stable: sort by path, hash "path\0bytes" per file. Paths are
 # relative to schemas/ with no "./" prefix, matching ComputeSchemasSHA256 in
@@ -146,7 +162,7 @@ rm -rf "${dst}/schemas"
 mv "${dst}/schemas.tmp" "${dst}/schemas"
 mv "$dst/loader.go.tmp" "$dst/loader.go"
 
-echo "synced $ref:bindings/go/schemas -> internal/corestamp/schemas"
+echo "synced $ref:$schemas_path -> internal/corestamp/schemas"
 echo "  stamp version : $version"
 echo "  source tag    : $ref ($(git -C "$core" rev-parse --short "$sha"))"
 echo "  schemas sha256: ${schemas_sha:0:16}…"

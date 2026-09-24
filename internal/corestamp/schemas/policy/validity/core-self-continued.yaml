@@ -492,9 +492,9 @@ rules:
   - id: R-46
     name: "io-imports-resolve"
     severity: error
-    status: pending
-    description: "Python files in src/io/ MUST have all imports resolvable. Missing io extras show as 'Import could not be resolved' in Zed's LSP. Pending: src/io/ does not yet exist (Phase 6 work)."
+    status: active
+    description: "Python files under src/generators/ and src/servers/ MUST have all imports resolvable."
     enforced_by: "tests/local/test_r46_io_imports.py"
-    enforces: ["src/io/**/*.py"]
-    rationale: "src/io/servers/mcp/server.py will require io extras once Phase 6 ships; R-46 is declared now so the rule exists when the path does."
+    enforces: ["src/generators/**/*.py", "src/servers/**/*.py"]
+    rationale: "Generators and the docs Hugo helper need their declared extras installed; unresolved imports show as LSP noise."
     locked: 2026-06-24

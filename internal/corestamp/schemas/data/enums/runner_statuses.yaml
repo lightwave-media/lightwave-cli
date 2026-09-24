@@ -1,20 +1,27 @@
 _meta:
-  version: "1.0.0"
+  version: "1.1.0"
   schema_id: "lightwave://schemas/data/enums/runner_statuses"
-  title: "Runner Status Enum"
-  description: "Lifecycle states for a registered agent runner. Mirrors Forgejo ActionRunner states (offline → idle → active). Distinct from agent_statuses which tracks task-dispatch lifecycle."
+  title: "Forgejo Action-Runner Status"
+  description: |
+    Status of a Forgejo/Gitea CI action-runner registration
+    (agent_runner, integrations/forgejo user_runner + admin_runner).
+    offline → idle → active. There is no `running` value here.
+
+    This is CI job hardware. It is not a nullclaw instance, not the
+    nulltickets queue, and not boilerplate. Identity runtime_status uses
+    nullhub_instance_statuses (SAD-0002).
   depends_on: []
 name: runner_statuses
-description: "Lifecycle states for registered agent runners (POST /v1/agents/runners)"
+description: "CI action-runner status (POST /v1/agents/runners). Not nullclaw. Not nulltickets."
 default: "idle"
 closed: true
 options:
   - value: "offline"
     label: "Offline"
-    description: "Runner is not connected or heartbeat has expired."
+    description: "CI runner is not connected or heartbeat has expired."
   - value: "idle"
     label: "Idle"
-    description: "Runner is connected and available to accept a task assignment."
+    description: "CI runner is connected and available to accept a job."
   - value: "active"
     label: "Active"
-    description: "Runner has an assigned task and is actively processing it."
+    description: "CI runner has an assigned job and is executing it."

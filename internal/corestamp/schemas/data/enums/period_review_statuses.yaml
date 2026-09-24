@@ -1,0 +1,33 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/period_review_statuses"
+  title: "Period Review Statuses"
+  description: |
+    Operational review state of a time_period. Adopted from the live Notion
+    workspace ([DB] ObservabilityLogs → Review Status), the same way
+    agile_statuses v1.1 took its vocabulary from the workspace: `label` is
+    the Notion display string, `value` is the wire form. A period is
+    "reviewed" only when the review is complete and review_scheduled_on is
+    set. Named period_review_* so it cannot be read as the PR review panel's
+    vocabulary (review_executors, review_dispatch_transports).
+    Wire encoding is lowercase.
+  generates:
+    - "go:PeriodReviewStatus"
+  depends_on: []
+name: period_review_statuses
+description: "Review state of a time_period row"
+default: "period_inactive_no_review"
+closed: true
+options:
+  - value: period_inactive_no_review
+    label: "Period Non Active: No Review"
+    description: "The period has not started, or is past and was intentionally not reviewed."
+  - value: period_active_no_review
+    label: "Period Active: No Review"
+    description: "The period is current and review work has not begun."
+  - value: review_in_progress
+    label: "Review In progress"
+    description: "Evidence is being assembled."
+  - value: reviewed
+    label: "Reviewed"
+    description: "Review complete; review_scheduled_on is set."

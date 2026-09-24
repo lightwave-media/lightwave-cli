@@ -1,0 +1,66 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/session_endpoint"
+  title: "Session Endpoint — Attachable Viewport Latch"
+  table_kind: entity
+  scope: local
+  description: |
+    A live session endpoint the operator can list and, when attachable,
+    join with glass (Ghostty/tmux) without spawning a second agent.
+    Distinct from agent_session (token-bound 24h identity issued by
+    nullhub). Distinct from null_instance_binding (gateway roster for
+    Mission Control). Closing glass detaches; it does not teardown.
+
+    Print: tmux panes, configured nullclaw agent -s children, Claude
+    --resume ids, cursor-agent persist sessions. Gateways and Cursor
+    workers list with attachable false.
+  generates:
+    - "pydantic:SessionEndpoint"
+    - "go:SessionEndpoint"
+  depends_on:
+    - "lightwave://schemas/data/enums/session_endpoint_kinds"
+    - "lightwave://schemas/data/enums/session_liveness"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable endpoint id (tmux pane id, claude resume uuid, persist session, nullclaw -s name)."
+  - name: kind
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/session_endpoint_kinds"
+    description: "Which attach ABI this endpoint uses."
+  - name: attachable
+    type: bool
+    description: "True only when glass can join without spawn."
+  - name: liveness
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/session_liveness"
+    description: "alive/dead/missing/unreadable/ambiguous. Attach requires alive. Spawn/recovery only when dead or missing."
+
+optional_fields:
+  - name: persona_ref
+    type: str
+    description: "v_* persona slug when this endpoint is a child of an instances.yaml identity."
+  - name: endpoint
+    type: str
+    description: "tmux session:window.pane, or harness-native session id."
+  - name: worktree
+    type: str
+    description: "cwd or worker-dir when known."
+  - name: pid
+    type: int
+    description: "Foreground process id when readable. Attach must not change this."
+
+example:
+  id: "%9"
+  kind: nullclaw_agent
+  attachable: true
+  liveness: alive
+  persona_ref: v_cli-developer
+  endpoint: "lw-ai:composer.1"
+  worktree: "/Users/joelschaeffer/.lightwave/sources/research/nullclaw-agent-lab/home/workspace"
+  pid: 24573
+
+relations:
+  parent: null
+  children: []

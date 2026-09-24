@@ -7,7 +7,7 @@ _meta:
     - "pydantic:MarketAnalysis"
   depends_on:
     - "lightwave://schemas/data/enums/document_statuses"
-    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/enums/domains"
     - "lightwave://schemas/data/agile_artifacts/product_vision"
   table_kind: entity
   table_name: market_analyses
@@ -50,7 +50,7 @@ required_fields:
     column_type: jsonb
   - name: domain
     type: str
-    description: "LifeDomain slug; validated against life_domains"
+    description: "domain slug; validated against domains"
     storage: db
   - name: created_at
     type: datetime

@@ -76,7 +76,7 @@ example:
   url: "https://www.notion.so/db11112222"
   sync_enabled: true
   sync_status: synced
-  property_map_ref: life-domain-tasks-v1
+  property_map_ref: semantic-tasks-identity-v1
   knowledge_domain: knowledge
   last_synced_at: "2026-08-12T16:00:00Z"
   created_at: "2026-06-01T12:00:00Z"

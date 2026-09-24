@@ -1,20 +1,26 @@
 _meta:
-  version: 1.4.0
+  version: 1.6.0
   schema_id: lightwave://schemas/data/agile_artifacts/task
   title: Task
   description: 'Leaf of the R-P-I-V-R lineage. Dispatchable unit of work. v_core polls Tasks where status=''prioritized''
     and is_ready()=True. Migrated 2026-05-25 from governance/agile/task.yaml (Phase 4 file #13) — Augusta replaced with v_core,
     Postgres-specific example updated to local SQLite per ADR-0002, createos/config dep dropped. v1.4.0 adds first-class
-    GitHub issue/milestone/project/PR fields (CORE-0048); notion_id remains for legacy import idempotency.'
+    GitHub issue/milestone/project/PR fields (CORE-0048); notion_id remains for legacy import idempotency. v1.5.0 adds
+    related_documents (document_ref already named task as a carrier). v1.6.0: assigned_agent is an identity reference
+    (identity_id, agt_*) rather than a free-text agent name — the same key time_period.owner_ref and article_object.agent_refs
+    use, so a dispatch, a cost record and a document all name the same row.'
   generates:
   - pydantic:Task
   depends_on:
-  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/enums/domains
   - lightwave://schemas/data/agile_artifacts/user_story
+  - lightwave://schemas/data/enums/priorities
+  - lightwave://schemas/data/enums/context_packet_statuses
+  - lightwave://schemas/data/meta/identity
   table_kind: entity
   table_name: tasks
 status_enum: agile_statuses
-priority_enum: task_priorities
+priority_enum: priorities
 state_machine_ref: lightwave://schemas/data/enums/task_statuses#options[].can_transition_to
 primary_key:
   column: id
@@ -52,16 +58,16 @@ required_fields:
   indexed: true
 - name: domain
   type: str
-  description: 'LifeDomain slug (Ready gate prerequisite #6); validated against life_domains'
+  description: 'domain slug (Ready gate prerequisite #6); validated against domains'
   storage: db
 - name: status
   type: str
-  description: Lifecycle state; validated against task_statuses; transitions enforced by state_machine_ref
+  description: "Validated against agile_statuses (status_enum). Runtime execution uses sprint_planning, run_session_ready, active_run_in_progress. task_statuses remains the optional delivery/bug board machine."
   storage: db
   indexed: true
 - name: priority
   type: str
-  description: Validated against task_priorities
+  description: Validated against priorities (p0–p5)
   storage: db
 - name: task_type
   type: str
@@ -80,11 +86,11 @@ required_fields:
   description: ISO 8601 timestamp of last modification; auto-updated
   storage: db
 optional_fields:
-- name: sprint_ref
+- name: agile_sprint_ref
   type: str
-  description: Slug of containing Sprint (authoritative; UserStory.sprint is informational)
+  description: Slug of containing Agile Sprint (authoritative; UserStory.agile_sprint_ref is informational)
   storage: db
-  fk_ref: lightwave://schemas/data/agile_artifacts/sprint
+  fk_ref: lightwave://schemas/data/agile_artifacts/agile_sprint
   fk_column: slug
   indexed: true
 - name: parent_task_ref
@@ -104,8 +110,12 @@ optional_fields:
   storage: db
 - name: assigned_agent
   type: str
-  description: Validated against agent registry (e.g. v_core, v_dev, claude-code)
+  description: identity_id (agt_<hex>) of the agent this task is dispatched to. A row in identities with actor_type=agent;
+    the agent cells (persona_slug, module, instance_name) live on agent_identity. Not a persona slug, not a harness name.
   storage: db
+  fk_ref: lightwave://schemas/data/meta/identity
+  fk_column: identity_id
+  indexed: true
 - name: agent_status
   type: str
   description: Validated against agent_statuses
@@ -167,6 +177,16 @@ optional_fields:
   type: str
   description: Notion page ID for idempotent re-import (legacy from Notion-as-inbox era)
   storage: db
+- name: context_packet
+  type: str
+  values_ref: "lightwave://schemas/data/enums/context_packet_statuses"
+  description: Dispatch-readiness of the task context packet. Horizon 1 coding waits for verified.
+  storage: db
+- name: related_documents
+  type: list[DocumentRef]
+  description: List of {category, slug} document references — the kickoff record, handoffs, the spec the task implements. Logical reference, not a foreign key.
+  storage: db
+  column_type: jsonb
 relations:
   parent: user_story
   parent_fk:
@@ -185,10 +205,10 @@ example:
   epic_ref: v-core-v1-ready-task-dispatch
   domain: software-development
   status: next_up
-  priority: high
+  priority: p1
   task_type: feature
   task_category: software_dev
-  assigned_agent: claude-code
+  assigned_agent: agt_9b1e4c7d
   notion_id: abc123-def456
   github_repo: lightwave-media/lightwave-core
   github_issue_number: 412

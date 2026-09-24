@@ -11,7 +11,7 @@ _meta:
     full rather than in part.
 
     This table is not new. It has existed since the SQLite index as
-    DOCUMENTS_FALLBACK_DDL, a hardcoded string in src/io/prints/index_schema.py,
+    DOCUMENTS_FALLBACK_DDL, a hardcoded string in src/generators/index_schema.py,
     carrying the comment that states its whole purpose: "Vault kinds without
     stamp coverage land here rather than being silently dropped." What it never
     had was a schema. So when the store moved to Postgres — where the generator

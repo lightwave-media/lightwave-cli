@@ -44,7 +44,7 @@ schemas:
   goal: goal.yaml
   project: project.yaml
   epic: epic.yaml
-  sprint: sprint.yaml
+  agile_sprint: agile_sprint.yaml
   user_story: user_story.yaml
   task: task.yaml
   implementation_plan: implementation_plan.yaml

@@ -1,0 +1,39 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/article_object_content_types"
+  title: "Article Object Content Types"
+  description: |
+    Primary classification of an article_object's content — operational
+    document, external learning, quote, note, principle, spec, plan.
+    Orthogonal to article_object_types (which says what kind of formal
+    document it is). Adopted from [DB] ArticleObjects → Content Type;
+    `label` is the Notion display string. Wire encoding is lowercase.
+  generates:
+    - "go:ArticleObjectContentType"
+  depends_on: []
+name: article_object_content_types
+description: "Content classification of an article_object row"
+default: "operational_document"
+closed: true
+options:
+  - value: operational_document
+    label: "Operational Document"
+    description: "Something the organisation runs on."
+  - value: learning_resource
+    label: "Learning Resource"
+    description: "External material studied, not authored."
+  - value: quote
+    label: "Quote"
+    description: "A captured quotation with its source."
+  - value: note
+    label: "Note"
+    description: "A note the operator captured."
+  - value: principle
+    label: "Principle"
+    description: "A standing principle."
+  - value: technical_spec
+    label: "Technical Spec"
+    description: "A specification."
+  - value: implementation_plan
+    label: "Implementation Plan"
+    description: "A plan of work."

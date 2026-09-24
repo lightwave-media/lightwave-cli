@@ -1,5 +1,5 @@
 _meta:
-  version: "1.4.0"
+  version: "1.5.0"
   schema_id: "lightwave://schemas/data/meta/skill_definition"
   title: "Skill Definition"
   table_kind: document
@@ -22,21 +22,20 @@ _meta:
     doctrine is ONE skills home. Editing a skill means editing the
     canonical file; nothing else is hand-authored.
 
-    HARNESS PRINTS (v1.2, CORE-0052): harnesses that only
-    read hard-coded paths — Claude Code (~/.claude/skills/), Zed
-    (~/.agents/skills/) — receive GENERATED PRINTS of the canonical skill
-    directories. A print is a byte-for-byte copy whose SKILL.md carries a
-    provenance header (YAML comment lines `# lightwave-print: …` at the top
+    HARNESS GENERATED COPIES (v1.2, CORE-0052; Zed dropped in v1.5):
+    harnesses that only read hard-coded paths — Claude Code
+    (~/.claude/skills/) — receive GENERATED COPIES of the canonical skill
+    directories. A generated copy is a byte-for-byte copy whose SKILL.md carries a
+    provenance header (YAML comment lines `# generated-by: …` at the top
     of the frontmatter) naming the canonical source and the generator.
-    Prints are produced and drift-checked by lightwave-core
-    `src/io/prints/skills.py`; they are never edited by hand, never
+    Generated copies are produced and drift-checked by lightwave-core
+    `src/generators/skills.py`; they are never edited by hand, never
     symlinked, and never mirrored by ad-hoc copying. A directory in a
     harness path WITHOUT the provenance header is unmanaged: the generator
     reports it and leaves it alone. This replaces the v1.1 stance ("the
-    stamp does NOT endorse mirroring") with a stronger one: a generated
-    print is not a mirror — it is the stamp/print doctrine applied to
-    skills, so one home stays canonical and the harness copies stop
-    drifting silently. Sibling of CORE-0047, which settled the same
+    schemas do not endorse hand mirroring") with a stronger one: a
+    generated harness copy is not a hand mirror — one home stays canonical
+    and the harness copies stop drifting silently. Sibling of CORE-0047, which settled the same
     harness-default problem for worktrees by redirecting rather than
     denying.
 
@@ -108,12 +107,22 @@ _meta:
 
     v1.4 (2026-09-15): print_targets is the closed list of harness skill
     directories the generator fans out to — Cursor, Codex, and OpenCode
-    join Claude Code and Zed. `src/io/prints/skills.py` reads this list
+    join Claude Code and Zed. `src/generators/skills.py` reads this list
     from the stamp (it does not hard-code destinations). Default is print
     every target. Never print into vendor trees (e.g. ~/.cursor/skills-cursor).
     An unmarked harness directory whose SKILL.md body matches canonical is
     an unmarked copy, not a fork: the printer adopts it by writing the
     provenance header rather than leaving it unmanaged forever.
+
+    v1.5 (2026-09-23): drops the `zed` entry from print_targets. v1.1 (2026-05-29)
+    already flagged Zed's hard-coded `~/.agents/skills/` as a KNOWN GAP rather
+    than endorsing a workaround; v1.4 printed into it anyway. CLAUDE.md §23
+    (2026-09-17) later forbade creating Lightwave state at `$HOME` root and
+    archived `~/.agents` as a stale duplicate — the stamp and the operator's
+    dotfile rule disagreed for six days before this fix. The Zed Agent Skills
+    frontmatter fields (`disable_model_invocation`, the nested `metadata`
+    shape) are unaffected: this drops only the generated-copy DESTINATION, not
+    Zed-spec compatibility. Resolves lightwave-core#790.
   generates:
     - "rust:SkillDefinition"
     - "pydantic:SkillDefinition"
@@ -218,16 +227,14 @@ sub_schemas:
       required: false
       description: "Zed Agent Skills field (https://zed.dev/docs/ai/skills). Default false. When true, the skill is INVOCABLE ONLY via slash command (`/<name>`) or @-mention — the agent will not autonomously call it. Use for skills with side-effects the operator should always explicitly trigger (data mutations, expensive external calls). Other harnesses currently ignore this field but should adopt the same semantic."
 
-# Harness directories that receive generated prints of the canonical
-# skills. Produced and drift-checked by src/io/prints/skills.py; a
+# Harness directories that receive generated copies of the canonical
+# skills. Produced and drift-checked by src/generators/skills.py; a
 # directory here without the provenance header is unmanaged and untouched
 # unless its SKILL.md body is byte-identical to canonical (unmarked copy
 # → adopt by writing the header). Vendor trees are not targets.
 print_targets:
   - harness: claude-code
     path: "~/.claude/skills/<slug>/"
-  - harness: zed
-    path: "~/.agents/skills/<slug>/"
   - harness: cursor
     path: "~/.cursor/skills/<slug>/"
     note: >

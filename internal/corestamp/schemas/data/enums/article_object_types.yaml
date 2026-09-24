@@ -1,0 +1,70 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/article_object_types"
+  title: "Article Object Types"
+  description: |
+    What kind of formal document an article_object row catalogues. Adopted
+    from the live Notion workspace ([DB] ArticleObjects → Document Type),
+    the way agile_statuses v1.1 took its vocabulary from the workspace:
+    `label` is the Notion display string, `value` is the wire form.
+
+    Notion also carries a `PRINCIPLES` option that duplicates `PRINCIPLE`;
+    it is not reproduced here — rows tagged with it map to `principle`
+    when the property is aligned (phase 2 of the Notion alignment).
+    Wire encoding is lowercase.
+  generates:
+    - "go:ArticleObjectType"
+  depends_on: []
+name: article_object_types
+description: "Document kind of an article_object row"
+default: "doc"
+closed: true
+options:
+  - value: config
+    label: "CONFIG"
+    description: "Agent configuration files (.config.yaml)."
+  - value: principle
+    label: "PRINCIPLE"
+    description: "Agent principle files (.principle.yaml). Absorbs the duplicate PRINCIPLES option."
+  - value: sop
+    label: "SOP"
+    description: "Standard operating procedures."
+  - value: spec
+    label: "SPEC"
+    description: "Technical specifications (PRD, SAD, DDD, NFR, API spec, implementation plan)."
+  - value: us
+    label: "US"
+    description: "User stories catalogued as documents."
+  - value: sprint
+    label: "SPRINT"
+    description: "Sprint plans and sprint documentation."
+  - value: test
+    label: "TEST"
+    description: "Test reports, QA documentation, benchmarks."
+  - value: retro
+    label: "RETRO"
+    description: "Retrospectives, post-mortems, RCAs — the ceremony record a sprint links through related_documents."
+  - value: audit
+    label: "AUDIT"
+    description: "Audit reports, compliance documentation."
+  - value: fin
+    label: "FIN"
+    description: "Financial documents (tax, invoices, receipts)."
+  - value: legal
+    label: "LEGAL"
+    description: "Legal documents (contracts, agreements, policies, entity filings)."
+  - value: doc
+    label: "DOC"
+    description: "General operational documents — meeting notes, standup notes, ideas, technical notes."
+  - value: knowledge
+    label: "KNOWLEDGE"
+    description: "Knowledge and permanent notes."
+  - value: note
+    label: "NOTE"
+    description: "Literature and fleeting notes."
+  - value: learning
+    label: "LEARNING"
+    description: "Learning resources and external content."
+  - value: competitor
+    label: "COMPETITOR"
+    description: "Competitor teardowns and competitive-intelligence profiles."

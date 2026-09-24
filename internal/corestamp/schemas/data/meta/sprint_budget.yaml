@@ -22,14 +22,14 @@ _meta:
   generates:
     - "pydantic:SprintBudget"
   depends_on:
-    - "lightwave://schemas/data/agile_artifacts/sprint"
+    - "lightwave://schemas/data/agile_artifacts/agile_sprint"
     - "lightwave://schemas/data/enums/model_tiers"
     - "lightwave://schemas/policy/compliance/llm_budgets"
 
 required_fields:
-  - name: sprint_ref
+  - name: agile_sprint_ref
     type: str
-    description: "Slug of the parent sprint from sprint.yaml. Null for ad-hoc budgets (research, emergency)."
+    description: "Slug of the parent sprint from agile_sprint.yaml. Null for ad-hoc budgets (research, emergency)."
   - name: _schema_version
     type: int
     description: "Schema version for evolutionary compatibility. Locked at 1."
@@ -79,7 +79,7 @@ optional_fields:
     description: "Human-readable notes about this budget (carry-over from prior, special circumstances, overrides)."
 
 example:
-  sprint_ref: "sprint-2026-07"
+  agile_sprint_ref: "sprint-2026-07"
   _schema_version: 1
   total_budget_usd: 50.00
   cost_unit: usd_cents

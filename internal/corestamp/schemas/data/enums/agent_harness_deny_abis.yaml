@@ -1,0 +1,31 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/agent_harness_deny_abis"
+  title: "Agent Harness Deny ABIs"
+  description: |
+    Closed enum of how a harness accepts a tool-call denial from a LightWave
+    adapter. The spine always produces the Claude Code PreToolUse shape
+    (hookSpecificOutput.permissionDecision). Each adapter maps that onto
+    one of these ABIs. If a harness cannot deny, can_deny is false on the
+    harness_adapter row and deny_abi is unused.
+  generates:
+    - "pydantic:AgentHarnessDenyAbi"
+  depends_on: []
+
+name: agent_harness_deny_abis
+description: "How a harness consumes a spine deny"
+default: permission_decision
+closed: true
+options:
+  - value: permission_decision
+    label: "permissionDecision"
+    description: "Claude Code / Codex: hookSpecificOutput.permissionDecision = deny."
+  - value: permission
+    label: "permission"
+    description: "Cursor: flat JSON {permission: deny, user_message, agent_message}."
+  - value: block_reason
+    label: "block+reason"
+    description: "Pi: handler return {block: true, reason}."
+  - value: throw
+    label: "throw"
+    description: "OpenCode: throw from tool:before to refuse the call."

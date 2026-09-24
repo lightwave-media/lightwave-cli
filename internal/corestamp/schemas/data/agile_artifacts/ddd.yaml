@@ -7,7 +7,7 @@ _meta:
     - "pydantic:DDD"
   depends_on:
     - "lightwave://schemas/data/enums/document_statuses"
-    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/enums/domains"
     # MIGRATION-PENDING: user_story migrates later in Phase 4
     - "lightwave://schemas/data/agile_artifacts/user_story"
   table_kind: entity
@@ -57,7 +57,7 @@ required_fields:
     column_type: jsonb
   - name: domain
     type: str
-    description: "LifeDomain slug; validated against life_domains"
+    description: "domain slug; validated against domains"
     storage: db
   - name: created_at
     type: datetime

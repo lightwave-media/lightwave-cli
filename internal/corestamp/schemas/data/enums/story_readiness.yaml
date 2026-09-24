@@ -1,0 +1,35 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/story_readiness"
+  title: "Story Readiness"
+  description: |
+    Agent readiness of a User Story before it is sliced into Tasks.
+    Live column on UserStories as Story Readiness. Distinct from
+    agile_statuses (board lane) and from execution_modes (autonomy).
+  generates:
+    - "pydantic:StoryReadiness"
+    - "go:StoryReadiness"
+  depends_on: []
+name: story_readiness
+description: "Agent readiness of a user story for implementation"
+default: unsafe
+closed: true
+options:
+  - value: unsafe
+    label: "Unsafe"
+    description: "Not safe for an agent to plan or implement."
+  - value: needs_refinement
+    label: "Needs Refinement"
+    description: "Scope or acceptance is too thin to slice."
+  - value: planning_ready
+    label: "Planning Ready"
+    description: "Safe to plan; not yet safe to implement."
+  - value: implementation_ready
+    label: "Implementation Ready"
+    description: "Safe to slice into Tasks."
+  - value: pr_ready
+    label: "PR Ready"
+    description: "Implementation is done enough to open a PR."
+  - value: production_workflow_ready
+    label: "Production Workflow Ready"
+    description: "Story can ride the production dispatch workflow."

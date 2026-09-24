@@ -9,7 +9,7 @@ _meta:
   generates:
   - pydantic:ImplementationPlan
   depends_on:
-  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/enums/domains
   - lightwave://schemas/data/agile_artifacts/user_story
   table_kind: entity
   table_name: implementation_plans

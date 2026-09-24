@@ -1,0 +1,41 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/tenant_roles"
+  title: "Tenant Roles"
+  description: |
+    createOS shell IAM on an Identities row. Multi-valued. This is not
+    rbac_role (persona capability) and not lightwave_iam_roles (AWS IAM).
+    Wire encoding is snake_case lowercase. `super_admin` keeps the
+    underscore — do not write superadmin.
+  generates:
+    - "go:TenantRole"
+  depends_on: []
+name: tenant_roles
+description: "createOS shell IAM roles on Identities.tenant_role"
+default: "member"
+closed: true
+options:
+  - value: member
+    label: "Member"
+    description: "Default human tenant membership."
+  - value: agent
+    label: "Agent"
+    description: "Agent principal. Personas and shared module instances."
+  - value: staff
+    label: "Staff"
+    description: "Human staff of the tenant."
+  - value: owner
+    label: "Owner"
+    description: "Tenant owner."
+  - value: client
+    label: "Client"
+    description: "External client of the tenant."
+  - value: customer
+    label: "Customer"
+    description: "External customer of the tenant."
+  - value: admin
+    label: "Admin"
+    description: "Tenant administrator."
+  - value: super_admin
+    label: "Super Admin"
+    description: "Tenant super-admin. Underscore is the wire form."

@@ -2,7 +2,7 @@
 # CINEOS PRODUCTION DOMAIN — entity schema registry (Category A / data)
 # =============================================================================
 # The cinematography-production data model behind the createOS CineOS product
-# (ADR-0018: CineOS is a product spanning creative-strategy / content-creation /
+# (ADR-0018: CineOS is a product spanning cinematography / marketing-social-media /
 # photography). Source of truth: Joel's ER model (6 years of design).
 #
 # SLICE 1 — production spine:
@@ -19,7 +19,7 @@
 # =============================================================================
 
 _meta:
-  version: "0.4.0"
+  version: "0.4.1"
   schema_id: "lightwave://schemas/data/cineos/__index"
   title: "CineOS Production Domain Registry"
   description: |

@@ -23,7 +23,7 @@ _meta:
   depends_on:
     - "lightwave://schemas/data/enums/acs_event_kinds"
     - "lightwave://schemas/data/enums/acs_settle_states"
-    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/enums/domains"
   table_kind: event
   table_name: agent_event
 
@@ -43,7 +43,7 @@ required_fields:
     description: "ISO 8601 UTC timestamp of the append."
   - name: life_domain
     type: enum
-    values_ref: "lightwave://schemas/data/enums/life_domains"
+    values_ref: "lightwave://schemas/data/enums/domains"
     description: "Life Domain copied from the thread's ShellNode. Not a second domain identifier."
 
 optional_fields:

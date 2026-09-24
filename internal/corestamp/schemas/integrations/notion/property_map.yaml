@@ -1,10 +1,20 @@
 _meta:
-  version: "1.1.0"
+  version: "1.2.0"
   schema_id: "lightwave://schemas/integrations/notion/property_map"
   title: "Notion Property Map"
   description: |
-    Maps Notion database property names/types onto local SST field paths.
-    Lets adapters project structured columns without hardcoding DB layouts.
+    Migration ledger only. After Notion property names match SST field names,
+    mappings are identity (notion_property == local_field). Adapters must not
+    treat this as the long-term rename layer — rename the Notion property.
+
+    v1.2.0 (2026-09-23): `local_field_end` on PropertyMapping. A Notion date
+    property is a range (start, end) and three live databases split one range
+    across two core columns — agile_sprints `dates` → start_date + end_date,
+    Projects&Epics `Timeline Dates` → start_date + target_date, time_periods
+    `Period Range` → start + end. With one local_field the end half was
+    silently unmapped (lightwave-core#795). Only meaningful for
+    notion_type: date; an adapter reads date.start into local_field and
+    date.end into local_field_end.
   generates:
     - "pydantic:NotionPropertyMap"
   depends_on:
@@ -22,7 +32,8 @@ required_fields:
     type: "list[PropertyMapping]"
     description: |
       Each mapping: notion_property (str), notion_type (str), local_field (str),
-      local_kind (str|null), required (bool).
+      local_kind (str|null), required (bool), local_field_end (str|null, date
+      ranges only). Prefer identity after rename.
 
 optional_fields:
   - name: notes
@@ -54,24 +65,32 @@ sub_schemas:
       - name: local_kind
         type: str
         description: "Target SST kind when promoting a DB row (e.g. task)"
+      - name: local_field_end
+        type: str
+        description: "For notion_type: date only — the local column that takes the range's end while local_field takes its start (e.g. dates → start_date + end_date). Absent means the property is a single date."
 
 example:
-  slug: life-domain-tasks-v1
-  database_notion_id: "db-1111-2222"
+  slug: semantic-tasks-identity-v1
+  database_notion_id: "433c42ce-19de-4bff-83b8-bacae2e105d4"
   mappings:
-    - notion_property: Name
+    - notion_property: title
       notion_type: title
       local_field: title
       local_kind: task
       required: true
-    - notion_property: Status
+    - notion_property: status
       notion_type: status
       local_field: status
       local_kind: task
       required: true
-    - notion_property: Domain
-      notion_type: select
-      local_field: domain
+    - notion_property: context_packet
+      notion_type: status
+      local_field: context_packet
       local_kind: task
       required: false
-  notes: "Notion authoring reconciles into canonical prints; record discovery never dispatches work."
+    - notion_property: domains
+      notion_type: relation
+      local_field: domains
+      local_kind: task
+      required: false
+  notes: "Identity map after unify-names. Notion authoring reconciles into operator files; record discovery never dispatches work."

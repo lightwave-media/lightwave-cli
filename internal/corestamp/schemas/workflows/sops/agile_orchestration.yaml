@@ -22,7 +22,7 @@ _meta:
     - "go:AgileOrchestration"
   depends_on:
     - "lightwave://schemas/workflows/sops/software_lifecycle"
-    - "lightwave://schemas/data/agile_artifacts/sprint"
+    - "lightwave://schemas/data/agile_artifacts/agile_sprint"
     - "lightwave://schemas/data/agile_artifacts/task"
     - "lightwave://schemas/policy/governance/developer_sandbox"
     - "lightwave://schemas/data/enums/model_tiers"

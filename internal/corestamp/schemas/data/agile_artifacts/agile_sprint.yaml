@@ -1,15 +1,15 @@
 _meta:
-  version: "1.3.2"
-  schema_id: "lightwave://schemas/data/agile_artifacts/sprint"
-  title: "Sprint"
-  description: "A time-boxed iteration aggregating user_stories + tasks under one or more epics. May be quality-gated (end_date: null) per the lightwave-core-rebuild precedent. Migrated 2026-05-25 from governance/agile/sprint.yaml (Phase 4 file #11) — Augusta example replaced with v_core."
+  version: "2.2.0"
+  schema_id: "lightwave://schemas/data/agile_artifacts/agile_sprint"
+  title: "Agile Sprint"
+  description: "Formerly sprint / Sprint (table sprints). That name is retired 2026-09-21: the Notion hub is [DB] AgileSprints and one name per concept wins, so the schema takes the workspace's name — agile_sprint, table agile_sprints, and every *sprint_ref becomes *agile_sprint_ref. A time-boxed iteration aggregating user_stories + tasks under one or more epics. May be quality-gated (end_date: null) per the lightwave-core-rebuild precedent. Migrated 2026-05-25 from governance/agile/sprint.yaml (Phase 4 file #11) — Augusta example replaced with v_core. v2.1.0 adds related_documents, the field document_ref already said every agile artifact carries: ceremony records (sprint planning, standup, retrospective) are documents, and this is where a sprint links them. v2.2.0 adds sprint_number and is_current, the two properties the workspace already keys on: views in tasks and user_stories filter on the one current sprint instead of pinning a page, and sprint_number orders sprints without parsing names."
   generates:
-    - "pydantic:Sprint"
+    - "pydantic:AgileSprint"
   depends_on:
-    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/enums/domains"
     - "lightwave://schemas/data/agile_artifacts/epic"
   table_kind: entity
-  table_name: sprints
+  table_name: agile_sprints
 
 status_enum: agile_statuses
 
@@ -33,11 +33,11 @@ required_fields:
     storage: db
   - name: domain
     type: str
-    description: "LifeDomain slug; validated against life_domains"
+    description: "domain slug; validated against domains"
     storage: db
   - name: status
     type: str
-    description: "Lifecycle state; validated against sprint_statuses"
+    description: "Lifecycle state; validated against agile_statuses (status_enum). sprint_statuses is retired."
     storage: db
     indexed: true
   - name: start_date
@@ -77,6 +77,20 @@ optional_fields:
     type: float
     description: "Retro quality score 0-100 (set post-completion only)"
     storage: db
+  - name: sprint_number
+    type: int
+    description: "Ordinal for reliable ordering — the workspace uses the ISO week number (e.g. 36). Never parsed out of name."
+    storage: db
+  - name: is_current
+    type: bool
+    description: "Exactly one sprint carries true. Task and user-story views filter on it, so nothing is rotated by hand at sprint boundaries."
+    storage: db
+    indexed: true
+  - name: related_documents
+    type: list[DocumentRef]
+    description: "List of {category, slug} document references — the sprint's ceremony records (sprint_planning, standup, retrospective) and any spec it executes against. Logical reference, not a foreign key."
+    storage: db
+    column_type: jsonb
 
 relations:
   parent: epic
@@ -95,6 +109,8 @@ example:
   start_date: "2026-06-01"
   end_date: "2026-06-30"
   epic_ref: "v-core-v1-ready-task-dispatch"
+  sprint_number: 23
+  is_current: true
   objectives: "Ship v_core's local SQLite poll loop + dispatch to claude-code/pi harnesses. End-to-end Ready-Task → dispatched-session round-trip verified."
   created_at: "2026-06-24T12:00:00Z"
   updated_at: "2026-06-24T12:00:00Z"

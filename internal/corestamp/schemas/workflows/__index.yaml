@@ -14,8 +14,8 @@
 #                   stack; kept for historical reference, not an active family)
 #   aws_tasks/    — AWS-side task definitions (Lambda, Step Functions, etc.)
 #
-# Active families: orchestration, scheduled_jobs, sops, strategies, validation.
-# Pending: actions, blueprints, skills, celery_tasks, aws_tasks.
+# Active families: actions, orchestration, scheduled_jobs, sops, strategies, validation, skills.
+# Pending: blueprints, celery_tasks, aws_tasks.
 # =============================================================================
 
 _meta:
@@ -25,6 +25,7 @@ _meta:
   description: "Sub-registry for process-shape schemas. lw cli reads blueprints/ at execution time; blueprint → action ref integrity enforced by R-10."
 
 schemas:
+  actions: actions/__index.yaml
   orchestration: orchestration/__index.yaml
   scheduled_jobs: scheduled_jobs/__index.yaml
   sops: sops/__index.yaml

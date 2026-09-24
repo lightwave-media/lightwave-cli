@@ -7,7 +7,7 @@ _meta:
     - "pydantic:SAD"
   depends_on:
     - "lightwave://schemas/data/enums/document_statuses"
-    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/enums/domains"
     - "lightwave://schemas/data/agile_artifacts/prd"
   table_kind: entity
   table_name: sads
@@ -56,7 +56,7 @@ required_fields:
     column_type: jsonb
   - name: domain
     type: str
-    description: "LifeDomain slug; validated against life_domains"
+    description: "domain slug; validated against domains"
     storage: db
   - name: created_at
     type: datetime

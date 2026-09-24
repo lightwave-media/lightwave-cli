@@ -1,0 +1,118 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/reference_documents/article_object"
+  title: "Article Object — formal document catalog"
+  table_kind: document
+  table_name: article_objects
+  scope: local
+  description: |
+    The catalog of formal, versioned documents: specs, SOPs, principles,
+    audits, retrospectives, financial and legal records, knowledge and
+    learning notes. One row per catalogued document. The Notion hub is
+    [DB] ArticleObjects, and the schema takes the workspace's name
+    (operator decision 2026-09-21).
+
+    Not the same table as reference_documents/document. That one is the
+    local file INDEX — every file under ~/.lightwave/specs, keyed by
+    (kind, slug), derived and droppable. This one is a curated CATALOG
+    row: a document someone deliberately filed, typed, prioritised for
+    agent context and reviewed on a cadence. A catalogued document may
+    also be indexed; the two rows point at the same file and neither
+    owns it (ADR-0049).
+
+    This is the single linking point the ceremonies use: a sprint's
+    retrospective, a task's kickoff record, a story's interview export
+    are article_objects, reached through the artifact's
+    related_documents. Ceremonies therefore need no table of their own.
+
+    Agent ownership is a relation to identities (agent_refs), not a tag
+    vocabulary; [DB] ArticleObjects' Agent Tags multi-select (underscored
+    persona names, lightwave-core#546) is retired by the alignment.
+  generates:
+    - "pydantic:ArticleObject"
+    - "go:ArticleObject"
+  depends_on:
+    - lightwave://schemas/data/enums/article_object_types
+    - lightwave://schemas/data/enums/article_object_content_types
+    - lightwave://schemas/data/enums/context_priorities
+    - lightwave://schemas/data/enums/document_statuses
+    - lightwave://schemas/data/enums/domains
+    - lightwave://schemas/data/meta/identity
+
+status_enum: "document_statuses"
+
+natural_key:
+  column: slug
+  unique: true
+
+required_fields:
+  - name: slug
+    type: str
+    description: "Kebab-case identifier; stable across renames of the title."
+    pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
+  - name: title
+    type: str
+    description: "Human title. The Notion title property projects this."
+  - name: article_object_type
+    type: str
+    values_ref: "lightwave://schemas/data/enums/article_object_types"
+    description: "What kind of formal document this is."
+  - name: status
+    type: str
+    values_ref: "lightwave://schemas/data/enums/document_statuses"
+    description: >
+      Lifecycle: draft | active | archived. The 27-value Document Status
+      property in Notion collapses onto these three in the alignment;
+      the finer states are workflow, not lifecycle.
+
+optional_fields:
+  - name: content_type
+    type: str
+    values_ref: "lightwave://schemas/data/enums/article_object_content_types"
+    description: "Primary content classification, orthogonal to article_object_type."
+  - name: context_priority
+    type: str
+    values_ref: "lightwave://schemas/data/enums/context_priorities"
+    description: "How eagerly agents load this document into context."
+  - name: contains_sensitive_data
+    type: bool
+    description: "True when the document carries PII, credentials or financial detail."
+  - name: last_reviewed_at
+    type: date
+    description: "Most recent date the document was reviewed."
+  - name: source_links
+    type: list[str]
+    description: "References or URLs this document draws on."
+  - name: content_ref
+    type: str
+    description: "Where the document body lives — a path under ~/.lightwave/specs, or a file URL for a scanned/PDF copy."
+  - name: domains
+    type: list[str]
+    values_ref: "lightwave://schemas/data/enums/domains"
+    description: "Domains this document belongs to."
+  - name: agent_refs
+    type: list[str]
+    description: "identity_ids of the agents that own or route this document. Replaces Agent Tags."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  slug: 2026-09-05-sprint-retrospective
+  title: "Sprint retrospective — week:2026-08-30"
+  article_object_type: retro
+  status: active
+  content_type: operational_document
+  context_priority: medium
+  contains_sensitive_data: false
+  last_reviewed_at: "2026-09-06"
+  source_links:
+    - "https://github.com/lightwave-media/lightwave-ai/issues/118"
+  content_ref: "~/.lightwave/specs/retrospective/2026-09-05-sprint-retrospective.md"
+  domains:
+    - software-development
+  agent_refs:
+    - agt_5d1c07e2
+
+status: active

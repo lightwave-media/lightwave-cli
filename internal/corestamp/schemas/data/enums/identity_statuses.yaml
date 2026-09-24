@@ -1,0 +1,28 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/identity_statuses"
+  title: "Identity Row Lifecycle"
+  description: |
+    Lifecycle of an Identities row (enabled or not). Not runtime_status
+    (nullhub_instance_statuses). Not runner_statuses. Not agent_statuses
+    (SemanticTask assignment). Wire encoding is lowercase.
+  generates:
+    - "go:IdentityStatus"
+  depends_on: []
+name: identity_statuses
+description: "Identities row enabled-state"
+default: "active"
+closed: true
+options:
+  - value: provisioning
+    label: "Provisioning"
+    description: "Row exists; identity is not yet usable."
+  - value: active
+    label: "Active"
+    description: "Row is enabled."
+  - value: suspended
+    label: "Suspended"
+    description: "Temporarily disabled; may be reactivated."
+  - value: archived
+    label: "Archived"
+    description: "Permanently retired. Kept so identity_id does not recycle."
