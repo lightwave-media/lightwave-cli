@@ -67,6 +67,47 @@
           };
         });
 
+      # `lw` itself, built the way .goreleaser.yaml builds it (CGO off, the
+      # same three ldflags), so a host can pin
+      #
+      #     github:lightwave-media/lightwave-cli/v3.15.0#lw
+      #
+      # and get the binary released under that tag. Nix builds are
+      # revision-addressed — a flake ref loses its tag name — so the binary
+      # reports git-<rev> and the tag→commit mapping stays where it lives, in
+      # git; GoReleaser tarballs remain the version-named artifacts. There is
+      # still ONE installer: `mise run lw:sync` builds this output for the
+      # pinned ref and links it into ~/.local/bin. home.packages does not
+      # list lw, so two copies never race in PATH.
+      packages = forAllSystems (pkgs:
+        let
+          rev = self.shortRev or "dirty";
+          versionPkg = "github.com/lightwave-media/lightwave-cli/internal/version";
+          lw = pkgs.buildGoModule {
+            pname = "lw";
+            version = "0-git-${rev}";
+            src = self;
+            subPackages = [ "cmd/lw" ];
+            vendorHash = "sha256-PMDbMAyi15qBW6b+ELNkrVgTAw0ygT/C/6j/9thX480=";
+            env.CGO_ENABLED = 0;
+            ldflags = [
+              "-s"
+              "-w"
+              "-X ${versionPkg}.Version=git-${rev}"
+              "-X ${versionPkg}.Commit=${rev}"
+              "-X ${versionPkg}.Date=${self.lastModifiedDate or "unknown"}"
+            ];
+            # `mise run ci` is the gate and has already run the suite on the
+            # commit being packaged; the package proves the build, not the tests.
+            doCheck = false;
+            meta.mainProgram = "lw";
+          };
+        in
+        {
+          inherit lw;
+          default = lw;
+        });
+
       formatter = forAllSystems (pkgs: pkgs.nixpkgs-fmt);
     };
 }
