@@ -322,13 +322,22 @@ func (rules *PropertyRules) Validate(content Content) error {
 	return nil
 }
 
-// PropertyPolicy reads ownership and required/type constraints from the stamp.
+type propertyMapping struct {
+	Writable   *bool  `json:"writable"`
+	Property   string `json:"notion_property"`
+	Type       string `json:"notion_type"`
+	LocalField string `json:"local_field"`
+	Authority  string `json:"authority"`
+	Required   bool   `json:"required"`
+}
+
+// propertyMap reads the instance's property map and proves it claims this
+// database. A database with no map yields no mappings, not an error.
 //
 //nolint:gocritic // Value snapshots isolate reconciliation from mutations of generated records.
-func (files Files) PropertyPolicy(database Database) (*PropertyRules, error) {
-	rules := &PropertyRules{Owners: make(map[string]string), Types: make(map[string]string), Required: make(map[string]bool)}
+func (files Files) propertyMap(database Database) ([]propertyMapping, error) {
 	if database.PropertyMapRef == nil || *database.PropertyMapRef == "" {
-		return rules, nil
+		return nil, nil
 	}
 
 	slug := *database.PropertyMapRef
@@ -337,14 +346,8 @@ func (files Files) PropertyPolicy(database Database) (*PropertyRules, error) {
 	}
 
 	var mapping struct {
-		DatabaseID string `json:"database_notion_id"`
-		Mappings   []struct {
-			Writable  *bool  `json:"writable"`
-			Property  string `json:"notion_property"`
-			Type      string `json:"notion_type"`
-			Authority string `json:"authority"`
-			Required  bool   `json:"required"`
-		} `json:"mappings"`
+		DatabaseID string            `json:"database_notion_id"`
+		Mappings   []propertyMapping `json:"mappings"`
 	}
 	if err := readPrint(filepath.Join(files.Root, "specs", "notion_property_map", slug+".yaml"), &mapping); err != nil {
 		return nil, err
@@ -360,7 +363,41 @@ func (files Files) PropertyPolicy(database Database) (*PropertyRules, error) {
 		return nil, errors.New("property map belongs to a different database")
 	}
 
-	for _, field := range mapping.Mappings {
+	return mapping.Mappings, nil
+}
+
+// PropertyFields answers "which Notion property carries this local field":
+// the adapter half of the map, keyed by local_field.
+//
+//nolint:gocritic // Value snapshots isolate reconciliation from mutations of generated records.
+func (files Files) PropertyFields(database Database) (map[string]string, error) {
+	mappings, err := files.propertyMap(database)
+	if err != nil {
+		return nil, err
+	}
+
+	fields := make(map[string]string, len(mappings))
+	for _, field := range mappings {
+		if field.LocalField != "" {
+			fields[field.LocalField] = field.Property
+		}
+	}
+
+	return fields, nil
+}
+
+// PropertyPolicy reads ownership and required/type constraints from the stamp.
+//
+//nolint:gocritic // Value snapshots isolate reconciliation from mutations of generated records.
+func (files Files) PropertyPolicy(database Database) (*PropertyRules, error) {
+	rules := &PropertyRules{Owners: make(map[string]string), Types: make(map[string]string), Required: make(map[string]bool)}
+
+	mappings, err := files.propertyMap(database)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, field := range mappings {
 		if field.Property == "" || field.Type == "" {
 			return nil, errors.New("property map requires property name and type")
 		}

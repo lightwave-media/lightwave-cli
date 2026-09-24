@@ -74,6 +74,33 @@ this workflow: a human edit between the final read and a property PATCH remains
 a provider race. Body updates use guarded old/new text replacement. There is no
 claim of atomic multi-property/body delivery or exactly-once HTTP execution.
 
+## Promote ready rows into nulltickets
+
+```sh
+lw knowledge promote --database <notion_id> --pipeline <nulltickets_pipeline_id> --dry-run --json
+lw knowledge promote --database <notion_id> --pipeline <nulltickets_pipeline_id> --json
+```
+
+Promotion is the Notion → nulltickets hop. It reads the database's property map
+to find which Notion properties carry the local fields `status` and
+`context_packet`, queries the data source once per hundred rows (properties come
+with the listing, so no page is fetched on its own), and posts every row whose
+status is `run_session_ready` and whose packet is `verified` to `POST /tasks`.
+Option labels are compared after folding to the enum vocabulary, so "Run Session
+Ready" and "✅ Verified" match before and after the labels are renamed.
+
+Each request carries `Idempotency-Key: notion:page:<id>`, and the created task
+is recorded as a `provider: nulltickets` external-ref print keyed by the same
+page, so a second pass reports `already_promoted` without a request. A ready row
+whose packet is not verified is `surfaced` with the value it has and is never
+promoted. A nulltickets failure is reported and leaves no binding; the next pass
+retries and nulltickets deduplicates on the key. `--dry-run` sends nothing and
+writes nothing.
+
+nulltickets is located by `NULLTICKETS_URL` (default `http://127.0.0.1:7700`)
+and the optional bearer `NULLTICKETS_API_TOKEN`, the same names the lw-webhook
+GitHub hop uses.
+
 ## Recover a derived index
 
 Preserve both page and external-ref files. The latter contain the reconciliation
