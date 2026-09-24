@@ -1,0 +1,45 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/session_endpoint_kinds"
+  title: "Session Endpoint Kinds"
+  description: |
+    Closed enum of live session endpoints `lw session list` can report.
+    Distinct from agent_session (token-bound 24h identity) and from
+    null_instance_binding (Mission Control gateway roster). An endpoint is
+    something glass can attach to, or a herd member listed as not attachable.
+
+    Adding a kind means documenting its attach ABI in the same PR notes:
+    attachable true only when a glass can join without spawn.
+  generates:
+    - "pydantic:SessionEndpointKind"
+  depends_on: []
+
+name: session_endpoint_kinds
+description: "Live session endpoints the operator can list or attach"
+default: tmux_pty
+closed: true
+options:
+  - value: tmux_pty
+    label: "tmux PTY"
+    description: "tmux pane; Ghostty attaches with tmux attach. Latch, not kernel."
+  - value: nullclaw_agent
+    label: "nullclaw agent"
+    description: "Interactive nullclaw agent -s loop (TTY). Not the HTTP gateway."
+  - value: nullclaw_gateway
+    label: "nullclaw gateway"
+    description: "Headless HTTP/WebSocket instance from instances.yaml. List only."
+  - value: claude_resume
+    label: "Claude resume"
+    description: "Claude Desktop/CLI --resume uuid plus detach MCP."
+  - value: cursor_persist
+    label: "Cursor persist"
+    description: "cursor-agent persist/ls/resume TTY sessions. Piped list is a dead end."
+  - value: cursor_worker
+    label: "Cursor worker"
+    description: "cursor-agent worker start; spawn-only, one group per worker-dir."
+  - value: cursor_ide
+    label: "Cursor IDE chat"
+    description: "In-app chat via extension-host. No tmux attach ABI today."
+  - value: codex_desktop
+    label: "Codex desktop"
+    description: "Codex app; no tmux attach ABI this slice."

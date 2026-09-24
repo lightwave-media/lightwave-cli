@@ -1,13 +1,16 @@
 _meta:
-  version: "2.1.0"
-  schema_id: "lightwave://schemas/data/enums/life_domains"
-  title: "Life Domains Enum"
+  version: "2.2.0"
+  schema_id: "lightwave://schemas/data/enums/domains"
+  title: "Domains Enum"
   description: |
-    The 17 top-level life-domains from joel's Notion outline. Used as the `domain:`
+    Formerly life_domains / LifeDomain. That name is retired.
+    Notion hub is DomainOntology → table_name domains.
+
+    The 14 top-level domains from joel's Notion outline. Used as the `domain:`
     field value in every R-P-I-V-R artifact (product_vision, prd, sad, nfr, ddd,
     api_spec, epic, sprint, user_story, task, implementation_plan). Each life-domain
     may have its own Domain Charter at ~/.lightwave/specs/domain/<slug>.md
-    (currently only `software-development` exists; the other 16 are pending).
+    (currently only `software-development` exists; the others are pending).
 
     v2.0: values merged from print back into stamp per revised R-15.
     Originally crystallized from docs/domains/README.md.
@@ -25,6 +28,18 @@ _meta:
     `domain: finance` — that is the whole migration, and it is why this is a
     minor bump on a `closed: false` enum rather than a silent edit.
 
+    v2.2 MIGRATION — `creative-strategy` and `content-creation` folded into
+    `marketing-social-media`; `mental-clarity` folded into `health-fitness`;
+    `customer-operations` folded into the new `business-operations`. Operator
+    decision 2026-09-22, surfaced by the [DB] article_objects alignment: 15
+    article_objects rows already related to the Operations domain with no
+    stamp value to serialise to — the same position `cinematography` was in
+    before v2.1. All four retired values are REMOVED rather than kept as
+    deprecated aliases, per the same rationale as v2.1's `financial` removal:
+    no new artifact can select a retired half. Any artifact still carrying one
+    of the four retired `domain:` values must be rewritten to its fold target.
+    Net 17 -> 14 values; `closed: false`, so this is a minor bump.
+
     closed: false — operators may extend (e.g., add 'spirituality' or 'education'),
     but extension is a STAMP version bump (PR to lightwave-core), not a runtime
     knob. Same workflow as adding a new R-P-I-V-R artifact kind.
@@ -33,11 +48,11 @@ _meta:
     the 8-item enum for agent Scrum participation — different concern, different
     granularity.
   generates:
-    - "pydantic:LifeDomain"
+    - "pydantic:Domain"
   depends_on: []
 
-name: life_domains
-description: "Top-level life-domains in the createOS taxonomy"
+name: domains
+description: "Top-level domains in the createOS taxonomy"
 default: software-development
 closed: false
 options:
@@ -50,12 +65,6 @@ options:
   - value: finance
     label: "Finance"
     description: "Bookkeeping, tax, accounting, capital allocation, investments and long-term wealth (absorbed the retired `financial` in v2.1)"
-  - value: creative-strategy
-    label: "Creative Strategy"
-    description: "Creative direction, brand, positioning, narrative strategy"
-  - value: content-creation
-    label: "Content Creation"
-    description: "Authoring scripts, copy, posts, screenplays, articles"
   - value: cinematography
     label: "Cinematography"
     description: "Camera, lighting and post-production craft — the row cineOS promotes from"
@@ -76,19 +85,16 @@ options:
     description: "Family relationships, planning, support"
   - value: health-fitness
     label: "Health & Fitness"
-    description: "Physical health, exercise, nutrition, medical"
-  - value: mental-clarity
-    label: "Mental Clarity"
-    description: "Mental health, reflection, mood, stress management"
+    description: "Physical health, exercise, nutrition, medical (absorbed the retired `mental-clarity` in v2.2: reflection, mood, stress management)"
   - value: mind-expansion
     label: "Mind Expansion"
     description: "Learning, reading, courses, deep practice"
   - value: travel-exploration
     label: "Travel & Exploration"
     description: "Trips, exploration, location-based experiences"
-  - value: customer-operations
-    label: "Customer Operations"
-    description: "Client work, customer support, account management (when products gain external customers)"
   - value: marketing-social-media
     label: "Marketing & Social Media"
-    description: "Marketing campaigns, social-media presence, audience growth — distinct from creative-strategy"
+    description: "Marketing campaigns, social-media presence, audience growth, creative direction, brand, positioning, narrative strategy, authoring scripts/copy/posts/screenplays/articles (absorbed the retired `creative-strategy` and `content-creation` in v2.2)"
+  - value: business-operations
+    label: "Business Operations"
+    description: "The COO function — internal process, vendor and service management, document organisation, entity administration (absorbed the retired `customer-operations` in v2.2)"

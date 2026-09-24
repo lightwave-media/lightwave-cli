@@ -1,0 +1,31 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/time_period_types"
+  title: "Time Period Types"
+  description: |
+    The five tiers of the review spine (lightwave-core#524, TP-01). Order
+    is the containment order: a year houses quarters, a quarter months, a
+    month weeks, a week days. Wire encoding is lowercase.
+  generates:
+    - "go:TimePeriodType"
+  depends_on: []
+name: time_period_types
+description: "Tier of a time_period row"
+default: "day"
+closed: true
+options:
+  - value: year
+    label: "Year"
+    description: "Calendar year. Top of the spine; has no display parent."
+  - value: quarter
+    label: "Quarter"
+    description: "Calendar quarter (Q1 = Jan–Mar). Display parent: year."
+  - value: month
+    label: "Month"
+    description: "Calendar month. Display parent: quarter."
+  - value: week
+    label: "Week"
+    description: "Sunday–Saturday week, keyed by its Sunday. Display parent: the month holding the majority of its days (midpoint rule)."
+  - value: day
+    label: "Day"
+    description: "Calendar day. Display parent: week."

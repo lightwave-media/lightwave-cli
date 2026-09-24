@@ -24,3 +24,4 @@ schemas:
   architectural_fit: architectural_fit.yaml
   knowledge_source: knowledge_source.yaml
   document: document.yaml
+  article_object: article_object.yaml

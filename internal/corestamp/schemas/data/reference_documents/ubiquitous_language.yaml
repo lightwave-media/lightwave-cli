@@ -1,10 +1,22 @@
 _meta:
-  version: "1.1.0"
+  version: "1.2.0"
   schema_id: "lightwave://schemas/data/reference_documents/ubiquitous_language"
   title: "Ubiquitous-Language Glossary"
   table_kind: document
   scope: local
-  description: "Defines the shared language inside a bounded context (DDD ubiquitous-language). Parents to a Domain Charter for domain-level glossaries, or to a Package/Epic for narrower scope. Each term carries definition, aliases, anti-terms (words to AVOID), and examples. Migrated 2026-05-25 from governance/reference/ubiquitous_language.yaml (Phase 4 file #18)."
+  description: |
+    Defines the shared language inside a bounded context (DDD ubiquitous-language). Parents to a Domain
+    Charter for domain-level glossaries, or to a Package/Epic for narrower scope. Each term carries
+    definition, aliases, anti-terms (words to AVOID), and examples. Migrated 2026-05-25 from
+    governance/reference/ubiquitous_language.yaml (Phase 4 file #18).
+
+    v1.2 — "Stamp" and "Print" are retired. They were a private mnemonic for the shape/content split
+    and do not transfer to an engineer reading the package cold. The example now uses the ontology
+    grid's own words (policy/governance/ontology_grid.yaml, CORE-0048): a **schema** holds shape,
+    an **instance** is a filled record under ~/.lightwave/specs, a **projection** is a copy of an
+    instance in an external system. The retired words are listed as anti-terms so the glossary
+    itself says not to use them. Prose elsewhere in src/schemas still carries the old words; that
+    sweep is a follow-up, not a shape change.
   generates:
     - "pydantic:UbiquitousLanguageGlossary"
   depends_on:
@@ -51,18 +63,18 @@ example:
   parent_kind: "package"
   parent_ref: "package/lightwave-core"
   terms:
-    - term: "Stamp"
-      definition: "The declarative source of truth — lightwave-core itself. Holds shape; never holds content."
-      aliases: ["SST", "schema package"]
-      anti_terms: ["spec library (too narrow)", "type system (too narrow)"]
+    - term: "Schema"
+      definition: "A declared shape in lightwave-core: fields, constraints, allowed values. Holds shape; never holds content."
+      aliases: ["SST", "schema package", "language cell (ontology grid)"]
+      anti_terms: ["stamp (retired 2026-09-21)", "spec library (too narrow)", "type system (too narrow)"]
       examples:
-        - "lightwave-core/src/schemas/data/agile_artifacts/epic.yaml defines the stamp for Epic entities"
-    - term: "Print"
-      definition: "Runtime artifacts and filled instances produced by code reading the stamp. Lives at ~/.lightwave/*."
-      aliases: ["runtime data", "instance"]
-      anti_terms: ["output (too vague)", "render (overloaded)"]
+        - "lightwave-core/src/schemas/data/agile_artifacts/epic.yaml is the schema for Epic records"
+    - term: "Instance"
+      definition: "A filled record that conforms to a schema. Operator files under ~/.lightwave/specs are the instances of record; a copy in Notion, GitHub or Postgres is a projection of one."
+      aliases: ["record", "operator file", "runtime data"]
+      anti_terms: ["print (retired 2026-09-21)", "output (too vague)", "render (overloaded)"]
       examples:
-        - "~/.lightwave/specs/epic/<slug>.md is a print of the Epic stamp"
+        - "~/.lightwave/specs/epic/<slug>.md is an instance of the Epic schema"
     - term: "Action"
       definition: "Atomic parameterized primitive that does one thing in a blueprint. Implemented in lw cli (or lightwave-sys for runtime actions)."
       aliases: ["primitive", "step"]
@@ -70,10 +82,10 @@ example:
       examples:
         - "gen-yaml-stub, register-index, format-lint, trigger-local-ci"
     # Three terms, not the glossary. R-44: an example block demonstrates the
-    # SHAPE; a filled catalog in the stamp is content, and content lives in the
-    # print (R-9). The lightwave-core glossary's six terms — these three plus
-    # Blueprint, Binding and Conformance test — moved to
-    # ~/.lightwave/specs/glossary/lightwave-core.yaml on 2026-09-13.
+    # SHAPE; a filled catalog in the schema is content, and content lives in the
+    # instance (R-9). The lightwave-core glossary's terms — these three plus
+    # Projection, Adapter, Blueprint, Binding and Conformance test — live at
+    # ~/.lightwave/specs/glossary/lightwave-core.yaml (moved 2026-09-13).
   related_glossaries:
     - "lightwave://specs/glossary/software-development"
   last_reviewed_at: "2026-05-25"

@@ -1,0 +1,156 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/policy/governance/ontology_grid"
+  title: "Ontology Grid — kind-family cells"
+  description: |
+    Engineering coordinate system for src/schemas kind-families.
+    Rows: language, engine, toolchain. Columns: data, logic, action, security.
+    Palantir product nouns stay out. Every kind-family occupies exactly one
+    cell. Tests walk the tree; unclassified fails.
+  generates:
+    - "json_schema:ontology_grid"
+  depends_on: []
+
+name: ontology_grid
+description: "Map of R-14 kind-families onto Language/Engine/Toolchain × Data/Logic/Action/Security"
+
+rows:
+  - language
+  - engine
+  - toolchain
+columns:
+  - data
+  - logic
+  - action
+  - security
+
+families:
+  - path: data/agents
+    row: language
+    column: data
+  - path: data/agile_artifacts
+    row: language
+    column: data
+  - path: data/cineos
+    row: language
+    column: data
+  - path: data/enums
+    row: language
+    column: data
+  - path: data/meta
+    row: language
+    column: data
+  - path: data/reference_documents
+    row: language
+    column: data
+  - path: data/tenancy
+    row: language
+    column: data
+  - path: data/emails
+    row: language
+    column: data
+  - path: data/runbooks
+    row: language
+    column: data
+  - path: data/ui
+    row: language
+    column: data
+  - path: data/ui_layout
+    row: language
+    column: data
+  - path: policy/validity
+    row: language
+    column: logic
+  - path: policy/testing
+    row: language
+    column: logic
+  - path: policy/governance
+    row: language
+    column: logic
+  - path: policy/compliance
+    row: language
+    column: logic
+  - path: policy/security
+    row: language
+    column: security
+  - path: workflows/actions
+    row: language
+    column: action
+  - path: workflows/sops
+    row: language
+    column: action
+  - path: workflows/scheduled_jobs
+    row: language
+    column: action
+  - path: workflows/blueprints
+    row: toolchain
+    column: action
+  - path: workflows/skills
+    row: toolchain
+    column: action
+  - path: workflows/celery_tasks
+    row: toolchain
+    column: action
+  - path: workflows/aws_tasks
+    row: toolchain
+    column: action
+  - path: workflows/orchestration
+    row: toolchain
+    column: action
+  - path: workflows/strategies
+    row: toolchain
+    column: action
+  - path: workflows/validation
+    row: toolchain
+    column: action
+  - path: interfaces/a2a
+    row: toolchain
+    column: action
+  - path: interfaces/acs
+    row: toolchain
+    column: action
+  - path: interfaces/agent_tools
+    row: toolchain
+    column: action
+  - path: interfaces/cli
+    row: toolchain
+    column: action
+  - path: interfaces/hooks
+    row: toolchain
+    column: action
+  - path: interfaces/http
+    row: toolchain
+    column: action
+  - path: interfaces/mcp
+    row: toolchain
+    column: action
+  - path: interfaces/notifications
+    row: toolchain
+    column: action
+  - path: servers/docs
+    row: toolchain
+    column: action
+  - path: servers/mcp
+    row: toolchain
+    column: action
+  - path: servers/repo-dev
+    row: toolchain
+    column: action
+  - path: integrations/forgejo
+    row: toolchain
+    column: data
+  - path: integrations/github
+    row: toolchain
+    column: data
+  - path: integrations/llm_providers
+    row: toolchain
+    column: data
+  - path: integrations/message_brokers
+    row: toolchain
+    column: data
+  - path: integrations/notion
+    row: toolchain
+    column: data
+  - path: integrations/sync
+    row: toolchain
+    column: data

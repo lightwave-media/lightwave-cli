@@ -1,0 +1,83 @@
+_meta:
+  version: "1.2.0"
+  schema_id: "lightwave://schemas/data/meta/identity"
+  title: "Identity — Mixed Human + Agent Principal"
+  table_kind: entity
+  table_name: identities
+  scope: local
+  description: |
+    Parent stamp for the Identities table. One row per principal.
+    `identity_id` is opaque and immutable (`usr_*` human, `agt_*` agent).
+    `actor_type` discriminates. `status` is row lifecycle (identity_statuses).
+
+    Agent-specific cells (persona_slug, runtime_status, module, rbac_role,
+    tier, instance_name) live on agent_identity, the agent projection of
+    this row. Do not invent a third id noun. Do not stuff rbac_role into
+    tenant_role.
+
+    Notion title is currently `last_name` (CRM leftover; required title
+    property). `display_name` is the ontology label. Email/CRM/relation
+    columns do not belong on this table.
+
+    v1.1: `legal_entity_ref` — the legal entity this principal belongs to
+    (data/meta/legal_entity). Agents and the operator point at the
+    `kind: self` row; a person at a client points at that client. This is
+    the one relation the table carries, because it is what makes the
+    company, not the agent, answerable for the agent's work.
+
+    v1.2: declares `natural_key: identity_id` — the immutable row key the
+    description always named, now stated where fk_ref resolvers look, so
+    task.assigned_agent and time_period.owner_ref can point here and be
+    checked (fk_column must match the target's natural_key).
+  depends_on:
+    - lightwave://schemas/data/enums/actor_types
+    - lightwave://schemas/data/enums/identity_statuses
+    - lightwave://schemas/data/enums/tenant_roles
+    - lightwave://schemas/data/meta/legal_entity
+
+natural_key:
+  column: identity_id
+  unique: true
+
+required_fields:
+- name: identity_id
+  type: str
+  description: >
+    Immutable row key. usr_<hex> when actor_type=human, agt_<hex> when
+    actor_type=agent. Not the persona slug. Not a UUID.
+- name: actor_type
+  type: str
+  values_ref: "lightwave://schemas/data/enums/actor_types"
+  description: human or agent. Wire lowercase.
+- name: status
+  type: str
+  values_ref: "lightwave://schemas/data/enums/identity_statuses"
+  description: Row lifecycle. Not runtime_status.
+optional_fields:
+- name: display_name
+  type: str
+  description: Human-readable label. Renamable.
+- name: tenant_role
+  type: list[str]
+  values_ref: "lightwave://schemas/data/enums/tenant_roles"
+  description: createOS shell IAM. Multi-valued. Not rbac_role.
+- name: legal_entity_ref
+  type: str
+  fk_ref: lightwave://schemas/data/meta/legal_entity
+  fk_column: legal_entity_id
+  description: >
+    legal_entity_id of the legal entity this principal belongs to.
+    Agents and the operator carry the `kind: self` row.
+example:
+  identity_id: usr_3c2f9e1a
+  actor_type: human
+  status: active
+  display_name: Joel Schaeffer
+  legal_entity_ref: ent_7f21c0a4
+  tenant_role:
+    - owner
+    - super_admin
+    - member
+    - admin
+    - client
+    - customer

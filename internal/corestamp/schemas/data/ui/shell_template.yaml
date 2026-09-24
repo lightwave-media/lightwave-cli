@@ -68,7 +68,7 @@ _meta:
   - typescript:ShellTemplate
   - json_schema:shell_template
   depends_on:
-  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/enums/domains
 
 required_fields:
 - name: name
@@ -181,7 +181,7 @@ sub_schemas:
   Layer:
     id:
       type: str
-      description: Layer identifier — a life_domains slug, dotted for sub-domains
+      description: Layer identifier — a domains slug, dotted for sub-domains
     chrome:
       type: str
       description: 'Navigation variant for this layer. Canonical values: sidebar, header.'

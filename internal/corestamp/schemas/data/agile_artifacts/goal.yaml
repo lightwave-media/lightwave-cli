@@ -13,14 +13,14 @@ _meta:
   generates:
     - "pydantic:Goal"
   depends_on:
-    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/enums/domains"
     - "lightwave://schemas/data/enums/goal_statuses"
-    - "lightwave://schemas/data/enums/epic_priorities"
+    - "lightwave://schemas/data/enums/priorities"
   table_kind: entity
   table_name: goals
 
 status_enum: "goal_statuses"
-priority_enum: "epic_priorities"
+priority_enum: "priorities"
 
 primary_key:
   column: id
@@ -42,7 +42,7 @@ required_fields:
     storage: db
   - name: domain
     type: str
-    description: "LifeDomain slug; validated against life_domains"
+    description: "domain slug; validated against domains"
     storage: db
   - name: status
     type: str
@@ -69,7 +69,7 @@ optional_fields:
     storage: db
   - name: priority
     type: str
-    description: "Priority; validated against the platform-wide P-tier priority enum (epic_priorities)"
+    description: "Priority; validated against priorities (p0–p5)"
     storage: db
   - name: target_date
     type: date

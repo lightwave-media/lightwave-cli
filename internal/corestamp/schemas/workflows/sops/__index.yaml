@@ -34,9 +34,11 @@ schemas:
   home_policy_sync: home_policy_sync.yaml
   voice_reactive_monitor: voice_reactive_monitor.yaml
   worktree_maintenance: worktree_maintenance.yaml
+  git_cleanup: git_cleanup.yaml
   runbook_execution: runbook_execution.yaml
   runbook: runbook.yaml
   software_lifecycle: software_lifecycle.yaml
   agile_orchestration: agile_orchestration.yaml
   spec_delta_context: spec_delta_context.yaml
   media_backup_archive: media_backup_archive.yaml
+  planning_workflow: planning_workflow.yaml

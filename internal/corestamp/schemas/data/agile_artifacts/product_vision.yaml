@@ -8,8 +8,8 @@ _meta:
   depends_on:
     # MIGRATION-PENDING: document_statuses enum lands at src/schemas/data/enums/ when statuses.yaml migrates
     - "lightwave://schemas/data/enums/document_statuses"
-    # MIGRATION-PENDING: life_domains enum lands when domains.yaml migrates
-    - "lightwave://schemas/data/enums/life_domains"
+    # MIGRATION-PENDING: domains enum lands when domains.yaml migrates
+    - "lightwave://schemas/data/enums/domains"
   table_kind: entity
   table_name: product_visions
 
@@ -44,7 +44,7 @@ required_fields:
     column_type: jsonb
   - name: domain
     type: str
-    description: "LifeDomain slug; validated against life_domains"
+    description: "domain slug; validated against domains"
     storage: db
   - name: time_horizon
     type: str
@@ -86,7 +86,7 @@ example:
   name: "createOS — life OS for Joel"
   target_market: "Solo creative-tech founders running multi-domain operations"
   success_metrics:
-    - "All 17 LifeDomain Tasks dispatchable from one inbox"
+    - "All 17 Domain Tasks dispatchable from one inbox"
   domain: "software-development"
   time_horizon: "3-year"
   principles:

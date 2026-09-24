@@ -7,7 +7,7 @@ _meta:
     life-domain or operational concern. Closed enum.
 
 
-    Note: overlaps conceptually with life_domains but uses snake_case slugs
+    Note: overlaps conceptually with domains but uses snake_case slugs
 
     (software_dev vs software-development); the two are not 1:1. Future
 

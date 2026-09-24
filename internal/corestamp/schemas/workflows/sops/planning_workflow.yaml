@@ -1,0 +1,72 @@
+name: "planning_workflow"
+
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/planning_workflow"
+  title: "Planning Workflow — PV through code"
+  description: |
+    Canonical change SOP. Do not skip a phase. Do not start a coding
+    session from an Epic, a Story, or a Cursor plan. The Task is the
+    admission key; Context Packet must be verified before code.
+  generates:
+    - "json_schema:planning_workflow"
+  depends_on: []
+
+id: planning_workflow
+title: "Product Vision → PRD → SAD/NFR → Epic Brief → User Story → Sprint → Task → Implementation Plan → code"
+version: 1.0.0
+execution_mode: supervised
+
+trigger:
+  source: operator
+  event: change_requested
+
+parameters:
+  - name: repo
+    type: string
+  - name: epic_id
+    type: string
+
+steps:
+  - id: product_vision
+    tool: document
+    args:
+      kind: product_vision
+      note: "Link existing Product Vision. Do not rewrite."
+  - id: prd
+    tool: document
+    args:
+      kind: prd
+  - id: sad
+    tool: document
+    args:
+      kind: sad
+  - id: nfr
+    tool: document
+    args:
+      kind: nfr
+  - id: epic_brief
+    tool: document
+    args:
+      kind: epic_brief
+  - id: user_story
+    tool: document
+    args:
+      kind: user_story
+  - id: sprint
+    tool: document
+    args:
+      kind: sprint
+  - id: task
+    tool: document
+    args:
+      kind: task
+  - id: implementation_plan
+    tool: document
+    args:
+      kind: implementation_plan
+  - id: code
+    tool: session
+    args:
+      gate: context_packet_verified
+      note: "Code only after the Task Context Packet is verified."

@@ -1,0 +1,104 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/persona_rbac_roles"
+  title: "Persona RBAC Roles"
+  description: |
+    Closed catalog of agent_definition.rbac_role values, copied from live
+    ~/.lightwave/config/agents/*.yaml. Projection on Identities is the
+    same noun. Not tenant_role. Do not invent a role that no persona YAML
+    declares.
+  generates:
+    - "go:PersonaRbacRole"
+  depends_on: []
+name: persona_rbac_roles
+description: "Persona capability role (agent_definition.rbac_role)"
+default: "agent_repo_developer"
+closed: true
+options:
+  - value: agent_architect
+    label: "Architect"
+    description: "v_architect."
+  - value: agent_backend
+    label: "Backend"
+    description: "v_platform-developer, v_sys-developer."
+  - value: agent_brain
+    label: "Brain"
+    description: "v_brain."
+  - value: agent_cfo
+    label: "CFO"
+    description: "v_cfo."
+  - value: agent_core
+    label: "Core"
+    description: "v_core."
+  - value: agent_core_package_engineer
+    label: "Core Package Engineer"
+    description: "v_core-package-engineer."
+  - value: agent_creative
+    label: "Creative"
+    description: "v_cineos, v_photographer."
+  - value: agent_data_engineer
+    label: "Data Engineer"
+    description: "v_data-engineer."
+  - value: agent_developer
+    label: "Developer"
+    description: "v_core-package-developer."
+  - value: agent_executive
+    label: "Executive"
+    description: "v_cto, v_ceo, v_general-manager."
+  - value: agent_financial
+    label: "Financial"
+    description: "v_accountant."
+  - value: agent_frontend
+    label: "Frontend"
+    description: "v_frontend-developer."
+  - value: agent_infra
+    label: "Infra"
+    description: "v_devops."
+  - value: agent_infra_engineer
+    label: "Infra Engineer"
+    description: "v_infra-engineer."
+  - value: agent_legal
+    label: "Legal"
+    description: "v_legal-officer."
+  - value: agent_lightwave_ai_engineer
+    label: "Lightwave AI Engineer"
+    description: "v_lightwave-ai-engineer."
+  - value: agent_maintenance
+    label: "Maintenance"
+    description: "v_core-maintenance."
+  - value: agent_marketing
+    label: "Marketing"
+    description: "v_marketing-content-lead."
+  - value: agent_product
+    label: "Product"
+    description: "v_product-manager."
+  - value: agent_qa
+    label: "QA"
+    description: "v_qa-engineer."
+  - value: agent_release
+    label: "Release"
+    description: "v_release-engineer."
+  - value: agent_repo_developer
+    label: "Repo Developer"
+    description: "Deep-tier repo owners (cli, null*, infra, localapp)."
+  - value: agent_research
+    label: "Research"
+    description: "v_research-analyst."
+  - value: agent_scrum_manager
+    label: "Scrum Manager"
+    description: "v_scrum-manager."
+  - value: agent_security_compliance
+    label: "Security Compliance"
+    description: "v_security-compliance."
+  - value: agent_staff
+    label: "Staff"
+    description: "v_staff-engineer."
+  - value: agent_ux
+    label: "UX"
+    description: "v_ux-researcher."
+  - value: agent_voice_curator
+    label: "Voice Curator"
+    description: "v_speak."
+  - value: agent_writer
+    label: "Writer"
+    description: "v_write."

@@ -13,6 +13,7 @@ repo_infra: repo-infra.yaml
 repo_doc_manifest: repo_doc_manifest.yaml
 spec_artifact_kinds: spec_artifact_kinds.yaml
 template_kinds: template_kinds.yaml
+ontology_grid: ontology_grid.yaml
 schemas:
   branch_protection: branch_protection.yaml
   channel_bindings: channel_bindings.yaml
@@ -29,3 +30,4 @@ schemas:
   repo_doc_manifest: repo_doc_manifest.yaml
   spec_artifact_kinds: spec_artifact_kinds.yaml
   template_kinds: template_kinds.yaml
+  ontology_grid: ontology_grid.yaml

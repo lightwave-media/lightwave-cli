@@ -217,7 +217,7 @@ example:
         sst_schemas:
           - "lightwave://schemas/data/agile_artifacts/scrum_hierarchy"
           - "lightwave://schemas/data/agile_artifacts/epic"
-          - "lightwave://schemas/data/agile_artifacts/sprint"
+          - "lightwave://schemas/data/agile_artifacts/agile_sprint"
           - "lightwave://schemas/data/agile_artifacts/task"
           - "lightwave://schemas/integrations/sync/external_ref"
         sync_to_cloud: true

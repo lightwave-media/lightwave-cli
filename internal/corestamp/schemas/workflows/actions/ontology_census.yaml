@@ -1,0 +1,28 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/workflows/actions/ontology_census"
+  title: "Ontology Grid Census"
+  description: |
+    Walk every kind-family into an ontology_grid cell and write the report.
+    First Action-cell noun that actually runs (nulltickets). Not a catalog
+    of actions — this is the one census action.
+  generates:
+    - "json_schema:ontology_census"
+  depends_on:
+    - "lightwave://schemas/policy/governance/ontology_grid"
+
+name: ontology_census
+description: "Kind-family → grid cell census"
+table_kind: action
+action: ontology_census
+parameters:
+  - name: report_path
+    type: str
+    description: Where to write the census JSON.
+steps:
+  - load ontology_grid
+  - walk src/schemas kind-families
+  - fail on unclassified
+  - write report
+example:
+  report_path: ~/.lightwave/observability/ontology-census.json

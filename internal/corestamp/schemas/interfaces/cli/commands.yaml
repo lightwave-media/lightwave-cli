@@ -37,7 +37,7 @@ example:
 name: "commands"
 
 _meta:
-  version: "1.6.0"
+  version: "1.9.0"
   schema_id: "lightwave://schemas/interfaces/cli/commands"
   title: "lw CLI Command Surface"
   description: >-
@@ -64,6 +64,21 @@ _meta:
     v1.2.0 adds mcp.start|status|logs|stop|restart so a core agent-developer
     can lifecycle-manage the Lightwave MCP process without raw lsof/tail.
     Destructive stop/restart ship --dry-run + --yes. Tracking: lightwave-cli#385.
+
+    v1.7.0 adds config.env, the single loader that turns SSM /lightwave/prod/*
+    into a session's environment. Every harness adapter calls it at session
+    start (agent-harness-config blueprint); secrets are read through lw only.
+
+    v1.8.0 adds knowledge.bind — the door for binding a property_map to a
+    notion_database instance. The instances are CLI-written UUID files; the
+    only route before this was hand-editing them. Tracking: lightwave-cli#532.
+
+    v1.9.0 adds knowledge.promote — the Notion → nulltickets promotion
+    adapter. Rows of a bound database whose mapped `status` is
+    run_session_ready and whose `context_packet` is verified become one
+    nulltickets task each (Idempotency-Key notion:page:<id>), recorded as a
+    provider=nulltickets external_ref; ready-but-unverified rows are
+    surfaced, never promoted.
 
 domains:
   check:
@@ -204,6 +219,16 @@ domains:
         description: "Set a config key in ~/.config/lw/config.yaml"
       - name: show
         description: "Show current configuration"
+      # env — the one runtime-secrets loader. Prints every SSM
+      # /lightwave/prod/* parameter as shell exports so each harness adapter
+      # (Claude Code session-start hook, Pi extension, Codex / shell
+      # `eval "$(lw config env)"`) loads the same keys the same way; no agent
+      # invents its own credential lookup. Hand-wired in lightwave-cli beside
+      # `config harness`; declared here for drift parity. Never prints values
+      # anywhere but stdout, never writes a file.
+      - name: env
+        flags: [--json]
+        description: "Print SSM /lightwave/prod/* as shell exports (or JSON) for harness session start"
 
   context:
     description: "AI agent context management"
@@ -579,7 +604,7 @@ domains:
         description: "Apply manifest"
 
   session:
-    description: "Agent session lifecycle with kickoff gate"
+    description: "Agent session lifecycle: kickoff spawn plus viewport attach"
     commands:
       - name: spawn
         flags: [--persona, --task, --session]
@@ -593,6 +618,25 @@ domains:
       - name: promote
         flags: [--session]
         description: "Promote .tasks runtime to spec/agile/tasks/"
+      # list/attach/detach were stamped by #757 ahead of their handlers, which
+      # made `lw check schema` red on lightwave-cli main for every branch on
+      # every host (4 days, 2026-09-18 → 22). in_development until the CLI
+      # side lands. Tracking: lightwave-cli#527.
+      - name: list
+        flags: [--json, --attachable]
+        description: "List session endpoints; must not spawn"
+        # Tracking: lightwave-cli#527
+        _status: in_development
+      - name: attach
+        flags: [--session, --target]
+        description: "Attach glass to a live endpoint; refuse unless liveness is alive"
+        # Tracking: lightwave-cli#527
+        _status: in_development
+      - name: detach
+        flags: [--session]
+        description: "Drop glass; do not teardown the endpoint"
+        # Tracking: lightwave-cli#527
+        _status: in_development
 
   runbook:
     description: "Agent runbook apply in worktrees (ADR-0039)"
@@ -703,6 +747,26 @@ domains:
       - name: reindex
         flags: [--dry-run, --json]
         description: "Rebuild Notion projection rows from preserved page and binding prints without contacting Notion"
+      # bind — set property_map_ref (and optionally title) on one
+      # notion_database instance. Validates that the map resolves under
+      # specs/notion_property_map/ and that its database_notion_id is this
+      # database before writing. Never contacts Notion. lightwave-cli#532.
+      - name: bind
+        args: [notion_id]
+        flags: [--property-map, --title, --json]
+        description: "Bind a property_map (and optionally a title) to a notion_database instance without contacting Notion"
+      # promote — Notion → nulltickets hop. Reads the bound property map to
+      # find the properties that carry local_field status / context_packet,
+      # queries the data source once per 100 rows (no per-page fetch), and
+      # POSTs each ready+verified row to nulltickets with Idempotency-Key
+      # notion:page:<id>. The created task is recorded as an external_ref
+      # (provider nulltickets, binding_key nulltickets:task:<id>), so a
+      # second run is a no-op locally as well as server-side. nulltickets
+      # location and bearer come from NULLTICKETS_URL / NULLTICKETS_API_TOKEN,
+      # the same names the lw-webhook GitHub hop uses.
+      - name: promote
+        flags: [--database, --pipeline, --dry-run, --json]
+        description: "Promote run_session_ready + verified Notion rows into nulltickets tasks, one external_ref per task; surface ready-but-unverified rows"
   git:
     description: "Fleet git audit"
     commands:
@@ -847,7 +911,7 @@ domains:
       - name: youtube
         args: [url]
         flags: [--save, --domains, --lang, --extract, --json]
-        description: "Fetch a video's transcript and emit a knowledge_source instance (provenance + life_domains). Raw capture lands under ~/.lightwave/sources/youtube/<id>.md."
+        description: "Fetch a video's transcript and emit a knowledge_source instance (provenance + domains). Raw capture lands under ~/.lightwave/sources/youtube/<id>.md."
       - name: transcripts
         flags: [--date, --out, --dry-run, --json]
         description: "Harvest the day's Claude Code session transcripts, secret-scrubbed, into a redaction-audited corpus under brain/memory/daily/."
@@ -873,16 +937,29 @@ domains:
 
   adr:
     description: "Architecture Decision Record lifecycle"
-    # No handler yet. ADR ids under spec/adr/ are hand-allocated by reading the
-    # directory, and parallel sessions collided on 12 numbers — R-58 is the
-    # merge-time backstop, but nothing reserves an id atomically at authoring
-    # time. Tracking: lightwave-cli#259.
+    # `new` reserves ids atomically (flock on the tree) because parallel sessions
+    # collided on 12 numbers — R-58 is the merge-time backstop, but nothing
+    # reserved an id at authoring time. Tracking: lightwave-cli#259.
+    #
+    # `list` / `search` exist because the corpus was write-only: 70 ADRs across
+    # six repos and no verb but `new`, so "what did we already decide about X"
+    # had no answer at any surface. An agent spent most of a session on a store
+    # ADR-0004 had ruled out, because the dead code threw errors while the
+    # decision sat silent. Structurally the same gap `lw runbook list|search`
+    # closed for the runbook catalog (lightwave-cli#417).
     _status: in_development
     commands:
       - name: new
         args: [title]
         flags: [--tree, --supersedes, --dry-run, --json]
         description: "Reserve the next ADR id atomically (flock on the tree) and write the skeleton with frontmatter. --tree selects core|host."
+      - name: list
+        flags: [--tree, --status, --superseded, --json]
+        description: "List ADRs with id, status and title. Supersession is marked inline; --superseded shows only ADRs another has amended or replaced."
+      - name: search
+        args: [term]
+        flags: [--tree, --status, --json]
+        description: "Find an ADR by id, title or body text. Marks any hit that a later ADR amends or supersedes, so a ruled-out decision is never read as current."
 
   cron:
     description: "Scheduled job reconciliation between the stamp and the LaunchAgent fleet"

@@ -1,11 +1,14 @@
 _meta:
-  version: "0.1.0"
+  version: "0.2.0"
   schema_id: "lightwave://schemas/data/enums/project_types"
   title: "Project Type Enum"
   description: |
     What KIND of thing a Project is — the deliverable, not its lifecycle
-    (project_statuses) and not its work-spine position (Goal → Project → Epic →
+    (agile_statuses) and not its work-spine position (Goal → Project → Epic →
     Sprint → Task). Closed.
+
+    v0.2.0 (2026-09-23): `person_goal` label corrected to "Personal Goal" —
+    the Notion select reads that; "Person Goal" was a harvest typo.
 
     Harvested from the Notion `Global Projects & Epics DB` `Type of Project`
     select (collection://16edae69-e2ef-4bd9-92f9-fbf6e16d087a, captured
@@ -83,6 +86,6 @@ options:
     category: business
     description: "Tax or statutory administration"
   - value: person_goal
-    label: "Person Goal"
+    label: "Personal Goal"
     category: personal
     description: "A self-directed goal tracked on the work spine"

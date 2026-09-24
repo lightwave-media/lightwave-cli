@@ -1,0 +1,50 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/nullhub_instance_statuses"
+  title: "nullhub Instance Runtime Status"
+  description: |
+    Runtime status of a supervised instance. Values are the Zig Status enum
+    at lightwave-ai/src/nullhub/src/supervisor/manager.zig plus `offline`
+    from nullhub status_cli when the instance is not in the supervisor.
+
+    This is what GET /api/instances reports for a nullclaw (or other
+    module) process. It is not runner_statuses (Forgejo CI). It is not
+    a nulltickets lease stage. It is not agent_identity.status (row enabled).
+    The identity field that holds this value is runtime_status.
+  generates:
+    - "go:NullhubInstanceStatus"
+    - "zig:NullhubInstanceStatus"
+  depends_on: []
+name: nullhub_instance_statuses
+description: "nullhub supervisor runtime status for one named instance"
+default: "offline"
+closed: true
+options:
+  - value: "offline"
+    label: "Offline"
+    description: "Not in the supervisor. Persona YAML may still exist. status_cli prints this."
+    is_runtime: true
+  - value: "stopped"
+    label: "Stopped"
+    description: "Instance exists; process is not up. manager.zig Status.stopped."
+    is_runtime: true
+  - value: "starting"
+    label: "Starting"
+    description: "Process launched; health probe not yet ok. manager.zig Status.starting."
+    is_runtime: true
+  - value: "running"
+    label: "Running"
+    description: "Process is up. manager.zig Status.running. Live GET /api/instances value."
+    is_runtime: true
+  - value: "failed"
+    label: "Failed"
+    description: "Supervisor marked the instance failed. manager.zig Status.failed."
+    is_runtime: true
+  - value: "restarting"
+    label: "Restarting"
+    description: "Supervisor is restarting the process. manager.zig Status.restarting."
+    is_runtime: true
+  - value: "stopping"
+    label: "Stopping"
+    description: "Supervisor is stopping the process. manager.zig Status.stopping."
+    is_runtime: true

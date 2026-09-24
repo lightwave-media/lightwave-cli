@@ -1,5 +1,5 @@
 _meta:
-  version: "1.0.0"
+  version: "1.1.0"
   schema_id: "lightwave://schemas/data/enums/agile_statuses"
   title: "Agile Artifact Status Enum"
   description: |
@@ -20,10 +20,13 @@ _meta:
     renders and matches on.
 
     Ordering is the board's left-to-right flow, not alphabetical:
-    backlog -> next_up -> approved_for_work -> in_progress -> in_review
-    -> done, with on_hold, cancelled and archived as exits. Consumers
-    grouping into planes should derive from that order rather than
-    hardcoding a second list.
+    backlog -> next_up -> approved_for_work -> sprint_planning ->
+    run_session_ready -> active_run_in_progress -> in_progress ->
+    in_review -> done, with on_hold, cancelled and archived as exits.
+    `sprint_planning`, `run_session_ready`, and `active_run_in_progress`
+    are runtime states a live session can occupy (live Notion task_status).
+    Consumers grouping into planes should derive from that order rather
+    than hardcoding a second list.
   generates:
     - "typescript:AgileStatus"
     - "go:AgileStatus"
@@ -43,6 +46,18 @@ options:
   - value: approved_for_work
     label: "Approved for Work"
     description: "Cleared to start — scope and acceptance agreed, awaiting a worker"
+  - value: sprint_planning
+    label: "Sprint planning"
+    description: "In sprint planning; not yet a run session. Runtime state."
+    is_runtime: true
+  - value: run_session_ready
+    label: "run_session_ready"
+    description: "Context packet is ready; an agent may start a run. Runtime state."
+    is_runtime: true
+  - value: active_run_in_progress
+    label: "active_run_in_progress"
+    description: "An agent run is executing this task now. Runtime state."
+    is_runtime: true
   - value: in_progress
     label: "In Progress"
     description: "Actively being worked"

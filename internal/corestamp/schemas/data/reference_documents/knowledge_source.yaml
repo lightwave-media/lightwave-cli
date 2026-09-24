@@ -1,5 +1,5 @@
 _meta:
-  version: "0.1.0"
+  version: "0.1.1"
   schema_id: "lightwave://schemas/data/reference_documents/knowledge_source"
   title: "Knowledge Source"
   table_kind: document
@@ -22,7 +22,7 @@ _meta:
     - "pydantic:KnowledgeSource"
   depends_on:
     - "lightwave://schemas/data/enums/document_statuses"
-    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/enums/domains"
 
 status_enum: "document_statuses"
 
@@ -69,8 +69,8 @@ optional_fields:
     description: "Tool that produced the raw capture (e.g. youtube-transcript-api). Provenance for the text at content_ref — a machine transcript is not an author-checked one."
   - name: domains
     type: "list[str]"
-    description: "life_domains slugs this source informs. Drives which personas surface it."
-    values_ref: "lightwave://schemas/data/enums/life_domains"
+    description: "domain slugs this source informs. Drives which personas surface it."
+    values_ref: "lightwave://schemas/data/enums/domains"
   - name: frameworks
     type: "list[str]"
     description: "Named models or framings the source contributes, one line each. The reusable half of the work — what gets cited later."
@@ -87,7 +87,7 @@ optional_fields:
         evidence (str, what the source offers in support — the field that
           separates a supported claim from an assertion),
         locator (str, where in the source it sits: '[18:30]', 'ch. 4', 'p. 212'),
-        maps_to (list[str], life_domains slugs the claim bears on),
+        maps_to (list[str], domain slugs the claim bears on),
         confidence (str, high | medium | low — our confidence in the claim, not
           the speaker's).
   - name: related_artifacts
@@ -122,7 +122,7 @@ example:
   captured_via: "youtube-transcript-api"
   domains:
     - "software-development"
-    - "creative-strategy"
+    - "marketing-social-media"
   frameworks:
     - "Use / Compose / Build economics — decided per-workflow, not per-company"
     - "Governance-as-infrastructure: identity, authorization, allowed-actions, auditability enforced at the gateway"
@@ -134,7 +134,7 @@ example:
       claim: "Domain expertise plus AI beats coding skill alone."
       evidence: "In Anthropic's Feb-2026 flagship hackathon (13,000 applicants) the top three finishers were domain experts, not professional developers — first a lawyer, third a cardiologist."
       locator: "[18:30]"
-      maps_to: ["software-development", "creative-strategy"]
+      maps_to: ["software-development", "marketing-social-media"]
       confidence: "high"
   related_artifacts:
     - "lightwave://schemas/policy/validity/self-scaffolding-stance"

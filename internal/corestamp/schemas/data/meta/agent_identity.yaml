@@ -1,62 +1,82 @@
 _meta:
-  version: 1.0.0
+  version: 1.2.0
   schema_id: lightwave://schemas/data/meta/agent_identity
-  title: Agent Identity — Database-Driven, UUID-Immutable
+  title: Agent Identity — Agent Projection of Identities
   table_kind: entity
+  table_name: identities
   scope: local
-  description: 'Database-driven agent identity. UUID is immutable (assigned at creation).
+  description: |
+    Agent-scoped cells of the Identities table. Parent stamp is `identity`.
+    The table key is `identity_id`. On this stamp the same cell is `agent_id`
+    when actor_type=agent. Do not invent a third id noun.
 
-    Persona slug and display name are renamable. Provider API keys are shared
+    Shared instances (coder-1, nullclaw-1, …) are actor_type=agent with no
+    persona_slug, no rbac_role, no tier. Personas bind to nullclaw.
 
-    resources (not per-agent). Status lifecycle: provisioning → active →
-
-    suspended → archived. Every action attributable to agent_id + session_id.
-
-    '
+    JWT/session/provider fields live on agent_session, not this row.
+  depends_on:
+    - lightwave://schemas/data/meta/identity
+    - lightwave://schemas/data/enums/actor_types
+    - lightwave://schemas/data/enums/identity_statuses
+    - lightwave://schemas/data/enums/nullhub_instance_statuses
+    - lightwave://schemas/data/enums/null_modules
+    - lightwave://schemas/data/enums/persona_rbac_roles
+    - lightwave://schemas/data/enums/persona_tiers
+    - lightwave://schemas/data/enums/tenant_roles
 required_fields:
 - name: agent_id
   type: str
-  description: UUID v4, immutable
-- name: persona_slug
-  type: str
-  description: Canonical persona identifier (e.g. v_cto, v_developer).
+  description: >
+    Immutable identity key. Same cell as Identities `identity_id` when
+    actor_type=agent. Format agt_<hex>. Not the persona slug. Not a UUID.
 - name: display_name
   type: str
-  description: Human-readable display name for the agent persona.
+  description: Human-readable label. Renamable. Same cell as identity.display_name.
 - name: status
-  type: enum
-  options:
-  - provisioning
-  - active
-  - suspended
-  - archived
-  description: Lifecycle status of this agent identity record.
+  type: str
+  values_ref: "lightwave://schemas/data/enums/identity_statuses"
+  description: Row lifecycle. Same cell as identity.status. Not runtime_status.
 optional_fields:
-- name: instance_id
+- name: actor_type
   type: str
-  description: Unique instance identifier for this agent deployment.
-- name: provider_ref
+  values_ref: "lightwave://schemas/data/enums/actor_types"
+  description: Discriminator. This stamp is actor_type=agent. Wire lowercase.
+- name: persona_slug
   type: str
-  description: Reference to the model provider configuration for this agent.
-- name: session_id
+  description: Canonical persona identifier (e.g. v_cto). Same value as agent_definition.name. Absent on shared module instances.
+- name: runtime_status
   type: str
-  description: Current active session ID for this agent identity.
-- name: token_iat
+  values_ref: "lightwave://schemas/data/enums/nullhub_instance_statuses"
+  description: Live process status of the bound instance (Zig Status). Same cell as null_instance_binding.runtime_status.
+- name: module
   type: str
-  description: JWT iat — ISO 8601 timestamp when the identity token was issued.
-- name: token_exp
+  values_ref: "lightwave://schemas/data/enums/null_modules"
+  description: null* module this identity executes as. Personas bind to nullclaw.
+- name: instance_name
   type: str
-  description: JWT exp — ISO 8601 timestamp when the identity token expires.
-- name: deactivated_at
+  description: Name under ~/.nullhub/instances/{module}/{instance_name}/.
+- name: rbac_role
   type: str
-  description: ISO 8601 timestamp when this identity was deactivated.
+  values_ref: "lightwave://schemas/data/enums/persona_rbac_roles"
+  description: Projection of agent_definition.rbac_role. Absent on shared instances. Not tenant_role.
+- name: tier
+  type: str
+  values_ref: "lightwave://schemas/data/enums/persona_tiers"
+  description: Projection of agent_definition.tier. Absent on shared instances.
+- name: tenant_role
+  type: list[str]
+  values_ref: "lightwave://schemas/data/enums/tenant_roles"
+  description: createOS shell IAM. Agents use [agent]. Not rbac_role.
 example:
-  agent_id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+  agent_id: agt_a1b2c3d4
+  actor_type: agent
   persona_slug: v_staff-engineer
   display_name: Staff Engineer
   status: active
-  instance_id: v_staff-engineer
-  provider_ref: ssm:/lightwave/prod/openrouter/api_key
-  session_id: sess_abc123
-  token_iat: '2026-06-23T10:00:00Z'
-  token_exp: '2026-06-24T10:00:00Z'
+  module: nullclaw
+  runtime_status: stopped
+  instance_name: v_staff-engineer
+  rbac_role: agent_staff
+  tier: engineer
+  tenant_role:
+    - agent

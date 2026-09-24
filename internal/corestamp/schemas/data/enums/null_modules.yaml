@@ -1,0 +1,40 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/null_modules"
+  title: "null* Module Names"
+  description: |
+    Closed catalog of lightwave-ai null* modules. Values are the directory
+    names under lightwave-ai/src/ and the component keys under
+    ~/.nullhub/instances/. Copied from SAD-0002; do not invent synonyms.
+
+    nullboiler is the orchestrator (who/when). nullbuilder is Zig CI
+    templates. They are not the same module. Neither is src/boilerplate/.
+  generates:
+    - "go:NullModule"
+  depends_on: []
+name: null_modules
+description: "lightwave-ai null* module identifiers"
+default: nullclaw
+closed: true
+options:
+  - value: nulltickets
+    label: "nulltickets"
+    description: "Durable task graph, pipeline FSM, leases, claims, events, artifacts. Tracker. Does not run agents."
+  - value: nullboiler
+    label: "nullboiler"
+    description: "Orchestration policy — who runs what, when; DAG routing. Not the file factory. Not nullbuilder."
+  - value: nullclaw
+    label: "nullclaw"
+    description: "Agent runtime — tool execution, model calls, session memory. The executor process identities bind to."
+  - value: nullwatch
+    label: "nullwatch"
+    description: "Traces, evals, run summaries, cost/latency signals."
+  - value: nullhub
+    label: "nullhub"
+    description: "Install, supervise instances, HTTP API gateway, UI shell. Clients talk to nullhub, not raw module ports."
+  - value: nullvoice
+    label: "nullvoice"
+    description: "Local TTS/STT (Voicebox lineage). Tone policy stays on v_speak."
+  - value: nullbuilder
+    label: "nullbuilder"
+    description: "Shared Zig CI workflow templates. Not an orchestrator — do not confuse with nullboiler."

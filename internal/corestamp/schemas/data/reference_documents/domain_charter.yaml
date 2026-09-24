@@ -1,5 +1,5 @@
 _meta:
-  version: "1.1.0"
+  version: "1.1.1"
   schema_id: "lightwave://schemas/data/reference_documents/domain_charter"
   title: "Domain Charter"
   table_kind: document
@@ -15,7 +15,7 @@ status_enum: "document_statuses"
 required_fields:
   - name: slug
     type: str
-    description: "Kebab-case identifier; for life-domains, matches a value in life_domains enum. For sub-domains, slug carries the hierarchy (e.g., software-development.tooling)."
+    description: "Kebab-case identifier; for life-domains, matches a value in domains enum. For sub-domains, slug carries the hierarchy (e.g., software-development.tooling)."
   - name: name
     type: str
     description: "Human-readable domain name."
@@ -63,7 +63,7 @@ example:
   name: "Software Development"
   bounded_context: "Building and maintaining software for the LightWave Media ecosystem — all five lightwave-* repos across Python, Go, Rust, and TypeScript. Covers schemas, runtime, CLI, desktop, web frontend, and CI/CD infrastructure. Joel is the sole operator; the v_* agent fleet handles execution within this domain."
   non_scope:
-    - "Cinematography production workflows (lives in creative-strategy / content-creation)"
+    - "Cinematography production workflows (lives in cinematography)"
     - "Financial bookkeeping and tax (lives in finance)"
     - "Personal admin (lives in personal-admin)"
     - "Legal and entity-formation work (lives in legal)"
@@ -86,13 +86,13 @@ example:
       anti_terms: ["script (implies imperative)"]
   entities:
     - "lightwave://schemas/data/agile_artifacts/epic"
-    - "lightwave://schemas/data/agile_artifacts/sprint"
+    - "lightwave://schemas/data/agile_artifacts/agile_sprint"
     - "lightwave://schemas/data/agile_artifacts/task"
     - "lightwave://schemas/data/agile_artifacts/user_story"
   cross_domain_relationships:
-    - related_domain_slug: "creative-strategy"
+    - related_domain_slug: "marketing-social-media"
       kind: "provides_to"
-      note: "Software domain ships tools (CineOS, etc.) that creative-strategy domain consumes"
+      note: "Software domain ships tools (CineOS, etc.) that marketing-social-media domain consumes"
     - related_domain_slug: "personal-admin"
       kind: "adjacent"
       note: "Both rely on the same agent fleet but operate independently"

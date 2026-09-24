@@ -5,6 +5,16 @@ _meta:
   description: Registry of all agent skills in the Lightwave swarm. Each entry references
     the SKILL.md PRINT location and declares scope/category.
 skills:
+  # boilerplate-cli and self-healing: print_path left at the pre-migration
+  # in-repo location on purpose, not a stale-path bug like ponytail-audit's
+  # was. All three SKILL.md files were deleted together in 3fa7f919
+  # (2026-06-23, "delete skill files") from .agents/skills/<slug>/ (a
+  # repo-tracked path, predating the ~/.lightwave/skills/ canonical home).
+  # Only ponytail-audit was later recreated at the canonical home; these two
+  # never were. No content exists for them anywhere on this host (canonical
+  # or the .agents archive) as of 2026-09-23. Filed as lightwave-core#802 —
+  # resolve by authoring the skill or deregistering the entry, whichever
+  # Joel intends, before "fixing" the path to a location with nothing in it.
   boilerplate-cli:
     slug: boilerplate-cli
     category: tooling
@@ -18,7 +28,7 @@ skills:
   ponytail-audit:
     slug: ponytail-audit
     category: governance
-    print_path: .agents/skills/ponytail-audit/SKILL.md
+    print_path: ~/.lightwave/skills/ponytail-audit/SKILL.md
     description: Adversarial architecture audit from first principles post-CI-green.
     agents:
     - v_staff-engineer

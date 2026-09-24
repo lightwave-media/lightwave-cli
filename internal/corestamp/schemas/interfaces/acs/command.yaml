@@ -24,7 +24,7 @@ _meta:
     - "go:AcsCommand"
   depends_on:
     - "lightwave://schemas/data/enums/acs_command_kinds"
-    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/enums/domains"
 
 required_fields:
   - name: kind
@@ -50,7 +50,7 @@ optional_fields:
     description: "Inclusive replay cursor for agent_subscribe_thread."
   - name: life_domain
     type: enum
-    values_ref: "lightwave://schemas/data/enums/life_domains"
+    values_ref: "lightwave://schemas/data/enums/domains"
     description: "Life Domain of the ShellNode. This is the domain identifier — do not invent a second one."
   - name: shell_node_id
     type: str

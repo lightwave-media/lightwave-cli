@@ -7,7 +7,7 @@ _meta:
     - "pydantic:PRD"
   depends_on:
     - "lightwave://schemas/data/enums/document_statuses"
-    - "lightwave://schemas/data/enums/life_domains"
+    - "lightwave://schemas/data/enums/domains"
     - "lightwave://schemas/data/agile_artifacts/product_vision"
   table_kind: entity
   table_name: prds
@@ -60,7 +60,7 @@ required_fields:
     column_type: jsonb
   - name: domain
     type: str
-    description: "LifeDomain slug; validated against life_domains"
+    description: "domain slug; validated against domains"
     storage: db
   - name: created_at
     type: datetime
@@ -103,7 +103,7 @@ example:
   slug: "createos-inbox-agent-dispatch"
   name: "createOS Inbox + Agent Dispatch"
   vision_ref: "createos-life-os"
-  problem_statement: "Joel's daily work is split across 17 LifeDomains; today there is no single Ready-Task inbox he or his agents can poll. Tasks rot in Notion."
+  problem_statement: "Joel's daily work is split across 17 Domains; today there is no single Ready-Task inbox he or his agents can poll. Tasks rot in Notion."
   personas:
     - name: "Joel"
       role: "Sole operator"

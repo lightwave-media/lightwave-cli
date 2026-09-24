@@ -20,10 +20,12 @@ _meta:
 
 schemas:
   document_statuses: document_statuses.yaml
-  life_domains: life_domains.yaml
+  domains: domains.yaml
   task_statuses: task_statuses.yaml
   workspace_lifecycle_states: workspace_lifecycle_states.yaml
   workspace_clients: workspace_clients.yaml
+  agent_harnesses: agent_harnesses.yaml
+  agent_harness_deny_abis: agent_harness_deny_abis.yaml
   workspace_modes: workspace_modes.yaml
   workspace_terminal_outcomes: workspace_terminal_outcomes.yaml
   execution_modes: execution_modes.yaml
@@ -32,9 +34,9 @@ schemas:
   epic_statuses: epic_statuses.yaml
   user_story_statuses: user_story_statuses.yaml
   plan_statuses: plan_statuses.yaml
-  task_priorities: task_priorities.yaml
-  user_story_priorities: user_story_priorities.yaml
-  epic_priorities: epic_priorities.yaml
+  priorities: priorities.yaml
+  context_packet_statuses: context_packet_statuses.yaml
+  story_readiness: story_readiness.yaml
   task_types: task_types.yaml
   task_categories: task_categories.yaml
   discovery_statuses: discovery_statuses.yaml
@@ -43,11 +45,25 @@ schemas:
   interview_rounds: interview_rounds.yaml
   agile_statuses: agile_statuses.yaml
   agent_statuses: agent_statuses.yaml
+  session_endpoint_kinds: session_endpoint_kinds.yaml
+  session_liveness: session_liveness.yaml
   runner_statuses: runner_statuses.yaml
+  null_modules: null_modules.yaml
+  nullhub_instance_statuses: nullhub_instance_statuses.yaml
   adr_statuses: adr_statuses.yaml
   handoff_statuses: handoff_statuses.yaml
   persona_tiers: persona_tiers.yaml
   persona_lifecycle_classes: persona_lifecycle_classes.yaml
+  actor_types: actor_types.yaml
+  identity_statuses: identity_statuses.yaml
+  legal_entity_kinds: legal_entity_kinds.yaml
+  article_object_types: article_object_types.yaml
+  article_object_content_types: article_object_content_types.yaml
+  context_priorities: context_priorities.yaml
+  time_period_types: time_period_types.yaml
+  period_review_statuses: period_review_statuses.yaml
+  tenant_roles: tenant_roles.yaml
+  persona_rbac_roles: persona_rbac_roles.yaml
   interaction_types: interaction_types.yaml
   testing_harnesses: testing_harnesses.yaml
   validity_gate_actions: validity_gate_actions.yaml

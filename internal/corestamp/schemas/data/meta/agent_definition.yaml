@@ -52,7 +52,8 @@ required_fields:
     description: "Persona tier — drives scope.baseDir nullability, write_boundary scope, and which composer blocks render. See persona_tiers enum."
   - name: rbac_role
     type: str
-    description: "Maps persona to RBAC role (governance/access/rbac). Determines data-access permissions in production."
+    values_ref: "lightwave://schemas/data/enums/persona_rbac_roles"
+    description: "Maps persona to RBAC role. Closed catalog persona_rbac_roles. Not tenant_role."
   - name: scope
     type: "object<Scope>"
     description: "Read/write boundaries + capabilities. See Scope sub-schema."
@@ -125,7 +126,7 @@ sub_schemas:
     # vocabulary and the deployed one disagreed with nothing to catch it —
     # these are free-text `list[str]`/`str` fields, validated by no enum.
     role: "str" # developer(21) | observer(7) | stakeholder(3) | scrum_manager(2) | product_owner(1)
-    domains: "list[str]" # LifeDomain slugs the persona participates in
+    domains: "list[str]" # domain slugs the persona participates in
     # `refinement` is declared by 21 personas and was absent from this list.
     ceremonies: "list[str]" # sprint_review(26) | sprint_planning(22) | refinement(21) | retrospective(18) | daily_standup(18)
     cadence: "str" # per_sprint | continuous

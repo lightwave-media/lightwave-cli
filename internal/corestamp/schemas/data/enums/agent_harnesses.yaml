@@ -1,0 +1,40 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/agent_harnesses"
+  title: "Agent Harnesses"
+  description: |
+    Closed enum of desktop/CLI agent harnesses that can load the LightWave
+    deterministic spine (gates, validity, ledger). Distinct from
+    workspace_clients, which names coding tools that hold a Project
+    Workspace — a harness here is a session host that fires tool/lifecycle
+    events. Claude Code desktop and CLI share one plugin install, so they
+    collapse to `claude_code`. Pi is a harness and is not a workspace
+    client.
+
+    Adding a harness means adding a value here AND a row of
+    interfaces/agent_tools/harness_adapter.yaml in the same PR. The plugin
+    adapters in lightwave-plugin are the print of that stamp.
+  generates:
+    - "pydantic:AgentHarness"
+  depends_on: []
+
+name: agent_harnesses
+description: "Agent session hosts that can load the LightWave plugin spine"
+default: claude_code
+closed: true
+options:
+  - value: claude_code
+    label: "Claude Code"
+    description: "Claude Code desktop and CLI; native plugin hooks.json, PreToolUse ABI."
+  - value: cursor
+    label: "Cursor"
+    description: "Cursor agent; user hooks at ~/.cursor/hooks.json; camelCase events; Shell not Bash."
+  - value: codex
+    label: "Codex"
+    description: "OpenAI Codex desktop/CLI; Claude-like PreToolUse hooks.json plus .codex-plugin install."
+  - value: opencode
+    label: "OpenCode"
+    description: "OpenCode; in-process Plugin API (tool:before throw to deny); no stdin hooks."
+  - value: pi
+    label: "Pi"
+    description: "Pi agent; in-process extensions returning {block, reason}; lowercase tool names."

@@ -1,5 +1,5 @@
 _meta:
-  version: 1.4.0
+  version: 1.5.1
   schema_id: lightwave://schemas/data/agile_artifacts/user_story
   title: User Story
   description: 'User-facing slice with acceptance_criteria and an optional six-field
@@ -9,16 +9,20 @@ _meta:
     2026-05-25 from governance/agile/user_story.yaml (Phase 4 file #12) — Augusta example
     replaced with v_core, Postgres-first language updated to local-first per ADR-0002,
     createos/config dep dropped. v1.4.0 adds the journey-brief fields so the brief
-    is structured data rather than prose in a page body.'
+    is structured data rather than prose in a page body. v1.5.0 adds related_documents
+    (document_ref already named user_story as a carrier).'
   generates:
   - pydantic:UserStory
   depends_on:
-  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/enums/domains
   - lightwave://schemas/data/agile_artifacts/epic
+  - lightwave://schemas/data/enums/priorities
+  - lightwave://schemas/data/enums/execution_modes
+  - lightwave://schemas/data/enums/story_readiness
   table_kind: entity
   table_name: user_stories
 status_enum: agile_statuses
-priority_enum: user_story_priorities
+priority_enum: priorities
 primary_key:
   column: id
   type: uuid
@@ -48,11 +52,11 @@ required_fields:
   indexed: true
 - name: domain
   type: str
-  description: LifeDomain slug; validated against life_domains
+  description: domain slug; validated against domains
   storage: db
 - name: status
   type: str
-  description: Lifecycle state; validated against user_story_statuses
+  description: Lifecycle state; validated against agile_statuses (status_enum). user_story_statuses is retired.
   storage: db
   indexed: true
 - name: acceptance_criteria
@@ -63,7 +67,7 @@ required_fields:
   column_type: jsonb
 - name: priority
   type: str
-  description: MoSCoW priority; validated against user_story_priorities (must_have/should_have/could_have/wont_have)
+  description: Priority; validated against priorities (p0–p5)
   storage: db
 - name: user_type
   type: str
@@ -78,11 +82,11 @@ required_fields:
   description: ISO 8601 timestamp of last modification; auto-updated
   storage: db
 optional_fields:
-- name: sprint_ref
+- name: agile_sprint_ref
   type: str
-  description: Slug of containing Sprint (authoritative for sprint membership)
+  description: Slug of containing Agile Sprint (authoritative for sprint membership)
   storage: db
-  fk_ref: lightwave://schemas/data/agile_artifacts/sprint
+  fk_ref: lightwave://schemas/data/agile_artifacts/agile_sprint
   fk_column: slug
   indexed: true
 - name: story_points
@@ -150,6 +154,24 @@ optional_fields:
   storage: db
   column_type: jsonb
   description: Journey-brief subjective wrongness signals. Inventing these is product drift.
+- name: execution_mode
+  type: str
+  values_ref: "lightwave://schemas/data/enums/execution_modes"
+  description: Allowed agent autonomy for child tasks.
+  storage: db
+- name: readiness
+  type: str
+  values_ref: "lightwave://schemas/data/enums/story_readiness"
+  description: Agent readiness before slicing into Tasks. Not status.
+  storage: db
+- name: repo
+  type: str
+  description: Canonical target repo slug (e.g. lightwave-core).
+  storage: db
+- name: github_issue_url
+  type: str
+  description: Canonical GitHub issue this story mirrors.
+  storage: db
 - name: maturity_state
   type: str
   description: Agentic enrichment maturity (raw/enriching/blocked/ready)
@@ -158,6 +180,11 @@ optional_fields:
   type: bool
   description: 'Used by the Task Ready-state gate (prerequisite #8)'
   storage: db
+- name: related_documents
+  type: list[DocumentRef]
+  description: List of {category, slug} document references — interview exports, research notes, refinement records. Logical reference, not a foreign key.
+  storage: db
+  column_type: jsonb
 relations:
   parent: epic
   parent_fk:
@@ -188,7 +215,7 @@ example:
   - given: A Task with status='next_up' and is_ready()=False
     when: v_core runs its poll loop
     then: The Task is skipped with reasons logged to observability/dispatch.jsonl
-  priority: must_have
+  priority: p1
   user_type: v_core
   person: v_core dispatching Ready Tasks
   trigger: A Task becomes is_ready()=True

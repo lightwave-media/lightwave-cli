@@ -1,5 +1,5 @@
 _meta:
-  version: 1.0.0
+  version: 1.0.1
   schema_id: lightwave://schemas/data/meta/user_instance
   title: CreateOS User Instance
   table_kind: value_object
@@ -14,7 +14,7 @@ _meta:
   generates:
   - pydantic:UserInstance
   depends_on:
-  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/enums/domains
 required_fields:
 - name: operator_handle
   type: str
@@ -24,7 +24,7 @@ required_fields:
   description: SemVer version of the user_instance schema in use.
 - name: enabled_domains
   type: list[str]
-  description: life_domains slugs active for this operator
+  description: domain slugs active for this operator
 - name: voice_first
   type: bool
   description: Default input is speech; Joel dogfood true
@@ -79,8 +79,7 @@ example:
   voice_first: true
   enabled_domains:
   - photography
-  - content-creation
-  - creative-strategy
+  - marketing-social-media
   - legal
   - finance
   - software-development

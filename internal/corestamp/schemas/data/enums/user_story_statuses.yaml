@@ -1,8 +1,14 @@
 _meta:
-  version: "2.0.0"
+  version: "2.1.0"
   schema_id: "lightwave://schemas/data/enums/user_story_statuses"
   title: "User Story Status Enum"
   description: |
+    RETIRED 2026-09-23 — superseded by agile_statuses. Every agile artifact
+    declares `status_enum: agile_statuses`; one status vocabulary per work
+    spine wins. Kept on disk so generated types and __index.yaml still
+    resolve. Do not add options here and do not cite it from a new schema.
+    v2.1.0 records the retirement; nothing else changed.
+
     Lifecycle statuses for UserStory entities. Closed enum.
 
     v2.0: values merged from print back into stamp per revised R-15.

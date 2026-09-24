@@ -136,11 +136,18 @@ func TestNoDrift(t *testing.T) {
 			"digest guard (TestVerifyEmbeddedDigest) covers the in-repo half")
 	}
 
-	const subtree = "bindings/go/schemas"
-
 	if err := exec.Command("git", "-C", core, "rev-parse", "--verify", "--quiet",
 		SourceTag+"^{commit}").Run(); err != nil {
 		t.Skipf("SourceTag %q does not resolve in %s (shallow clone or missing tags)", SourceTag, core)
+	}
+
+	// Releases up to bindings/go/v0.8.0 mirrored the Go binding's copy; core
+	// retired the binding, and from v0.9.0 src/schemas is the only copy. The
+	// same per-ref choice scripts/sync-core-stamp.sh makes, so the guard
+	// compares against what the script actually extracted.
+	subtree := "src/schemas"
+	if exec.Command("git", "-C", core, "cat-file", "-e", SourceTag+":bindings/go/schemas").Run() == nil {
+		subtree = "bindings/go/schemas"
 	}
 
 	archived, err := exec.Command("git", "-C", core, "archive", SourceTag, "--", subtree).Output()

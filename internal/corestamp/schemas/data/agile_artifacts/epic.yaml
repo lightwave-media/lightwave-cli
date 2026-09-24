@@ -1,21 +1,23 @@
 _meta:
-  version: 1.6.0
+  version: 1.7.0
   schema_id: lightwave://schemas/data/agile_artifacts/epic
   title: Epic
   description: 'A major initiative under a PRD. Holds the brief (subtitle/log_line) and aggregates UserStories + Sprints.
     Mapped 1:1 to Django Epic. Migrated 2026-05-25 from governance/agile/epic.yaml (Phase 4 file #10) — Augusta example replaced
     with v_core, Postgres-first language updated to local-first per ADR-0002, products/createos/config dep dropped (Epic is
     generic — not tied to createos). v1.5.0 adds GitHub milestone/project projection fields (CORE-0048). v1.6.0 makes
-    project_ref required: the Global Projects & Epics print enforces Kind + Parent item, so an epic without a project cannot exist.'
+    project_ref required: the Global Projects & Epics print enforces Kind + Parent item, so an epic without a project cannot exist.
+    v1.7.0 adds github_issue_url — the GitHub EPIC issue this epic mirrors, the same name user_story already carries and the
+    property [DB] Projects&Epics already has; the milestone/project numbers are the roster, the issue is the epic itself.'
   generates:
   - pydantic:Epic
   depends_on:
-  - lightwave://schemas/data/enums/life_domains
+  - lightwave://schemas/data/enums/domains
   - lightwave://schemas/data/agile_artifacts/prd
   table_kind: entity
   table_name: epics
 status_enum: agile_statuses
-priority_enum: epic_priorities
+priority_enum: priorities
 primary_key:
   column: id
   type: uuid
@@ -50,16 +52,16 @@ required_fields:
   indexed: true
 - name: domain
   type: str
-  description: LifeDomain slug; validated against life_domains
+  description: domain slug; validated against domains
   storage: db
 - name: status
   type: str
-  description: Lifecycle state; validated against epic_statuses
+  description: Lifecycle state; validated against agile_statuses (status_enum). epic_statuses is retired.
   storage: db
   indexed: true
 - name: priority
   type: str
-  description: Priority; validated against the platform-wide priority enum
+  description: Priority; validated against priorities (p0–p5)
   storage: db
 - name: created_at
   type: datetime
@@ -123,6 +125,11 @@ optional_fields:
   type: str
   description: "owner/repo for this epic's GitHub projections"
   storage: db
+- name: github_issue_url
+  type: str
+  description: Canonical GitHub EPIC issue this epic mirrors. GitHub is write-primary for the story roster and milestone state;
+    Notion for priority, domain and timeline. Same field name as user_story.github_issue_url.
+  storage: db
 relations:
   parent: prd
   parent_fk:
@@ -139,7 +146,7 @@ example:
   project_ref: createos-spine-knowledge-ingestion-v1
   domain: software-development
   status: in_progress
-  priority: high
+  priority: p1
   subtitle: 'First v_core release: poll local SQLite index, dispatch Ready Tasks to the right agent harness'
   log_line: Local SQLite is the inbox. v_core the dispatcher.
   target_date: '2026-06-30'

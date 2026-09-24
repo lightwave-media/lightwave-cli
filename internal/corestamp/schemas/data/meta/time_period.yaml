@@ -1,0 +1,217 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/time_period"
+  title: "Time Period — review spine"
+  table_kind: entity
+  table_name: time_periods
+  scope: local
+  description: |
+    One canonical temporal spine — year → quarter → month → week → day —
+    that every review horizon is projected from (lightwave-core#524,
+    TP-01; user story US-COS-REVIEW-001). One row per period. Replaces
+    the per-cadence databases; the Notion hub today is
+    [DB] ObservabilityLogs, which already carries exactly these rows.
+
+    Dates are truth; parentage is presentation. `start`/`end` decide
+    which periods a date belongs to (aggregation, rollups, "what week is
+    this task in"). `display_parent_key` only decides where a row sits
+    in a tree view and can never change calculation membership. The
+    two disagree exactly once: a Sunday–Saturday week that crosses a
+    month, quarter or year boundary. Its display parent is the month
+    holding the majority of its days (four or more; the midpoint rule),
+    while each of its days aggregates into its own calendar month.
+
+    Calendar quarters (Q1 = Jan–Mar). Weeks run Sunday–Saturday and are
+    keyed by their Sunday. `timezone` is the IANA zone the bounds are
+    expressed in; the first projection uses America/Los_Angeles.
+
+    Field ownership. DERIVED by generation, never edited by hand:
+    key, period_type, start, end, timezone, display_parent_key. AUTHORED
+    by the operator or a ceremony: objectives, owner_ref, planning_*,
+    review_*. A projection adapter writes only the authored fields back.
+
+    Refusals a projection must raise (lightwave-core declares, it does
+    not enforce): duplicate key; end before start; a display parent of
+    the wrong tier (see parent_type_invariants); a cutover that would
+    delete a legacy cadence row without a rollback source.
+
+    This package holds shape, constraints and fixtures only. Period
+    generation, migration and aggregation live in lightwave-platform /
+    lightwave-cli.
+  generates:
+    - "pydantic:TimePeriod"
+    - "go:TimePeriod"
+  depends_on:
+    - lightwave://schemas/data/enums/time_period_types
+    - lightwave://schemas/data/enums/period_review_statuses
+    - lightwave://schemas/data/enums/agile_statuses
+    - lightwave://schemas/data/meta/identity
+
+natural_key:
+  column: key
+  unique: true
+
+required_fields:
+- name: key
+  type: str
+  description: >
+    Deterministic period key. year:YYYY · quarter:YYYY-QN · month:YYYY-MM
+    · week:YYYY-MM-DD (the Sunday) · day:YYYY-MM-DD. The Notion title
+    property projects this string.
+  pattern: "^(year:[0-9]{4}|quarter:[0-9]{4}-Q[1-4]|month:[0-9]{4}-(0[1-9]|1[0-2])|week:[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])|day:[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01]))$"
+- name: period_type
+  type: str
+  values_ref: "lightwave://schemas/data/enums/time_period_types"
+  description: Tier. Must agree with the key's prefix.
+- name: start
+  type: date
+  description: First day of the period, inclusive. Authoritative.
+- name: end
+  type: date
+  description: Last day of the period, inclusive. Authoritative. Never before start.
+- name: timezone
+  type: str
+  description: IANA zone the bounds are expressed in (e.g. America/Los_Angeles).
+
+optional_fields:
+- name: display_parent_key
+  type: str
+  fk_ref: lightwave://schemas/data/meta/time_period
+  fk_column: key
+  description: >
+    Navigation-only parent. Null for a year. Tier is fixed by
+    parent_type_invariants; for a boundary-crossing week it is the month
+    with the majority of the week's days.
+- name: objectives
+  type: str
+  description: What this period is for, in the operator's words. Authored.
+- name: owner_ref
+  type: str
+  fk_ref: lightwave://schemas/data/meta/identity
+  fk_column: identity_id
+  description: Identity accountable for planning and reviewing the period. Authored.
+- name: planning_status
+  type: str
+  values_ref: "lightwave://schemas/data/enums/agile_statuses"
+  description: backlog | in_progress | done for the planning ceremony. Authored.
+- name: planning_scheduled_on
+  type: date
+  description: When planning was actually completed. Blank means not planned. Authored.
+- name: review_status
+  type: str
+  values_ref: "lightwave://schemas/data/enums/period_review_statuses"
+  description: Operational review state. Authored.
+- name: review_scheduled_on
+  type: date
+  description: When the review was actually completed. Blank means not reviewed. Authored.
+- name: related_documents
+  type: list[DocumentRef]
+  description: The period's ceremony records — planning notes, the review itself. Logical reference.
+
+parent_type_invariants:
+  year: null
+  quarter: year
+  month: quarter
+  week: month
+  day: week
+
+relations:
+  parent: time_period
+  parent_fk:
+    column: display_parent_key
+    references: time_periods.key
+    on_delete: RESTRICT
+  children:
+    - time_period
+
+example:
+  key: "week:2026-08-30"
+  period_type: week
+  start: "2026-08-30"
+  end: "2026-09-05"
+  timezone: America/Los_Angeles
+  display_parent_key: "month:2026-09"
+  objectives: "Close the sprint; land the ontology census."
+  owner_ref: usr_3c2f9e1a
+  planning_status: done
+  planning_scheduled_on: "2026-08-30"
+  review_status: reviewed
+  review_scheduled_on: "2026-09-06"
+
+# Fixtures for the validation suite (tests/validation/test_time_period_schema.py).
+# `conforming` must all pass; each `rejected` entry must fail for the stated reason.
+fixtures:
+  conforming:
+    - key: "year:2026"
+      period_type: year
+      start: "2026-01-01"
+      end: "2026-12-31"
+      timezone: America/Los_Angeles
+    - key: "quarter:2026-Q3"
+      period_type: quarter
+      start: "2026-07-01"
+      end: "2026-09-30"
+      timezone: America/Los_Angeles
+      display_parent_key: "year:2026"
+    - key: "month:2026-09"
+      period_type: month
+      start: "2026-09-01"
+      end: "2026-09-30"
+      timezone: America/Los_Angeles
+      display_parent_key: "quarter:2026-Q3"
+    # Week crossing a month boundary: Sun 2026-08-30 – Sat 2026-09-05.
+    # Five of seven days fall in September → display parent is September;
+    # 08-30 and 08-31 still aggregate into August by date membership.
+    - key: "week:2026-08-30"
+      period_type: week
+      start: "2026-08-30"
+      end: "2026-09-05"
+      timezone: America/Los_Angeles
+      display_parent_key: "month:2026-09"
+    # Week crossing a year boundary: Sun 2026-12-27 – Sat 2027-01-02.
+    # Five of seven days are in December → display parent stays 2026-12.
+    - key: "week:2026-12-27"
+      period_type: week
+      start: "2026-12-27"
+      end: "2027-01-02"
+      timezone: America/Los_Angeles
+      display_parent_key: "month:2026-12"
+    - key: "day:2026-08-31"
+      period_type: day
+      start: "2026-08-31"
+      end: "2026-08-31"
+      timezone: America/Los_Angeles
+      display_parent_key: "week:2026-08-30"
+  rejected:
+    - reason: malformed_key
+      key: "2026-W36"
+      period_type: week
+      start: "2026-08-30"
+      end: "2026-09-05"
+      timezone: America/Los_Angeles
+    - reason: key_tier_mismatch
+      key: "month:2026-09"
+      period_type: week
+      start: "2026-09-01"
+      end: "2026-09-30"
+      timezone: America/Los_Angeles
+    - reason: inverted_bounds
+      key: "month:2026-09"
+      period_type: month
+      start: "2026-09-30"
+      end: "2026-09-01"
+      timezone: America/Los_Angeles
+    - reason: illegal_parent_tier
+      key: "day:2026-08-31"
+      period_type: day
+      start: "2026-08-31"
+      end: "2026-08-31"
+      timezone: America/Los_Angeles
+      display_parent_key: "month:2026-08"
+    - reason: boundary_misattribution
+      key: "week:2026-08-30"
+      period_type: week
+      start: "2026-08-30"
+      end: "2026-09-05"
+      timezone: America/Los_Angeles
+      display_parent_key: "month:2026-08"

@@ -1,0 +1,33 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/enums/session_liveness"
+  title: "Session Liveness"
+  description: |
+    Closed enum of liveness verdicts for a session endpoint. Pane-exists is
+    not agent-alive. Only dead or missing authorize recovery spawn. A false
+    dead starts a duplicate agent on live work (FirstMate defect class;
+    LightWave reimplements the contract, not the scripts).
+  generates:
+    - "pydantic:SessionLiveness"
+  depends_on: []
+
+name: session_liveness
+description: "Liveness of a session endpoint"
+default: unreadable
+closed: true
+options:
+  - value: alive
+    label: "alive"
+    description: "Foreground process is a recognized agent or latch; attach is legal."
+  - value: dead
+    label: "dead"
+    description: "Endpoint exists but holds a bare shell or exited agent; recovery spawn may be legal."
+  - value: missing
+    label: "missing"
+    description: "Recorded endpoint is gone; recovery spawn may be legal."
+  - value: unreadable
+    label: "unreadable"
+    description: "State could not be read; do not spawn."
+  - value: ambiguous
+    label: "ambiguous"
+    description: "Process identity is not classified; do not spawn."

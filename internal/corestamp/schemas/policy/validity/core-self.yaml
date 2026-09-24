@@ -94,11 +94,11 @@ rules:
   - id: R-8
     name: "cross-binding-conformance"
     severity: error
-    description: "Every implemented binding in bindings/<lang>/ correctly loads every schema. Wave-1 Go is active; future Python, TypeScript, and Rust bindings stay explicitly deferred until named consumers need them."
+    description: "Every implemented binding in bindings/<lang>/ correctly loads every schema. No language binding is in-tree as a stamp mirror. Python, TypeScript, Rust, and a future repo-root Go embed stay explicitly deferred until named consumers need them."
     enforced_by: "tests/conformance/test_r8_cross_binding_load.py"
     enforces: ["bindings/", "src/schemas/"]
-    rationale: "If bindings drift in what they load from the same source, the SSOT claim breaks. The active Wave-1 check compares the Go mirror to the canonical stamp and relies on Go tests for loader, drift, and version-lockstep behavior."
-    status: active # Wave-1 Go binding active; Python/TypeScript/Rust deferred by PRD-0003 + ADR-0028.
+    rationale: "If bindings drift in what they load from the same source, the SSOT claim breaks. There is no in-tree Go mirror; R-8 live checks skip until a binding exists that embeds src/schemas."
+    status: deferred # No in-tree language loader; Python/TypeScript/Rust/Go embed deferred by PRD-0003 + ADR-0028.
   - id: R-9
     name: "no-filled-content-in-src"
     severity: error
@@ -134,7 +134,7 @@ rules:
   - id: R-12
     name: "max-file-size"
     severity: error
-    description: "Schema YAML ≤ 500 lines. Template markdown body ≤ 200 lines. Doc files ≤ 500 lines. Files larger than cap signal under-decomposition; consider splitting. Exempt, because the cap measures AUTHORED decomposition and these are not authored here: docs carrying frontmatter `external_source: true` (a local copy of external canonical material, e.g. the SWEBOK v4 index), generated SST pages under the R-14 doc categories, and the generated root files index.md / rules.md / SUMMARY.md."
+    description: "Schema YAML ≤ 500 lines. Template markdown body ≤ 200 lines. Doc files ≤ 500 lines. Files larger than cap signal under-decomposition; consider splitting. Exempt, because the cap measures AUTHORED decomposition and these are not authored here: docs carrying frontmatter `external_source: true` (a local copy of external canonical material, e.g. the SWEBOK v4 index), generated SST pages under the R-14 doc categories, and the generated root files index.md / rules.md / SUMMARY.md. Schema-side registries are exempt for the same reason — they grow with entry count, not under-decomposition: any `__index.yaml` (per-dir schema registry), `interfaces/cli/commands.yaml` (the lw command surface), and `data/meta/homedir.yaml` (the HomeDir directory catalog)."
     enforced_by: "tests/meta/test_r12_file_sizes.py"
     enforces:
       [

@@ -1,0 +1,106 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/interfaces/agent_tools/harness_adapter"
+  title: "Agent harness adapter"
+  description: |
+    Contract for a thin adapter that maps one agent harness onto the LightWave
+    plugin spine. The spine ABI is the proven Claude Code PreToolUse /
+    lifecycle JSON (stdin → stdout). Adapters do not copy gate logic — they
+    translate event names, tool names, and deny/allow output.
+
+    Print: lightwave-plugin/plugins/lightwave/adapters/<harness>/.
+    Apply writes the harness-owned config (hooks.json, extensions path) so
+    it points at the plugin. Never copy hook source into ~/.cursor, ~/.codex,
+    ~/.pi, or ~/.config/opencode.
+
+    Consumed by the plugin apply script and by silences.ts when it enumerates
+    registrations across harnesses (the registry must not be its own
+    denominator).
+  generates:
+    - "pydantic:HarnessAdapter"
+  depends_on:
+    - "lightwave://schemas/data/enums/document_statuses"
+    - "lightwave://schemas/data/enums/agent_harnesses"
+    - "lightwave://schemas/data/enums/agent_harness_deny_abis"
+
+status_enum: "document_statuses"
+
+required_fields:
+  - name: id
+    type: str
+    description: "Stable adapter id (e.g. 'cursor', 'codex', 'pi', 'opencode', 'claude_code')."
+  - name: harness
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/agent_harnesses"
+    description: "Which session host this adapter talks to."
+  - name: can_deny
+    type: bool
+    description: |
+      True when the harness honours a deny and the tool call does not proceed.
+      False is a documented dead end: the adapter still logs the ledger row.
+  - name: deny_abi
+    type: enum
+    values_ref: "lightwave://schemas/data/enums/agent_harness_deny_abis"
+    description: "How a spine deny is expressed to this harness."
+  - name: install_path
+    type: str
+    description: |
+      Harness-owned config the adapter writes (e.g. ~/.cursor/hooks.json).
+      Not a copy of gate source.
+  - name: adapter_path
+    type: str
+    description: |
+      Path inside lightwave-plugin (e.g. plugins/lightwave/adapters/cursor).
+      The print of this stamp. Gate scripts stay in plugins/lightwave/hooks.
+  - name: event_map
+    type: "dict[str, str]"
+    description: |
+      Harness event name → spine event name. Example: sessionStart → SessionStart,
+      beforeSubmitPrompt → UserPromptSubmit, preToolUse → PreToolUse.
+  - name: tool_name_map
+    type: "dict[str, str]"
+    description: |
+      Harness tool name → spine tool name. Example: Shell → Bash, write → Write,
+      Task → Task. Unmapped names pass through.
+
+optional_fields:
+  - name: fail_closed
+    type: bool
+    description: "When true, a crashed/timed-out adapter blocks the tool call (Cursor failClosed)."
+  - name: apply_command
+    type: str
+    description: "Operator command that writes install_path. Default: bun adapters/apply.ts <harness>."
+  - name: notes
+    type: str
+    description: "Honest limits — no marketplace plugin, in-process only, deny ignored, etc."
+
+relations:
+  parent: null
+  children: []
+
+example:
+  id: "cursor"
+  status: "active"
+  harness: "cursor"
+  can_deny: true
+  deny_abi: "permission"
+  fail_closed: true
+  install_path: "~/.cursor/hooks.json"
+  adapter_path: "plugins/lightwave/adapters/cursor"
+  apply_command: "bun plugins/lightwave/adapters/apply.ts cursor"
+  event_map:
+    sessionStart: "SessionStart"
+    beforeSubmitPrompt: "UserPromptSubmit"
+    preToolUse: "PreToolUse"
+    beforeShellExecution: "PreToolUse"
+    postToolUse: "PostToolUse"
+    subagentStart: "PreToolUse"
+    stop: "Stop"
+    subagentStop: "SubagentStop"
+    preCompact: "PreCompact"
+  tool_name_map:
+    Shell: "Bash"
+    Write: "Write"
+    Task: "Task"
+    Read: "Read"
+  notes: "Cursor has no marketplace plugin for hooks; user hooks.json is the API."

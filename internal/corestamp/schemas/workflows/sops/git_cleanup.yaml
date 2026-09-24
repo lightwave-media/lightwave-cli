@@ -1,0 +1,84 @@
+_meta:
+  version: "2.0.0"
+  schema_id: "lightwave://schemas/workflows/sops/git_cleanup"
+  title: "Git cleanup SOP"
+  description: |
+    Deterministic cleanup of a Lightwave checkout after merges. Origin is
+    updated first (dead remotes deleted), then local [gone] prune is legal.
+    Never git branch -D. Never switch a dirty tree. Never update-ref -d a
+    worktree-held dirty branch. Executable print: src/runbooks/ops/git-cleanup.
+  generates:
+    - "go:GitCleanupSOP"
+  depends_on:
+    - "lightwave://schemas/workflows/sops/runbook"
+
+name: git_cleanup
+id: git_cleanup
+title: "Local checkout cleanup — origin first, then [gone] locals"
+version: 2.0.0
+execution_mode: autonomous
+runbook: git-cleanup
+
+trigger:
+  source: manual
+
+parameters:
+  - name: RepoPath
+    type: string
+    default: "."
+
+steps:
+  - id: verdicts
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        python3 ~/.lightwave/skills/lightwave-git/scripts/cleanup_plan.py --repo "${RepoPath:-.}"
+
+  - id: refuse_dirty
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        cd "${RepoPath:-.}"
+        test -z "$(git status --porcelain)"
+
+  - id: sync_main
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        cd "${RepoPath:-.}"
+        git checkout main
+        git fetch origin --prune
+        git pull --ff-only
+        git worktree prune
+        git worktree list
+
+  - id: delete_dead_remotes
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        bash src/runbooks/ops/git-cleanup/scripts/delete-dead-remotes.sh
+
+  - id: prune_locals
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        bash src/runbooks/ops/git-cleanup/scripts/prune-locals.sh
+
+  - id: drop_orphan_config
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        bash src/runbooks/ops/git-cleanup/scripts/drop-orphan-config.sh
+
+  - id: verify
+    tool: shell
+    args:
+      command: |
+        set -euo pipefail
+        bash src/runbooks/ops/git-cleanup/scripts/verify-clean.sh

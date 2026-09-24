@@ -1,0 +1,66 @@
+_meta:
+  version: "1.0.0"
+  schema_id: "lightwave://schemas/data/meta/legal_entity"
+  title: "Legal Entity"
+  table_kind: entity
+  table_name: legal_entities
+  scope: local
+  description: |
+    One row per legal entity LightWave Media has a relationship with,
+    including LightWave Media itself (`kind: self`, exactly one row).
+    `legal_entity_id` is opaque and immutable (`ent_*`). `kind` says which
+    way money and liability flow (legal_entity_kinds).
+
+    An identity belongs to a legal entity through
+    identity.legal_entity_ref: agents and the operator belong to the
+    `self` row, which is why the company — not the agent — answers for an
+    agent's work. Contacts, emails and CRM columns do not belong here; a
+    person at a client is an identity (actor_type human) whose
+    legal_entity_ref points at the client row.
+
+    The row is the company, not the platform it sells: GitHub, Stripe and
+    OpenAI are vendor rows; the GitHub org, the Stripe account and the API
+    key are bindings held elsewhere (integrations/*, external_ref, SSM).
+
+    Named legal_entity, not organization or entity: "entity" is already
+    the table_kind of every row-with-identity in this library, and the
+    Notion hub is [DB] Entities. cineos/production_company is a
+    project-scoped role record and is not this table.
+  generates:
+    - "pydantic:LegalEntity"
+    - "go:LegalEntity"
+  depends_on:
+    - lightwave://schemas/data/enums/legal_entity_kinds
+required_fields:
+- name: legal_entity_id
+  type: str
+  description: >
+    Immutable row key, ent_<hex>. Not the slug. Not a UUID.
+- name: kind
+  type: str
+  values_ref: "lightwave://schemas/data/enums/legal_entity_kinds"
+  description: Relationship to LightWave Media. Wire lowercase.
+- name: legal_name
+  type: str
+  description: Registered name as it appears on contracts and invoices.
+optional_fields:
+- name: display_name
+  type: str
+  description: Human-readable label when it differs from legal_name. Renamable.
+- name: jurisdiction
+  type: str
+  description: Country or state of registration (e.g. "US-CA", "GB").
+- name: website
+  type: str
+  description: Primary URL.
+relations:
+  parent: null
+  children:
+    - identity
+example:
+  legal_entity_id: ent_7f21c0a4
+  kind: self
+  legal_name: LightWave Media LLC
+  display_name: LightWave Media
+  jurisdiction: US-CA
+  website: https://lightwave-media.site

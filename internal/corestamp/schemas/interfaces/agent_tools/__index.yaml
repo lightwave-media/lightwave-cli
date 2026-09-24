@@ -12,11 +12,12 @@
 # =============================================================================
 
 _meta:
-  version: "0.2.0"
+  version: "0.3.0"
   schema_id: "lightwave://schemas/interfaces/agent_tools/__index"
   title: "Agent Tools Schema Registry"
   description: |
-    Sub-registry for agent-tool-meta schemas (filtering, grouping, composition).
+    Sub-registry for agent-tool-meta schemas (filtering, grouping, composition,
+    and harness adapters that map desktop agent hosts onto the plugin spine).
     Consumed by v_core's tool-context composer (compose_tool_list(role)) at
     every agent session spawn; the composer returns the per-role tool list
     in-memory. See ADR-0004 for the pure-function composition pattern (v0.2.0
@@ -28,3 +29,4 @@ schemas:
   claude_code: claude_code.yaml
   claude_code_runner: claude_code_runner.yaml
   agent_lifecycle_event: agent_lifecycle_event.yaml
+  harness_adapter: harness_adapter.yaml

@@ -29,7 +29,7 @@ _meta:
   depends_on:
     - "lightwave://schemas/data/agile_artifacts/project"
     - "lightwave://schemas/data/agile_artifacts/epic"
-    - "lightwave://schemas/data/agile_artifacts/sprint"
+    - "lightwave://schemas/data/agile_artifacts/agile_sprint"
     - "lightwave://schemas/data/agile_artifacts/user_story"
     - "lightwave://schemas/data/agile_artifacts/task"
 

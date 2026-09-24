@@ -2,12 +2,15 @@ _meta:
   version: 1.0.0
   schema_id: lightwave://schemas/data/enums/agent_statuses
   title: Agent Status Enum
-  description: 'Status values for the Task.agent_status field — tracks the lifecycle
-    of
+  description: 'createOS Task.agent_status — whether an agent is assigned to a
 
-    an agent-dispatched task. Distinct from task_statuses (which tracks the
+    SemanticTask (pending → running → completed|failed|cancelled). Distinct from
 
-    human workflow lifecycle). Closed enum.
+    nullhub_instance_statuses (whether the nullclaw process is up), from
+
+    nulltickets pipeline stages (per-pipeline, not this enum), and from
+
+    runner_statuses (Forgejo CI). Closed enum.
 
 
     The empty-string ("") option encodes "no agent assigned yet" — preserved

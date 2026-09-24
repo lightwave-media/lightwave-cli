@@ -65,9 +65,9 @@ optional_fields:
     type: str
     description: "Browser URL"
     storage: db
-  - name: local_sprint_ref
+  - name: local_agile_sprint_ref
     type: str
-    description: "Local sprint slug this milestone projects"
+    description: "Local agile_sprint slug this milestone projects"
     storage: db
   - name: local_epic_ref
     type: str
@@ -88,7 +88,7 @@ example:
   description: "Active sprint milestone"
   due_on: "2026-08-31T00:00:00Z"
   html_url: "https://github.com/lightwave-media/lightwave-core/milestone/12"
-  local_sprint_ref: sprint-2026-08
+  local_agile_sprint_ref: sprint-2026-08
   github_node_id: "MDk6TWlsZXN0b25lMTI="
   created_at: "2026-08-01T12:00:00Z"
   updated_at: "2026-08-12T12:00:00Z"

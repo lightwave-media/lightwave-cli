@@ -1,12 +1,16 @@
 _meta:
   version: "1.0.0"
   schema_id: "lightwave://schemas/data/agents/agent_runner"
-  title: "Agent Runner Registration"
+  title: "Forgejo CI Action-Runner Registration"
   description: |
-    Agent runner registration and lifecycle management. Adapted from Forgejo's
-    `/user/actions/runners` API pattern — agents register as runners, receive
-    a registration token + UUID, and are managed through the same CRUD surface
+    Forgejo-shaped CI action-runner registration. Adapted from Forgejo's
+    `/user/actions/runners` API pattern — a CI worker registers, receives
+    a registration token + UUID, and is managed through the same CRUD surface
     as human users.
+
+    This is not a nullclaw instance, not a nulltickets lease, not nullboiler
+    policy, and not boilerplate. Live runtime_status of a persona is
+    agent_identity.runtime_status (nullhub_instance_statuses).
 
     This schema serves lightwave-ai's agentgateway (Zig HTTP server at localhost:7700)
     and the lightwave-platform Go monolith. Agents are first-class principals per
