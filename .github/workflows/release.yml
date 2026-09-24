@@ -9,10 +9,11 @@
 #
 # The plane's go-binary type runs GoReleaser against this repo's
 # .goreleaser.yaml (release.mode keep-existing — release-core creates the
-# Release with git-cliff notes, GoReleaser attaches artifacts), mints the
-# homebrew-tap push token from the TAP_APP_* secrets, and uploads darwin
-# binaries for sign-macos.yml (dormant until the MACOS_* secrets are
-# provisioned — see docs/release-notarization.md).
+# Release with git-cliff notes, GoReleaser attaches artifacts) and uploads
+# darwin binaries for sign-macos.yml (dormant until the MACOS_* secrets are
+# provisioned — see docs/release-notarization.md). It no longer mints a
+# homebrew-tap token: the tap was deleted 2026-09-16, and v1.4.0 of the
+# plane still tried to mint one, which is what failed the v3.15.0 publish.
 
 name: release
 
@@ -38,7 +39,7 @@ jobs:
     # Pinned by SHA — determinism requires the same tag re-run the same
     # pipeline bytes. Bump SHA + comment together when adopting a new plane
     # release.
-    uses: lightwave-media/pipelines-workflows/.github/workflows/release-go-binary.yml@56053b60aa42dba997f388a5a38713d1acc2b823 # v1.4.0
+    uses: lightwave-media/pipelines-workflows/.github/workflows/release-go-binary.yml@b15e555e661343b4b31fdfb5391dbce5db41baf0 # v1.4.1
     permissions:
       contents: write
       # shipped-in notifications (feedback_loop, release_pipeline.yaml):
