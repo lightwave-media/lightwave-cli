@@ -12,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
 
 func TestPrePushBypassRequiresReasonAndRecordsEvidence(t *testing.T) {
@@ -30,7 +32,7 @@ func TestPrePushBypassRequiresReasonAndRecordsEvidence(t *testing.T) {
 		command := exec.CommandContext(context.Background(), "sh", hook)
 		command.Dir = root
 		command.Stdin = strings.NewReader("")
-		command.Env = append(os.Environ(),
+		command.Env = append(gitfixture.Env(),
 			"HOME="+home,
 			"LW_SKIP_PRE_PUSH=1",
 			"LW_SKIP_PRE_PUSH_REASON="+reason,
@@ -74,7 +76,7 @@ func TestPrePushBypassRepoNameIsWorktreeSafe(t *testing.T) {
 	git := func(args ...string) {
 		t.Helper()
 		command := exec.CommandContext(t.Context(), "git", args...)
-		command.Env = append(os.Environ(),
+		command.Env = append(gitfixture.Env(),
 			"GIT_CONFIG_GLOBAL="+os.DevNull,
 			"GIT_CONFIG_SYSTEM="+os.DevNull,
 		)
@@ -92,7 +94,7 @@ func TestPrePushBypassRepoNameIsWorktreeSafe(t *testing.T) {
 	command := exec.CommandContext(t.Context(), "sh", hook)
 	command.Dir = worktree
 	command.Stdin = strings.NewReader("")
-	command.Env = append(os.Environ(),
+	command.Env = append(gitfixture.Env(),
 		"HOME="+home,
 		"LW_SKIP_PRE_PUSH=1",
 		"LW_SKIP_PRE_PUSH_REASON=incident CLI-TEST: worktree repo-name check",

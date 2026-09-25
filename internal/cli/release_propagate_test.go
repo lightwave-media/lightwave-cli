@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
 
 // newPropagateRepo builds a throwaway repo with one commit, for the dirty-tree
@@ -25,9 +27,7 @@ func newPropagateRepo(t *testing.T, ctx context.Context) string { //nolint:reviv
 
 		c := exec.CommandContext(ctx, "git", args...)
 		c.Dir = dir
-		c.Env = append(c.Environ(),
-			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.invalid",
-			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.invalid",
+		c.Env = append(gitfixture.Env(),
 			"GIT_CONFIG_GLOBAL=/dev/null", "GIT_CONFIG_SYSTEM=/dev/null",
 		)
 

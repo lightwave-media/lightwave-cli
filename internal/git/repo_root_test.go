@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/lightwave-media/lightwave-cli/internal/git"
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,14 +24,13 @@ func newRepoWithWorktree(t *testing.T, slug, branch string) (repoRoot, worktreeP
 
 		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = repoRoot
+		cmd.Env = gitfixture.Env()
 
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "git %v: %s", args, out)
 	}
 
 	runGit("init", "-q", "-b", "main")
-	runGit("config", "user.email", "test@example.com")
-	runGit("config", "user.name", "test")
 	runGit("commit", "-q", "--allow-empty", "-m", "init")
 
 	worktreePath = filepath.Join(repoRoot, ".worktrees", slug)

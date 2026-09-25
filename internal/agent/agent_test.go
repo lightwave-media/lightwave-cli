@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
 
 // pinStateDir redirects ~/.lightwave/agents to a temp dir for the duration
@@ -288,14 +290,13 @@ func initBareRepo(t *testing.T) string {
 
 	run := func(args ...string) {
 		cmd := exec.Command("git", append([]string{"-C", repo}, args...)...)
+		cmd.Env = gitfixture.Env()
 		out, err := cmd.CombinedOutput()
 		if err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, string(out))
 		}
 	}
 	run("init", "-b", "main")
-	run("config", "user.email", "test@example.com")
-	run("config", "user.name", "Test")
 	if err := os.WriteFile(filepath.Join(repo, "README.md"), []byte("# test\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
