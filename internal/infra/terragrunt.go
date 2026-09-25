@@ -139,18 +139,32 @@ func (t *TerragruntRunner) RunAll(ctx context.Context, command string) error {
 // only Cloudflare resources need it.
 func terragruntEnv(ctx context.Context, dir string, wholeTree bool) []string {
 	env := append(os.Environ(), "TF_IN_AUTOMATION=1")
-	if os.Getenv(cloudflareTokenKey) != "" || (!wholeTree && !usesCloudflare(dir)) {
-		return env
+
+	token, err := cloudflareToken(ctx, dir, wholeTree)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "lw infra: %v; Cloudflare resources will fail\n", err)
 	}
 
-	token, err := fetchSecret(ctx, cloudflareTokenKey)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "lw infra: %s is not set and could not be read from SSM (%v); Cloudflare resources will fail\n", cloudflareTokenKey, err)
-
+	if token == "" {
 		return env
 	}
 
 	return append(env, cloudflareTokenKey+"="+token)
+}
+
+// cloudflareToken is the token to add for this run: "" when the caller
+// supplied it or the run cannot reach Cloudflare, else read from SSM by name.
+func cloudflareToken(ctx context.Context, dir string, wholeTree bool) (string, error) {
+	if os.Getenv(cloudflareTokenKey) != "" || (!wholeTree && !usesCloudflare(dir)) {
+		return "", nil
+	}
+
+	token, err := fetchSecret(ctx, cloudflareTokenKey)
+	if err != nil {
+		return "", fmt.Errorf("%s is not set and could not be read from SSM: %w", cloudflareTokenKey, err)
+	}
+
+	return token, nil
 }
 
 // usesCloudflare reports whether a unit's terragrunt.hcl mentions Cloudflare,

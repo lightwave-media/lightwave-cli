@@ -103,13 +103,18 @@ func TestTerragruntEnvReadsTheTokenForRunAll(t *testing.T) {
 }
 
 //nolint:paralleltest // swaps a package-level seam and the environment
-func TestTerragruntEnvGoesAheadWithoutTheTokenWhenSSMFails(t *testing.T) {
+func TestCloudflareTokenRefusesByNameWhenSSMFails(t *testing.T) {
 	t.Setenv(cloudflareTokenKey, "")
 	withFetchSecret(t, "", errors.New("AccessDeniedException"))
 	dir := unitDir(t, "# Cloudflare unit\n")
 
-	env := terragruntEnv(t.Context(), dir, false)
+	token, err := cloudflareToken(t.Context(), dir, false)
 
-	assert.Equal(t, []string{""}, tokenValues(env), "only the inherited empty value, nothing fetched")
+	require.ErrorContains(t, err, cloudflareTokenKey)
+	require.ErrorContains(t, err, "AccessDeniedException")
+	assert.Empty(t, token)
+
+	env := terragruntEnv(t.Context(), dir, false)
+	assert.Equal(t, []string{""}, tokenValues(env), "the run goes ahead with only the inherited empty value")
 	assert.Contains(t, env, "TF_IN_AUTOMATION=1")
 }

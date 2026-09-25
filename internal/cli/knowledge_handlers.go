@@ -61,8 +61,14 @@ func knowledgePromoteHandler(ctx context.Context, _ []string, flags map[string]a
 
 	dryRun := flagBool(flags, "dry-run")
 
+	queueToken, err := nullticketsToken(ctx, dryRun)
+	if err != nil {
+		// The bearer is optional: warn by name and send without it.
+		fmt.Fprintf(os.Stderr, "lw knowledge promote: %v; sending without a bearer\n", err)
+	}
+
 	promoter := knowledge.Promoter{Rows: remote, Files: files,
-		Queue: knowledge.NewNulltickets(os.Getenv("NULLTICKETS_URL"), nullticketsToken(ctx, dryRun))}
+		Queue: knowledge.NewNulltickets(os.Getenv("NULLTICKETS_URL"), queueToken)}
 
 	report, runErr := promoter.Run(ctx, knowledge.PromoteOptions{Database: database, Pipeline: pipeline, DryRun: dryRun})
 	if err := printKnowledge(report, flags); err != nil {
@@ -74,21 +80,18 @@ func knowledgePromoteHandler(ctx context.Context, _ []string, flags map[string]a
 
 // nullticketsToken is NULLTICKETS_API_TOKEN from the environment, else read
 // from SSM by name: sessions no longer carry store keys (CLAUDE.md §24). A dry
-// run sends nothing to nulltickets, so it reads nothing. The bearer is
-// optional, so a failed read warns by name and the run goes on without it.
-func nullticketsToken(ctx context.Context, dryRun bool) string {
+// run sends nothing to nulltickets, so it reads nothing.
+func nullticketsToken(ctx context.Context, dryRun bool) (string, error) {
 	if token := os.Getenv(nullticketsTokenKey); token != "" || dryRun {
-		return token
+		return token, nil
 	}
 
 	token, err := fetchSecretByName(ctx, nullticketsTokenKey)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "lw knowledge promote: %s is not set and could not be read from SSM (%v); sending without a bearer\n", nullticketsTokenKey, err)
-
-		return ""
+		return "", fmt.Errorf("%s is not set and could not be read from SSM: %w", nullticketsTokenKey, err)
 	}
 
-	return token
+	return token, nil
 }
 
 // knowledgeBindHandler sets property_map_ref (and optionally title) on one

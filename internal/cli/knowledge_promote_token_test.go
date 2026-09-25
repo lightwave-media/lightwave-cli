@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 const nullticketsSentinel = "sentinel-value-a81d"
@@ -33,7 +34,9 @@ func TestNullticketsTokenReadsByNameWhenTheSessionHasNone(t *testing.T) {
 	t.Setenv(nullticketsTokenKey, "")
 	calls := withSecretByName(t, nullticketsSentinel, nil)
 
-	assert.Equal(t, nullticketsSentinel, nullticketsToken(t.Context(), false))
+	token, err := nullticketsToken(t.Context(), false)
+	require.NoError(t, err)
+	assert.Equal(t, nullticketsSentinel, token)
 	assert.Equal(t, 1, *calls)
 }
 
@@ -42,7 +45,9 @@ func TestNullticketsTokenPrefersTheEnvironment(t *testing.T) {
 	t.Setenv(nullticketsTokenKey, "from-env")
 	calls := withSecretByName(t, nullticketsSentinel, nil)
 
-	assert.Equal(t, "from-env", nullticketsToken(t.Context(), false))
+	token, err := nullticketsToken(t.Context(), false)
+	require.NoError(t, err)
+	assert.Equal(t, "from-env", token)
 	assert.Zero(t, *calls)
 }
 
@@ -51,15 +56,21 @@ func TestNullticketsTokenReadsNothingForADryRun(t *testing.T) {
 	t.Setenv(nullticketsTokenKey, "")
 	calls := withSecretByName(t, nullticketsSentinel, nil)
 
-	assert.Empty(t, nullticketsToken(t.Context(), true))
+	token, err := nullticketsToken(t.Context(), true)
+	require.NoError(t, err)
+	assert.Empty(t, token)
 	assert.Zero(t, *calls)
 }
 
 //nolint:paralleltest // swaps a package-level seam and the environment
-func TestNullticketsTokenGoesOnWithoutABearerWhenSSMFails(t *testing.T) {
+func TestNullticketsTokenRefusesByNameWhenSSMFails(t *testing.T) {
 	t.Setenv(nullticketsTokenKey, "")
-	calls := withSecretByName(t, "", errors.New("not in /lightwave/prod/: NULLTICKETS_API_TOKEN"))
+	calls := withSecretByName(t, "", errors.New("AccessDeniedException"))
 
-	assert.Empty(t, nullticketsToken(t.Context(), false))
+	token, err := nullticketsToken(t.Context(), false)
+
+	require.ErrorContains(t, err, nullticketsTokenKey)
+	require.ErrorContains(t, err, "AccessDeniedException")
+	assert.Empty(t, token)
 	assert.Equal(t, 1, *calls)
 }
