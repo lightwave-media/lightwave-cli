@@ -6,9 +6,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
@@ -22,6 +24,15 @@ const cloudflareTokenKey = "CLOUDFLARE_API_TOKEN"
 
 // fetchSecret reads one store key by name. A seam for tests.
 var fetchSecret = secrets.FetchOne
+
+// cloudflareModule matches a unit whose module is a catalog Cloudflare module.
+// Matching the source, not the word, keeps units that merely name the key
+// (github-actions-oidc grants it in an IAM policy) from getting it.
+var cloudflareModule = regexp.MustCompile(`(?i)//modules/cloudflare-`)
+
+// providerCommands configure providers, so they need the token for a
+// Cloudflare unit; validate, output and init do not.
+var providerCommands = map[string]bool{"plan": true, "apply": true, "destroy": true, "refresh": true, "import": true}
 
 // TerragruntRunner wraps terragrunt commands
 type TerragruntRunner struct {
@@ -64,9 +75,10 @@ func (t *TerragruntRunner) Plan(ctx context.Context, path string) (*PlanResult, 
 		return nil, fmt.Errorf("path does not exist: %s", workDir)
 	}
 
+	env, _ := terragruntEnv(ctx, []string{workDir}, false)
 	cmd := exec.CommandContext(ctx, "terragrunt", "plan", "-no-color")
 	cmd.Dir = workDir
-	cmd.Env = terragruntEnv(ctx, workDir, false)
+	cmd.Env = env
 
 	// Stream to terminal AND capture for parsing
 	var buf bytes.Buffer
@@ -102,9 +114,14 @@ func (t *TerragruntRunner) Apply(ctx context.Context, path string, autoApprove b
 		args = append(args, "-auto-approve")
 	}
 
+	env, err := terragruntEnv(ctx, []string{workDir}, true)
+	if err != nil {
+		return err
+	}
+
 	cmd := exec.CommandContext(ctx, "terragrunt", args...)
 	cmd.Dir = workDir
-	cmd.Env = terragruntEnv(ctx, workDir, false)
+	cmd.Env = env
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -122,40 +139,54 @@ func (t *TerragruntRunner) RunAll(ctx context.Context, command string) error {
 		"--terragrunt-exclude-dir", "**/.terragrunt-stack/**",
 	}
 
+	var units []string
+	if providerCommands[command] {
+		units = unitDirs(workDir)
+	}
+
+	env, err := terragruntEnv(ctx, units, command == "apply" || command == "destroy")
+	if err != nil {
+		return err
+	}
+
 	cmd := exec.CommandContext(ctx, "terragrunt", args...)
 	cmd.Dir = workDir
-	cmd.Env = terragruntEnv(ctx, workDir, true)
+	cmd.Env = env
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	return cmd.Run()
 }
 
-// terragruntEnv is the environment for a terragrunt plan or apply in dir. When
-// the run can reach Cloudflare and the caller did not supply the token, it is
-// read from SSM by name and given to terragrunt alone, never to lw's own
+// terragruntEnv is the environment for a terragrunt run over units. When one
+// of them uses a Cloudflare module and the caller did not supply the token, it
+// is read from SSM by name and given to terragrunt alone, never to lw's own
 // environment: sessions no longer carry store keys (CLAUDE.md §24). If it
-// cannot be read, the run goes ahead without it and says so by name, because
-// only Cloudflare resources need it.
-func terragruntEnv(ctx context.Context, dir string, wholeTree bool) []string {
+// cannot be read, a mutating run stops before terragrunt starts, so a tree is
+// never left half-applied; a plan warns by name and goes ahead.
+func terragruntEnv(ctx context.Context, units []string, mutating bool) ([]string, error) {
 	env := append(os.Environ(), "TF_IN_AUTOMATION=1")
 
-	token, err := cloudflareToken(ctx, dir, wholeTree)
+	token, err := cloudflareToken(ctx, units)
 	if err != nil {
+		if mutating {
+			return nil, fmt.Errorf("lw infra: %w", err)
+		}
+
 		fmt.Fprintf(os.Stderr, "lw infra: %v; Cloudflare resources will fail\n", err)
 	}
 
 	if token == "" {
-		return env
+		return env, nil
 	}
 
-	return append(env, cloudflareTokenKey+"="+token)
+	return append(env, cloudflareTokenKey+"="+token), nil
 }
 
-// cloudflareToken is the token to add for this run: "" when the caller
-// supplied it or the run cannot reach Cloudflare, else read from SSM by name.
-func cloudflareToken(ctx context.Context, dir string, wholeTree bool) (string, error) {
-	if os.Getenv(cloudflareTokenKey) != "" || (!wholeTree && !usesCloudflare(dir)) {
+// cloudflareToken is the token to add for a run over units: "" when the
+// caller supplied it or no unit uses a Cloudflare module, else read by name.
+func cloudflareToken(ctx context.Context, units []string) (string, error) {
+	if os.Getenv(cloudflareTokenKey) != "" || !anyUsesCloudflare(units) {
 		return "", nil
 	}
 
@@ -167,12 +198,39 @@ func cloudflareToken(ctx context.Context, dir string, wholeTree bool) (string, e
 	return token, nil
 }
 
-// usesCloudflare reports whether a unit's terragrunt.hcl mentions Cloudflare,
-// which every Cloudflare unit's module source and header do.
-func usesCloudflare(dir string) bool {
-	body, err := os.ReadFile(filepath.Join(dir, "terragrunt.hcl"))
+func anyUsesCloudflare(units []string) bool {
+	for _, dir := range units {
+		body, err := os.ReadFile(filepath.Join(dir, "terragrunt.hcl"))
+		if err == nil && cloudflareModule.Match(body) {
+			return true
+		}
+	}
 
-	return err == nil && bytes.Contains(bytes.ToLower(body), []byte("cloudflare"))
+	return false
+}
+
+// unitDirs lists the directories under root holding a terragrunt.hcl, skipping
+// terragrunt's generated caches and stacks.
+func unitDirs(root string) []string {
+	var dirs []string
+
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return nil //nolint:nilerr // an unreadable subtree holds no unit we can read
+		}
+
+		if d.IsDir() && (d.Name() == ".terragrunt-cache" || d.Name() == ".terragrunt-stack") {
+			return filepath.SkipDir
+		}
+
+		if !d.IsDir() && d.Name() == "terragrunt.hcl" {
+			dirs = append(dirs, filepath.Dir(path))
+		}
+
+		return nil
+	})
+
+	return dirs
 }
 
 // terraformOutput represents a single terraform output value
