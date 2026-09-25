@@ -99,7 +99,9 @@ writes nothing.
 
 nulltickets is located by `NULLTICKETS_URL` (default `http://127.0.0.1:7700`)
 and the optional bearer `NULLTICKETS_API_TOKEN`, the same names the lw-webhook
-GitHub hop uses.
+GitHub hop uses. When `NULLTICKETS_API_TOKEN` is unset, a real run reads it
+from SSM (`/lightwave/prod/NULLTICKETS_API_TOKEN`) by name for that request
+only; agent sessions no longer carry it. A dry run reads nothing.
 
 ## Recover a derived index
 
