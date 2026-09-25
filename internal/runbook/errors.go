@@ -12,4 +12,6 @@ var (
 	ErrCheckFailed        = errors.New("a check or command failed; do not mark the task done")
 	ErrDenied             = errors.New("operator denied or deferred; leave instance waiting")
 	ErrInputsBound        = errors.New("inputs are bound when an instance starts")
+	ErrFinished           = errors.New("instance is finished; start a new one")
+	ErrUnsafeValue        = errors.New("value cannot be rendered into code")
 )

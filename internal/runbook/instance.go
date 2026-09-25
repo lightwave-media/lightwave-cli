@@ -190,6 +190,11 @@ func ListInstances(root, taskID string) ([]*Instance, error) {
 	return all, nil
 }
 
+// stampLayout is RFC 3339 with fixed-width nanoseconds, so timestamps sort as
+// strings and two instances started in the same second still order by time.
+// Whole seconds left the order to the UUID tie-break — an arbitrary pick.
+const stampLayout = "2006-01-02T15:04:05.000000000Z07:00"
+
 func nowUTC() string {
-	return time.Now().UTC().Format(time.RFC3339)
+	return time.Now().UTC().Format(stampLayout)
 }

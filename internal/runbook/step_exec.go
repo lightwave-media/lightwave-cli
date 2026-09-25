@@ -11,7 +11,9 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"text/template"
+	"time"
 
 	shellquote "github.com/kballard/go-shellquote"
 
@@ -41,9 +43,24 @@ const (
 	modeProse    = "prose"
 )
 
+// pipeWaitDelay bounds how long a finished or timed-out step may keep its
+// output pipe open through a child process.
+const pipeWaitDelay = 2 * time.Second
+
 var (
 	templateActionRe = regexp.MustCompile(`(?s)\{\{.*?\}\}`)
 	placeholderRe    = regexp.MustCompile("\x00([0-9]+)\x00")
+	valueRefRe       = regexp.MustCompile(`\.(inputs|outputs)((?:\.\w+)*)`)
+
+	// codeValueRe is what a value may hold where it becomes code. Spaces,
+	// quotes, $, ;, globs and ~ would each let it change the program.
+	codeValueRe = regexp.MustCompile(`^[A-Za-z0-9_./:@%+=,-]*$`)
+
+	interpreters = map[string]bool{
+		"bash": true, "sh": true, "zsh": true, "dash": true, "ksh": true, "fish": true,
+		"env": true, "xargs": true, "sudo": true,
+	}
+	codeFlags = map[string]bool{"-c": true, "-e": true, "--command": true, "--eval": true}
 )
 
 // stepResult is what one step did.
@@ -88,11 +105,15 @@ func (r *runner) runScript(step *Step) (stepResult, error) {
 		return res, fmt.Errorf("step %q: %w", step.ID, err)
 	}
 
-	if r.dryRun && !strings.Contains(string(src), "RUNBOOK_DRY_RUN") {
+	if reason := r.dryRunSkip(string(src)); reason != "" {
 		res.skipped = true
-		res.output = "dry-run: not run — the script does not read RUNBOOK_DRY_RUN"
+		res.output = "dry-run: not run — " + reason
 
 		return res, nil
+	}
+
+	if err := r.checkCodeValues(step.ID, string(src)); err != nil {
+		return res, err
 	}
 
 	body, err := r.render(step.ID, string(src))
@@ -127,7 +148,32 @@ func (r *runner) runScript(step *Step) (stepResult, error) {
 		return res, fmt.Errorf("script %s: %w", step.Path, err)
 	}
 
-	return res, nil
+	return res, checkExpected(step, res.output)
+}
+
+// dryRunSkip is why a script cannot run in a dry run, or "" when it can. A
+// script that ignores RUNBOOK_DRY_RUN would do its work for real, and one
+// reading a step that did not run has no outputs to render.
+func (r *runner) dryRunSkip(src string) string {
+	if !r.dryRun {
+		return ""
+	}
+
+	if !strings.Contains(src, "RUNBOOK_DRY_RUN") {
+		return "the script does not read RUNBOOK_DRY_RUN"
+	}
+
+	for _, ref := range valueRefs(src) {
+		if ref.root != "outputs" || len(ref.path) == 0 {
+			continue
+		}
+
+		if _, ran := r.outputs[ref.path[0]]; !ran {
+			return fmt.Sprintf("it reads outputs of step %q, which produced none", ref.path[0])
+		}
+	}
+
+	return ""
 }
 
 // runInline runs a command= step. Without shell syntax it runs as argv, each
@@ -154,23 +200,44 @@ func (r *runner) runInline(step *Step) (stepResult, error) {
 		return res, err
 	}
 
-	if step.Expected != "" && !containsWord(res.output, step.Expected) {
-		return res, fmt.Errorf("output does not contain expected %q", step.Expected)
-	}
-
-	return res, nil
+	return res, checkExpected(step, res.output)
 }
 
+// inlineArgv renders a command= step. Shell syntax runs under bash -c; a
+// command that hands a string to an interpreter runs as argv. Both reach here
+// only signed off, and in both the values become code, so they must be inert.
 func (r *runner) inlineArgv(step *Step) ([]string, string, error) {
+	mode := modeArgv
 	if needsShell(step.Command) {
+		mode = modeShell
+	}
+
+	if mode == modeShell || runsCode(step.Command) {
+		if err := r.checkCodeValues(step.ID, step.Command); err != nil {
+			return nil, mode, err
+		}
+	}
+
+	if mode == modeShell {
 		rendered, err := r.render(step.ID, step.Command)
 
-		return []string{"bash", "-c", rendered}, modeShell, err
+		return []string{"bash", "-c", rendered}, mode, err
 	}
 
 	argv, err := r.renderArgv(step.ID, step.Command)
 
-	return argv, modeArgv, err
+	return argv, mode, err
+}
+
+// checkExpected fails a step whose output lacks its expected= word. The
+// catalog writes `test -f x && echo found || echo missing`, which exits 0
+// either way.
+func checkExpected(step *Step, output string) error {
+	if step.Expected == "" || containsWord(output, step.Expected) {
+		return nil
+	}
+
+	return fmt.Errorf("output does not contain expected %q", step.Expected)
 }
 
 // renderTemplate renders a Template step's blueprint into the working tree
@@ -221,6 +288,13 @@ func (r *runner) renderTemplate(step *Step) (stepResult, error) {
 
 	res.output = fmt.Sprintf("rendered %s -> %s", step.Path, dest)
 
+	// A dry run lists what it would write and writes nothing, so the step is
+	// skipped, not completed.
+	if r.dryRun {
+		res.skipped = true
+		res.output = "dry-run: listed, nothing written — " + res.output
+	}
+
 	return res, nil
 }
 
@@ -231,11 +305,25 @@ func (r *runner) exec(ctx context.Context, outputFile, name string, args ...stri
 	cmd.Dir = r.cwd
 	cmd.Env = r.env(outputFile)
 
+	// A timeout kills the step's whole process group. Killing only bash left
+	// its children holding the output pipe, and CombinedOutput waited for
+	// them: `sleep 600` in a script with timeoutMs=200 blocked for 600s.
+	// WaitDelay bounds the wait for a child that escaped the group.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error { return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL) }
+	cmd.WaitDelay = pipeWaitDelay
+
 	out, err := cmd.CombinedOutput()
 	output := strings.TrimSpace(string(out))
 
 	if ctx.Err() != nil {
 		return output, -1, fmt.Errorf("timed out: %w", ctx.Err())
+	}
+
+	// The step exited 0 but left a background child holding stdout (a server
+	// it started, say). The step succeeded; the child is its business.
+	if errors.Is(err, exec.ErrWaitDelay) {
+		return output, 0, nil
 	}
 
 	var exitErr *exec.ExitError
@@ -280,13 +368,7 @@ func (r *runner) render(stepID, text string) (string, error) {
 // renderArgv splits command into words before rendering it. Template actions
 // are masked first so `{{ .inputs.X }}` stays inside one word.
 func (r *runner) renderArgv(stepID, command string) ([]string, error) {
-	var actions []string
-
-	masked := templateActionRe.ReplaceAllStringFunc(command, func(action string) string {
-		actions = append(actions, action)
-
-		return fmt.Sprintf("\x00%d\x00", len(actions)-1)
-	})
+	masked, actions := maskActions(command)
 
 	words, err := shellquote.Split(masked)
 	if err != nil {
@@ -310,6 +392,127 @@ func (r *runner) renderArgv(stepID, command string) ([]string, error) {
 	}
 
 	return words, nil
+}
+
+// maskActions replaces each template action with a NUL-delimited index, so a
+// shell-word split cannot cut `{{ .inputs.X }}` apart.
+func maskActions(command string) (string, []string) {
+	var actions []string
+
+	masked := templateActionRe.ReplaceAllStringFunc(command, func(action string) string {
+		actions = append(actions, action)
+
+		return fmt.Sprintf("\x00%d\x00", len(actions)-1)
+	})
+
+	return masked, actions
+}
+
+// runsCode reports whether a command hands a string to an interpreter, which
+// is as dangerous as shell syntax though it has none: it starts with one
+// (`bash -c 'touch {{ .inputs.X }}'`, env, xargs, sudo), or a template action
+// sits in the argument of -c/-e/--command/--eval (`psql -c "... {{ .x }}"`).
+func runsCode(command string) bool {
+	masked, _ := maskActions(command)
+
+	words, err := shellquote.Split(masked)
+	if err != nil || len(words) == 0 {
+		return false
+	}
+
+	if interpreters[filepath.Base(words[0])] {
+		return true
+	}
+
+	for i := 1; i < len(words); i++ {
+		if codeFlags[words[i-1]] && strings.Contains(words[i], "\x00") {
+			return true
+		}
+	}
+
+	return false
+}
+
+// valueRef is one `.inputs[.Name]` or `.outputs[.step[.key]]` a template
+// action reads. An empty path reads the whole map.
+type valueRef struct {
+	root string
+	path []string
+}
+
+func valueRefs(text string) []valueRef {
+	var refs []valueRef
+
+	for _, action := range templateActionRe.FindAllString(text, -1) {
+		for _, m := range valueRefRe.FindAllStringSubmatch(action, -1) {
+			path := strings.FieldsFunc(m[2], func(c rune) bool { return c == '.' })
+			refs = append(refs, valueRef{root: m[1], path: path})
+		}
+	}
+
+	return refs
+}
+
+// checkCodeValues refuses to render a value into text a shell or interpreter
+// parses — a script's source, a bash -c string, an interpreter's argument —
+// unless it is inert there. An input of `x; touch pwned` would otherwise run,
+// signed off or not: sign-off approves the command, not the values in it.
+func (r *runner) checkCodeValues(stepID, text string) error {
+	for _, ref := range valueRefs(text) {
+		for name, value := range r.referenced(ref) {
+			for _, s := range renderedStrings(value) {
+				if !codeValueRe.MatchString(s) {
+					return fmt.Errorf("%w: step %q renders %s=%q into code, where only letters, digits and _./:@%%+=,- "+
+						"may appear (an input is also in the step's environment by name)", ErrUnsafeValue, stepID, name, s)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// referenced is every value ref reads, by name.
+func (r *runner) referenced(ref valueRef) map[string]any {
+	found := map[string]any{}
+
+	if ref.root == "inputs" {
+		for name, value := range r.inputs {
+			if len(ref.path) == 0 || ref.path[0] == name {
+				found[name] = value
+			}
+		}
+
+		return found
+	}
+
+	for step, outputs := range r.outputs {
+		for key, value := range outputs {
+			if (len(ref.path) == 0 || ref.path[0] == step) && (len(ref.path) < 2 || ref.path[1] == key) {
+				found[step+"."+key] = value
+			}
+		}
+	}
+
+	return found
+}
+
+// renderedStrings is how a value can appear once rendered: each item of a
+// list, anything else as fmt prints it.
+func renderedStrings(value any) []string {
+	switch v := value.(type) {
+	case []string:
+		return v
+	case []any:
+		out := make([]string, len(v))
+		for i := range v {
+			out[i] = fmt.Sprint(v[i])
+		}
+
+		return out
+	default:
+		return []string{fmt.Sprint(v)}
+	}
 }
 
 // needsShell reports whether a command uses syntax only a shell can run:

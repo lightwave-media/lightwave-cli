@@ -35,7 +35,8 @@ type Step struct {
 	// Timeout bounds the step (timeoutMs="{1800000}"); zero means unbounded.
 	Timeout time.Duration `json:"timeout_ns,omitempty"`
 	// HighBlast steps wait for operator sign-off: every Command and Template,
-	// and a Check whose inline command needs a shell (lightwave-cli#348).
+	// and a Check whose inline command needs a shell or hands a string to an
+	// interpreter (lightwave-cli#348).
 	HighBlast bool `json:"high_blast"`
 }
 
@@ -124,7 +125,7 @@ func ParseSteps(mdx string) []Step {
 			Target:      attrs["target"],
 			Expected:    attrs["expected"],
 			Timeout:     parseTimeout(attrs["timeoutMs"]),
-			HighBlast:   kind != KindCheck || needsShell(attrs["command"]),
+			HighBlast:   kind != KindCheck || needsShell(attrs["command"]) || runsCode(attrs["command"]),
 		})
 	}
 

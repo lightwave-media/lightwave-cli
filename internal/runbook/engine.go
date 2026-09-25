@@ -389,6 +389,12 @@ func StepComplete(opts *ApplyOpts) (*Instance, error) {
 		return nil, err
 	}
 
+	// Signing off a step on a finished instance set it running again, so a
+	// cancelled or failed runbook came back to life on the next apply.
+	if inst.Finished() {
+		return inst, fmt.Errorf("%w: %s is %s", ErrFinished, inst.InstanceID, inst.Status)
+	}
+
 	found := false
 
 	for i := range inst.Steps {
