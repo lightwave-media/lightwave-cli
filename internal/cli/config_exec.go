@@ -69,19 +69,26 @@ Credentials come from AWS_PROFILE. When it is unset, lw deliberately uses the
 read-only lightwave-agent profile rather than the SDK's default chain.
 
 The command is exec'd directly with no /bin/sh fallback, so a script needs a
-shebang, or run it as "-- bash script.sh". A script can give itself its keys
-by re-exec'ing through lw once:
+shebang, or run it as "-- bash script.sh".
+
+Prefer wrapping only the call that needs a key. When a whole script needs it,
+the script can re-exec itself through lw once, then keep the key out of the
+environment of everything it starts:
 
   [ -n "${LW_SECRETS_REEXEC:-}" ] || \
     LW_SECRETS_REEXEC=1 exec lw config exec --only KEY -- bash "$0" "$@"
   unset LW_SECRETS_REEXEC
+  key="$KEY"; unset KEY
 
 The guard is the marker alone, so an inherited copy of KEY never skips the
 strip, and unsetting it lets a nested script do the same for its own keys.
+Moving KEY into an unexported variable matters under a runner that saves a
+step's exported variables, such as the Runbooks app: it would otherwise write
+the key to disk and hand it to later steps.
 
 Exit status 78 (EX_CONFIG) means the environment could not be assembled and
-the command never started: --only or the command missing, a bad key name, a
-missing key, or an AWS read or listing error. A launchd KeepAlive job can tell that apart from
+the command never started: --only or the command missing, flags that cannot
+be parsed, a bad key name, a missing key, or an AWS read or listing error. A launchd KeepAlive job can tell that apart from
 the command's own failures. After exec the status is the command's; a command
 that cannot be found or exec'd exits 1.`,
 	Args: func(_ *cobra.Command, args []string) error {
@@ -102,9 +109,11 @@ func runConfigExec(cmd *cobra.Command, args []string) error {
 
 	keys := splitOnly(configExecOnly)
 
+	// The command is not named in errors: a value pasted after -- by mistake
+	// would otherwise be printed.
 	binary, err := exec.LookPath(args[0])
 	if err != nil {
-		return fmt.Errorf("lw config exec: %w", err)
+		return errors.New("lw config exec: the command after -- was not found on PATH")
 	}
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), configExecTimeout)
@@ -126,7 +135,7 @@ func runConfigExec(cmd *cobra.Command, args []string) error {
 	}
 
 	if err := execProcess(binary, args, childEnv(os.Environ(), pairs, storeKeys)); err != nil {
-		return fmt.Errorf("lw config exec: exec %s: %w", args[0], err)
+		return fmt.Errorf("lw config exec: exec the command after --: %w", err)
 	}
 
 	return nil

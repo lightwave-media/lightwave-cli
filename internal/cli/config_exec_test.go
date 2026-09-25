@@ -231,7 +231,8 @@ func TestConfigExecRefusesAnUnknownCommandBeforeReadingSSM(t *testing.T) {
 	rec, getter, cmd, _ := withExecSeams(t, map[string]string{"A": "a"}, []string{"A"})
 
 	err := runConfigExec(cmd, []string{"no-such-binary-4c1e"})
-	require.Error(t, err)
+	require.ErrorContains(t, err, "not found on PATH")
+	assert.NotContains(t, err.Error(), "no-such-binary-4c1e", "a pasted value must not be echoed")
 	_, coded := ExitCode(err)
 	assert.False(t, coded, "a missing command is not a secrets failure")
 	assert.Zero(t, getter.calls)
@@ -314,8 +315,11 @@ func TestConfigExecReportsAnExecFailureWithoutValuesAndWithoutExitCode78(t *test
 
 // pflag quotes the whole token in "unknown shorthand flag" and "bad flag
 // syntax" errors, so `-only=<value>` would print the value.
+//
+//nolint:paralleltest // configExecFlags binds the package-level --only slice
 func TestConfigExecFlagErrorsNeverEchoTheToken(t *testing.T) {
-	t.Parallel()
+	prev := configExecOnly
+	t.Cleanup(func() { configExecOnly = prev })
 
 	fresh := &cobra.Command{}
 	configExecFlags(fresh)
