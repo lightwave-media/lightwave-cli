@@ -201,6 +201,9 @@ func runRunbookApply(cmd *cobra.Command, args []string) error {
 		return errors.New("give a runbook slug or --instance, not both")
 	case len(args) > 0:
 		inst, err = applySlug(args[0], opts)
+	case len(runbookVars) > 0 || runbookVarsFile != "" || runbookDryRun:
+		return errors.New("--var, --vars-file and --dry-run are bound when an instance starts; " +
+			"with --instance they would be ignored — give the runbook slug instead")
 	default:
 		inst, err = runbook.Apply(opts)
 	}

@@ -33,6 +33,27 @@ func TestRunbookVarFlag_RepeatsWithoutCommaSplitting(t *testing.T) {
 	require.Equal(t, []string{"Url=https://x/y?a=1,b=2", "Name=alice"}, got)
 }
 
+// With --instance, flags that bind at start would be silently ignored, so
+// they are refused before anything runs.
+//
+//nolint:paralleltest // sets the package-level flag vars the handler reads
+func TestRunbookApply_InstanceRefusesStartOnlyFlags(t *testing.T) {
+	t.Cleanup(func() { runbookInstance, runbookVars, runbookVarsFile, runbookDryRun = "", nil, "", false })
+
+	for name, set := range map[string]func(){
+		"--var":       func() { runbookVars = []string{"Name=x"} },
+		"--vars-file": func() { runbookVarsFile = "vars.yaml" },
+		"--dry-run":   func() { runbookDryRun = true },
+	} {
+		runbookInstance, runbookVars, runbookVarsFile, runbookDryRun = "some-instance", nil, "", false
+		set()
+
+		err := runRunbookApply(runbookApplyCmd, nil)
+		require.Error(t, err, name)
+		require.Contains(t, err.Error(), "bound when an instance starts", name)
+	}
+}
+
 // show exists so a caller can run a runbook without reading its MDX (#545):
 // it must say which inputs are required, which steps wait for sign-off, where
 // the runbook may run, and the exact command.

@@ -138,8 +138,10 @@ func instanceRoot(cwd, checkOnlyRoot string, edition *Edition) (string, error) {
 
 // Run is `lw runbook apply <slug>`: it resumes the task's open instance of
 // start.Slug, or starts one, then applies it — the one line the skills
-// document (#537). Inputs are bound at start, so vars passed while an
-// instance is open are refused rather than silently ignored.
+// document (#537). Inputs and dry-run are bound at start, so passing vars, or
+// a different --dry-run, while an instance is open is refused rather than
+// ignored: a dry run must never resume a real instance, nor a real run
+// complete a dry one with every step skipped.
 func Run(start *StartOpts, apply *ApplyOpts) (*Instance, error) {
 	inst, err := apply.newestOpen(start.Slug)
 	if err != nil {
@@ -151,9 +153,9 @@ func Run(start *StartOpts, apply *ApplyOpts) (*Instance, error) {
 		if inst, err = Start(start); err != nil {
 			return nil, err
 		}
-	case len(start.Vars) > 0:
-		return inst, fmt.Errorf("%w: %s instance %s is still open — apply it with --instance %s, or cancel it to start over",
-			ErrInputsBound, start.Slug, inst.InstanceID, inst.InstanceID)
+	case len(start.Vars) > 0 || start.DryRun != inst.DryRun:
+		return inst, fmt.Errorf("%w: %s instance %s (dry-run %t) is still open — apply it with --instance %s, or cancel it to start over",
+			ErrBoundAtStart, start.Slug, inst.InstanceID, inst.DryRun, inst.InstanceID)
 	}
 
 	apply.Task = inst.TaskID
@@ -165,10 +167,20 @@ func Run(start *StartOpts, apply *ApplyOpts) (*Instance, error) {
 // newestOpen is the most recently created unfinished instance of slug for
 // the task, or nil.
 func (o *ApplyOpts) newestOpen(slug string) (*Instance, error) {
-	var newest *Instance
+	all, err := o.instances()
+	if err != nil {
+		return nil, err
+	}
+
+	return newest(all, func(inst *Instance) bool { return inst.RunbookSlug == slug && !inst.Finished() }), nil
+}
+
+// instances is every instance print for the task, across the roots.
+func (o *ApplyOpts) instances() ([]*Instance, error) {
+	var all []*Instance
 
 	for _, root := range o.roots() {
-		all, err := ListInstances(root, o.Task)
+		found, err := ListInstances(root, o.Task)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
@@ -177,14 +189,23 @@ func (o *ApplyOpts) newestOpen(slug string) (*Instance, error) {
 			return nil, err
 		}
 
-		for _, inst := range all {
-			if inst.RunbookSlug == slug && !inst.Finished() && (newest == nil || inst.CreatedAt >= newest.CreatedAt) {
-				newest = inst
-			}
+		all = append(all, found...)
+	}
+
+	return all, nil
+}
+
+// newest is the latest-created instance keep accepts, or nil.
+func newest(all []*Instance, keep func(*Instance) bool) *Instance {
+	var latest *Instance
+
+	for _, inst := range all {
+		if keep(inst) && (latest == nil || inst.CreatedAt >= latest.CreatedAt) {
+			latest = inst
 		}
 	}
 
-	return newest, nil
+	return latest
 }
 
 // roots are where an instance print can live: the working tree, then the
@@ -197,8 +218,24 @@ func (o *ApplyOpts) roots() []string {
 	return []string{o.Cwd, o.CheckOnlyRoot}
 }
 
-// find loads the instance an operation names from the first root holding it.
+// find loads the instance an operation names or, without --instance, the
+// latest created across both roots. Taking the first root that had any let an
+// old completed worktree instance answer `status --require completed` while a
+// newer failed check-only one sat in the other root.
 func (o *ApplyOpts) find() (*Instance, error) {
+	if o.InstanceID == "" {
+		all, err := o.instances()
+		if err != nil {
+			return nil, err
+		}
+
+		if latest := newest(all, func(*Instance) bool { return true }); latest != nil {
+			return latest, nil
+		}
+
+		return nil, fmt.Errorf("no runbook instance for task %s", o.Task)
+	}
+
 	var firstErr error
 
 	for _, root := range o.roots() {
@@ -244,6 +281,12 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 	inst, err := opts.find()
 	if err != nil {
 		return nil, err
+	}
+
+	// Re-applying a failed instance still reports the failure; it once exited
+	// 0 and read as success.
+	if inst.Status == StatusFailed {
+		return inst, fmt.Errorf("%w: instance %s failed at step %s", ErrCheckFailed, inst.InstanceID, inst.CurrentStepID)
 	}
 
 	if inst.Finished() {

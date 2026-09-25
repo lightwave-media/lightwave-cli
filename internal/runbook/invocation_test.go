@@ -15,6 +15,7 @@ import (
 const (
 	lookSlug     = "look"
 	actSlug      = "act"
+	actDir       = "test/act"
 	checkOnlyMDX = `<Check id="look" command="true" />`
 	mutatingMDX  = `<Check id="look" command="true" />
 <Command id="act" command="touch acted" />`
@@ -47,7 +48,7 @@ func TestStart_CheckOnlyRunbookRunsOutsideAWorktree(t *testing.T) {
 func TestStart_RunbookThatChangesFilesRefusesOutsideAWorktree(t *testing.T) {
 	t.Parallel()
 	core := t.TempDir()
-	writeCatalog(t, core, map[string]string{actSlug: "test/act"}, map[string]string{actSlug: mutatingMDX})
+	writeCatalog(t, core, map[string]string{actSlug: actDir}, map[string]string{actSlug: mutatingMDX})
 
 	cwd, root := initWorktree(t, "main"), t.TempDir()
 	opts := startOpts(core, cwd, actSlug)
@@ -83,7 +84,7 @@ func runOpts(core, cwd string) (*runbook.StartOpts, *runbook.ApplyOpts) {
 func TestRun_StartsThenResumesThenStartsAfresh(t *testing.T) {
 	t.Parallel()
 	core := t.TempDir()
-	writeCatalog(t, core, map[string]string{actSlug: "test/act"}, map[string]string{actSlug: mutatingMDX})
+	writeCatalog(t, core, map[string]string{actSlug: actDir}, map[string]string{actSlug: mutatingMDX})
 	cwd := initWorktree(t, "feature/537-run")
 
 	start, apply := runOpts(core, cwd)
@@ -115,7 +116,7 @@ func TestRun_RefusesVarsWhileAnInstanceIsOpen(t *testing.T) {
 	t.Parallel()
 	core := t.TempDir()
 	mdx := inputsBlock(nameInputs) + mutatingMDX
-	writeCatalog(t, core, map[string]string{actSlug: "test/act"}, map[string]string{actSlug: mdx})
+	writeCatalog(t, core, map[string]string{actSlug: actDir}, map[string]string{actSlug: mdx})
 	cwd := initWorktree(t, "feature/537-vars")
 
 	start, apply := runOpts(core, cwd)
@@ -126,15 +127,88 @@ func TestRun_RefusesVarsWhileAnInstanceIsOpen(t *testing.T) {
 	start, apply = runOpts(core, cwd)
 	start.Vars = map[string]string{nameInput: "second"}
 	_, err = runbook.Run(start, apply)
-	require.ErrorIs(t, err, runbook.ErrInputsBound)
+	require.ErrorIs(t, err, runbook.ErrBoundAtStart)
 	assert.Contains(t, err.Error(), first.InstanceID, "the error names the open instance")
+}
+
+// Dry-run binds at start like inputs. A dry run resuming a real instance would
+// run its signed-off steps for real; a real run resuming a dry one would
+// complete it with every step skipped and pass `status --require completed`.
+func TestRun_RefusesADifferentDryRunWhileAnInstanceIsOpen(t *testing.T) {
+	t.Parallel()
+
+	for name, firstDry := range map[string]bool{"dry over real": false, "real over dry": true} {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			core := t.TempDir()
+			writeCatalog(t, core, map[string]string{actSlug: actDir}, map[string]string{actSlug: mutatingMDX})
+			cwd := initWorktree(t, "feature/537-dry")
+
+			start, apply := runOpts(core, cwd)
+			start.DryRun = firstDry
+			first, err := runbook.Run(start, apply)
+			require.NoError(t, err)
+			require.Equal(t, runbook.StatusWaitingApproval, first.Status)
+
+			start, apply = runOpts(core, cwd)
+			start.DryRun = !firstDry
+			_, err = runbook.Run(start, apply)
+			require.ErrorIs(t, err, runbook.ErrBoundAtStart)
+			assert.NoFileExists(t, filepath.Join(cwd, "acted"))
+		})
+	}
+}
+
+// Without --instance, status answers for the newest instance in either root,
+// not the first root that has any.
+func TestStatus_WithoutInstanceReadsTheNewestAcrossRoots(t *testing.T) {
+	t.Parallel()
+	core := t.TempDir()
+	writeCatalog(t, core, map[string]string{lookSlug: "test/look"}, map[string]string{lookSlug: checkOnlyMDX})
+	cwd, root := initWorktree(t, "feature/537-roots"), t.TempDir()
+
+	older := startOpts(core, cwd, lookSlug)
+	older.InstanceID = ""
+	inWorktree, err := runbook.Start(older)
+	require.NoError(t, err)
+	inWorktree.CreatedAt = "2026-01-01T00:00:00.000000000Z"
+	require.NoError(t, runbook.Save(cwd, inWorktree))
+
+	newer := startOpts(core, t.TempDir(), lookSlug) // not a worktree: goes under root
+	newer.InstanceID = ""
+	newer.CheckOnlyRoot = root
+	outside, err := runbook.Start(newer)
+	require.NoError(t, err)
+
+	got, err := runbook.Status(&runbook.ApplyOpts{Cwd: cwd, Task: outside.TaskID, CheckOnlyRoot: root})
+	require.NoError(t, err)
+	assert.Equal(t, outside.InstanceID, got.InstanceID)
+}
+
+// Re-applying a failed instance still fails; it once exited 0.
+func TestApply_AFailedInstanceStaysFailed(t *testing.T) {
+	t.Parallel()
+	core := t.TempDir()
+	writeCatalog(t, core, map[string]string{"fails": "test/fails"}, map[string]string{"fails": `<Check id="no" command="false" />`})
+	cwd := initWorktree(t, "feature/537-failed")
+
+	inst, err := runbook.Start(startOpts(core, cwd, "fails"))
+	require.NoError(t, err)
+
+	opts := &runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID}
+	_, err = runbook.Apply(opts)
+	require.ErrorIs(t, err, runbook.ErrCheckFailed)
+
+	again, err := runbook.Apply(opts)
+	require.ErrorIs(t, err, runbook.ErrCheckFailed)
+	assert.Equal(t, runbook.StatusFailed, again.Status)
 }
 
 func TestDescribe_ReportsInputsStepsAndWhereItRuns(t *testing.T) {
 	t.Parallel()
 	core := t.TempDir()
 	mdx := "---\nname: Act\ndescription: Does a thing\nstatus: active\n---\n" + inputsBlock(nameInputs) + mutatingMDX
-	writeCatalog(t, core, map[string]string{actSlug: "test/act", lookSlug: "test/look"},
+	writeCatalog(t, core, map[string]string{actSlug: actDir, lookSlug: "test/look"},
 		map[string]string{actSlug: mdx, lookSlug: checkOnlyMDX})
 
 	desc, err := runbook.Describe(core, actSlug)

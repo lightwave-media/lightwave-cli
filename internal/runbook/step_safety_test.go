@@ -186,10 +186,10 @@ func TestApply_DryRunTemplateIsSkipped(t *testing.T) {
 func TestStepComplete_RefusesAFinishedInstance(t *testing.T) {
 	t.Parallel()
 	core := t.TempDir()
-	writeCatalog(t, core, map[string]string{"act": "test/act"}, map[string]string{
-		"act": `<Command id="act" command="touch acted" />`,
+	writeCatalog(t, core, map[string]string{actSlug: actDir}, map[string]string{
+		actSlug: `<Command id="act" command="touch acted" />`,
 	})
-	cwd, inst := startWith(t, core, "act", nil, false)
+	cwd, inst := startWith(t, core, actSlug, nil, false)
 
 	_, err := runbook.Cancel(&runbook.ApplyOpts{Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
 	require.NoError(t, err)
