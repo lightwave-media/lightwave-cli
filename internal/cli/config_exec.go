@@ -7,7 +7,8 @@ package cli
 // replaces itself with the command, so the values live only in that command's
 // environment: never on argv, stdout, stderr or disk, and no lw parent lingers
 // holding them. Any other /lightwave/prod key lw inherited is stripped before
-// exec, so a parent that still holds the old session dump cannot pass it on. There is deliberately no all-keys form; `lw config env` is the
+// exec, so a parent that still holds the old session dump cannot pass it on.
+// There is deliberately no all-keys form; `lw config env` is the
 // human-terminal verb. Hand-wired beside `config env`; declared in
 // commands.yaml v1.10.0 for drift parity.
 
@@ -50,11 +51,13 @@ command, those keys set in its environment:
   lw config exec --only CLOUDFLARE_API_TOKEN -- terragrunt plan
   lw config exec --only NULLTICKETS_API_TOKEN,OPENROUTER_API_KEY -- ./worker --port 9400
 
---only is required and there is no all-keys form. Keys are read by name
-(GetParameters), so access can be scoped per key.
+--only is required, may be repeated, and there is no all-keys form. Keys are
+read by name (GetParameters), so access can be scoped per key. The caller also
+needs ssm:DescribeParameters, which returns names only and cannot be scoped
+per key.
 
-The command gets exactly the store keys it names. Any other /lightwave/prod
-key in lw's own environment is removed before exec, under the variable name
+The command gets exactly the store keys it names. Any other key currently in
+/lightwave/prod that is in lw's own environment is removed before exec, under the variable name
 ` + "`lw config env`" + ` would export it as, nested names included. Those names
 come from DescribeParameters, which returns no values. Variables that are not
 store keys pass through unchanged.
@@ -69,15 +72,25 @@ The command is exec'd directly with no /bin/sh fallback, so a script needs a
 shebang, or run it as "-- bash script.sh". A script can give itself its keys
 by re-exec'ing through lw once:
 
-  [ -n "${KEY:-}" ] || [ -n "${LW_SECRETS_REEXEC:-}" ] || \
+  [ -n "${LW_SECRETS_REEXEC:-}" ] || \
     LW_SECRETS_REEXEC=1 exec lw config exec --only KEY -- bash "$0" "$@"
+  unset LW_SECRETS_REEXEC
+
+The guard is the marker alone, so an inherited copy of KEY never skips the
+strip, and unsetting it lets a nested script do the same for its own keys.
 
 Exit status 78 (EX_CONFIG) means the environment could not be assembled and
-the command never started: --only missing, a bad key name, a missing key, or
-an AWS read or listing error. A launchd KeepAlive job can tell that apart from
+the command never started: --only or the command missing, a bad key name, a
+missing key, or an AWS read or listing error. A launchd KeepAlive job can tell that apart from
 the command's own failures. After exec the status is the command's; a command
 that cannot be found or exec'd exits 1.`,
-	Args:         cobra.MinimumNArgs(1),
+	Args: func(_ *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return secretsUnavailable(errors.New("name the command to run after --"))
+		}
+
+		return nil
+	},
 	SilenceUsage: true,
 	RunE:         runConfigExec,
 }
@@ -86,6 +99,8 @@ func runConfigExec(cmd *cobra.Command, args []string) error {
 	if len(configExecOnly) == 0 {
 		return secretsUnavailable(errors.New("--only is required (name each key the command needs)"))
 	}
+
+	keys := splitOnly(configExecOnly)
 
 	binary, err := exec.LookPath(args[0])
 	if err != nil {
@@ -100,7 +115,7 @@ func runConfigExec(cmd *cobra.Command, args []string) error {
 		return secretsUnavailable(fmt.Errorf("%w (check AWS_PROFILE and `aws sts get-caller-identity`)", err))
 	}
 
-	pairs, err := secrets.FetchNamed(ctx, client, configExecOnly)
+	pairs, err := secrets.FetchNamed(ctx, client, keys)
 	if err != nil {
 		return secretsUnavailable(err)
 	}
@@ -115,6 +130,18 @@ func runConfigExec(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// splitOnly splits each --only value on commas. The flag is a plain string
+// array because pflag's comma-separated slice parses values as CSV and echoes
+// any value it cannot parse, which would print a secret pasted by mistake.
+func splitOnly(values []string) []string {
+	keys := make([]string, 0, len(values))
+	for _, v := range values {
+		keys = append(keys, strings.Split(v, ",")...)
+	}
+
+	return keys
 }
 
 // secretsUnavailable marks a failure before exec with EX_CONFIG.
@@ -150,7 +177,7 @@ func childEnv(parent []string, pairs []secrets.Pair, storeKeys map[string]bool) 
 // configExecFlags registers exec's flags on c. A test parses a fresh command
 // with it, because a used pflag slice cannot be reset: later Sets append.
 func configExecFlags(c *cobra.Command) {
-	c.Flags().StringSliceVar(&configExecOnly, "only", nil, "comma-separated keys under /lightwave/prod/ to set in the command's environment")
+	c.Flags().StringArrayVar(&configExecOnly, "only", nil, "comma-separated keys under /lightwave/prod/ to set in the command's environment (repeatable)")
 	// Everything after the command name belongs to the command, not to lw.
 	c.Flags().SetInterspersed(false)
 }

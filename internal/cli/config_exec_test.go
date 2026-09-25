@@ -122,6 +122,7 @@ func envValues(env []string, key string) []string {
 //nolint:paralleltest // swaps package-level seams and HOME
 func TestConfigExecPutsNamedKeysOnlyInTheChildEnvironment(t *testing.T) {
 	t.Setenv("NULLTICKETS_API_TOKEN", "stale-inherited-copy")
+	t.Setenv("UNREQUESTED", "must-not-appear")
 	rec, _, cmd, out := withExecSeams(t,
 		map[string]string{"NULLTICKETS_API_TOKEN": execSentinel, "UNREQUESTED": "must-not-appear"},
 		[]string{"NULLTICKETS_API_TOKEN"})
@@ -249,6 +250,64 @@ func TestConfigExecLeavesTheChildsFlagsToTheChild(t *testing.T) {
 	flags := fresh.Flags()
 	require.NoError(t, flags.Parse([]string{"--only", "A,B", "curl", "-s", "--only", "x"}))
 
-	assert.Equal(t, []string{"A", "B"}, configExecOnly)
+	assert.Equal(t, []string{"A", "B"}, splitOnly(configExecOnly))
 	assert.Equal(t, []string{"curl", "-s", "--only", "x"}, flags.Args())
+}
+
+// pflag's comma-separated slice parses values as CSV and echoes one it cannot
+// parse. A JSON-shaped value pasted into --only must reach our own validation,
+// which reports it by position and length only.
+//
+//nolint:paralleltest // swaps package-level seams and HOME
+func TestConfigExecNeverEchoesAValueFlagParsingWouldReject(t *testing.T) {
+	rec, getter, cmd, out := withExecSeams(t, map[string]string{"A": "a"}, nil)
+
+	fresh := &cobra.Command{}
+	configExecFlags(fresh)
+	pasted := `{"a":"` + execSentinel + `"}`
+	require.NoError(t, fresh.Flags().Parse([]string{"--only", pasted, "sh", "-c", "true"}))
+
+	err := runConfigExec(cmd, fresh.Flags().Args())
+
+	require.ErrorContains(t, err, "item 1")
+	requireSecretsUnavailable(t, err)
+	assert.NotContains(t, err.Error(), execSentinel)
+	assert.Zero(t, getter.calls)
+	assert.False(t, rec.called)
+	assert.NotContains(t, out.String(), execSentinel)
+}
+
+//nolint:paralleltest // swaps package-level seams and HOME
+func TestConfigExecReadsRepeatedOnlyFlags(t *testing.T) {
+	rec, _, cmd, _ := withExecSeams(t, map[string]string{"A": "a", "B": "b", "C": "c"}, []string{"A,B", "C"})
+
+	require.NoError(t, runConfigExec(cmd, []string{"sh", "-c", "true"}))
+
+	require.True(t, rec.called)
+	for key, value := range map[string]string{"A": "a", "B": "b", "C": "c"} {
+		assert.Equal(t, []string{value}, envValues(rec.env, key))
+	}
+}
+
+func TestConfigExecRefusesToStartWithoutACommand(t *testing.T) {
+	t.Parallel()
+
+	err := configExecCmd.Args(configExecCmd, nil)
+
+	require.ErrorContains(t, err, "name the command")
+	requireSecretsUnavailable(t, err)
+}
+
+//nolint:paralleltest // swaps package-level seams and HOME
+func TestConfigExecReportsAnExecFailureWithoutValuesAndWithoutExitCode78(t *testing.T) {
+	_, _, cmd, out := withExecSeams(t, map[string]string{"A": execSentinel}, []string{"A"})
+	execProcess = func(string, []string, []string) error { return errors.New("exec format error") }
+
+	err := runConfigExec(cmd, []string{"sh", "-c", "true"})
+
+	require.ErrorContains(t, err, "exec format error")
+	assert.NotContains(t, err.Error(), execSentinel)
+	_, coded := ExitCode(err)
+	assert.False(t, coded, "after the environment is assembled, a failure is not EX_CONFIG")
+	assert.NotContains(t, out.String(), execSentinel)
 }

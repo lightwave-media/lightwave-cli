@@ -4,7 +4,8 @@ package secrets
 //
 // GetParameters (never GetParametersByPath) is the point: an IAM policy can be
 // scoped to parameter ARNs, so a persona can later be granted exactly the keys
-// its secret map lists. Fetch (env.go) reads the whole tree and stays the
+// its secret map lists. StoreEnvNames also needs ssm:DescribeParameters, which
+// returns names only and cannot be scoped per key. Fetch (env.go) reads the whole tree and stays the
 // human-terminal loader behind `lw config env`.
 
 import (

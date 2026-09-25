@@ -191,6 +191,8 @@ func TestStoreEnvNamesListsEveryPageByNameUnderTheTree(t *testing.T) {
 	}, names)
 	require.Len(t, lister.calls, 2)
 
+	assert.Equal(t, int32(50), aws.ToInt32(lister.calls[0].MaxResults), "the SSM API maximum page size")
+
 	filter := lister.calls[0].ParameterFilters
 	require.Len(t, filter, 1)
 	assert.Equal(t, "Path", aws.ToString(filter[0].Key))
