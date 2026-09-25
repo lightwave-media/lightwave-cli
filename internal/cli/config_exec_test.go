@@ -311,3 +311,21 @@ func TestConfigExecReportsAnExecFailureWithoutValuesAndWithoutExitCode78(t *test
 	assert.False(t, coded, "after the environment is assembled, a failure is not EX_CONFIG")
 	assert.NotContains(t, out.String(), execSentinel)
 }
+
+// pflag quotes the whole token in "unknown shorthand flag" and "bad flag
+// syntax" errors, so `-only=<value>` would print the value.
+func TestConfigExecFlagErrorsNeverEchoTheToken(t *testing.T) {
+	t.Parallel()
+
+	fresh := &cobra.Command{}
+	configExecFlags(fresh)
+	parseErr := fresh.Flags().Parse([]string{"-only=" + execSentinel, "--", "true"})
+	require.Error(t, parseErr)
+	require.Contains(t, parseErr.Error(), execSentinel, "pflag's own message carries the token")
+
+	err := configExecCmd.FlagErrorFunc()(configExecCmd, parseErr)
+
+	require.ErrorContains(t, err, "--only KEY")
+	requireSecretsUnavailable(t, err)
+	assert.NotContains(t, err.Error(), execSentinel)
+}

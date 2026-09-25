@@ -182,7 +182,15 @@ func configExecFlags(c *cobra.Command) {
 	c.Flags().SetInterspersed(false)
 }
 
+// configExecFlagError replaces pflag's parse errors, which quote the whole
+// offending token: `-only=<value>` would otherwise print a value pasted by
+// mistake. Nothing ran, so it is EX_CONFIG like every other pre-exec failure.
+func configExecFlagError(_ *cobra.Command, _ error) error {
+	return secretsUnavailable(errors.New("could not parse the flags before -- (use --only KEY[,KEY] -- command)"))
+}
+
 func init() {
 	configExecFlags(configExecCmd)
+	configExecCmd.SetFlagErrorFunc(configExecFlagError)
 	configCmd.AddCommand(configExecCmd)
 }
