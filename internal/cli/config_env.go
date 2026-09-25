@@ -1,14 +1,12 @@
 package cli
 
-// config_env.go — `lw config env`, the one loader that turns SSM
-// /lightwave/prod/* into a session's environment.
+// config_env.go — `lw config env`, SSM /lightwave/prod/* as shell exports for
+// a human at a terminal.
 //
-// Before this verb every surface fetched its own keys: a mise task shelled out
-// to the raw aws CLI, two Go packages each read one parameter, agent sessions
-// had none at all and hunted the filesystem for them. Every harness adapter
-// now calls this verb at session start (agent-harness-config blueprint) and
-// nothing else reads SSM for the environment. Hand-wired beside `config
-// harness`; declared in commands.yaml v1.7.0 for drift parity.
+// It is never a loader for a harness, session, hook, service wrapper or
+// script: those use `lw config exec --only`, which gives a process only the
+// keys it names (owner memo 2026-09-24, CLAUDE.md §24). Hand-wired beside
+// `config harness`; declared in commands.yaml v1.7.0 for drift parity.
 
 import (
 	"context"
@@ -28,19 +26,18 @@ var configEnvCmd = &cobra.Command{
 	Use:   "env",
 	Short: "Print SSM /lightwave/prod/* as shell exports (or JSON) for a human terminal",
 	Long: `Print every SSM parameter under /lightwave/prod/ as shell export lines,
-decrypted, so a shell or harness can load the runtime secrets in one step:
+decrypted, for a human at a terminal:
 
-  eval "$(lw config env)"          # this shell
-  lw config env --json             # one flat object, for a harness adapter
+  eval "$(lw config env)"          # this interactive shell
+  lw config env --json             # one flat object
 
-Credentials come from the default AWS chain (AWS_PROFILE is set by the
-harness configuration). Values go to stdout and nowhere else — no file is
+Credentials come from the default AWS chain (AWS_PROFILE when set). Values go to stdout and nowhere else — no file is
 written and nothing is logged. Two parameter names that map to the same
 variable are reported on stderr; the flat name wins.
 
-This is for a human at a terminal. Harnesses, service wrappers and agent
-sessions use ` + "`lw config exec --only KEY,... -- cmd`" + `, which grants a process
-only the keys it names (CLAUDE.md §24).`,
+This is for a human at a terminal, never a loader for a harness, session,
+hook, service wrapper or script. A process gets only the keys it names via
+` + "`lw config exec --only KEY,... -- cmd`" + ` (CLAUDE.md §24).`,
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE:         runConfigEnv,

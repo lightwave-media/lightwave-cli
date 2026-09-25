@@ -13,10 +13,12 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ssm"
+	"github.com/aws/aws-sdk-go-v2/service/ssm/types"
 )
 
 const (
@@ -25,6 +27,9 @@ const (
 	AgentProfile = "lightwave-agent"
 	// getParametersLimit is the SSM API maximum names per GetParameters call.
 	getParametersLimit = 10
+	// describeParametersLimit is the SSM API maximum page size for
+	// DescribeParameters.
+	describeParametersLimit = 50
 )
 
 // ParameterGetter is the slice of the SSM client FetchNamed needs.
@@ -36,10 +41,26 @@ type ParameterGetter interface {
 	) (*ssm.GetParametersOutput, error)
 }
 
-// NewNamedClient builds the client for FetchNamed: AWS_PROFILE when the
-// harness set one, else AgentProfile, and SDK logging off so no request or
-// response body can reach a log.
-func NewNamedClient(ctx context.Context) (ParameterGetter, error) {
+// ParameterLister is the slice of the SSM client StoreEnvNames needs.
+// DescribeParameters returns metadata only, never a value.
+type ParameterLister interface {
+	DescribeParameters(
+		ctx context.Context,
+		in *ssm.DescribeParametersInput,
+		opts ...func(*ssm.Options),
+	) (*ssm.DescribeParametersOutput, error)
+}
+
+// NamedClient reads named keys and lists the store's names.
+type NamedClient interface {
+	ParameterGetter
+	ParameterLister
+}
+
+// NewNamedClient builds the client for FetchNamed and StoreEnvNames:
+// AWS_PROFILE when the harness set one, else AgentProfile, and SDK logging
+// off so no request or response body can reach a log.
+func NewNamedClient(ctx context.Context) (NamedClient, error) {
 	opts := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(Region),
 		awsconfig.WithClientLogMode(0),
@@ -95,6 +116,38 @@ func FetchNamed(ctx context.Context, client ParameterGetter, keys []string) ([]P
 	return pairs, nil
 }
 
+// StoreEnvNames lists every parameter under Path, by name only, as the
+// environment variable name `lw config env` would export it under (EnvName),
+// so nested parameters map too. A caller uses it to strip inherited store keys
+// it did not ask for.
+func StoreEnvNames(ctx context.Context, client ParameterLister) (map[string]bool, error) {
+	pages := ssm.NewDescribeParametersPaginator(client, &ssm.DescribeParametersInput{
+		ParameterFilters: []types.ParameterStringFilter{{
+			Key:    aws.String("Path"),
+			Option: aws.String("Recursive"),
+			Values: []string{Path},
+		}},
+		MaxResults: aws.Int32(describeParametersLimit),
+	})
+
+	names := map[string]bool{}
+
+	for pages.HasMorePages() {
+		out, err := pages.NextPage(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("list parameter names under %s: %w", Path, err)
+		}
+
+		for i := range out.Parameters {
+			if key := EnvName(aws.ToString(out.Parameters[i].Name)); key != "" {
+				names[key] = true
+			}
+		}
+	}
+
+	return names, nil
+}
+
 func fetchBatch(ctx context.Context, client ParameterGetter, batch []string, into map[string]string) error {
 	paths := make([]string, len(batch))
 	for i, key := range batch {
@@ -121,16 +174,17 @@ func fetchBatch(ctx context.Context, client ParameterGetter, batch []string, int
 }
 
 // uniqueKeys validates each key as a flat environment variable name and drops
-// repeats, keeping first-seen order.
+// repeats, keeping first-seen order. A rejected item is reported by position
+// and length only, never by its text: it may be a value pasted by mistake.
 func uniqueKeys(keys []string) ([]string, error) {
 	seen := make(map[string]bool, len(keys))
 
 	var names, invalid []string
 
-	for _, raw := range keys {
+	for i, raw := range keys {
 		key := strings.TrimSpace(raw)
 		if !envNameRE.MatchString(key) {
-			invalid = append(invalid, fmt.Sprintf("%q", key))
+			invalid = append(invalid, fmt.Sprintf("item %d (%d chars)", i+1, utf8.RuneCountInString(key)))
 
 			continue
 		}

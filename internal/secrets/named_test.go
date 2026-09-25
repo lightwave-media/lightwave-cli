@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -85,14 +86,20 @@ func TestFetchNamedFailsClosedNamingOnlyTheMissingKey(t *testing.T) {
 	assert.Nil(t, pairs)
 }
 
-func TestFetchNamedRejectsNamesThatAreNotFlatKeys(t *testing.T) {
+// A value pasted into --only by mistake must not be echoed back: rejected
+// items are reported by position and length, never by their text.
+func TestFetchNamedReportsRejectedNamesByPositionAndLengthOnly(t *testing.T) {
 	t.Parallel()
 
-	getter := &fakeGetter{}
-	_, err := secrets.FetchNamed(context.Background(), getter, []string{"OK_KEY", "openrouter/api_key", "lower"})
+	const pasted = "sk-sentinel-value-2b7e"
 
-	require.ErrorContains(t, err, `"openrouter/api_key"`)
-	require.ErrorContains(t, err, `"lower"`)
+	getter := &fakeGetter{}
+	_, err := secrets.FetchNamed(context.Background(), getter, []string{"OK_KEY", pasted, "openrouter/api_key"})
+
+	require.ErrorContains(t, err, "item 2 (22 chars)")
+	require.ErrorContains(t, err, "item 3 (18 chars)")
+	assert.NotContains(t, err.Error(), pasted)
+	assert.NotContains(t, err.Error(), "openrouter/api_key")
 	assert.Empty(t, getter.calls, "no SSM call when any name is invalid")
 }
 
@@ -130,4 +137,81 @@ func TestFetchNamedSurfacesAccessDeniedWithTheKeyNames(t *testing.T) {
 	_, err := secrets.FetchNamed(context.Background(), deniedGetter{}, []string{"NULLTICKETS_API_TOKEN"})
 	require.ErrorContains(t, err, "NULLTICKETS_API_TOKEN")
 	require.ErrorContains(t, err, "AccessDeniedException")
+}
+
+// fakeLister pages parameter names the way DescribeParameters does, with a
+// numeric NextToken, and records every request.
+type fakeLister struct {
+	names    []string
+	calls    []*ssm.DescribeParametersInput
+	pageSize int
+}
+
+func (f *fakeLister) DescribeParameters(
+	_ context.Context,
+	in *ssm.DescribeParametersInput,
+	_ ...func(*ssm.Options),
+) (*ssm.DescribeParametersOutput, error) {
+	f.calls = append(f.calls, in)
+
+	start := 0
+	if in.NextToken != nil {
+		start, _ = strconv.Atoi(*in.NextToken)
+	}
+
+	end := min(start+f.pageSize, len(f.names))
+	out := &ssm.DescribeParametersOutput{}
+
+	for _, name := range f.names[start:end] {
+		out.Parameters = append(out.Parameters, types.ParameterMetadata{Name: aws.String(secrets.Path + name)})
+	}
+
+	if end < len(f.names) {
+		out.NextToken = aws.String(strconv.Itoa(end))
+	}
+
+	return out, nil
+}
+
+func TestStoreEnvNamesListsEveryPageByNameUnderTheTree(t *testing.T) {
+	t.Parallel()
+
+	lister := &fakeLister{
+		names:    []string{"NULLTICKETS_API_TOKEN", "openrouter/api_key", "RESEND_API_KEY", "not-an-env-name"},
+		pageSize: 2,
+	}
+
+	names, err := secrets.StoreEnvNames(context.Background(), lister)
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]bool{
+		"NULLTICKETS_API_TOKEN": true,
+		"OPENROUTER_API_KEY":    true,
+		"RESEND_API_KEY":        true,
+	}, names)
+	require.Len(t, lister.calls, 2)
+
+	filter := lister.calls[0].ParameterFilters
+	require.Len(t, filter, 1)
+	assert.Equal(t, "Path", aws.ToString(filter[0].Key))
+	assert.Equal(t, "Recursive", aws.ToString(filter[0].Option))
+	assert.Equal(t, []string{secrets.Path}, filter[0].Values)
+}
+
+type deniedLister struct{}
+
+func (deniedLister) DescribeParameters(
+	_ context.Context,
+	_ *ssm.DescribeParametersInput,
+	_ ...func(*ssm.Options),
+) (*ssm.DescribeParametersOutput, error) {
+	return nil, errors.New("AccessDeniedException: not authorized to perform ssm:DescribeParameters")
+}
+
+func TestStoreEnvNamesSurfacesAListingError(t *testing.T) {
+	t.Parallel()
+
+	names, err := secrets.StoreEnvNames(context.Background(), deniedLister{})
+	require.ErrorContains(t, err, "AccessDeniedException")
+	assert.Nil(t, names)
 }
