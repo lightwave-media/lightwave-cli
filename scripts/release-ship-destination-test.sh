@@ -22,7 +22,8 @@ set -euo pipefail
 # `branch -M main` tries to rewrite the real main. That happened on the first
 # run through the pre-push gate. The other shell gates in mise.toml unset these
 # for the same reason; doing it here keeps the script correct however it is run.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG
+# shellcheck source=scripts/fixture-git-env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/fixture-git-env.sh"
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TMP="$(mktemp -d)"
@@ -36,8 +37,6 @@ fail() {
 git init --quiet --bare "${TMP}/origin.git"
 git clone --quiet "${TMP}/origin.git" "${TMP}/work"
 cd "${TMP}/work"
-git config user.email test@example.com
-git config user.name test
 git commit --quiet --allow-empty -m "root"
 git branch -M main
 git push --quiet -u origin main

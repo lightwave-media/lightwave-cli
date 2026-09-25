@@ -7,10 +7,19 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 	"github.com/lightwave-media/lightwave-cli/internal/uisync"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMain isolates the process because GitBase shells out to git with the
+// process environment, so under a hook's GIT_DIR it reads the hook's repo
+// instead of the fixture.
+func TestMain(m *testing.M) {
+	gitfixture.Isolate()
+	os.Exit(m.Run())
+}
 
 var fixedNow = time.Date(2026, 6, 12, 12, 0, 0, 0, time.UTC)
 
@@ -197,8 +206,7 @@ func TestGitBaseExtractsTaggedContent(t *testing.T) {
 		t.Helper()
 
 		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", repo}, args...)...)
-		cmd.Env = append(os.Environ(),
-			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t", "GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		cmd.Env = gitfixture.Env()
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, string(out))
 	}

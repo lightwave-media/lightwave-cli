@@ -9,6 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
 
 // The defect these pin (#444): every one of these helpers used to be asked a
@@ -24,9 +26,10 @@ import (
 // of this file; the rest keep the corrected behaviour honest.
 
 // newGitRepo creates an initialised repository with one commit and returns its
-// path. Identity and hooks are set locally so the test does not depend on the
-// developer's global git config, and so the repo-tracked hooks these repos
-// install (core.hooksPath=dev/hooks) cannot be inherited into a fixture.
+// path. Identity comes from gitfixture.Env and hooks are set locally, so the
+// test does not depend on the developer's global git config, and the
+// repo-tracked hooks these repos install (core.hooksPath=dev/hooks) cannot be
+// inherited into a fixture.
 func newGitRepo(t *testing.T) string {
 	t.Helper()
 
@@ -37,14 +40,13 @@ func newGitRepo(t *testing.T) string {
 
 		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = dir
+		cmd.Env = gitfixture.Env()
 
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "git %v: %s", args, out)
 	}
 
 	run("init", "--initial-branch=main")
-	run("config", "user.email", "test@example.invalid")
-	run("config", "user.name", "test")
 	run("config", "commit.gpgsign", "false")
 	run("config", "core.hooksPath", filepath.Join(dir, ".no-hooks"))
 
@@ -64,6 +66,7 @@ func commitFile(t *testing.T, repo, name, body string) {
 	for _, args := range [][]string{{"add", name}, {"commit", "-m", "add " + name}} {
 		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = repo
+		cmd.Env = gitfixture.Env()
 
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "git %v: %s", args, out)
@@ -240,6 +243,7 @@ func TestWorkspaceGitRepos_SkipsBareRepos(t *testing.T) {
 
 	cmd := exec.CommandContext(t.Context(), "git", "init", "--bare")
 	cmd.Dir = bare
+	cmd.Env = gitfixture.Env()
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git init --bare: %s", out)
 

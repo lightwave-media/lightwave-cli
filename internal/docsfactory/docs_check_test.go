@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/lightwave-media/lightwave-cli/internal/docsfactory"
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -57,15 +58,16 @@ func initGit(t *testing.T, repoRoot string) string {
 	t.Helper()
 	for _, c := range [][]string{
 		{"init"},
-		{"config", "user.email", "test@lightwave.test"},
-		{"config", "user.name", "Test"},
 		{"commit", "-m", "init", "--allow-empty"},
 	} {
 		cmd := exec.Command("git", append([]string{"-C", repoRoot}, c...)...)
+		cmd.Env = gitfixture.Env()
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "git %v: %s", c, string(out))
 	}
-	out, err := exec.Command("git", "-C", repoRoot, "rev-parse", "--short", "HEAD").Output()
+	head := exec.Command("git", "-C", repoRoot, "rev-parse", "--short", "HEAD")
+	head.Env = gitfixture.Env()
+	out, err := head.Output()
 	require.NoError(t, err)
 	return string(out[:len(out)-1])
 }

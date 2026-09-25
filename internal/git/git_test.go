@@ -7,7 +7,17 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
+
+// TestMain isolates the process because Commit and RescueUncommitted create
+// commits through the production wrapper, which takes its identity from the
+// process environment. The fixtures used to write one into each repo's config.
+func TestMain(m *testing.M) {
+	gitfixture.Isolate()
+	os.Exit(m.Run())
+}
 
 func initTestRepo(t *testing.T) string {
 	t.Helper()
@@ -15,16 +25,10 @@ func initTestRepo(t *testing.T) string {
 
 	cmd := exec.Command("git", "init")
 	cmd.Dir = dir
+	cmd.Env = gitfixture.Env()
 	if err := cmd.Run(); err != nil {
 		t.Fatalf("git init: %v", err)
 	}
-
-	cmd = exec.Command("git", "config", "user.email", "test@test.com")
-	cmd.Dir = dir
-	_ = cmd.Run()
-	cmd = exec.Command("git", "config", "user.name", "Test User")
-	cmd.Dir = dir
-	_ = cmd.Run()
 
 	testFile := filepath.Join(dir, "README.md")
 	if err := os.WriteFile(testFile, []byte("# Test\n"), 0644); err != nil {
@@ -32,9 +36,11 @@ func initTestRepo(t *testing.T) string {
 	}
 	cmd = exec.Command("git", "add", ".")
 	cmd.Dir = dir
+	cmd.Env = gitfixture.Env()
 	_ = cmd.Run()
 	cmd = exec.Command("git", "commit", "-m", "initial")
 	cmd.Dir = dir
+	cmd.Env = gitfixture.Env()
 	_ = cmd.Run()
 
 	return dir
@@ -328,12 +334,14 @@ func TestConfigGet(t *testing.T) {
 	dir := initTestRepo(t)
 	g := NewGit(dir)
 
-	email, err := g.ConfigGet("user.email")
+	// `git init` writes core.bare itself, so reading it needs no fixture config
+	// write; fixture identity is environment, not config (see gitfixture).
+	bare, err := g.ConfigGet("core.bare")
 	if err != nil {
 		t.Fatalf("ConfigGet: %v", err)
 	}
-	if email != "test@test.com" {
-		t.Errorf("user.email = %q, want test@test.com", email)
+	if bare != "false" {
+		t.Errorf("core.bare = %q, want false", bare)
 	}
 
 	// Nonexistent key returns empty string, not error
