@@ -10,7 +10,17 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
+
+// TestMain isolates the process because handlers under test shell out to git
+// with the process environment. Under a hook's GIT_DIR, installHooks wrote
+// core.hooksPath into the hook's repo instead of the fixture.
+func TestMain(m *testing.M) {
+	gitfixture.Isolate()
+	os.Exit(m.Run())
+}
 
 // #411. `lw hooks install` shelled out to `pre-commit install`, which was wrong
 // in both directions a repo can be in, and measurably so:
@@ -31,6 +41,7 @@ func hookGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 
 	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = gitfixture.Env()
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git %v: %s", args, out)
 }
@@ -49,7 +60,9 @@ func newHookRepo(t *testing.T) string {
 func hooksPathOf(t *testing.T, repo string) string {
 	t.Helper()
 
-	out, _ := exec.CommandContext(t.Context(), "git", "-C", repo, "config", "core.hooksPath").Output()
+	cmd := exec.CommandContext(t.Context(), "git", "-C", repo, "config", "core.hooksPath")
+	cmd.Env = gitfixture.Env()
+	out, _ := cmd.Output()
 
 	return strings.TrimSpace(string(out))
 }

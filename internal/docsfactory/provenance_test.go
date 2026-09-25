@@ -7,9 +7,18 @@ import (
 	"testing"
 
 	"github.com/lightwave-media/lightwave-cli/internal/docsfactory"
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMain isolates the process because ReadProvenance shells out to git with
+// the process environment, so under a hook's GIT_DIR it reads the hook's repo
+// instead of the fixture.
+func TestMain(m *testing.M) {
+	gitfixture.Isolate()
+	os.Exit(m.Run())
+}
 
 // #313. spec-lint reported `unknown kind "technical_study"` against a stamp
 // checkout six minutes behind origin. That message is indistinguishable from
@@ -116,6 +125,7 @@ func gitAt(t *testing.T, dir string, args ...string) {
 	t.Helper()
 
 	cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", dir}, args...)...)
+	cmd.Env = gitfixture.Env()
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git %v: %s", args, out)
 }
@@ -127,8 +137,6 @@ func TestReadProvenance_DetectsBehindUpstream(t *testing.T) {
 
 	upstream := t.TempDir()
 	gitAt(t, upstream, "init", "-q", "-b", "main")
-	gitAt(t, upstream, "config", "user.email", "t@t.com")
-	gitAt(t, upstream, "config", "user.name", "T")
 	require.NoError(t, os.WriteFile(filepath.Join(upstream, "a"), []byte("1\n"), 0o600))
 	gitAt(t, upstream, "add", ".")
 	gitAt(t, upstream, "commit", "-qm", "one")

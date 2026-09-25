@@ -8,9 +8,18 @@ import (
 	"testing"
 
 	"github.com/lightwave-media/lightwave-cli/internal/codegen/gogen"
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMain isolates the process because a git Source shells out to git with
+// the process environment, so under a hook's GIT_DIR it reads the hook's repo
+// instead of the fixture.
+func TestMain(m *testing.M) {
+	gitfixture.Isolate()
+	os.Exit(m.Run())
+}
 
 const entityYAML = `_meta:
   version: 1.0.0
@@ -36,13 +45,12 @@ func newRepo(t *testing.T) (root, dir string) {
 	git := func(args ...string) {
 		t.Helper()
 		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", root}, args...)...)
+		cmd.Env = gitfixture.Env()
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "git %v: %s", args, out)
 	}
 
 	git("init", "-q")
-	git("config", "user.email", "t@t")
-	git("config", "user.name", "t")
 
 	require.NoError(t, os.WriteFile(filepath.Join(root, dir, "widget.yaml"), []byte(entityYAML), 0o600))
 	git("add", "-A")
@@ -136,13 +144,12 @@ func newNestedRepo(t *testing.T) (root, dir string) {
 		t.Helper()
 
 		cmd := exec.CommandContext(t.Context(), "git", append([]string{"-C", root}, args...)...)
+		cmd.Env = gitfixture.Env()
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "git %v: %s", args, out)
 	}
 
 	git("init", "-q")
-	git("config", "user.email", "t@t")
-	git("config", "user.name", "t")
 	git("add", "-A")
 	git("commit", "-qm", "committed")
 

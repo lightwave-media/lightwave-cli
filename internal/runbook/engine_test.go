@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/lightwave-media/lightwave-cli/internal/runbook"
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,6 +35,7 @@ func gitOk(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), args[0], args[1:]...)
 	cmd.Dir = dir
+	cmd.Env = gitfixture.Env()
 	require.NoError(t, cmd.Run(), args)
 }
 
@@ -41,8 +43,6 @@ func initWorktree(t *testing.T, branch string) string {
 	t.Helper()
 	dir := t.TempDir()
 	gitOk(t, dir, "git", "init", "-b", "main")
-	gitOk(t, dir, "git", "config", "user.email", "test@test.com")
-	gitOk(t, dir, "git", "config", "user.name", "Test")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("x\n"), 0o644))
 	gitOk(t, dir, "git", "add", ".")
 	gitOk(t, dir, "git", "commit", "-m", "init")

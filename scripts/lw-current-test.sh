@@ -19,8 +19,10 @@ set -uo pipefail
 # `git init`/`git -C "$repo"` calls, which would then silently target the
 # real checkout instead of the temp dir. Belt-and-suspenders with the same
 # strip in mise.toml's [tasks.lw-current], since this script is also runnable
-# directly. Same defect class release-ship-destination-test.sh guards against.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS
+# directly. This script's `git config user.*` is what wrote `Proof <proof@test>`
+# into ~/dev/lightwave-cli/.git/config on 2026-09-16.
+# shellcheck source=scripts/fixture-git-env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/fixture-git-env.sh"
 
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 
@@ -35,8 +37,6 @@ fail=0
 repo="$TMP/repo"
 mkdir -p "$repo" "$TMP/bin"
 git init -q -b main "$repo"
-git -C "$repo" config user.email proof@test
-git -C "$repo" config user.name Proof
 git -C "$repo" commit -q --allow-empty -m first
 first=$(git -C "$repo" rev-parse --short HEAD)
 git -C "$repo" commit -q --allow-empty -m second
