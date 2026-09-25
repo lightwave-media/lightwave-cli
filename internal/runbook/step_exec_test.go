@@ -214,20 +214,24 @@ func TestApply_CheckThatNeedsAShellWaitsForSignoff(t *testing.T) {
 func TestParseSteps_HighBlastMarksChecksThatNeedAShell(t *testing.T) {
 	t.Parallel()
 
-	for command, wantShell := range map[string]bool{
+	for command, wantSignoff := range map[string]bool{
 		`go version`: false,
-		`lw harness status --instance {{ .inputs.X }}`:                   false,
-		`psql -d db -t -c \"SELECT 1 FROM t WHERE s='{{ .inputs.T }}'\"`: false,
-		`echo {{ .inputs.X | lower }}`:                                   false,
-		`git branch --show-current && git status --short`:                true,
-		`python3 -c 'print(1)' | tee out`:                                true,
-		`test -f ~/x`:                                                    true,
-		`echo \"$HOME\"`:                                                 true,
-		`ls *.go`:                                                        true,
+		`lw harness status --instance {{ .inputs.X }}`:    false,
+		`echo {{ .inputs.X | lower }}`:                    false,
+		`python3 -c 'print(1)'`:                           false,
+		`git branch --show-current && git status --short`: true,
+		`python3 -c 'print(1)' | tee out`:                 true,
+		`test -f ~/x`:                                     true,
+		`echo \"$HOME\"`:                                  true,
+		`ls *.go`:                                         true,
+		// An interpreter runs its argument as code, shell syntax or not.
+		`bash -c 'touch {{ .inputs.Name }}'`: true,
+		`env FOO=1 make`:                     true,
+		`psql -d db -t -c \"SELECT 1 FROM t WHERE s='{{ .inputs.T }}'\"`: true,
 	} {
 		steps := runbook.ParseSteps(`<Check id="c" command="` + command + `" />`)
 		require.Len(t, steps, 1, command)
-		assert.Equal(t, wantShell, steps[0].HighBlast, command)
+		assert.Equal(t, wantSignoff, steps[0].HighBlast, command)
 	}
 
 	commands := runbook.ParseSteps(`<Command id="c" command="true" />`)

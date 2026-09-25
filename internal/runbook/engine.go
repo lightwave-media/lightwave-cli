@@ -154,7 +154,7 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 		return nil, err
 	}
 
-	if inst.Status == StatusCancelled || inst.Status == StatusFailed || inst.Status == StatusCompleted {
+	if inst.Finished() {
 		return inst, nil
 	}
 
@@ -294,6 +294,12 @@ func StepComplete(opts *ApplyOpts) (*Instance, error) {
 	inst, err := Load(opts.Cwd, opts.Task, id)
 	if err != nil {
 		return nil, err
+	}
+
+	// Signing off a step on a finished instance set it running again, so a
+	// cancelled or failed runbook came back to life on the next apply.
+	if inst.Finished() {
+		return inst, fmt.Errorf("%w: %s is %s", ErrFinished, inst.InstanceID, inst.Status)
 	}
 
 	found := false
