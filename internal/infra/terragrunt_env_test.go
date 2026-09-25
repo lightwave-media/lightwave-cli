@@ -198,3 +198,31 @@ func TestRunAllValidateReadsNothing(t *testing.T) {
 
 	assert.Zero(t, *calls, "validate configures no provider")
 }
+
+//nolint:paralleltest // swaps a package-level seam, PATH and the environment
+func TestApplyGivesTheTokenToTerragruntForACloudflareUnit(t *testing.T) {
+	t.Setenv(cloudflareTokenKey, "")
+	withFetchSecret(t, tokenSentinel, nil)
+	record := fakeTerragrunt(t)
+	root := t.TempDir()
+	writeUnitBody(t, filepath.Join(root, "prod", "us-west-2", "zone"), cloudflareSource)
+
+	require.NoError(t, NewTerragruntRunner(root, "prod", "us-west-2").Apply(t.Context(), "zone", true))
+
+	got, err := os.ReadFile(record)
+	require.NoError(t, err)
+	assert.Equal(t, "yes\n", string(got))
+}
+
+//nolint:paralleltest // swaps a package-level seam, PATH and the environment
+func TestApplyOfAnAWSUnitReadsNothing(t *testing.T) {
+	t.Setenv(cloudflareTokenKey, "")
+	calls := withFetchSecret(t, "", errors.New("must not be called"))
+	fakeTerragrunt(t)
+	root := t.TempDir()
+	writeUnitBody(t, filepath.Join(root, "prod", "us-west-2", "oidc"), oidcBody)
+
+	require.NoError(t, NewTerragruntRunner(root, "prod", "us-west-2").Apply(t.Context(), "oidc", true))
+
+	assert.Zero(t, *calls)
+}

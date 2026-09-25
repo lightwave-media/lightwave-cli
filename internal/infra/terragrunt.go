@@ -30,9 +30,9 @@ var fetchSecret = secrets.FetchOne
 // (github-actions-oidc grants it in an IAM policy) from getting it.
 var cloudflareModule = regexp.MustCompile(`(?i)//modules/cloudflare-`)
 
-// providerCommands configure providers, so they need the token for a
-// Cloudflare unit; validate, output and init do not.
-var providerCommands = map[string]bool{"plan": true, "apply": true, "destroy": true, "refresh": true, "import": true}
+// providerCommands are the run-all commands that configure providers, so they
+// need the token for a Cloudflare unit; validate, output and init do not.
+var providerCommands = map[string]bool{"plan": true, "apply": true, "destroy": true, "refresh": true}
 
 // TerragruntRunner wraps terragrunt commands
 type TerragruntRunner struct {
