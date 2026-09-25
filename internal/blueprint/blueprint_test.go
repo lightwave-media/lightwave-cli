@@ -67,6 +67,53 @@ func TestResolve(t *testing.T) {
 	})
 }
 
+// A manifest's `validations:` must hold for values given with --var, not only
+// for defaults. The linked engine skips them for command-line values, so
+// before this a runbook_slug of "../escape" rendered (lightwave-core#654).
+func TestRender_EnforcesManifestValidationsOnGivenVars(t *testing.T) {
+	t.Parallel()
+
+	lib := t.TempDir()
+	bp := filepath.Join(lib, "strict")
+	require.NoError(t, os.MkdirAll(bp, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(bp, "boilerplate.yml"), []byte(`variables:
+  - name: slug
+    type: string
+    validations:
+      - required
+      - 'regex("^[a-z0-9]+(-[a-z0-9]+)*$")'
+  - name: tools
+    type: list
+    validations:
+      - required
+`), 0o644))
+	require.NoError(t, os.WriteFile(filepath.Join(bp, "{{ .slug }}.txt"), []byte("{{ .tools }}\n"), 0o644))
+
+	render := func(vars ...string) (string, error) {
+		out := t.TempDir()
+
+		return out, blueprint.Render(t.Context(), &blueprint.RenderOptions{BlueprintPath: bp, OutputFolder: out, Vars: vars})
+	}
+
+	for _, bad := range [][]string{
+		{"slug=../escape", `tools=["git"]`},
+		{"slug=Not_Kebab", `tools=["git"]`},
+		{"slug=ok", "tools=[]"},
+	} {
+		out, err := render(bad...)
+		require.Error(t, err, "%v rendered", bad)
+		assert.Contains(t, err.Error(), "invalid variable value")
+
+		entries, readErr := os.ReadDir(out)
+		require.NoError(t, readErr)
+		assert.Empty(t, entries, "%v was refused but still wrote files", bad)
+	}
+
+	out, err := render("slug=rotate-key", `tools=["git"]`)
+	require.NoError(t, err, "valid values must still render")
+	assert.FileExists(t, filepath.Join(out, "rotate-key.txt"))
+}
+
 // TestRender is the end-to-end smoke: a minimal blueprint through the real
 // boilerplate engine into a tmp dir.
 //

@@ -21,6 +21,8 @@ import (
 	"sort"
 	"strings"
 
+	ozzo "github.com/go-ozzo/ozzo-validation"
+	"github.com/gruntwork-io/boilerplate/config"
 	"github.com/gruntwork-io/boilerplate/getterhelper"
 	"github.com/gruntwork-io/boilerplate/options"
 	"github.com/gruntwork-io/boilerplate/pkg/logging"
@@ -154,6 +156,10 @@ func Render(ctx context.Context, o *RenderOptions) error {
 	// real problems still surface. Errors come back through the return value.
 	log := logging.New(os.Stderr, logging.LevelWarn)
 
+	if err := validateVars(log, engineOpts); err != nil {
+		return err
+	}
+
 	if _, err := templates.ProcessTemplateWithContext(
 		ctx, log, engineOpts, engineOpts, &variables.Dependency{},
 	); err != nil {
@@ -189,6 +195,45 @@ func Render(ctx context.Context, o *RenderOptions) error {
 	}
 
 	return copyTree(staging, o.OutputFolder)
+}
+
+// validateVars runs each manifest variable's `validations:` against the value
+// passed with --var / --var-file. The engine skips exactly those values:
+// GetVariablesWithContext seeds opts.Vars into the map GetValueForVariable
+// returns early from, so only defaults are ever validated (boilerplate v0.16.0
+// config/get_variables.go:62,143 — unchanged on upstream main). Without this,
+// `required` and `regex(...)` in every manifest are decorative under lw
+// scaffold: a runbook_slug of "../escape" rendered (lightwave-core#654).
+//
+// The rules are the engine's own, parsed from the manifest, so lw holds no
+// second copy of any pattern. Only the root manifest is checked; a
+// dependency's variables are not.
+func validateVars(log logging.Logger, opts *options.BoilerplateOptions) error {
+	manifest, err := config.LoadBoilerplateConfig(log, opts)
+	if err != nil {
+		return fmt.Errorf("blueprint: load %s: %w", manifestName, err)
+	}
+
+	var problems []string
+
+	for _, variable := range manifest.Variables {
+		value, given := opts.Vars[variable.Name()]
+		if !given {
+			continue
+		}
+
+		for _, rule := range variable.Validations() {
+			if err := ozzo.Validate(value, rule.Validator); err != nil {
+				problems = append(problems, fmt.Sprintf("%s=%v: %s (%v)", variable.Name(), value, rule.DescriptionText(), err))
+			}
+		}
+	}
+
+	if len(problems) > 0 {
+		return fmt.Errorf("blueprint: invalid variable value(s):\n  %s", strings.Join(problems, "\n  "))
+	}
+
+	return nil
 }
 
 // relFiles returns staged file paths relative to src, sorted.
