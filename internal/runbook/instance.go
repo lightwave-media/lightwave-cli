@@ -19,19 +19,24 @@ const (
 	StatusCancelled       = "cancelled"
 	stepPending           = "pending"
 	stepCompleted         = "completed"
+	stepSkipped           = "skipped"
 	stepFailed            = "failed"
 	stepWaiting           = "waiting_approval"
-	dirPerm               = 0o755
-	filePerm              = 0o644
+	// Instance prints hold step output and the caller's --var values, so they
+	// are the operator's alone (lightwave-cli#546).
+	dirPerm  = 0o700
+	filePerm = 0o600
 )
 
 // StepState is one row on the instance print.
 type StepState struct {
-	ID          string `yaml:"id"`
-	Kind        string `yaml:"kind"`
-	Status      string `yaml:"status"`
-	SignoffTier string `yaml:"signoff_tier,omitempty"`
-	Output      string `yaml:"output,omitempty"`
+	ID          string            `yaml:"id"`
+	Kind        string            `yaml:"kind"`
+	Status      string            `yaml:"status"`
+	SignoffTier string            `yaml:"signoff_tier,omitempty"`
+	Output      string            `yaml:"output,omitempty"`
+	Outputs     map[string]string `yaml:"outputs,omitempty"`
+	Warned      bool              `yaml:"warned,omitempty"`
 }
 
 // Instance is the agent-owned print at
@@ -52,6 +57,9 @@ type Instance struct {
 	CreatedAt     string      `yaml:"created_at"`
 	Steps         []StepState `yaml:"steps"`
 	DryRun        bool        `yaml:"dry_run"`
+	// Vars are the --var values the instance was started with. Inputs are
+	// bound from them and the pinned edition's defaults on every apply.
+	Vars map[string]string `yaml:"vars,omitempty"`
 }
 
 // Dir is .tasks/{task}/runbooks/{instance} under cwd.
@@ -96,34 +104,59 @@ func Load(cwd, taskID, instanceID string) (*Instance, error) {
 	return &inst, nil
 }
 
-// ResolveInstanceID uses the explicit id, or the only/latest print for task.
+// ResolveInstanceID uses the explicit id, or the most recently created print
+// for task. Instance ids are random UUIDs, so sorting them — which this did —
+// picked an arbitrary instance, not the latest one.
 func ResolveInstanceID(cwd, taskID, instanceID string) (string, error) {
 	if instanceID != "" {
 		return instanceID, nil
 	}
 
+	all, err := ListInstances(cwd, taskID)
+	if err != nil {
+		return "", err
+	}
+
+	if len(all) == 0 {
+		return "", fmt.Errorf("no runbook instance for task %s", taskID)
+	}
+
+	return all[len(all)-1].InstanceID, nil
+}
+
+// ListInstances returns task's instance prints, oldest first.
+func ListInstances(cwd, taskID string) ([]*Instance, error) {
 	root := filepath.Join(cwd, ".tasks", taskID, "runbooks")
 
 	ents, err := os.ReadDir(root)
 	if err != nil {
-		return "", fmt.Errorf("no runbook instance for task %s: %w", taskID, err)
+		return nil, fmt.Errorf("no runbook instance for task %s: %w", taskID, err)
 	}
 
-	var ids []string
+	var all []*Instance
 
 	for _, e := range ents {
-		if e.IsDir() {
-			ids = append(ids, e.Name())
+		if !e.IsDir() {
+			continue
 		}
+
+		inst, err := Load(cwd, taskID, e.Name())
+		if err != nil {
+			return nil, err
+		}
+
+		all = append(all, inst)
 	}
 
-	if len(ids) == 0 {
-		return "", fmt.Errorf("no runbook instance for task %s", taskID)
-	}
+	sort.SliceStable(all, func(i, j int) bool {
+		if all[i].CreatedAt != all[j].CreatedAt {
+			return all[i].CreatedAt < all[j].CreatedAt
+		}
 
-	sort.Strings(ids)
+		return all[i].UpdatedAt < all[j].UpdatedAt
+	})
 
-	return ids[len(ids)-1], nil
+	return all, nil
 }
 
 func nowUTC() string {

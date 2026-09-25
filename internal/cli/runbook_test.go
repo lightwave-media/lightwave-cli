@@ -2,12 +2,34 @@
 package cli
 
 import (
+	"context"
 	"testing"
 
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/lightwave-media/lightwave-cli/internal/sst"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
+
+// --var carries Key=Value pairs whose values may contain commas. Parsed like
+// the stringArrayFlags (comma-split), one URL input would arrive as two
+// broken pairs.
+func TestRunbookVarFlag_RepeatsWithoutCommaSplitting(t *testing.T) {
+	t.Parallel()
+
+	var got []string
+
+	cmd := buildSubcommand(sst.CLICommand{Name: "start", Description: "d", Flags: []string{"--var"}}, "runbook.start",
+		func(_ context.Context, _ []string, flags map[string]any) error {
+			got = flagStrSlice(flags, "var")
+
+			return nil
+		})
+	cmd.SetArgs([]string{"--var", "Url=https://x/y?a=1,b=2", "--var", "Name=alice"})
+
+	require.NoError(t, cmd.Execute())
+	require.Equal(t, []string{"Url=https://x/y?a=1,b=2", "Name=alice"}, got)
+}
 
 // runbook reaches the CLI through the schema dispatcher, not a hardcoded
 // rootCmd.AddCommand. #335 shipped the five verbs on a hardcoded tree as an

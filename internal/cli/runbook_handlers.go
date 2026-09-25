@@ -32,6 +32,8 @@ func runbookStartHandler(ctx context.Context, _ []string, flags map[string]any) 
 	runbookBranch = flagStr(flags, "branch")
 	runbookSession = flagStr(flags, "session")
 	runbookDryRun = flagBool(flags, "dry-run")
+	runbookVars = flagStrSlice(flags, "var")
+	runbookVarsFile = flagStr(flags, "vars-file")
 
 	runbookStartCmd.SetContext(ctx)
 

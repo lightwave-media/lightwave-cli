@@ -26,6 +26,8 @@ var (
 	runbookSignoffTier string
 	runbookReason      string
 	runbookDryRun      bool
+	runbookVars        []string
+	runbookVarsFile    string
 )
 
 var runbookCmd = &cobra.Command{
@@ -119,6 +121,11 @@ func runRunbookStart(cmd *cobra.Command, _ []string) error {
 		return err
 	}
 
+	vars, err := runbook.ParseVars(runbookVars, runbookVarsFile)
+	if err != nil {
+		return err
+	}
+
 	inst, err := runbook.Start(&runbook.StartOpts{
 		CoreRoot: coreRepoPath(),
 		Cwd:      cwd,
@@ -129,6 +136,7 @@ func runRunbookStart(cmd *cobra.Command, _ []string) error {
 		Branch:   runbookBranch,
 		Session:  runbookSession,
 		DryRun:   runbookDryRun,
+		Vars:     vars,
 	})
 	if err != nil {
 		return err
@@ -176,6 +184,7 @@ func runRunbookApply(cmd *cobra.Command, _ []string) error {
 		Cwd:        cwd,
 		Task:       runbookTask,
 		InstanceID: runbookInstance,
+		AuditPath:  runbook.DefaultAuditPath(),
 	})
 	if err != nil {
 		return err
