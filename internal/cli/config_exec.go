@@ -113,7 +113,7 @@ func runConfigExec(cmd *cobra.Command, args []string) error {
 	// would otherwise be printed.
 	binary, err := exec.LookPath(args[0])
 	if err != nil {
-		return errors.New("lw config exec: the command after -- was not found on PATH")
+		return errors.New("lw config exec: the command after -- was not found on PATH or is not executable")
 	}
 
 	ctx, cancel := context.WithTimeout(cmd.Context(), configExecTimeout)

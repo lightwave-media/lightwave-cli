@@ -5,7 +5,9 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -304,9 +306,15 @@ func TestConfigExecReportsAnExecFailureWithoutValuesAndWithoutExitCode78(t *test
 	_, _, cmd, out := withExecSeams(t, map[string]string{"A": execSentinel}, []string{"A"})
 	execProcess = func(string, []string, []string) error { return errors.New("exec format error") }
 
-	err := runConfigExec(cmd, []string{"sh", "-c", "true"})
+	// A command with a distinctive name, so the test fails if the error names it.
+	bin := t.TempDir()
+	pasted := filepath.Join(bin, "pasted-4c1e")
+	require.NoError(t, os.WriteFile(pasted, []byte("#!/bin/sh\n"), 0o755)) //nolint:gosec // a test executable
+
+	err := runConfigExec(cmd, []string{pasted})
 
 	require.ErrorContains(t, err, "exec format error")
+	assert.NotContains(t, err.Error(), "pasted-4c1e")
 	assert.NotContains(t, err.Error(), execSentinel)
 	_, coded := ExitCode(err)
 	assert.False(t, coded, "after the environment is assembled, a failure is not EX_CONFIG")
