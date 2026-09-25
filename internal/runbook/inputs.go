@@ -17,11 +17,11 @@ import (
 // InputDecl is one variable a runbook's <Inputs> block declares, in the
 // boilerplate.yml shape the Runbooks app renders as a form.
 type InputDecl struct {
-	Name        string   `yaml:"name"`
-	Type        string   `yaml:"type"`
-	Default     any      `yaml:"default"`
-	Options     []string `yaml:"options"`
-	Validations []string `yaml:"validations"`
+	Name        string   `json:"name"                  yaml:"name"`
+	Type        string   `json:"type"                  yaml:"type"`
+	Default     any      `json:"default,omitempty"     yaml:"default"`
+	Options     []string `json:"options,omitempty"     yaml:"options"`
+	Validations []string `json:"validations,omitempty" yaml:"validations"`
 }
 
 var (
@@ -102,7 +102,7 @@ func (d *InputDecl) bind(vars map[string]string) (any, error) {
 		return d.Default, nil
 	}
 
-	if raw == "" && d.required() {
+	if raw == "" && d.Required() {
 		return nil, fmt.Errorf("%w: %s is required", ErrInvalidInput, d.Name)
 	}
 
@@ -167,7 +167,8 @@ func (d *InputDecl) checkRegex(raw string) error {
 	return nil
 }
 
-func (d *InputDecl) required() bool {
+// Required reports whether the input declares validations: [required].
+func (d *InputDecl) Required() bool {
 	return slices.Contains(d.Validations, "required")
 }
 

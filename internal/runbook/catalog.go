@@ -94,6 +94,7 @@ type Record struct {
 
 // frontMatter is the subset of a runbook.mdx header the catalog surfaces.
 type frontMatter struct {
+	Name        string `yaml:"name"`
 	Description string `yaml:"description"`
 	Status      string `yaml:"status"`
 }
@@ -194,4 +195,53 @@ func Lookup(index map[string]Entry, slug string) (Entry, error) {
 	}
 
 	return entry, nil
+}
+
+// Description is what `lw runbook show` prints: a runbook's front matter,
+// inputs and steps, so an agent can run it without reading the MDX (#545).
+type Description struct {
+	Slug        string      `json:"slug"`
+	Dir         string      `json:"dir"`
+	Name        string      `json:"name,omitempty"`
+	Description string      `json:"description,omitempty"`
+	Status      string      `json:"status,omitempty"`
+	Inputs      []InputDecl `json:"inputs"`
+	Steps       []Step      `json:"steps"`
+	CheckOnly   bool        `json:"check_only"`
+}
+
+// Describe loads the published runbook slug for display.
+func Describe(coreRepo, slug string) (*Description, error) {
+	index, err := LoadIndex(coreRepo)
+	if err != nil {
+		return nil, err
+	}
+
+	entry, err := Lookup(index, slug)
+	if err != nil {
+		return nil, err
+	}
+
+	edition, err := LoadEdition(coreRepo, entry)
+	if err != nil {
+		return nil, err
+	}
+
+	raw, err := os.ReadFile(edition.Path)
+	if err != nil {
+		return nil, err
+	}
+
+	fm := parseFrontMatter(raw)
+
+	return &Description{
+		Slug:        slug,
+		Dir:         entry.Dir,
+		Name:        fm.Name,
+		Description: fm.Description,
+		Status:      fm.Status,
+		Inputs:      edition.Inputs,
+		Steps:       edition.Steps,
+		CheckOnly:   edition.CheckOnly(),
+	}, nil
 }
