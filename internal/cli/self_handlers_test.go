@@ -10,6 +10,8 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/require"
+
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
 
 // AssembleSurface already applies the decommission policy (root.go), so this
@@ -45,13 +47,9 @@ func gitTestIn(t *testing.T, dir string, args ...string) string {
 	cmd.Dir = dir
 	// A git hook run to reach this test itself exports GIT_DIR/GIT_WORK_TREE;
 	// without dropping them every git call below targets the process's real
-	// repo instead of the fixture (the same defect class release-ship-
-	// destination-test.sh guards against). Overriding with an EMPTY value
-	// rather than removing the key is not equivalent: git treats an empty
-	// GIT_WORK_TREE as still present, and refused every call here with
-	// "GIT_WORK_TREE ... not allowed without specifying GIT_DIR" once GIT_DIR
-	// was cleared the same way. The keys must be absent, not blank.
-	cmd.Env = filterOutGitEnv(os.Environ()) // shared with the production code below
+	// repo instead of the fixture. gitfixture.Env drops them and supplies the
+	// commit identity, so no call here has to write one into config.
+	cmd.Env = gitfixture.Env()
 
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git %v: %s", args, out)
@@ -73,8 +71,6 @@ func TestCheckoutOriginMainWorktree_IgnoresDirtyLocalBranch(t *testing.T) {
 
 	repo := t.TempDir()
 	gitTestIn(t, repo, "clone", "--quiet", origin, ".")
-	gitTestIn(t, repo, "config", "user.email", "test@example.com")
-	gitTestIn(t, repo, "config", "user.name", "test")
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "marker.txt"), []byte("main\n"), 0o600))
 	gitTestIn(t, repo, "add", "marker.txt")
 	gitTestIn(t, repo, "commit", "--quiet", "-m", "on main")
@@ -128,8 +124,6 @@ func TestRemoveWorktreeQuiet_CleansUpFullyAndIsIdempotent(t *testing.T) {
 
 	repo := t.TempDir()
 	gitTestIn(t, repo, "clone", "--quiet", origin, ".")
-	gitTestIn(t, repo, "config", "user.email", "test@example.com")
-	gitTestIn(t, repo, "config", "user.name", "test")
 	gitTestIn(t, repo, "commit", "--quiet", "--allow-empty", "-m", "root")
 	gitTestIn(t, repo, "push", "--quiet", "origin", "HEAD:main")
 

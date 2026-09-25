@@ -14,8 +14,8 @@ set -euo pipefail
 # override the per-test `git init` below, so `git add`/`git commit` stage into
 # the real index (leaving pollution) instead of each temp repo. Unset them so
 # every temp repo is genuinely hermetic, whether run standalone or under a hook.
-unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
-  GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS 2>/dev/null || true
+# shellcheck source=scripts/fixture-git-env.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../fixture-git-env.sh"
 
 # Resolve paths relative to this script — works whether invoked from repo root
 # or from within scripts/precommit/.
@@ -48,8 +48,6 @@ run_test() {
 
   pushd "$tmpdir" >/dev/null
   git init --quiet
-  git config user.email "test@example.com"
-  git config user.name "Test"
   git config commit.gpgsign false
   mkdir -p internal/cli
 

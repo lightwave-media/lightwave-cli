@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/lightwave-media/lightwave-cli/internal/git"
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
 
 // newRescueRepo builds a repo with one commit and a linked worktree, which is
@@ -25,6 +26,7 @@ func newRescueRepo(t *testing.T) (repo, worktree string) {
 
 		cmd := exec.CommandContext(t.Context(), "git", args...)
 		cmd.Dir = dir
+		cmd.Env = gitfixture.Env()
 		out, err := cmd.CombinedOutput()
 		require.NoError(t, err, "git %v: %s", args, out)
 
@@ -32,8 +34,6 @@ func newRescueRepo(t *testing.T) (repo, worktree string) {
 	}
 
 	run(repo, "init", "-q", "-b", "main")
-	run(repo, "config", "user.email", "t@t")
-	run(repo, "config", "user.name", "t")
 	require.NoError(t, os.WriteFile(filepath.Join(repo, "tracked.txt"), []byte("one\n"), 0o600))
 	run(repo, "add", "-A")
 	run(repo, "commit", "-qm", "first")
@@ -86,6 +86,7 @@ func TestRescueCapturesModifiedTrackedFiles(t *testing.T) {
 
 	cmd := exec.CommandContext(t.Context(), "git", "show", rescue.SHA+":tracked.txt")
 	cmd.Dir = repo
+	cmd.Env = gitfixture.Env()
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "%s", out)
 	assert.Equal(t, "two\n", string(out), "the rescue must hold the WORKTREE content, not HEAD's")
@@ -107,6 +108,7 @@ func TestRescueCapturesUntrackedFiles(t *testing.T) {
 	// untracked file exists in exactly one place; losing it loses it entirely.
 	cmd := exec.CommandContext(t.Context(), "git", "show", rescue.SHA+":brand-new.txt")
 	cmd.Dir = repo
+	cmd.Env = gitfixture.Env()
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "untracked file missing from rescue: %s", out)
 	assert.Equal(t, "only here\n", string(out))
@@ -125,6 +127,7 @@ func TestRescueNeverTouchesTheSharedStashStack(t *testing.T) {
 	// sessions pop it. Growing it here would make rescue a way to steal work.
 	cmd := exec.CommandContext(t.Context(), "git", "stash", "list")
 	cmd.Dir = repo
+	cmd.Env = gitfixture.Env()
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "%s", out)
 	assert.Empty(t, strings.TrimSpace(string(out)), "rescue must not push onto the shared stash stack")
@@ -138,6 +141,7 @@ func TestRescueLeavesTheWorktreeIndexAlone(t *testing.T) {
 
 	before := exec.CommandContext(t.Context(), "git", "status", "--porcelain")
 	before.Dir = wt
+	before.Env = gitfixture.Env()
 	beforeOut, err := before.CombinedOutput()
 	require.NoError(t, err, "%s", beforeOut)
 
@@ -146,6 +150,7 @@ func TestRescueLeavesTheWorktreeIndexAlone(t *testing.T) {
 
 	after := exec.CommandContext(t.Context(), "git", "status", "--porcelain")
 	after.Dir = wt
+	after.Env = gitfixture.Env()
 	afterOut, err := after.CombinedOutput()
 	require.NoError(t, err, "%s", afterOut)
 
@@ -171,11 +176,13 @@ func TestRescueAnchorsARefSoGcCannotCollectIt(t *testing.T) {
 	// and gc is free to collect it. Prove it survives an aggressive prune.
 	gc := exec.CommandContext(t.Context(), "git", "gc", "--prune=now", "--aggressive", "-q")
 	gc.Dir = repo
+	gc.Env = gitfixture.Env()
 	gcOut, err := gc.CombinedOutput()
 	require.NoError(t, err, "%s", gcOut)
 
 	check := exec.CommandContext(t.Context(), "git", "cat-file", "-e", rescue.SHA)
 	check.Dir = repo
+	check.Env = gitfixture.Env()
 	require.NoError(t, check.Run(), "rescue commit was garbage-collected — the ref did not hold it")
 
 	listed, err := g.ListRescues()

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/lightwave-media/lightwave-cli/internal/runbook"
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -34,6 +35,7 @@ func gitOk(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), args[0], args[1:]...)
 	cmd.Dir = dir
+	cmd.Env = gitfixture.Env()
 	require.NoError(t, cmd.Run(), args)
 }
 
@@ -41,8 +43,6 @@ func initWorktree(t *testing.T, branch string) string {
 	t.Helper()
 	dir := t.TempDir()
 	gitOk(t, dir, "git", "init", "-b", "main")
-	gitOk(t, dir, "git", "config", "user.email", "test@test.com")
-	gitOk(t, dir, "git", "config", "user.name", "Test")
 	require.NoError(t, os.WriteFile(filepath.Join(dir, "README.md"), []byte("x\n"), 0o644))
 	gitOk(t, dir, "git", "add", ".")
 	gitOk(t, dir, "git", "commit", "-m", "init")
@@ -298,6 +298,45 @@ func TestApply_TemplateStepWithMissingPathFails(t *testing.T) {
 	got, applyErr := runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
 	require.Error(t, applyErr, "a template step with no payload must fail, not pass")
 	assert.Equal(t, runbook.StatusFailed, got.Status)
+}
+
+// A Check or Command step that names a script by path= must FAIL until the
+// engine executes path= scripts (lightwave-cli#546): reporting it completed
+// would record a check that never ran, the failure mode executeStep forbids.
+func TestApply_PathOnlyCheckStepFailsInsteadOfPassing(t *testing.T) {
+	t.Parallel()
+	core := t.TempDir()
+
+	mdx := `<Check id="verify" description="script by path" path="checks/verify.sh" />`
+	writeCatalog(t, core, map[string]string{"scripted": "test/scripted"}, map[string]string{"scripted": mdx})
+	writeFile(t, core, "src/runbooks/test/scripted/checks/verify.sh", "#!/bin/bash\ntouch \"$PWD/script-ran\"\n")
+	cwd := initWorktree(t, "feature/546-path")
+
+	inst, err := runbook.Start(startOpts(core, cwd, "scripted"))
+	require.NoError(t, err)
+
+	got, applyErr := runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
+	require.Error(t, applyErr, "a path= step the engine cannot run must fail, not pass")
+	assert.Contains(t, applyErr.Error(), "path=")
+	assert.Equal(t, runbook.StatusFailed, got.Status)
+	assert.NotEqual(t, runbook.StatusCompleted, got.Status)
+}
+
+// A step with neither command= nor path= is prose: nothing to run, and not an error.
+func TestApply_ProseStepStillCompletes(t *testing.T) {
+	t.Parallel()
+	core := t.TempDir()
+
+	mdx := `<Check id="read-me" description="prose only" />`
+	writeCatalog(t, core, map[string]string{"prose": "test/prose"}, map[string]string{"prose": mdx})
+	cwd := initWorktree(t, "feature/546-prose")
+
+	inst, err := runbook.Start(startOpts(core, cwd, "prose"))
+	require.NoError(t, err)
+
+	got, err := runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
+	require.NoError(t, err)
+	assert.Equal(t, runbook.StatusCompleted, got.Status)
 }
 
 // The sign-off gate applies to Command steps too: refused before signoff,

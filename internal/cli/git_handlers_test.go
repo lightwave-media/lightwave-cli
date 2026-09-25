@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
 
 func TestGitMapHandlerEmptyRoots(t *testing.T) {
@@ -354,12 +356,7 @@ func runGit(t *testing.T, dir string, args ...string) {
 	t.Helper()
 	c := exec.CommandContext(t.Context(), "git", args...)
 	c.Dir = dir
-	c.Env = append(os.Environ(),
-		"GIT_AUTHOR_NAME=test",
-		"GIT_AUTHOR_EMAIL=test@test.com",
-		"GIT_COMMITTER_NAME=test",
-		"GIT_COMMITTER_EMAIL=test@test.com",
-	)
+	c.Env = gitfixture.Env()
 	out, err := c.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)

@@ -7,9 +7,18 @@ import (
 	"testing"
 
 	"github.com/lightwave-media/lightwave-cli/internal/infra"
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestMain isolates the process because ListUnits shells out to git with the
+// process environment, so under a hook's GIT_DIR it lists the hook's repo
+// instead of the fixture.
+func TestMain(m *testing.M) {
+	gitfixture.Isolate()
+	os.Exit(m.Run())
+}
 
 // #367. `lw infra list` walked the filesystem from <root>/<env>/<region> with
 // env and region pinned to prod/us-east-1, because the flags that would have
@@ -24,6 +33,7 @@ func git(t *testing.T, dir string, args ...string) {
 
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
+	cmd.Env = gitfixture.Env()
 	out, err := cmd.CombinedOutput()
 	require.NoError(t, err, "git %v: %s", args, out)
 }
@@ -44,8 +54,6 @@ func newInfraRepo(t *testing.T) string {
 
 	root := t.TempDir()
 	git(t, root, "init", "-b", "main")
-	git(t, root, "config", "user.email", "test@test.com")
-	git(t, root, "config", "user.name", "Test")
 
 	for _, rel := range []string{
 		"prod/us-east-1/vpc",

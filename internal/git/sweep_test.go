@@ -2,7 +2,9 @@
 package git
 
 import (
+	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -10,6 +12,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
 
 // sweepFixture is a clone with a REAL bare origin. Every claim the sweeper
@@ -36,8 +40,6 @@ func newSweepFixture(t *testing.T) *sweepFixture {
 
 	gitAt(t, root, "init", "--bare", "--initial-branch=main", f.Remote)
 	gitAt(t, root, "init", "--initial-branch=main", f.Dir)
-	f.run("config", "user.email", "sweep@test")
-	f.run("config", "user.name", "Sweep Test")
 	// The operator's global config sets branch.autoSetupMerge, which silently
 	// gave every `checkout -b` an upstream of local main and turned the
 	// no-upstream control into a tracked branch. A fixture that inherits ambient
@@ -51,15 +53,11 @@ func newSweepFixture(t *testing.T) *sweepFixture {
 	return f
 }
 
-// run executes git in the clone through the same wrapper production uses, so
-// ambient GIT_DIR from an outer hook cannot redirect the fixture.
+// run executes git in the clone as a fixture call; see gitAt.
 func (f *sweepFixture) run(args ...string) string {
 	f.t.Helper()
 
-	out, err := NewGit(f.Dir).run(args...)
-	require.NoError(f.t, err, "git %s", strings.Join(args, " "))
-
-	return out
+	return gitAt(f.t, f.Dir, args...)
 }
 
 // realDir resolves symlinks, because git reports resolved paths and macOS puts
@@ -74,11 +72,23 @@ func realDir(t *testing.T, dir string) string {
 	return resolved
 }
 
-func gitAt(t *testing.T, dir string, args ...string) {
+// gitAt runs git in dir under gitfixture.Env, so an outer hook's GIT_DIR or
+// GIT_CONFIG cannot redirect the fixture and the commit identity never has to
+// be written into config. It returns trimmed stdout, as run() does.
+func gitAt(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 
-	_, err := NewGit(dir).run(args...)
-	require.NoError(t, err, "git %s", strings.Join(args, " "))
+	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.Dir = dir
+	cmd.Env = gitfixture.Env()
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+
+	out, err := cmd.Output()
+	require.NoError(t, err, "git %s: %s", strings.Join(args, " "), stderr.String())
+
+	return strings.TrimSpace(string(out))
 }
 
 func (f *sweepFixture) commit(name, body, message string) {
@@ -501,16 +511,9 @@ func TestNewSweeperFallsBackToTheLocalTrunk(t *testing.T) {
 
 	dir := filepath.Join(t.TempDir(), "solo")
 	gitAt(t, t.TempDir(), "init", "--initial-branch=main", dir)
+	gitAt(t, dir, "commit", "--allow-empty", "-m", "initial")
 
-	g := NewGit(dir)
-	_, err := g.run("config", "user.email", "solo@test")
-	require.NoError(t, err)
-	_, err = g.run("config", "user.name", "Solo")
-	require.NoError(t, err)
-	_, err = g.run("commit", "--allow-empty", "-m", "initial")
-	require.NoError(t, err)
-
-	s, err := NewSweeper(g, nil)
+	s, err := NewSweeper(NewGit(dir), nil)
 	require.NoError(t, err)
 	assert.Equal(t, "main", s.Base(), "with no origin the local trunk is the base")
 
