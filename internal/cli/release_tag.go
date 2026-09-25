@@ -201,11 +201,13 @@ func resolveNextTagVersion(
 	}, nil
 }
 
-// lastMatchingTag returns the highest tag matching the prefix, or "" when the
-// artifact has never been released. Sorted by version, not by date, so an
-// out-of-order tag push cannot rewrite history's idea of "latest".
+// lastMatchingTag returns the highest tag matching the prefix that is an
+// ancestor of HEAD, or "" when the artifact has never been released. Sorted by
+// version, not by date, so an out-of-order tag push cannot rewrite history's
+// idea of "latest". A higher tag off HEAD's history is not a base: diffing from
+// it releases a range that never existed.
 func lastMatchingTag(ctx context.Context, repo, prefix string) (string, error) {
-	out, err := gitOutput(ctx, repo, "tag", "--list", prefix+"*", "--sort=-v:refname")
+	out, err := gitOutput(ctx, repo, "tag", "--list", prefix+"*", "--merged", "HEAD", "--sort=-v:refname")
 	if err != nil {
 		return "", fmt.Errorf("git tag --list: %w", err)
 	}

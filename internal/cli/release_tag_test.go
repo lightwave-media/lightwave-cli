@@ -95,6 +95,29 @@ func TestLastMatchingTagEmptyWhenNeverReleased(t *testing.T) {
 	assert.Empty(t, got, "an unreleased artifact must report no tag, not an error")
 }
 
+// TestLastMatchingTagIgnoresTagsOffHead reproduces lightwave-sys 2026-09-24:
+// v0.7.5 sat on a side branch main never merged, and the release plan diffed
+// from it — wrong base, wrong range, wrong changelog.
+func TestLastMatchingTagIgnoresTagsOffHead(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	dir := newTagRepo(t, ctx)
+
+	gitInRepo(t, ctx, dir, "tag", "v0.7.4")
+	gitInRepo(t, ctx, dir, "checkout", "-qb", "side")
+	gitInRepo(t, ctx, dir, "commit", "--allow-empty", "-qm", "fix: side-branch only")
+	gitInRepo(t, ctx, dir, "tag", "v0.7.5")
+	gitInRepo(t, ctx, dir, "checkout", "-q", "main")
+	gitInRepo(t, ctx, dir, "commit", "--allow-empty", "-qm", "feat: on main")
+
+	got, err := lastMatchingTag(ctx, dir, "v")
+	require.NoError(t, err)
+	assert.Equal(t, "v0.7.4", got,
+		"the base tag must be an ancestor of HEAD, or git log <tag>..HEAD "+
+			"describes a range that was never released from")
+}
+
 // TestCommitsSinceSplitsSubjectAndBody pins the record/field separators. Every
 // conventional BREAKING CHANGE footer puts newlines in the body, which must not
 // be mistaken for additional commits.
