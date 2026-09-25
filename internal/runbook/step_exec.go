@@ -95,12 +95,17 @@ func (r *runner) run(step *Step) (stepResult, error) {
 	}
 }
 
-// runScript runs a path= script as `bash <rendered copy>`. The script is a
-// stamp-controlled file; its {{ .inputs }} are rendered before it runs.
+// runScript runs a path= script with bash. One that reads no input or output
+// runs in place and untouched: 119 of the catalog's 384 scripts find their
+// files from BASH_SOURCE, and some carry {{ }} of their own for a tool they
+// drive. One that reads {{ .inputs }} or {{ .outputs }} runs from a rendered
+// copy. Either way the log_* helpers arrive through BASH_ENV.
 func (r *runner) runScript(step *Step) (stepResult, error) {
 	res := stepResult{mode: modeScript}
 
-	src, err := os.ReadFile(filepath.Join(r.runbookDir, step.Path)) //nolint:gosec // a script inside the published runbook
+	path := filepath.Join(r.runbookDir, step.Path)
+
+	src, err := os.ReadFile(path) //nolint:gosec // a script inside the published runbook
 	if err != nil {
 		return res, fmt.Errorf("step %q: %w", step.ID, err)
 	}
@@ -116,19 +121,19 @@ func (r *runner) runScript(step *Step) (stepResult, error) {
 		return res, err
 	}
 
-	body, err := r.render(step.ID, string(src))
-	if err != nil {
-		return res, err
-	}
-
 	dir, err := os.MkdirTemp("", "lw-runbook-step-")
 	if err != nil {
 		return res, err
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
 
-	script := filepath.Join(dir, "step.sh")
-	if err := os.WriteFile(script, []byte(logHelpers+body), filePerm); err != nil {
+	script, err := r.scriptToRun(step.ID, path, string(src), dir)
+	if err != nil {
+		return res, err
+	}
+
+	helpers := filepath.Join(dir, "helpers.sh")
+	if err := os.WriteFile(helpers, []byte(logHelpers), filePerm); err != nil {
 		return res, err
 	}
 
@@ -140,7 +145,7 @@ func (r *runner) runScript(step *Step) (stepResult, error) {
 	ctx, cancel := stepContext(step)
 	defer cancel()
 
-	res.output, res.exit, err = r.exec(ctx, outputFile, "bash", script)
+	res.output, res.exit, err = r.exec(ctx, append(r.env(outputFile), "BASH_ENV="+helpers), "bash", script)
 	res.outputs = readOutputs(outputFile)
 	res.warned = res.exit == exitWarn
 
@@ -149,6 +154,23 @@ func (r *runner) runScript(step *Step) (stepResult, error) {
 	}
 
 	return res, checkExpected(step, res.output)
+}
+
+// scriptToRun is the file bash runs: the script itself when it reads no input
+// or output, else a rendered copy in dir.
+func (r *runner) scriptToRun(stepID, path, src, dir string) (string, error) {
+	if len(valueRefs(src)) == 0 {
+		return path, nil
+	}
+
+	body, err := r.render(stepID, src)
+	if err != nil {
+		return "", err
+	}
+
+	rendered := filepath.Join(dir, filepath.Base(path))
+
+	return rendered, os.WriteFile(rendered, []byte(body), filePerm)
 }
 
 // dryRunSkip is why a script cannot run in a dry run, or "" when it can. A
@@ -195,7 +217,7 @@ func (r *runner) runInline(step *Step) (stepResult, error) {
 	ctx, cancel := stepContext(step)
 	defer cancel()
 
-	res.output, res.exit, err = r.exec(ctx, "", argv[0], argv[1:]...)
+	res.output, res.exit, err = r.exec(ctx, r.env(""), argv[0], argv[1:]...)
 	if err != nil {
 		return res, err
 	}
@@ -298,12 +320,12 @@ func (r *runner) renderTemplate(step *Step) (stepResult, error) {
 	return res, nil
 }
 
-// exec runs one process in the working tree with the step environment and
-// returns its combined output and exit code.
-func (r *runner) exec(ctx context.Context, outputFile, name string, args ...string) (string, int, error) {
+// exec runs one process in the working tree with env and returns its
+// combined output and exit code.
+func (r *runner) exec(ctx context.Context, env []string, name string, args ...string) (string, int, error) {
 	cmd := exec.CommandContext(ctx, name, args...) //nolint:gosec // the published runbook's own step
 	cmd.Dir = r.cwd
-	cmd.Env = r.env(outputFile)
+	cmd.Env = env
 
 	// A timeout kills the step's whole process group. Killing only bash left
 	// its children holding the output pipe, and CombinedOutput waited for

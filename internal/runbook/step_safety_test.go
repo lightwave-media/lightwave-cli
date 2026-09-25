@@ -57,6 +57,29 @@ func TestApply_ScriptRefusesAnInputThatWouldBecomeCode(t *testing.T) {
 	}
 }
 
+// A script that reads no input or output runs in place and untouched. 119 of
+// the catalog's 384 scripts find their files from BASH_SOURCE, which a temp
+// copy moved to /tmp, and some carry {{ }} of their own for a tool they drive,
+// which rendering rejected as a missing key.
+func TestApply_ScriptWithNothingToRenderRunsInPlace(t *testing.T) {
+	t.Parallel()
+	core := t.TempDir()
+	writeCatalog(t, core, map[string]string{"here": "test/here"}, map[string]string{
+		"here": `<Check id="here" path="scripts/here.sh" />`,
+	})
+	writeFile(t, core, "src/runbooks/test/here/data.txt", "payload\n")
+	writeFile(t, core, "src/runbooks/test/here/scripts/here.sh", `set -euo pipefail
+log_info "read $(cat "$(dirname "${BASH_SOURCE[0]}")/../data.txt")"
+echo '{{ .ModuleName }}'
+`)
+	cwd, inst := startWith(t, core, "here", nil, false)
+
+	got, err := apply(core, cwd, inst, "")
+	require.NoError(t, err)
+	assert.Contains(t, got.Steps[0].Output, "[INFO] read payload", "the helpers exist and BASH_SOURCE is the real file")
+	assert.Contains(t, got.Steps[0].Output, "{{ .ModuleName }}", "a script's own braces are left alone")
+}
+
 // `bash -c '...'` has no shell syntax outside its quotes, so it once ran as
 // argv without sign-off, and the value inside the quotes ran as code.
 func TestApply_InterpreterCheckWaitsAndRefusesUnsafeValues(t *testing.T) {
