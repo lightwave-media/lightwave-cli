@@ -75,13 +75,13 @@ Prefer wrapping only the call that needs a key. When a whole script needs it,
 the script can re-exec itself through lw once, then keep the key out of the
 environment of everything it starts:
 
-  [ -n "${LW_SECRETS_REEXEC:-}" ] || \
-    LW_SECRETS_REEXEC=1 exec lw config exec --only KEY -- bash "$0" "$@"
-  unset LW_SECRETS_REEXEC
+  if [ "${1:-}" = --lw-secrets-reexec ]; then shift
+  else exec lw config exec --only KEY -- bash "$0" --lw-secrets-reexec "$@"; fi
   key="$KEY"; unset KEY
 
-The guard is the marker alone, so an inherited copy of KEY never skips the
-strip, and unsetting it lets a nested script do the same for its own keys.
+The marker is an argument, not a variable, so the guard holds whatever the
+environment says: an inherited copy of KEY never skips the strip, and a nested
+script re-execs for its own keys.
 Moving KEY into an unexported variable matters under a runner that saves a
 step's exported variables, such as the Runbooks app: it would otherwise write
 the key to disk and hand it to later steps.
