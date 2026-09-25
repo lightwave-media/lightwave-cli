@@ -3,6 +3,7 @@ package runbook
 import (
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,9 @@ type StartOpts struct {
 	// Vars fill the runbook's <Inputs>; they are checked here, before any
 	// instance exists, and bound again from the pinned edition on each apply.
 	Vars map[string]string
+	// CheckOnlyRoot keeps the print of a check-only runbook run outside a
+	// task worktree (the CLI passes CheckOnlyRoot()). Empty refuses that case.
+	CheckOnlyRoot string
 }
 
 // ApplyOpts is the input to Apply / Status / Cancel / StepComplete.
@@ -40,15 +44,14 @@ type ApplyOpts struct {
 	Require     string
 	// AuditPath receives one audit_event row per step decision; see audit.go.
 	AuditPath string
+	// CheckOnlyRoot is searched after Cwd when set.
+	CheckOnlyRoot string
 }
 
-// Start looks up a published edition, refuses main, and writes the instance.
+// Start looks up a published edition and writes the instance: in the task
+// worktree, or under CheckOnlyRoot for a check-only runbook run elsewhere.
 func Start(opts *StartOpts) (*Instance, error) {
 	if err := requireFields(opts); err != nil {
-		return nil, err
-	}
-
-	if err := refuseMainAndRequireWorktree(opts.Cwd); err != nil {
 		return nil, err
 	}
 
@@ -71,10 +74,12 @@ func Start(opts *StartOpts) (*Instance, error) {
 		return nil, err
 	}
 
-	branch, err := currentBranch(opts.Cwd)
+	root, err := instanceRoot(opts.Cwd, opts.CheckOnlyRoot, edition)
 	if err != nil {
 		return nil, err
 	}
+
+	branch, _ := currentBranch(opts.Cwd) // a check-only runbook may run outside any repo
 
 	id := opts.InstanceID
 	if id == "" {
@@ -98,25 +103,121 @@ func Start(opts *StartOpts) (*Instance, error) {
 		Vars:         opts.Vars,
 	}
 
-	if err := Save(opts.Cwd, inst); err != nil {
+	if err := Save(root, inst); err != nil {
 		return nil, err
 	}
 
-	if err := writeEvidence(opts.Cwd, inst); err != nil {
+	if err := writeEvidence(root, inst); err != nil {
 		return nil, err
 	}
 
 	return inst, nil
 }
 
-// Status loads the instance. --require completed fails if not completed.
-func Status(opts *ApplyOpts) (*Instance, error) {
-	id, err := ResolveInstanceID(opts.Cwd, opts.Task, opts.InstanceID)
+// instanceRoot decides whether the runbook may run here and where its print
+// lives. Inside a task worktree any runbook runs and keeps its print there.
+// Outside one, only a check-only runbook may run — it changes nothing, and
+// session-signoff runs after its worktree is gone (#553) — and its print goes
+// under checkOnlyRoot.
+func instanceRoot(cwd, checkOnlyRoot string, edition *Edition) (string, error) {
+	notWorktree := refuseMainAndRequireWorktree(cwd)
+
+	switch {
+	case notWorktree == nil:
+		return cwd, nil
+	case !edition.CheckOnly():
+		return "", fmt.Errorf("%w — this runbook has Command or Template steps, so it runs only in a task worktree", notWorktree)
+	case checkOnlyRoot == "":
+		// The library never defaults to $HOME: a caller that did not choose
+		// where the print goes would scatter prints (tests included) into it.
+		return "", fmt.Errorf("%w — and no check-only root was given to keep the print", notWorktree)
+	default:
+		return checkOnlyRoot, nil
+	}
+}
+
+// Run is `lw runbook apply <slug>`: it resumes the task's open instance of
+// start.Slug, or starts one, then applies it — the one line the skills
+// document (#537). Inputs are bound at start, so vars passed while an
+// instance is open are refused rather than silently ignored.
+func Run(start *StartOpts, apply *ApplyOpts) (*Instance, error) {
+	inst, err := apply.newestOpen(start.Slug)
 	if err != nil {
 		return nil, err
 	}
 
-	inst, err := Load(opts.Cwd, opts.Task, id)
+	switch {
+	case inst == nil:
+		if inst, err = Start(start); err != nil {
+			return nil, err
+		}
+	case len(start.Vars) > 0:
+		return inst, fmt.Errorf("%w: %s instance %s is still open — apply it with --instance %s, or cancel it to start over",
+			ErrInputsBound, start.Slug, inst.InstanceID, inst.InstanceID)
+	}
+
+	apply.Task = inst.TaskID
+	apply.InstanceID = inst.InstanceID
+
+	return Apply(apply)
+}
+
+// newestOpen is the most recently created unfinished instance of slug for
+// the task, or nil.
+func (o *ApplyOpts) newestOpen(slug string) (*Instance, error) {
+	var newest *Instance
+
+	for _, root := range o.roots() {
+		all, err := ListInstances(root, o.Task)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+
+		if err != nil {
+			return nil, err
+		}
+
+		for _, inst := range all {
+			if inst.RunbookSlug == slug && !inst.Finished() && (newest == nil || inst.CreatedAt >= newest.CreatedAt) {
+				newest = inst
+			}
+		}
+	}
+
+	return newest, nil
+}
+
+// roots are where an instance print can live: the working tree, then the
+// check-only root when the caller gave one.
+func (o *ApplyOpts) roots() []string {
+	if o.CheckOnlyRoot == "" {
+		return []string{o.Cwd}
+	}
+
+	return []string{o.Cwd, o.CheckOnlyRoot}
+}
+
+// find loads the instance an operation names from the first root holding it.
+func (o *ApplyOpts) find() (*Instance, error) {
+	var firstErr error
+
+	for _, root := range o.roots() {
+		inst, err := loadFrom(root, o.Task, o.InstanceID)
+		if err == nil {
+			return inst, nil
+		}
+
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
+
+	return nil, firstErr
+}
+
+// Status loads the instance. --require completed fails if not completed.
+func Status(opts *ApplyOpts) (*Instance, error) {
+	inst, err := opts.find()
 	if err != nil {
 		return nil, err
 	}
@@ -134,27 +235,18 @@ func Status(opts *ApplyOpts) (*Instance, error) {
 // run pauses at the first one without an operator signoff tier and returns
 // WaitingApproval. Once signed off (StepComplete), a subsequent Apply executes
 // them for real — Command runs its body, Template renders its blueprint into
-// the worktree. DryRun executes nothing.
+// the worktree. DryRun runs only the scripts that read RUNBOOK_DRY_RUN.
 //
 // Sign-off is a gate on *authorisation*, not on execution: a signed step that
 // does not do its work, but reports completed, is the failure this design
 // exists to prevent.
 func Apply(opts *ApplyOpts) (*Instance, error) {
-	if err := refuseMainAndRequireWorktree(opts.Cwd); err != nil {
-		return nil, err
-	}
-
-	id, err := ResolveInstanceID(opts.Cwd, opts.Task, opts.InstanceID)
+	inst, err := opts.find()
 	if err != nil {
 		return nil, err
 	}
 
-	inst, err := Load(opts.Cwd, opts.Task, id)
-	if err != nil {
-		return nil, err
-	}
-
-	if inst.Status == StatusCancelled || inst.Status == StatusFailed || inst.Status == StatusCompleted {
+	if inst.Finished() {
 		return inst, nil
 	}
 
@@ -173,9 +265,15 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 		return nil, err
 	}
 
+	if !edition.CheckOnly() {
+		if err := refuseMainAndRequireWorktree(opts.Cwd); err != nil {
+			return nil, err
+		}
+	}
+
 	if edition.Hash != inst.EditionHash {
 		inst.Status = StatusFailed
-		_ = Save(opts.Cwd, inst)
+		_ = Save(inst.Root, inst)
 
 		return inst, fmt.Errorf("%w: instance %s published %s", ErrEditionMismatch, inst.EditionHash, edition.Hash)
 	}
@@ -211,7 +309,7 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 			inst.Status = StatusFailed
 			st.Status = stepFailed
 			st.Output = "step missing from published edition"
-			_ = Save(opts.Cwd, inst)
+			_ = Save(inst.Root, inst)
 
 			return inst, ErrEditionMismatch
 		}
@@ -221,11 +319,11 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 			inst.Status = StatusWaitingApproval
 
 			inst.CurrentStepID = st.ID
-			if err := Save(opts.Cwd, inst); err != nil {
+			if err := Save(inst.Root, inst); err != nil {
 				return nil, err
 			}
 
-			if err := writeEvidence(opts.Cwd, inst); err != nil {
+			if err := writeEvidence(inst.Root, inst); err != nil {
 				return nil, err
 			}
 
@@ -254,8 +352,8 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 			st.Status = stepFailed
 			inst.Status = StatusFailed
 			inst.CurrentStepID = st.ID
-			_ = Save(opts.Cwd, inst)
-			_ = writeEvidence(opts.Cwd, inst)
+			_ = Save(inst.Root, inst)
+			_ = writeEvidence(inst.Root, inst)
 
 			return inst, fmt.Errorf("%w: %s: %w", ErrCheckFailed, st.ID, runErr)
 		}
@@ -269,11 +367,11 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 	inst.Status = StatusCompleted
 
 	inst.CurrentStepID = ""
-	if err := Save(opts.Cwd, inst); err != nil {
+	if err := Save(inst.Root, inst); err != nil {
 		return nil, err
 	}
 
-	if err := writeEvidence(opts.Cwd, inst); err != nil {
+	if err := writeEvidence(inst.Root, inst); err != nil {
 		return nil, err
 	}
 
@@ -286,12 +384,7 @@ func StepComplete(opts *ApplyOpts) (*Instance, error) {
 		return nil, errors.New("--step is required")
 	}
 
-	id, err := ResolveInstanceID(opts.Cwd, opts.Task, opts.InstanceID)
-	if err != nil {
-		return nil, err
-	}
-
-	inst, err := Load(opts.Cwd, opts.Task, id)
+	inst, err := opts.find()
 	if err != nil {
 		return nil, err
 	}
@@ -309,7 +402,7 @@ func StepComplete(opts *ApplyOpts) (*Instance, error) {
 		if strings.EqualFold(tier, "deny") || strings.EqualFold(tier, "defer") {
 			inst.Status = StatusWaitingApproval
 			inst.Steps[i].Output = "operator " + strings.ToLower(tier)
-			_ = Save(opts.Cwd, inst)
+			_ = Save(inst.Root, inst)
 
 			return inst, ErrDenied
 		}
@@ -326,7 +419,7 @@ func StepComplete(opts *ApplyOpts) (*Instance, error) {
 		return inst, fmt.Errorf("step %s not on instance", opts.StepID)
 	}
 
-	if err := Save(opts.Cwd, inst); err != nil {
+	if err := Save(inst.Root, inst); err != nil {
 		return nil, err
 	}
 
@@ -335,12 +428,7 @@ func StepComplete(opts *ApplyOpts) (*Instance, error) {
 
 // Cancel marks the instance cancelled.
 func Cancel(opts *ApplyOpts) (*Instance, error) {
-	id, err := ResolveInstanceID(opts.Cwd, opts.Task, opts.InstanceID)
-	if err != nil {
-		return nil, err
-	}
-
-	inst, err := Load(opts.Cwd, opts.Task, id)
+	inst, err := opts.find()
 	if err != nil {
 		return nil, err
 	}
@@ -356,11 +444,11 @@ func Cancel(opts *ApplyOpts) (*Instance, error) {
 		}
 	}
 
-	if err := Save(opts.Cwd, inst); err != nil {
+	if err := Save(inst.Root, inst); err != nil {
 		return nil, err
 	}
 
-	if err := writeEvidence(opts.Cwd, inst); err != nil {
+	if err := writeEvidence(inst.Root, inst); err != nil {
 		return nil, err
 	}
 

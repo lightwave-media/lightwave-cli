@@ -50,10 +50,18 @@ func runbookStatusHandler(ctx context.Context, _ []string, flags map[string]any)
 	return runRunbookStatus(runbookStatusCmd, nil)
 }
 
-func runbookApplyHandler(ctx context.Context, _ []string, flags map[string]any) error {
+// runbookApplyHandler serves both forms: `apply --instance <id>` and
+// `apply <slug>`, which starts the runbook if it has no open instance (#537).
+// The slug is positional but undeclared in commands.yaml, where `args` would
+// make it mandatory and break the --instance form.
+func runbookApplyHandler(ctx context.Context, args []string, flags map[string]any) error {
 	runbookTask = flagStr(flags, "task")
 	runbookInstance = flagStr(flags, "instance")
 	runbookCwd = flagStr(flags, "cwd")
+	runbookVars = flagStrSlice(flags, "var")
+	runbookVarsFile = flagStr(flags, "vars-file")
+	runbookAgent = flagStr(flags, "agent")
+	runbookDryRun = flagBool(flags, "dry-run")
 
 	runbookApplyCmd.SetContext(ctx)
 
@@ -63,7 +71,7 @@ func runbookApplyHandler(ctx context.Context, _ []string, flags map[string]any) 
 	// it changes the runbook package's API and that file is being actively
 	// worked (#325) — not something to land inside a CI-arming change.
 	//nolint:contextcheck // ctx threaded via cmd.Context(); see #325 for the signature change
-	return runRunbookApply(runbookApplyCmd, nil)
+	return runRunbookApply(runbookApplyCmd, args)
 }
 
 func runbookStepCompleteHandler(ctx context.Context, _ []string, flags map[string]any) error {

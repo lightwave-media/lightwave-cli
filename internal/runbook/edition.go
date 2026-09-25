@@ -21,22 +21,22 @@ const (
 
 // Step is one Check/Command/Template from the published edition.
 type Step struct {
-	ID          string
-	Kind        string
-	Description string
-	Command     string
+	ID          string `json:"id"`
+	Kind        string `json:"kind"`
+	Description string `json:"description,omitempty"`
+	Command     string `json:"command,omitempty"`
 	// Path is a Check/Command script, or a Template's blueprint directory,
 	// relative to the runbook's own dir. Target is where a Template renders.
-	Path   string
-	Target string
+	Path   string `json:"path,omitempty"`
+	Target string `json:"target,omitempty"`
 	// Expected is a word a Check's output must contain. The catalog writes
 	// `test -f x && echo found || echo missing`, which exits 0 either way.
-	Expected string
+	Expected string `json:"expected,omitempty"`
 	// Timeout bounds the step (timeoutMs="{1800000}"); zero means unbounded.
-	Timeout time.Duration
+	Timeout time.Duration `json:"timeout_ns,omitempty"`
 	// HighBlast steps wait for operator sign-off: every Command and Template,
 	// and a Check whose inline command needs a shell (lightwave-cli#348).
-	HighBlast bool
+	HighBlast bool `json:"high_blast"`
 }
 
 // Edition is a published runbook.mdx plus its content hash.
@@ -58,6 +58,18 @@ var (
 
 	unescapeAttr = strings.NewReplacer(`\"`, `"`, `\\`, `\`)
 )
+
+// CheckOnly reports whether the runbook has no Command or Template step, so
+// nothing it runs is meant to change files.
+func (e *Edition) CheckOnly() bool {
+	for i := range e.Steps {
+		if e.Steps[i].Kind != KindCheck {
+			return false
+		}
+	}
+
+	return true
+}
 
 // LoadEdition reads runbook.mdx for an index entry. Missing file is an
 // edition mismatch (phantom index row), not a license to invent steps.

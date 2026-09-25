@@ -60,38 +60,55 @@ type Instance struct {
 	// Vars are the --var values the instance was started with. Inputs are
 	// bound from them and the pinned edition's defaults on every apply.
 	Vars map[string]string `yaml:"vars,omitempty"`
+	// Root is where this print lives: the working tree for a runbook that can
+	// change files, CheckOnlyRoot for one that cannot. Set by Save and Load.
+	Root string `yaml:"-"`
 }
 
-// Dir is .tasks/{task}/runbooks/{instance} under cwd.
-func Dir(cwd, taskID, instanceID string) string {
-	return filepath.Join(cwd, ".tasks", taskID, "runbooks", instanceID)
+// CheckOnlyRoot holds the prints of runbooks with no Command or Template
+// step. They change nothing, so they may run anywhere (#553) — session-signoff
+// runs after its PR merged and its worktree is gone — and their prints belong
+// to the operator, not to whichever directory they ran in.
+func CheckOnlyRoot() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+
+	return filepath.Join(home, ".lightwave", "runbooks")
+}
+
+// Dir is .tasks/{task}/runbooks/{instance} under root.
+func Dir(root, taskID, instanceID string) string {
+	return filepath.Join(root, ".tasks", taskID, "runbooks", instanceID)
 }
 
 // Path is the instance.yaml print.
-func Path(cwd, taskID, instanceID string) string {
-	return filepath.Join(Dir(cwd, taskID, instanceID), "instance.yaml")
+func Path(root, taskID, instanceID string) string {
+	return filepath.Join(Dir(root, taskID, instanceID), "instance.yaml")
 }
 
-// Save writes the instance print.
-func Save(cwd string, inst *Instance) error {
-	dir := Dir(cwd, inst.TaskID, inst.InstanceID)
+// Save writes the instance print under root.
+func Save(root string, inst *Instance) error {
+	dir := Dir(root, inst.TaskID, inst.InstanceID)
 	if err := os.MkdirAll(dir, dirPerm); err != nil {
 		return err
 	}
 
 	inst.UpdatedAt = nowUTC()
+	inst.Root = root
 
 	raw, err := yaml.Marshal(inst)
 	if err != nil {
 		return err
 	}
 
-	return os.WriteFile(Path(cwd, inst.TaskID, inst.InstanceID), raw, filePerm)
+	return os.WriteFile(Path(root, inst.TaskID, inst.InstanceID), raw, filePerm)
 }
 
-// Load reads one instance print.
-func Load(cwd, taskID, instanceID string) (*Instance, error) {
-	raw, err := os.ReadFile(Path(cwd, taskID, instanceID))
+// Load reads one instance print from root.
+func Load(root, taskID, instanceID string) (*Instance, error) {
+	raw, err := os.ReadFile(Path(root, taskID, instanceID))
 	if err != nil {
 		return nil, err
 	}
@@ -101,18 +118,34 @@ func Load(cwd, taskID, instanceID string) (*Instance, error) {
 		return nil, err
 	}
 
+	inst.Root = root
+
 	return &inst, nil
+}
+
+// Finished reports whether the instance can no longer run.
+func (inst *Instance) Finished() bool {
+	return inst.Status == StatusCompleted || inst.Status == StatusFailed || inst.Status == StatusCancelled
+}
+
+func loadFrom(root, taskID, instanceID string) (*Instance, error) {
+	id, err := ResolveInstanceID(root, taskID, instanceID)
+	if err != nil {
+		return nil, err
+	}
+
+	return Load(root, taskID, id)
 }
 
 // ResolveInstanceID uses the explicit id, or the most recently created print
 // for task. Instance ids are random UUIDs, so sorting them — which this did —
 // picked an arbitrary instance, not the latest one.
-func ResolveInstanceID(cwd, taskID, instanceID string) (string, error) {
+func ResolveInstanceID(root, taskID, instanceID string) (string, error) {
 	if instanceID != "" {
 		return instanceID, nil
 	}
 
-	all, err := ListInstances(cwd, taskID)
+	all, err := ListInstances(root, taskID)
 	if err != nil {
 		return "", err
 	}
@@ -124,11 +157,9 @@ func ResolveInstanceID(cwd, taskID, instanceID string) (string, error) {
 	return all[len(all)-1].InstanceID, nil
 }
 
-// ListInstances returns task's instance prints, oldest first.
-func ListInstances(cwd, taskID string) ([]*Instance, error) {
-	root := filepath.Join(cwd, ".tasks", taskID, "runbooks")
-
-	ents, err := os.ReadDir(root)
+// ListInstances returns task's instance prints under root, oldest first.
+func ListInstances(root, taskID string) ([]*Instance, error) {
+	ents, err := os.ReadDir(filepath.Join(root, ".tasks", taskID, "runbooks"))
 	if err != nil {
 		return nil, fmt.Errorf("no runbook instance for task %s: %w", taskID, err)
 	}
@@ -140,7 +171,7 @@ func ListInstances(cwd, taskID string) ([]*Instance, error) {
 			continue
 		}
 
-		inst, err := Load(cwd, taskID, e.Name())
+		inst, err := Load(root, taskID, e.Name())
 		if err != nil {
 			return nil, err
 		}

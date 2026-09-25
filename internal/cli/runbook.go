@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -137,6 +139,8 @@ func runRunbookStart(cmd *cobra.Command, _ []string) error {
 		Session:  runbookSession,
 		DryRun:   runbookDryRun,
 		Vars:     vars,
+
+		CheckOnlyRoot: runbook.CheckOnlyRoot(),
 	})
 	if err != nil {
 		return err
@@ -145,7 +149,7 @@ func runRunbookStart(cmd *cobra.Command, _ []string) error {
 	_, err = fmt.Fprintf(cmd.OutOrStdout(),
 		"runbook instance %s slug=%s status=%s path=%s\n",
 		inst.InstanceID, inst.RunbookSlug, inst.Status,
-		runbook.Path(cwd, inst.TaskID, inst.InstanceID))
+		runbook.Path(inst.Root, inst.TaskID, inst.InstanceID))
 
 	return err
 }
@@ -161,6 +165,8 @@ func runRunbookStatus(cmd *cobra.Command, _ []string) error {
 		Task:       runbookTask,
 		InstanceID: runbookInstance,
 		Require:    runbookRequire,
+
+		CheckOnlyRoot: runbook.CheckOnlyRoot(),
 	})
 	if err != nil {
 		return err
@@ -173,19 +179,32 @@ func runRunbookStatus(cmd *cobra.Command, _ []string) error {
 	return err
 }
 
-func runRunbookApply(cmd *cobra.Command, _ []string) error {
+func runRunbookApply(cmd *cobra.Command, args []string) error {
 	cwd, err := workCwd()
 	if err != nil {
 		return err
 	}
 
-	inst, err := runbook.Apply(&runbook.ApplyOpts{
-		CoreRoot:   coreRepoPath(),
-		Cwd:        cwd,
-		Task:       runbookTask,
-		InstanceID: runbookInstance,
-		AuditPath:  runbook.DefaultAuditPath(),
-	})
+	opts := &runbook.ApplyOpts{
+		CoreRoot:      coreRepoPath(),
+		Cwd:           cwd,
+		Task:          runbookTask,
+		InstanceID:    runbookInstance,
+		AuditPath:     runbook.DefaultAuditPath(),
+		CheckOnlyRoot: runbook.CheckOnlyRoot(),
+	}
+
+	var inst *runbook.Instance
+
+	switch {
+	case len(args) > 0 && runbookInstance != "":
+		return errors.New("give a runbook slug or --instance, not both")
+	case len(args) > 0:
+		inst, err = applySlug(args[0], opts)
+	default:
+		inst, err = runbook.Apply(opts)
+	}
+
 	if err != nil {
 		return err
 	}
@@ -195,7 +214,7 @@ func runRunbookApply(cmd *cobra.Command, _ []string) error {
 		msg = "paused for operator approval"
 	}
 
-	evidence := filepath.Join(runbook.Dir(cwd, inst.TaskID, inst.InstanceID), "evidence.md")
+	evidence := filepath.Join(runbook.Dir(inst.Root, inst.TaskID, inst.InstanceID), "evidence.md")
 
 	_, err = fmt.Fprintf(cmd.OutOrStdout(),
 		"runbook %s instance %s status=%s step=%s evidence=%s\n",
@@ -221,6 +240,8 @@ func runRunbookStepComplete(cmd *cobra.Command, _ []string) error {
 		InstanceID:  runbookInstance,
 		StepID:      runbookStep,
 		SignoffTier: runbookSignoffTier,
+
+		CheckOnlyRoot: runbook.CheckOnlyRoot(),
 	})
 	if err != nil {
 		return err
@@ -244,6 +265,8 @@ func runRunbookCancel(cmd *cobra.Command, _ []string) error {
 		Task:       runbookTask,
 		InstanceID: runbookInstance,
 		Reason:     runbookReason,
+
+		CheckOnlyRoot: runbook.CheckOnlyRoot(),
 	})
 	if err != nil {
 		return err
@@ -253,6 +276,29 @@ func runRunbookCancel(cmd *cobra.Command, _ []string) error {
 		"runbook instance %s cancelled\n", inst.InstanceID)
 
 	return err
+}
+
+// applySlug is `lw runbook apply <slug>`: resume the task's open instance of
+// slug or start one, then apply it (#537). A one-off needs no bookkeeping:
+// --task defaults to "adhoc", --agent to $LW_AGENT_NAME and then "operator".
+func applySlug(slug string, opts *runbook.ApplyOpts) (*runbook.Instance, error) {
+	vars, err := runbook.ParseVars(runbookVars, runbookVarsFile)
+	if err != nil {
+		return nil, err
+	}
+
+	opts.Task = cmp.Or(opts.Task, "adhoc")
+
+	return runbook.Run(&runbook.StartOpts{
+		CoreRoot:      opts.CoreRoot,
+		Cwd:           opts.Cwd,
+		Slug:          slug,
+		Agent:         cmp.Or(runbookAgent, os.Getenv("LW_AGENT_NAME"), "operator"),
+		Task:          opts.Task,
+		DryRun:        runbookDryRun,
+		Vars:          vars,
+		CheckOnlyRoot: opts.CheckOnlyRoot,
+	}, opts)
 }
 
 func workCwd() (string, error) {

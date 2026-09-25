@@ -15,10 +15,12 @@ package cli
 // measuring nothing.
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/lightwave-media/lightwave-cli/internal/runbook"
@@ -76,6 +78,7 @@ func init() {
 
 	RegisterHandler("runbook.list", runbookListHandler)
 	RegisterHandler("runbook.search", runbookSearchHandler)
+	RegisterHandler("runbook.show", runbookShowHandler)
 }
 
 func runbookListHandler(ctx context.Context, _ []string, flags map[string]any) error {
@@ -98,6 +101,25 @@ func runbookSearchHandler(ctx context.Context, args []string, flags map[string]a
 	}
 
 	return runRunbookSearch(runbookSearchCmd, args)
+}
+
+// runbookShowHandler prints one runbook's inputs and steps (#545), so an agent
+// can run it without reading its MDX.
+func runbookShowHandler(_ context.Context, args []string, flags map[string]any) error {
+	if len(args) == 0 {
+		return errors.New("usage: lw runbook show <slug>")
+	}
+
+	desc, err := runbook.Describe(coreRepoPath(), args[0])
+	if err != nil {
+		return err
+	}
+
+	if flagBool(flags, "json") {
+		return emitJSON(desc)
+	}
+
+	return printRunbookDescription(os.Stdout, desc)
 }
 
 func runRunbookList(cmd *cobra.Command, _ []string) error {
@@ -243,4 +265,78 @@ func firstLine(s string) string {
 	}
 
 	return strings.TrimSpace(s)
+}
+
+// printRunbookDescription renders what a caller needs to run a runbook: its
+// inputs (which are required, which have defaults), its steps (marking the
+// ones that pause for sign-off), and the command that runs it.
+func printRunbookDescription(w io.Writer, d *runbook.Description) error {
+	var out strings.Builder
+
+	where := "changes files, so runs in a task worktree"
+	if d.CheckOnly {
+		where = "check-only, runs anywhere"
+	}
+
+	fmt.Fprintf(&out, "%s  (%s)  %s · %s\n", d.Slug, d.Dir, cmp.Or(d.Status, "no status"), where)
+
+	if d.Description != "" {
+		fmt.Fprintf(&out, "%s\n", firstLine(d.Description))
+	}
+
+	var required []string
+
+	if len(d.Inputs) > 0 {
+		out.WriteString("\nInputs (--var Name=Value)\n")
+
+		width := 0
+		for i := range d.Inputs {
+			width = max(width, len(d.Inputs[i].Name))
+		}
+
+		for i := range d.Inputs {
+			in := &d.Inputs[i]
+
+			note := ""
+			if in.Required() {
+				note = "required"
+
+				required = append(required, in.Name)
+			} else if in.Default != nil {
+				note = fmt.Sprintf("default %v", in.Default)
+			}
+
+			fmt.Fprintf(&out, "  %-*s  %-6s  %s\n", width, in.Name, in.Type, note)
+		}
+	}
+
+	out.WriteString("\nSteps\n")
+
+	width := 0
+	for i := range d.Steps {
+		width = max(width, len(d.Steps[i].ID))
+	}
+
+	for i := range d.Steps {
+		st := &d.Steps[i]
+
+		signoff := ""
+		if st.HighBlast {
+			signoff = "  [sign-off]"
+		}
+
+		fmt.Fprintf(&out, "  %-8s %-*s  %s%s\n", st.Kind, width, st.ID, firstLine(cmp.Or(st.Path, st.Command)), signoff)
+	}
+
+	fmt.Fprintf(&out, "\nRun: lw runbook apply %s", d.Slug)
+
+	for _, name := range required {
+		fmt.Fprintf(&out, " --var %s=<value>", name)
+	}
+
+	out.WriteString("\n")
+
+	_, err := io.WriteString(w, out.String())
+
+	return err
 }

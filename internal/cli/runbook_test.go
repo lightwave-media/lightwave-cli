@@ -3,9 +3,11 @@ package cli
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/lightwave-media/lightwave-cli/internal/config"
+	"github.com/lightwave-media/lightwave-cli/internal/runbook"
 	"github.com/lightwave-media/lightwave-cli/internal/sst"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
@@ -29,6 +31,36 @@ func TestRunbookVarFlag_RepeatsWithoutCommaSplitting(t *testing.T) {
 
 	require.NoError(t, cmd.Execute())
 	require.Equal(t, []string{"Url=https://x/y?a=1,b=2", "Name=alice"}, got)
+}
+
+// show exists so a caller can run a runbook without reading its MDX (#545):
+// it must say which inputs are required, which steps wait for sign-off, where
+// the runbook may run, and the exact command.
+func TestPrintRunbookDescription_SaysHowToRunIt(t *testing.T) {
+	t.Parallel()
+
+	desc := &runbook.Description{
+		Slug: "demo", Dir: "ops/demo", Status: "active", Description: "Rotates a thing",
+		Inputs: []runbook.InputDecl{
+			{Name: "Target", Type: "string", Validations: []string{"required"}},
+			{Name: "Force", Type: "bool", Default: false},
+		},
+		Steps: []runbook.Step{
+			{ID: "preflight", Kind: runbook.KindCheck, Path: "checks/tools.sh"},
+			{ID: "rotate", Kind: runbook.KindCommand, Path: "scripts/rotate.sh", HighBlast: true},
+		},
+	}
+
+	var out strings.Builder
+	require.NoError(t, printRunbookDescription(&out, desc))
+
+	got := out.String()
+	require.Contains(t, got, "changes files, so runs in a task worktree")
+	require.Regexp(t, `Target\s+string\s+required`, got)
+	require.Regexp(t, `Force\s+bool\s+default false`, got)
+	require.Regexp(t, `command\s+rotate\s+scripts/rotate.sh  \[sign-off\]`, got)
+	require.NotRegexp(t, `preflight.*\[sign-off\]`, got, "a check that needs no shell does not wait")
+	require.Contains(t, got, "Run: lw runbook apply demo --var Target=<value>\n")
 }
 
 // runbook reaches the CLI through the schema dispatcher, not a hardcoded
