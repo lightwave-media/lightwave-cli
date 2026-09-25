@@ -11,9 +11,16 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/knowledge"
+	"github.com/lightwave-media/lightwave-cli/internal/secrets"
 )
 
-const knowledgeDatabaseTimeout = 5 * time.Second
+const (
+	knowledgeDatabaseTimeout = 5 * time.Second
+	nullticketsTokenKey      = "NULLTICKETS_API_TOKEN"
+)
+
+// fetchSecretByName reads one store key by name. A seam for tests.
+var fetchSecretByName = secrets.FetchOne
 
 func init() {
 	RegisterHandler("knowledge.sync", knowledgeSyncHandler)
@@ -29,7 +36,8 @@ func init() {
 // becomes one nulltickets task, recorded as a nulltickets external_ref.
 // nulltickets is located the way the lw-webhook GitHub hop locates it —
 // NULLTICKETS_URL and NULLTICKETS_API_TOKEN — so the two adapters share one
-// vocabulary. The Notion token comes from SSM like every knowledge verb.
+// vocabulary. The Notion token comes from SSM like every knowledge verb; the
+// nulltickets token comes from the environment, else from SSM by name.
 func knowledgePromoteHandler(ctx context.Context, _ []string, flags map[string]any) error {
 	database, pipeline := flagStr(flags, "database"), flagStr(flags, "pipeline")
 	if database == "" || pipeline == "" {
@@ -51,15 +59,36 @@ func knowledgePromoteHandler(ctx context.Context, _ []string, flags map[string]a
 		return err
 	}
 
-	promoter := knowledge.Promoter{Rows: remote, Files: files,
-		Queue: knowledge.NewNulltickets(os.Getenv("NULLTICKETS_URL"), os.Getenv("NULLTICKETS_API_TOKEN"))}
+	dryRun := flagBool(flags, "dry-run")
 
-	report, runErr := promoter.Run(ctx, knowledge.PromoteOptions{Database: database, Pipeline: pipeline, DryRun: flagBool(flags, "dry-run")})
+	promoter := knowledge.Promoter{Rows: remote, Files: files,
+		Queue: knowledge.NewNulltickets(os.Getenv("NULLTICKETS_URL"), nullticketsToken(ctx, dryRun))}
+
+	report, runErr := promoter.Run(ctx, knowledge.PromoteOptions{Database: database, Pipeline: pipeline, DryRun: dryRun})
 	if err := printKnowledge(report, flags); err != nil {
 		return err
 	}
 
 	return runErr
+}
+
+// nullticketsToken is NULLTICKETS_API_TOKEN from the environment, else read
+// from SSM by name: sessions no longer carry store keys (CLAUDE.md §24). A dry
+// run sends nothing to nulltickets, so it reads nothing. The bearer is
+// optional, so a failed read warns by name and the run goes on without it.
+func nullticketsToken(ctx context.Context, dryRun bool) string {
+	if token := os.Getenv(nullticketsTokenKey); token != "" || dryRun {
+		return token
+	}
+
+	token, err := fetchSecretByName(ctx, nullticketsTokenKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "lw knowledge promote: %s is not set and could not be read from SSM (%v); sending without a bearer\n", nullticketsTokenKey, err)
+
+		return ""
+	}
+
+	return token
 }
 
 // knowledgeBindHandler sets property_map_ref (and optionally title) on one

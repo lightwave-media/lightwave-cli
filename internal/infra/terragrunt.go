@@ -11,7 +11,17 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/lightwave-media/lightwave-cli/internal/secrets"
 )
+
+// cloudflareTokenKey is the one store key terragrunt needs beyond AWS
+// credentials: root.hcl generates the Cloudflare provider into every unit, and
+// Terraform configures it only for units with Cloudflare resources.
+const cloudflareTokenKey = "CLOUDFLARE_API_TOKEN"
+
+// fetchSecret reads one store key by name. A seam for tests.
+var fetchSecret = secrets.FetchOne
 
 // TerragruntRunner wraps terragrunt commands
 type TerragruntRunner struct {
@@ -56,7 +66,7 @@ func (t *TerragruntRunner) Plan(ctx context.Context, path string) (*PlanResult, 
 
 	cmd := exec.CommandContext(ctx, "terragrunt", "plan", "-no-color")
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "TF_IN_AUTOMATION=1")
+	cmd.Env = terragruntEnv(ctx, workDir, false)
 
 	// Stream to terminal AND capture for parsing
 	var buf bytes.Buffer
@@ -94,7 +104,7 @@ func (t *TerragruntRunner) Apply(ctx context.Context, path string, autoApprove b
 
 	cmd := exec.CommandContext(ctx, "terragrunt", args...)
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "TF_IN_AUTOMATION=1")
+	cmd.Env = terragruntEnv(ctx, workDir, false)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
@@ -114,11 +124,41 @@ func (t *TerragruntRunner) RunAll(ctx context.Context, command string) error {
 
 	cmd := exec.CommandContext(ctx, "terragrunt", args...)
 	cmd.Dir = workDir
-	cmd.Env = append(os.Environ(), "TF_IN_AUTOMATION=1")
+	cmd.Env = terragruntEnv(ctx, workDir, true)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
 	return cmd.Run()
+}
+
+// terragruntEnv is the environment for a terragrunt plan or apply in dir. When
+// the run can reach Cloudflare and the caller did not supply the token, it is
+// read from SSM by name and given to terragrunt alone, never to lw's own
+// environment: sessions no longer carry store keys (CLAUDE.md §24). If it
+// cannot be read, the run goes ahead without it and says so by name, because
+// only Cloudflare resources need it.
+func terragruntEnv(ctx context.Context, dir string, wholeTree bool) []string {
+	env := append(os.Environ(), "TF_IN_AUTOMATION=1")
+	if os.Getenv(cloudflareTokenKey) != "" || (!wholeTree && !usesCloudflare(dir)) {
+		return env
+	}
+
+	token, err := fetchSecret(ctx, cloudflareTokenKey)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "lw infra: %s is not set and could not be read from SSM (%v); Cloudflare resources will fail\n", cloudflareTokenKey, err)
+
+		return env
+	}
+
+	return append(env, cloudflareTokenKey+"="+token)
+}
+
+// usesCloudflare reports whether a unit's terragrunt.hcl mentions Cloudflare,
+// which every Cloudflare unit's module source and header do.
+func usesCloudflare(dir string) bool {
+	body, err := os.ReadFile(filepath.Join(dir, "terragrunt.hcl"))
+
+	return err == nil && bytes.Contains(bytes.ToLower(body), []byte("cloudflare"))
 }
 
 // terraformOutput represents a single terraform output value
