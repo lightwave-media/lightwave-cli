@@ -415,11 +415,18 @@ func executeStep(cwd, runbookDir string, step *Step) (string, error) {
 		return renderTemplateStep(cwd, runbookDir, step)
 
 	case KindCheck, KindCommand:
-		if step.Command == "" {
-			return "", nil
+		if step.Command != "" {
+			return runShell(cwd, step.Command)
 		}
 
-		return runShell(cwd, step.Command)
+		if step.Path != "" {
+			// Fail closed: this engine does not execute path= scripts yet, and
+			// completing the step would record a check that never ran.
+			return "", fmt.Errorf("%s step %q runs a script by path=%q, which lw runbook apply does not execute yet (lightwave-cli#546); run it in the Runbooks app or convert it to command=",
+				step.Kind, step.ID, step.Path)
+		}
+
+		return "", nil // prose: nothing to run
 
 	default:
 		return "", nil
