@@ -38,7 +38,7 @@ func ensureCodexMCP(current string, fragment []byte) (string, error) {
 		merged[key] = value
 	}
 
-	for _, key := range []string{"command", "args", "env", "url", "http_headers", "env_http_headers", "bearer_token_env_var"} {
+	for _, key := range []string{"command", "args", "env", "cwd", "env_vars", "url", "http_headers", "env_http_headers", "bearer_token_env_var"} {
 		delete(merged, key)
 	}
 

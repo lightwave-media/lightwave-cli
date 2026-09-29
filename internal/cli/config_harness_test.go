@@ -77,6 +77,8 @@ func TestCodexMCPMergeKeepsOperatorPolicy(t *testing.T) {
 	t.Parallel()
 	current := `[mcp_servers.lightwave]
 command = "old"
+cwd = "/stale/transport"
+env_vars = ["STALE_TRANSPORT"]
 enabled_tools = ["context_get", "stamp_read"]
 startup_timeout_sec = 40
 [mcp_servers.lightwave.tools.context_get]
@@ -103,6 +105,8 @@ git-worktree-root = "/home/person/.worktrees"
 	assert.Contains(t, next, "enabled = false")
 	assert.Contains(t, next, "enabled_tools = ['context_get', 'stamp_read']")
 	assert.Contains(t, next, "startup_timeout_sec = 40")
+	assert.NotContains(t, next, "/stale/transport")
+	assert.NotContains(t, next, "STALE_TRANSPORT")
 	assert.Contains(t, next, `git-worktree-root = "/home/person/.worktrees"`)
 	assert.Contains(t, next, `theme = "dark"`)
 	assert.Contains(t, next, `trusted_hash = "operator-owned"`)
