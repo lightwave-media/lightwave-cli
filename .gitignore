@@ -17,3 +17,6 @@ dist/
 
 # Per-session validity-contract pin (never shared)
 .lightwave/
+
+# lw runbook instance prints: step output and --var values (lightwave-cli#546)
+.tasks/

@@ -1,16 +1,13 @@
 package runbook
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
-	"github.com/lightwave-media/lightwave-cli/internal/blueprint"
 	"github.com/lightwave-media/lightwave-cli/internal/git"
 )
 
@@ -26,6 +23,9 @@ type StartOpts struct {
 	Session    string
 	InstanceID string
 	DryRun     bool
+	// Vars fill the runbook's <Inputs>; they are checked here, before any
+	// instance exists, and bound again from the pinned edition on each apply.
+	Vars map[string]string
 }
 
 // ApplyOpts is the input to Apply / Status / Cancel / StepComplete.
@@ -38,6 +38,8 @@ type ApplyOpts struct {
 	SignoffTier string
 	Reason      string
 	Require     string
+	// AuditPath receives one audit_event row per step decision; see audit.go.
+	AuditPath string
 }
 
 // Start looks up a published edition, refuses main, and writes the instance.
@@ -65,6 +67,10 @@ func Start(opts *StartOpts) (*Instance, error) {
 		return nil, err
 	}
 
+	if _, err := BindInputs(edition.Inputs, opts.Vars); err != nil {
+		return nil, err
+	}
+
 	branch, err := currentBranch(opts.Cwd)
 	if err != nil {
 		return nil, err
@@ -89,6 +95,7 @@ func Start(opts *StartOpts) (*Instance, error) {
 		EditionHash:  edition.Hash,
 		CreatedAt:    nowUTC(),
 		Steps:        pendingSteps(edition.Steps),
+		Vars:         opts.Vars,
 	}
 
 	if err := Save(opts.Cwd, inst); err != nil {
@@ -147,7 +154,7 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 		return nil, err
 	}
 
-	if inst.Status == StatusCancelled || inst.Status == StatusFailed || inst.Status == StatusCompleted {
+	if inst.Finished() {
 		return inst, nil
 	}
 
@@ -178,11 +185,24 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 		byID[edition.Steps[i].ID] = edition.Steps[i]
 	}
 
+	inputs, err := BindInputs(edition.Inputs, inst.Vars)
+	if err != nil {
+		return inst, err
+	}
+
+	run := &runner{
+		cwd:        opts.Cwd,
+		runbookDir: filepath.Dir(edition.Path),
+		inputs:     inputs,
+		outputs:    completedOutputs(inst.Steps),
+		dryRun:     inst.DryRun,
+	}
+
 	inst.Status = StatusRunning
 
 	for i := range inst.Steps {
 		st := &inst.Steps[i]
-		if st.Status == stepCompleted {
+		if st.Status == stepCompleted || st.Status == stepSkipped {
 			continue
 		}
 
@@ -209,33 +229,27 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 				return nil, err
 			}
 
-			return inst, nil
+			return inst, audit(opts.AuditPath, inst, &edStep, "pause", "awaiting_signoff", stepResult{})
 		}
 
-		if inst.DryRun {
-			st.Status = stepCompleted
-			st.Output = "dry-run: not executed"
+		// HighBlast is a SIGN-OFF gate, not an execution gate: past the check
+		// above a signed step must actually do its work. It once reported
+		// signed Command and Template steps completed without running them, so
+		// a runbook declaring a Template created nothing and said it had.
+		res, runErr := run.run(&edStep)
 
-			continue
+		st.Output = tailOutput(res.output)
+		st.Outputs = res.outputs
+		st.Warned = res.warned
+
+		if res.outputs != nil {
+			run.outputs[st.ID] = res.outputs
 		}
 
-		// HighBlast is a SIGN-OFF gate, not an execution gate. The check above
-		// already refused to proceed without a signoff tier; past that point a
-		// signed step must actually do its work.
-		//
-		// It used to short-circuit here for every HighBlast step and report
-		// "operator signed off; command not executed by this kernel" — status
-		// completed, nothing done. That made Command and Template steps inert
-		// while reporting success, so a runbook that declares
-		// `<Template path="templates/product-module" />` created no files and
-		// said it had. Apply() only runs inside a worktree
-		// (refuseMainAndRequireWorktree), which is what makes executing safe.
-		//
-		// edition.Dir is catalog-relative; edition.Path is the absolute
-		// runbook.mdx, so its parent is what a Template's `path` is relative to.
-		out, runErr := executeStep(opts.Cwd, filepath.Dir(edition.Path), &edStep)
+		if auditErr := audit(opts.AuditPath, inst, &edStep, "allow", outcomeOf(res, runErr), res); auditErr != nil && runErr == nil {
+			runErr = fmt.Errorf("step ran but its audit row was not written: %w", auditErr)
+		}
 
-		st.Output = out
 		if runErr != nil {
 			st.Status = stepFailed
 			inst.Status = StatusFailed
@@ -247,6 +261,9 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 		}
 
 		st.Status = stepCompleted
+		if res.skipped {
+			st.Status = stepSkipped
+		}
 	}
 
 	inst.Status = StatusCompleted
@@ -277,6 +294,12 @@ func StepComplete(opts *ApplyOpts) (*Instance, error) {
 	inst, err := Load(opts.Cwd, opts.Task, id)
 	if err != nil {
 		return nil, err
+	}
+
+	// Signing off a step on a finished instance set it running again, so a
+	// cancelled or failed runbook came back to life on the next apply.
+	if inst.Finished() {
+		return inst, fmt.Errorf("%w: %s is %s", ErrFinished, inst.InstanceID, inst.Status)
 	}
 
 	found := false
@@ -404,88 +427,42 @@ func pendingSteps(steps []Step) []StepState {
 	return out
 }
 
-// executeStep performs one step's actual work and returns its output.
-//
-// A step kind that has nothing to do is not an error — some steps are prose
-// with no command or path. A step that cannot do its work IS an error: it must
-// never report completed, which is the failure mode this replaced.
-func executeStep(cwd, runbookDir string, step *Step) (string, error) {
-	switch step.Kind {
-	case KindTemplate:
-		return renderTemplateStep(cwd, runbookDir, step)
+// completedOutputs rebuilds {{ .outputs }} from steps an earlier apply ran,
+// so a run resumed after a sign-off still sees them.
+func completedOutputs(steps []StepState) map[string]map[string]string {
+	outputs := map[string]map[string]string{}
 
-	case KindCheck, KindCommand:
-		if step.Command != "" {
-			return runShell(cwd, step.Command)
+	for _, st := range steps {
+		if st.Status == stepCompleted && st.Outputs != nil {
+			outputs[st.ID] = st.Outputs
 		}
+	}
 
-		if step.Path != "" {
-			// Fail closed: this engine does not execute path= scripts yet, and
-			// completing the step would record a check that never ran.
-			return "", fmt.Errorf("%s step %q runs a script by path=%q, which lw runbook apply does not execute yet (lightwave-cli#546); run it in the Runbooks app or convert it to command=",
-				step.Kind, step.ID, step.Path)
-		}
+	return outputs
+}
 
-		return "", nil // prose: nothing to run
-
+func outcomeOf(res stepResult, err error) string {
+	switch {
+	case err != nil:
+		return "fail"
+	case res.skipped:
+		return "skipped"
+	case res.warned:
+		return "warn"
 	default:
-		return "", nil
+		return "ok"
 	}
 }
 
-// renderTemplateStep renders a Template step's blueprint into the worktree
-// through the linked boilerplate engine — no `boilerplate` binary, no shell.
-//
-// step.Path is relative to the runbook's own directory, which is how the
-// published runbooks express it:
-//
-//	<Template id="product" path="templates/product-module" target="worktree" />
-func renderTemplateStep(cwd, runbookDir string, step *Step) (string, error) {
-	if step.Path == "" {
-		return "", fmt.Errorf("template step %q has no path attribute", step.ID)
+// maxStepOutput bounds what an instance print keeps of one step's output.
+const maxStepOutput = 4096
+
+func tailOutput(output string) string {
+	if len(output) <= maxStepOutput {
+		return output
 	}
 
-	src := filepath.Join(runbookDir, step.Path)
-	if _, err := os.Stat(src); err != nil {
-		return "", fmt.Errorf("template step %q: %w", step.ID, err)
-	}
-
-	// "worktree" (or unset) renders at the instance's working tree root. Any
-	// other value is a path relative to it; absolute paths are refused so a
-	// runbook cannot write outside the worktree it was applied in.
-	dest := cwd
-
-	if step.Target != "" && step.Target != "worktree" {
-		if filepath.IsAbs(step.Target) {
-			return "", fmt.Errorf("template step %q: absolute target %q is not allowed", step.ID, step.Target)
-		}
-
-		dest = filepath.Join(cwd, step.Target)
-	}
-
-	if err := blueprint.Render(context.Background(), &blueprint.RenderOptions{
-		BlueprintPath: src,
-		OutputFolder:  dest,
-	}); err != nil {
-		return "", fmt.Errorf("template step %q: %w", step.ID, err)
-	}
-
-	return fmt.Sprintf("rendered %s -> %s", step.Path, dest), nil
-}
-
-// runShell executes a step's command string.
-//
-// This is a shell invocation (#348): runbook commands are authored as shell
-// one-liners in MDX, so they are not argv-decomposable without changing the
-// authoring format. It is bounded by Apply() refusing to run outside a
-// worktree, and Command steps additionally require an operator signoff tier
-// before reaching here. Check steps do not — that asymmetry is #348's subject.
-func runShell(cwd, command string) (string, error) {
-	cmd := exec.CommandContext(context.Background(), "sh", "-c", command)
-	cmd.Dir = cwd
-	out, err := cmd.CombinedOutput()
-
-	return strings.TrimSpace(string(out)), err
+	return "…" + output[len(output)-maxStepOutput:]
 }
 
 func firstNonEmpty(values ...string) string {
@@ -498,14 +475,25 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+// writeEvidence writes status lines only. evidence.md is what gets posted to
+// the task's GitHub issue, so step output — which can carry anything a script
+// printed — stays in the 0600 instance print (lightwave-cli#546).
 func writeEvidence(cwd string, inst *Instance) error {
-	dir := Dir(cwd, inst.TaskID, inst.InstanceID)
-	body := fmt.Sprintf("# runbook instance %s\n\nslug: %s\nagent: %s\ntask: %s\nbranch: %s\nstatus: **%s**\nedition: %s\n\n## steps\n",
+	var body strings.Builder
+
+	fmt.Fprintf(&body, "# runbook instance %s\n\nslug: %s\nagent: %s\ntask: %s\nbranch: %s\nstatus: **%s**\nedition: %s\n\n## steps\n",
 		inst.InstanceID, inst.RunbookSlug, inst.AgentID, inst.TaskID, inst.Branch, inst.Status, inst.EditionHash)
 
 	for _, s := range inst.Steps {
-		body += fmt.Sprintf("- %s (%s): %s %s\n", s.ID, s.Kind, s.Status, s.Output)
+		warned := ""
+		if s.Warned {
+			warned = " (warned)"
+		}
+
+		fmt.Fprintf(&body, "- %s (%s): %s%s\n", s.ID, s.Kind, s.Status, warned)
 	}
 
-	return os.WriteFile(filepath.Join(dir, "evidence.md"), []byte(body), filePerm)
+	dir := Dir(cwd, inst.TaskID, inst.InstanceID)
+
+	return os.WriteFile(filepath.Join(dir, "evidence.md"), []byte(body.String()), filePerm)
 }

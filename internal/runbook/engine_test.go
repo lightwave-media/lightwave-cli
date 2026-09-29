@@ -300,10 +300,10 @@ func TestApply_TemplateStepWithMissingPathFails(t *testing.T) {
 	assert.Equal(t, runbook.StatusFailed, got.Status)
 }
 
-// A Check or Command step that names a script by path= must FAIL until the
-// engine executes path= scripts (lightwave-cli#546): reporting it completed
-// would record a check that never ran, the failure mode executeStep forbids.
-func TestApply_PathOnlyCheckStepFailsInsteadOfPassing(t *testing.T) {
+// 345 of the catalog's 426 executable steps name a script by path=. They used
+// to fail closed because the engine could not run them (lightwave-cli#546);
+// now the script runs in the working tree.
+func TestApply_PathCheckStepRunsItsScript(t *testing.T) {
 	t.Parallel()
 	core := t.TempDir()
 
@@ -315,11 +315,27 @@ func TestApply_PathOnlyCheckStepFailsInsteadOfPassing(t *testing.T) {
 	inst, err := runbook.Start(startOpts(core, cwd, "scripted"))
 	require.NoError(t, err)
 
+	got, err := runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
+	require.NoError(t, err)
+	assert.Equal(t, runbook.StatusCompleted, got.Status)
+	assert.FileExists(t, filepath.Join(cwd, "script-ran"))
+}
+
+// A step that cannot do its work still fails rather than reporting completed.
+func TestApply_PathCheckStepWithMissingScriptFails(t *testing.T) {
+	t.Parallel()
+	core := t.TempDir()
+
+	mdx := `<Check id="verify" description="script by path" path="checks/absent.sh" />`
+	writeCatalog(t, core, map[string]string{"scripted": "test/scripted"}, map[string]string{"scripted": mdx})
+	cwd := initWorktree(t, "feature/546-absent")
+
+	inst, err := runbook.Start(startOpts(core, cwd, "scripted"))
+	require.NoError(t, err)
+
 	got, applyErr := runbook.Apply(&runbook.ApplyOpts{CoreRoot: core, Cwd: cwd, Task: inst.TaskID, InstanceID: inst.InstanceID})
-	require.Error(t, applyErr, "a path= step the engine cannot run must fail, not pass")
-	assert.Contains(t, applyErr.Error(), "path=")
+	require.ErrorIs(t, applyErr, runbook.ErrCheckFailed)
 	assert.Equal(t, runbook.StatusFailed, got.Status)
-	assert.NotEqual(t, runbook.StatusCompleted, got.Status)
 }
 
 // A step with neither command= nor path= is prose: nothing to run, and not an error.
