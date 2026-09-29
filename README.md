@@ -98,7 +98,7 @@ probing for a verb returned the same answer whether it existed or not.
 
 ### Exposed today
 
-45 top-level commands ship in the current build:
+46 top-level commands ship in the current build:
 
 ```
 audit      check      codegen    completion compose    config
@@ -106,9 +106,9 @@ context    create     db         deploy     docs       epic
 factory    failure    git        health     help       home
 hooks      infra      issue      kickoff    lineage    lint
 local      mcp        memory     plan       process    release
-research   runbook    scaffold   schema     scrum      self
-session    site       sprint     story      task       ui
-version    voice      worktree
+research   runbook    scaffold   schema     scrum      secret
+self       session    site       sprint     story      task
+ui         version    voice      worktree
 ```
 
 Not everything in the source tree is exposed. Commands whose backing
