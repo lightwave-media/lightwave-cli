@@ -73,6 +73,56 @@ func TestCodexMCPMergeRejectsInvalidTOML(t *testing.T) {
 	assert.Empty(t, next)
 }
 
+func TestCodexMCPMergeKeepsOperatorPolicy(t *testing.T) {
+	t.Parallel()
+	current := `[mcp_servers.lightwave]
+command = "old"
+cwd = "/stale/transport"
+env_vars = ["STALE_TRANSPORT"]
+enabled_tools = ["context_get", "stamp_read"]
+startup_timeout_sec = 40
+[mcp_servers.lightwave.tools.context_get]
+approval_mode = "prompt"
+[mcp_servers.lightwave.tools.stamp_read]
+enabled = false
+[desktop]
+git-worktree-root = "/old"
+theme = "dark"
+[hooks.state]
+trusted_hash = "operator-owned"
+`
+	fragment := []byte(`[mcp_servers.lightwave]
+command = "lw"
+args = ["mcp", "serve"]
+[desktop]
+git-worktree-root = "/home/person/.worktrees"
+`)
+	next, err := ensureCodexMCP(current, fragment)
+	require.NoError(t, err)
+	next, err = ensureCodexWorktreeRoot(next, fragment)
+	require.NoError(t, err)
+	assert.Contains(t, next, "approval_mode = 'prompt'")
+	assert.Contains(t, next, "enabled = false")
+	assert.Contains(t, next, "enabled_tools = ['context_get', 'stamp_read']")
+	assert.Contains(t, next, "startup_timeout_sec = 40")
+	assert.NotContains(t, next, "/stale/transport")
+	assert.NotContains(t, next, "STALE_TRANSPORT")
+	assert.Contains(t, next, `git-worktree-root = "/home/person/.worktrees"`)
+	assert.Contains(t, next, `theme = "dark"`)
+	assert.Contains(t, next, `trusted_hash = "operator-owned"`)
+	again, err := ensureCodexMCP(next, fragment)
+	require.NoError(t, err)
+	again, err = ensureCodexWorktreeRoot(again, fragment)
+	require.NoError(t, err)
+	assert.Equal(t, next, again)
+}
+
+func TestCodexWorktreeRootRejectsRelativePath(t *testing.T) {
+	t.Parallel()
+	_, err := ensureCodexWorktreeRoot("", []byte("[desktop]\ngit-worktree-root = '~/.worktrees'\n"))
+	require.ErrorContains(t, err, "absolute path")
+}
+
 func TestValidateHarnessPrint(t *testing.T) {
 	t.Parallel()
 

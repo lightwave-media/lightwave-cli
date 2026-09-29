@@ -222,12 +222,23 @@ func applyCodexHarness() error {
 		return err
 	}
 
+	next, err = ensureCodexWorktreeRoot(next, fragment)
+	if err != nil {
+		return err
+	}
+
+	var validated map[string]any
+	if err := toml.Unmarshal([]byte(next), &validated); err != nil {
+		return fmt.Errorf("invalid merged Codex config: %w", err)
+	}
+
 	if harnessDryRun {
 		fmt.Printf("Codex config: %s\n", configPath)
 		fmt.Printf("Fragment:     %s\n\n", fragmentPath)
 		fmt.Println("Would ensure [shell_environment_policy.set] contains:")
 		printSettings(settings)
-		fmt.Println("Would merge the fragment's Lightwave MCP connection, preserving other servers.")
+		fmt.Println("Would refresh the Lightwave MCP transport, preserving tool policy and other servers.")
+		fmt.Println("Would apply the fragment's desktop.git-worktree-root, preserving other desktop settings.")
 
 		if string(current) == next {
 			fmt.Println("\nNo changes needed.")
@@ -324,7 +335,11 @@ func codexFragmentSettings(body []byte) (map[string]string, error) {
 }
 
 func ensureCodexShellEnvironment(current string, settings map[string]string) string {
-	const header = "[shell_environment_policy.set]"
+	return ensureCodexSection(current, "shell_environment_policy.set", settings)
+}
+
+func ensureCodexSection(current, section string, settings map[string]string) string {
+	header := "[" + section + "]"
 
 	lines := strings.Split(strings.TrimRight(current, "\n"), "\n")
 	if current == "" {

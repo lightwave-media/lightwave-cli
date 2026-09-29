@@ -37,10 +37,9 @@ var runbookListCmd = &cobra.Command{
 	Short: "List published runbooks by category",
 	Long: `List the runbooks published in lightwave-core/src/runbooks.
 
-Shows what can actually RUN, not what the registry claims. The two differ:
-the index lists entries whose runbook.mdx was never written, and ` + "`start`" + ` on
-one of those fails on a missing edition — so the caller ends up debugging
-their checkout for a runbook that does not exist.
+Reachable means runbook.mdx can be read from the configured lightwave-core
+checkout. It does not prove valid inputs, passing checks, or successful execution.
+Discovery searches the checkout; execution resolves its own edition.
 
   lw runbook list                     every reachable runbook, by category
   lw runbook list --category deploy   one category
@@ -113,7 +112,7 @@ func runRunbookList(cmd *cobra.Command, _ []string) error {
 			continue
 		}
 
-		// Default view is what can run. --unreachable inverts it into a
+		// Default view is what is readable. --unreachable inverts it into a
 		// registry-health view rather than adding the broken entries to the
 		// normal listing, where they would read as available.
 		if r.Reachable == runbookUnreachable {
@@ -209,7 +208,7 @@ func printRunbookRecords(w io.Writer, shown, all []runbook.Record) error {
 		}
 	}
 
-	fmt.Fprintf(&out, "\n%d shown · %d runnable of %d registered\n", len(shown), reachable, len(all))
+	fmt.Fprintf(&out, "\n%d shown · %d reachable of %d registered\n", len(shown), reachable, len(all))
 
 	if broken := len(all) - reachable; broken > 0 && !runbookUnreachable {
 		fmt.Fprintf(&out,
