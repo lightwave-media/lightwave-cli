@@ -107,6 +107,10 @@ func buildSubcommand(cmd sst.CLICommand, key string, handler Handler) *cobra.Com
 			b := false
 			flagBools[name] = &b
 			c.Flags().BoolVar(&b, name, false, usage)
+		case isRepeatableFlag(name):
+			s := []string{}
+			flagSlices[name] = &s
+			c.Flags().StringArrayVar(&s, name, nil, usage)
 		case isStringArrayFlag(name):
 			s := []string{}
 			flagSlices[name] = &s
@@ -299,6 +303,17 @@ var stringArrayFlags = map[string]bool{
 
 func isStringArrayFlag(name string) bool {
 	return stringArrayFlags[name]
+}
+
+// repeatableFlags are repeated flags whose values may themselves contain
+// commas, so they must not be comma-split the way stringArrayFlags are:
+// `--var Url=https://x/y?a=1,b=2` is one value, not two.
+var repeatableFlags = map[string]bool{
+	"var": true,
+}
+
+func isRepeatableFlag(name string) bool {
+	return repeatableFlags[name]
 }
 
 // DevDomainsEnabled exposes in_development schema domains (release, voice, …).
