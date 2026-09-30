@@ -73,13 +73,16 @@ type CheckOutcome struct {
 
 // PullRequest is the part of a PR the loop decides on.
 type PullRequest struct {
-	Number      int
-	URL         string
-	State       string // OPEN, MERGED, CLOSED
-	HeadRefName string
-	IsDraft     bool
-	Body        string
-	Checks      []CheckOutcome
+	Number          int
+	URL             string
+	State           string // OPEN, MERGED, CLOSED
+	HeadRefName     string
+	HeadRefOID      string
+	ReviewDecision  string
+	BlockingReviews []string
+	IsDraft         bool
+	Body            string
+	Checks          []CheckOutcome
 }
 
 type ghPullRow struct {
@@ -87,6 +90,7 @@ type ghPullRow struct {
 	URL               string `json:"url"`
 	State             string `json:"state"`
 	HeadRefName       string `json:"headRefName"`
+	HeadRefOID        string `json:"headRefOid"`
 	IsDraft           bool   `json:"isDraft"`
 	Body              string `json:"body"`
 	StatusCheckRollup []struct {
@@ -108,7 +112,7 @@ func TaskRef(taskID string) string { return "Refs: " + taskID }
 func FindPullRequestForTask(repo, taskID string) (*PullRequest, error) {
 	out, err := exec.Command("gh", "pr", "list", "--repo", repo, "--state", "all",
 		"--search", TaskRef(taskID)+" in:body",
-		"--json", "number,url,state,headRefName,isDraft,body,statusCheckRollup", "--limit", "10").Output()
+		"--json", "number,url,state,headRefName,headRefOid,isDraft,body,statusCheckRollup", "--limit", "10").Output()
 	if err != nil {
 		return nil, fmt.Errorf("gh pr list --repo %s: %w", repo, err)
 	}
@@ -118,7 +122,14 @@ func FindPullRequestForTask(repo, taskID string) (*PullRequest, error) {
 		return nil, fmt.Errorf("parse gh pr list output: %w", err)
 	}
 
-	return pickPullRequest(rows, taskID), nil
+	pr := pickPullRequest(rows, taskID)
+	if pr != nil && pr.State == "OPEN" {
+		if err := loadPullRequestReviews(repo, pr); err != nil {
+			return nil, err
+		}
+	}
+
+	return pr, nil
 }
 
 // pullStateRank orders the PRs a task can have by which one the loop should
@@ -156,7 +167,7 @@ func pickPullRequest(rows []ghPullRow, taskID string) *PullRequest {
 		return nil
 	}
 
-	pr := &PullRequest{Number: best.Number, URL: best.URL, State: best.State, HeadRefName: best.HeadRefName, IsDraft: best.IsDraft, Body: best.Body}
+	pr := &PullRequest{Number: best.Number, URL: best.URL, State: best.State, HeadRefName: best.HeadRefName, HeadRefOID: best.HeadRefOID, IsDraft: best.IsDraft, Body: best.Body}
 	for _, c := range best.StatusCheckRollup {
 		name := c.Name
 		if name == "" {
@@ -218,8 +229,12 @@ func CommentOnIssue(repo string, number int, body string) error {
 // ArmAutoMerge asks GitHub to squash-merge PR number of repo once its
 // required checks pass — the loop's merge step, on the SCM's own gate
 // (automation tier 2: green PRs merge without a human).
-func ArmAutoMerge(repo string, number int) error {
-	out, err := exec.Command("gh", "pr", "merge", strconv.Itoa(number), "--repo", repo, "--auto", "--squash", "--delete-branch").CombinedOutput()
+func ArmAutoMerge(repo string, number int, head string) error {
+	if head == "" {
+		return fmt.Errorf("refusing to merge %s#%d without the reviewed head SHA", repo, number)
+	}
+
+	out, err := exec.Command("gh", "pr", "merge", strconv.Itoa(number), "--repo", repo, "--auto", "--squash", "--delete-branch", "--match-head-commit", head).CombinedOutput()
 	if err == nil {
 		return nil
 	}
@@ -230,7 +245,7 @@ func ArmAutoMerge(repo string, number int) error {
 	// that refusal falls through: a permission error, an already-armed PR or a
 	// merge queue must leave GitHub holding the PR, not squash it here.
 	if autoMergeSwitchedOff(string(out)) {
-		if direct, derr := exec.Command("gh", "pr", "merge", strconv.Itoa(number), "--repo", repo, "--squash", "--delete-branch").CombinedOutput(); derr != nil {
+		if direct, derr := exec.Command("gh", "pr", "merge", strconv.Itoa(number), "--repo", repo, "--squash", "--delete-branch", "--match-head-commit", head).CombinedOutput(); derr != nil {
 			return fmt.Errorf("gh pr merge %s#%d: %w\n%s", repo, number, derr, string(direct))
 		}
 

@@ -494,7 +494,7 @@ func reconcileOrphanedPullRequests(ctx context.Context, queue *nulltickets.Clien
 			continue
 		}
 
-		if err := armPullRequestMerge(repo, pr.Number); err != nil {
+		if err := armPullRequestMerge(repo, pr.Number, pr.HeadRefOID); err != nil {
 			change.Action, change.Reason = reconcileError, err.Error()
 		}
 
@@ -573,7 +573,7 @@ func reconcileTask(ctx context.Context, queue *nulltickets.Client, repo, role st
 
 		return change
 	case reconcileAutoMerge:
-		if err := armPullRequestMerge(repo, pr.Number); err != nil {
+		if err := armPullRequestMerge(repo, pr.Number, pr.HeadRefOID); err != nil {
 			change.Action, change.Reason = reconcileError, err.Error()
 		}
 
@@ -638,7 +638,13 @@ func decidePullRequest(pr *gh.PullRequest, round, maxRounds int) (decision, trig
 	}
 
 	failed := pr.FailedChecks()
-	if len(failed) == 0 {
+
+	findings := append([]string{}, pr.BlockingReviews...)
+	if pr.ReviewDecision == "CHANGES_REQUESTED" {
+		findings = append(findings, "changes requested by review")
+	}
+
+	if len(failed) == 0 && len(findings) == 0 {
 		// No checks at all is not green: CI has not reported yet, or the repo
 		// has none — either way nothing has judged the change, and arming
 		// auto-merge on a repo with no required checks merges it on the spot.
@@ -646,16 +652,19 @@ func decidePullRequest(pr *gh.PullRequest, round, maxRounds int) (decision, trig
 			return reconcilePending, "", "checks still running on " + pr.URL
 		}
 
+		if pr.ReviewDecision == "REVIEW_REQUIRED" {
+			return reconcilePending, "", "review still required on " + pr.URL
+		}
+
 		return reconcileAutoMerge, "", "all checks green on " + pr.URL + "; auto-merge armed"
 	}
 
-	names := make([]string, 0, len(failed))
 	for _, f := range failed {
-		names = append(names, f.Name+"="+strings.ToLower(f.Conclusion))
+		findings = append(findings, f.Name+"="+strings.ToLower(f.Conclusion))
 	}
 
-	why := fmt.Sprintf("review round %d: failing on %s — %s. Read the failing checks and every review comment on the PR before changing anything, then push to the same branch.",
-		round, pr.URL, strings.Join(names, ", "))
+	why := fmt.Sprintf("review round %d: failing on %s (head %s) — %s. Read the failing checks and every review comment on the PR before changing anything, then push to the same branch.",
+		round, pr.URL, pr.HeadRefOID, strings.Join(findings, ", "))
 
 	if round >= maxRounds {
 		return reconcileDropped, "drop", why
