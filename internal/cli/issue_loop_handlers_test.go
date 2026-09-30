@@ -99,11 +99,11 @@ func (q *fakeQueue) handler() http.Handler {
 	})
 	mux.HandleFunc("GET /tasks", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("stage") != issueLoopReviewStage {
-			_, _ = w.Write([]byte(`{"tasks":[]}`))
+			_, _ = w.Write([]byte(`{"items":[],"next_cursor":null}`))
 			return
 		}
 
-		_ = json.NewEncoder(w).Encode(map[string]any{"tasks": q.inReview})
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": q.inReview, "next_cursor": nil})
 	})
 	mux.HandleFunc("GET /pipelines/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"id":"pipe","definition":{"states":{"in_development":{"agent_role":"developer:cli"},"in_review":{"agent_role":"reviewer:cli"}}}}`))
@@ -446,10 +446,14 @@ func TestIssueReconcileMarksASubmittedDraftReady(t *testing.T) { //nolint:parall
 }
 
 func TestIssueReconcileTreatsASubmittedTaskWithNoPRAsAFailedRound(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	unstamped := reviewTask("unstamped", 4, 2)
+	delete(unstamped, "updated_at_ms")
+
 	queue := &fakeQueue{inReview: []map[string]any{
 		reviewTask("fresh", 1, 2),
 		staleReviewTask("stale", 2, 2, missingPullRequestGrace+time.Minute),
 		staleReviewTask("stale-exhausted", 3, 6, missingPullRequestGrace+time.Minute),
+		unstamped,
 	}}
 	comments, labels, _ := withIssueLoopSeams(t, queue, nil, nil)
 	withReadySeam(t)
@@ -466,6 +470,7 @@ func TestIssueReconcileTreatsASubmittedTaskWithNoPRAsAFailedRound(t *testing.T) 
 	}
 
 	assert.Equal(t, reconcileWaitingForPR, actions["fresh"], "a task submitted a moment ago has not had time to push")
+	assert.Equal(t, reconcileWaitingForPR, actions["unstamped"], "a task whose age is unknown waits; a zero timestamp is not 1970")
 	assert.Equal(t, reconcileRejected, actions["stale"])
 	assert.Equal(t, reconcileDropped, actions["stale-exhausted"])
 

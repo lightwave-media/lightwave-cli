@@ -143,9 +143,12 @@ func (c *Client) ListTasks(ctx context.Context, pipelineID, stage string) ([]Tas
 
 		path := "/tasks?" + query.Encode()
 
+		// The list wraps its page as {items, next_cursor} (openapi PaginatedTasks).
+		// A first version read "tasks", a shape only the test double had, so on the
+		// live server every list came back empty and reconcile saw no task at all.
 		var page struct {
 			NextCursor string `json:"next_cursor"`
-			Tasks      []Task `json:"tasks"`
+			Items      []Task `json:"items"`
 		}
 
 		status, err := c.do(ctx, http.MethodGet, path, nil, nil, c.Token, &page)
@@ -157,8 +160,8 @@ func (c *Client) ListTasks(ctx context.Context, pipelineID, stage string) ([]Tas
 			return nil, fmt.Errorf("nulltickets GET /tasks returned HTTP %d", status)
 		}
 
-		all = append(all, page.Tasks...)
-		if page.NextCursor == "" || len(page.Tasks) == 0 {
+		all = append(all, page.Items...)
+		if page.NextCursor == "" || len(page.Items) == 0 {
 			return all, nil
 		}
 

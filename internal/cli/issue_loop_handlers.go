@@ -272,7 +272,9 @@ func reconcileTask(ctx context.Context, queue *nulltickets.Client, repo, role st
 	)
 
 	if pr == nil {
-		if time.Since(time.UnixMilli(task.UpdatedAtMs)) < missingPullRequestGrace {
+		// No timestamp means unknown, not "since 1970": wait rather than fail a
+		// round on a task whose age we cannot tell.
+		if task.UpdatedAtMs <= 0 || time.Since(time.UnixMilli(task.UpdatedAtMs)) < missingPullRequestGrace {
 			change.Action, change.Reason = reconcileWaitingForPR, "no PR carries "+gh.TaskRef(task.ID)
 			return change
 		}
