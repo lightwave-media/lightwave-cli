@@ -66,6 +66,7 @@ type fakeQueue struct {
 	withdrawn   []string
 	stages      map[string]string // task id -> stage served by GET /tasks/{id}
 	conflicts   map[string]bool   // idempotency keys answered 409
+	parked      map[string]bool   // task ids served with no attempts left
 	transitions []transitionCall
 	mu          sync.Mutex
 	claimStatus int
@@ -122,7 +123,12 @@ func (q *fakeQueue) handler() http.Handler {
 			stage = s
 		}
 
-		_ = json.NewEncoder(w).Encode(map[string]any{"id": r.PathValue("id"), "stage": stage})
+		task := map[string]any{"id": r.PathValue("id"), "stage": stage}
+		if q.parked[r.PathValue("id")] {
+			task["next_eligible_at_ms"] = int64(9223372036854775807)
+		}
+
+		_ = json.NewEncoder(w).Encode(task)
 	})
 	mux.HandleFunc("POST /tasks/{id}/withdraw", func(w http.ResponseWriter, r *http.Request) {
 		var body map[string]string
@@ -641,4 +647,16 @@ func TestIssuePromoteRetryDryRunCreatesNothing(t *testing.T) { //nolint:parallel
 	_, err := runHandler(t, "issue.promote", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline, "dry-run": true})
 	require.NoError(t, err)
 	assert.Empty(t, queue.created)
+}
+
+func TestIssuePromoteRetrySkipsAParkedGenerationReconcileHasNotWithdrawnYet(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	queue := &fakeQueue{parked: map[string]bool{"task-#7": true}}
+	withIssueLoopSeams(t, queue, nil, nil)
+	removed := withRetryIssues(t, []gh.Issue{{Number: 7, Title: "parked", URL: "u"}})
+
+	_, err := runHandler(t, "issue.promote", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+	require.NoError(t, err)
+
+	require.Len(t, queue.created, 2, "the parked generation is dead, so the next one is queued")
+	assert.Equal(t, []string{issueLoopRetryLabel}, *removed)
 }

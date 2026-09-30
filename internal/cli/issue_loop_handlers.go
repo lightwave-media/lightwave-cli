@@ -204,11 +204,24 @@ func generationKey(repo string, number, generation int) string {
 	return fmt.Sprintf("%s:g%d", issueBindingKey(repo, number), generation)
 }
 
+// taskIsExhausted reports whether nulltickets has parked the task with no
+// attempts left: its next eligible time is further out than any retry delay.
+func taskIsExhausted(task *nulltickets.Task) bool {
+	return task.NextEligibleAtMs > 0 && time.Until(time.UnixMilli(task.NextEligibleAtMs)) >= exhaustedHorizon
+}
+
 // taskIsLive reports whether a task can still be worked, that is, is not in a
 // stage the pipeline ends in.
 func taskIsLive(task *nulltickets.Task) bool {
 	switch task.Stage {
 	case issueLoopDoneStage, issueLoopWithdrawnStage:
+		return false
+	}
+
+	// Parked with no attempts left: dead, whether or not reconcile has
+	// withdrawn it yet. Promote and reconcile are separate jobs, so retry can
+	// run first.
+	if taskIsExhausted(task) {
 		return false
 	}
 
@@ -371,7 +384,7 @@ func reconcileExhaustedTasks(ctx context.Context, queue *nulltickets.Client, rep
 
 	for i := range tasks {
 		task := &tasks[i]
-		if task.NextEligibleAtMs <= 0 || time.Until(time.UnixMilli(task.NextEligibleAtMs)) < exhaustedHorizon {
+		if !taskIsExhausted(task) {
 			continue
 		}
 
@@ -605,7 +618,7 @@ func printIssueLoopReport(report any, flags map[string]any, human func()) error 
 
 func printReconcileReport(report *reconcileReport, flags map[string]any) error {
 	return printIssueLoopReport(report, flags, func() {
-		fmt.Printf("lw issue reconcile: %s pipeline %s — %d task(s) in %s\n", report.Repo, report.Pipeline, len(report.Changes), issueLoopReviewStage)
+		fmt.Printf("lw issue reconcile: %s pipeline %s — %d task(s)\n", report.Repo, report.Pipeline, len(report.Changes))
 
 		for _, c := range report.Changes {
 			line := fmt.Sprintf("  %s %-18s", c.TaskID, c.Action)
