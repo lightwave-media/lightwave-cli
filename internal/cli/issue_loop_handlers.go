@@ -40,6 +40,8 @@ const (
 	// unclaimable, and no other stage reads it.
 	issueLoopWorkStage = "in_development"
 	// The stages a pipeline ends in: merged work, and a withdrawn or dropped task.
+	issueLoopClosedStage = "closed"
+	// Older pipelines used done for merged work.
 	issueLoopDoneStage      = "done"
 	issueLoopWithdrawnStage = "not_doing"
 	// A task whose next eligible time is further away than this has no attempts
@@ -220,7 +222,7 @@ func taskIsExhausted(task *nulltickets.Task) bool {
 // stage the pipeline ends in.
 func taskIsLive(task *nulltickets.Task) bool {
 	switch task.Stage {
-	case issueLoopDoneStage, issueLoopWithdrawnStage:
+	case issueLoopClosedStage, issueLoopDoneStage, issueLoopWithdrawnStage:
 		return false
 	}
 

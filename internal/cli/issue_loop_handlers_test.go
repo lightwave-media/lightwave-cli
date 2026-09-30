@@ -605,17 +605,19 @@ func withRetryIssues(t *testing.T, issues []gh.Issue) *[]string {
 }
 
 func TestIssuePromoteRetryQueuesTheNextGenerationWhenTheLastIsDead(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
-	queue := &fakeQueue{stages: map[string]string{"task-#7": "not_doing"}}
-	withIssueLoopSeams(t, queue, nil, nil)
-	removed := withRetryIssues(t, []gh.Issue{{Number: 7, Title: "again", URL: "u"}})
+	for _, stage := range []string{"closed", "done", "not_doing"} {
+		queue := &fakeQueue{stages: map[string]string{"task-#7": stage}}
+		withIssueLoopSeams(t, queue, nil, nil)
+		removed := withRetryIssues(t, []gh.Issue{{Number: 7, Title: "again", URL: "u"}})
 
-	_, err := runHandler(t, "issue.promote", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
-	require.NoError(t, err)
+		_, err := runHandler(t, "issue.promote", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+		require.NoError(t, err)
 
-	require.Len(t, queue.created, 2)
-	assert.Equal(t, "github:issue:"+testRepo+"#7", queue.created[0].IdempotencyKey)
-	assert.Equal(t, "github:issue:"+testRepo+"#7:g2", queue.created[1].IdempotencyKey)
-	assert.Equal(t, []string{issueLoopRetryLabel}, *removed, "the retry label is consumed")
+		require.Len(t, queue.created, 2, "terminal stage %s", stage)
+		assert.Equal(t, "github:issue:"+testRepo+"#7", queue.created[0].IdempotencyKey)
+		assert.Equal(t, "github:issue:"+testRepo+"#7:g2", queue.created[1].IdempotencyKey)
+		assert.Equal(t, []string{issueLoopRetryLabel}, *removed, "the retry label is consumed")
+	}
 }
 
 func TestIssuePromoteRetryReadsAConflictAsAnEditedIssueAndMovesOn(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
