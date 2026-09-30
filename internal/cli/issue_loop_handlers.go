@@ -321,12 +321,18 @@ func decidePullRequest(pr *gh.PullRequest, round, maxRounds int) (decision, trig
 		return reconcileDropped, "drop", "PR " + pr.URL + " was closed without merging"
 	}
 
+	// A draft is work in progress: red CI on it is expected, not a review
+	// round, and must not spend rounds toward the cap.
+	if pr.IsDraft {
+		return reconcilePending, "", "draft " + pr.URL + " is not ready for review"
+	}
+
 	failed := pr.FailedChecks()
 	if len(failed) == 0 {
 		// No checks at all is not green: CI has not reported yet, or the repo
 		// has none — either way nothing has judged the change, and arming
 		// auto-merge on a repo with no required checks merges it on the spot.
-		if len(pr.Checks) == 0 || pr.PendingChecks() || pr.IsDraft {
+		if len(pr.Checks) == 0 || pr.PendingChecks() {
 			return reconcilePending, "", "checks still running on " + pr.URL
 		}
 

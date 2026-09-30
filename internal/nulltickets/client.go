@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -131,10 +132,14 @@ func (c *Client) ListTasks(ctx context.Context, pipelineID, stage string) ([]Tas
 	cursor := ""
 
 	for {
-		path := fmt.Sprintf("/tasks?pipeline_id=%s&stage=%s&limit=100", pipelineID, stage)
+		// Encoded: a cursor is often base64, and a raw + / = corrupts it after
+		// the first page.
+		query := url.Values{"pipeline_id": {pipelineID}, "stage": {stage}, "limit": {"100"}}
 		if cursor != "" {
-			path += "&cursor=" + cursor
+			query.Set("cursor", cursor)
 		}
+
+		path := "/tasks?" + query.Encode()
 
 		var page struct {
 			NextCursor string `json:"next_cursor"`

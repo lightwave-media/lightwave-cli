@@ -386,6 +386,17 @@ func TestDecidePullRequestRounds(t *testing.T) {
 	}
 }
 
+func TestDecidePullRequestLeavesADraftAloneWhateverItsChecksSay(t *testing.T) {
+	t.Parallel()
+
+	// Red CI on a draft is work in progress, not a review round: rejecting it
+	// would spend rounds toward the cap before the PR is ready.
+	draft := &gh.PullRequest{URL: "u", State: stateOpen, IsDraft: true, Checks: []gh.CheckOutcome{{Name: "ci", Conclusion: failure}}}
+	decision, trigger, _ := decidePullRequest(draft, 3, 3)
+	assert.Equal(t, reconcilePending, decision)
+	assert.Empty(t, trigger)
+}
+
 func TestDecidePullRequestNeverArmsMergeWithNoChecks(t *testing.T) {
 	t.Parallel()
 

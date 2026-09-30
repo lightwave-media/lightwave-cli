@@ -103,7 +103,7 @@ type ghPullRow struct {
 // same line, so the loop and the SOPs agree on one binding.
 func TaskRef(taskID string) string { return "Refs: " + taskID }
 
-// FindPullRequestForTask finds the newest PR of repo whose body carries
+// FindPullRequestForTask finds the PR of repo whose body carries
 // TaskRef(taskID). Nil when none exists yet.
 func FindPullRequestForTask(repo, taskID string) (*PullRequest, error) {
 	out, err := exec.Command("gh", "pr", "list", "--repo", repo, "--state", "all",
@@ -118,34 +118,63 @@ func FindPullRequestForTask(repo, taskID string) (*PullRequest, error) {
 		return nil, fmt.Errorf("parse gh pr list output: %w", err)
 	}
 
-	for _, row := range rows {
+	return pickPullRequest(rows, taskID), nil
+}
+
+// pullStateRank orders the PRs a task can have by which one the loop should
+// act on: the live one, else the one that shipped, else one abandoned earlier.
+func pullStateRank(state string) int {
+	switch state {
+	case "OPEN":
+		return 0
+	case "MERGED":
+		return 1
+	default:
+		return 2
+	}
+}
+
+// pickPullRequest chooses the PR for taskID out of rows (gh lists newest
+// first). A closed PR left over from an earlier round carries the same Refs
+// line as the open one that replaced it; it must not shadow it, or reconcile
+// drops a task that is still being worked. Within a state, the newest wins.
+func pickPullRequest(rows []ghPullRow, taskID string) *PullRequest {
+	var best *ghPullRow
+
+	for i := range rows {
 		// The search is a full-text match; hold the PR to the literal line.
-		if !strings.Contains(row.Body, TaskRef(taskID)) {
+		if !strings.Contains(rows[i].Body, TaskRef(taskID)) {
 			continue
 		}
 
-		pr := &PullRequest{Number: row.Number, URL: row.URL, State: row.State, HeadRefName: row.HeadRefName, IsDraft: row.IsDraft, Body: row.Body}
-		for _, c := range row.StatusCheckRollup {
-			name := c.Name
-			if name == "" {
-				name = c.Context
-			}
-
-			conclusion := c.Conclusion
-			if conclusion == "" {
-				conclusion = c.State
-			}
-			if conclusion == "" {
-				conclusion = c.Status
-			}
-
-			pr.Checks = append(pr.Checks, CheckOutcome{Name: name, Conclusion: strings.ToUpper(conclusion)})
+		if best == nil || pullStateRank(rows[i].State) < pullStateRank(best.State) {
+			best = &rows[i]
 		}
-
-		return pr, nil
 	}
 
-	return nil, nil //nolint:nilnil // no PR yet is a normal, non-error answer
+	if best == nil {
+		return nil
+	}
+
+	pr := &PullRequest{Number: best.Number, URL: best.URL, State: best.State, HeadRefName: best.HeadRefName, IsDraft: best.IsDraft, Body: best.Body}
+	for _, c := range best.StatusCheckRollup {
+		name := c.Name
+		if name == "" {
+			name = c.Context
+		}
+
+		conclusion := c.Conclusion
+		if conclusion == "" {
+			conclusion = c.State
+		}
+		if conclusion == "" {
+			conclusion = c.Status
+		}
+
+		pr.Checks = append(pr.Checks, CheckOutcome{Name: name, Conclusion: strings.ToUpper(conclusion)})
+	}
+
+	return pr
 }
 
 // FailedChecks are the checks on pr that have concluded against it.
@@ -195,10 +224,12 @@ func ArmAutoMerge(repo string, number int) error {
 		return nil
 	}
 
-	// A repo without auto-merge enabled refuses --auto. The caller has already
+	// A repo with auto-merge switched off refuses --auto. The caller has already
 	// seen every check green, which is the condition auto-merge would have
-	// waited for, so merge now — the same act, without GitHub holding it.
-	if strings.Contains(string(out), "auto-merge") || strings.Contains(string(out), "not enabled") {
+	// waited for, so merge now — the same act, without GitHub holding it. Only
+	// that refusal falls through: a permission error, an already-armed PR or a
+	// merge queue must leave GitHub holding the PR, not squash it here.
+	if autoMergeSwitchedOff(string(out)) {
 		if direct, derr := exec.Command("gh", "pr", "merge", strconv.Itoa(number), "--repo", repo, "--squash", "--delete-branch").CombinedOutput(); derr != nil {
 			return fmt.Errorf("gh pr merge %s#%d: %w\n%s", repo, number, derr, string(direct))
 		}
@@ -207,6 +238,15 @@ func ArmAutoMerge(repo string, number int) error {
 	}
 
 	return fmt.Errorf("gh pr merge --auto %s#%d: %w\n%s", repo, number, err, string(out))
+}
+
+// autoMergeSwitchedOff recognises gh's refusal when the repository's
+// "Allow auto-merge" setting is off ("Pull request Auto merge is not allowed
+// for this repository"), and nothing broader.
+func autoMergeSwitchedOff(ghOutput string) bool {
+	lower := strings.ToLower(ghOutput)
+
+	return strings.Contains(lower, "auto merge is not allowed") || strings.Contains(lower, "auto-merge is not allowed")
 }
 
 // AddIssueLabel adds label to issue number of repo.
