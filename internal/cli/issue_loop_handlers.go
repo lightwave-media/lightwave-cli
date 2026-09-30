@@ -31,6 +31,22 @@ const (
 	issueLoopAgent        = "lw-issue-reconcile"
 	issueLoopLeaseTTL     = 2 * time.Minute
 	issueLoopOperatorTag  = "needs-operator"
+	// The operator's explicit "run this again": add it to an issue and the next
+	// tick queues a fresh attempt at it. Retry is never automatic, because an
+	// agent that drops an issue as unclear or already done would otherwise be
+	// re-queued and re-dropped every tick.
+	issueLoopRetryLabel = "status:retry"
+	// The work stage: a task in it that has used every attempt is parked here,
+	// unclaimable, and no other stage reads it.
+	issueLoopWorkStage = "in_development"
+	// The stages a pipeline ends in: merged work, and a withdrawn or dropped task.
+	issueLoopDoneStage      = "done"
+	issueLoopWithdrawnStage = "not_doing"
+	// A task whose next eligible time is further away than this has no attempts
+	// left (nulltickets parks it at the end of time).
+	exhaustedHorizon = 365 * 24 * time.Hour
+	// promoteMaxGenerations bounds how many times one issue can be re-queued.
+	promoteMaxGenerations = 5
 	// How long a task may sit in in_review with no PR before that is a failed
 	// round. The push and the PR search are not instant, but a task that was
 	// submitted ten minutes ago with nothing on GitHub was not delivered: on the
@@ -43,6 +59,7 @@ const (
 	reconcileApproved     = "approved"
 	reconcileRejected     = "rejected"
 	reconcileDropped      = "dropped"
+	reconcileExhausted    = "exhausted"
 	reconcileAutoMerge    = "auto_merge_armed"
 	reconcileDryRun       = "dry_run"
 	reconcileError        = "error"
@@ -60,6 +77,7 @@ var (
 	findPullRequest      = gh.FindPullRequestForTask
 	commentOnIssue       = gh.CommentOnIssue
 	addIssueLabel        = gh.AddIssueLabel
+	removeIssueLabel     = gh.RemoveIssueLabel
 	armPullRequestMerge  = gh.ArmAutoMerge
 	markPullRequestReady = gh.MarkPullRequestReady
 )
@@ -147,6 +165,15 @@ func issuePromoteHandler(ctx context.Context, _ []string, flags map[string]any) 
 		report.Changes = append(report.Changes, change)
 	}
 
+	retries, err := listOpenIssues(repo, issueLoopRetryLabel, limit)
+	if err != nil {
+		return err
+	}
+
+	for i := range retries {
+		report.Changes = append(report.Changes, retryIssue(ctx, queue, repo, pipeline, &retries[i], dryRun))
+	}
+
 	return printIssueLoopReport(report, flags, func() {
 		fmt.Printf("lw issue promote: %s label=%s -> pipeline %s\n", repo, label, pipeline)
 
@@ -167,6 +194,77 @@ func issuePromoteHandler(ctx context.Context, _ []string, flags map[string]any) 
 
 // promotionRequest is the task the receiver's promote_issue would create for
 // the same issue, plus the labels the executor's branch prefix is chosen from.
+// generationKey is the binding key of the n-th attempt at an issue. Generation
+// 1 is the plain binding, so the webhook and the first poll agree.
+func generationKey(repo string, number, generation int) string {
+	if generation <= 1 {
+		return issueBindingKey(repo, number)
+	}
+
+	return fmt.Sprintf("%s:g%d", issueBindingKey(repo, number), generation)
+}
+
+// taskIsLive reports whether a task can still be worked, that is, is not in a
+// stage the pipeline ends in.
+func taskIsLive(task *nulltickets.Task) bool {
+	switch task.Stage {
+	case issueLoopDoneStage, issueLoopWithdrawnStage:
+		return false
+	}
+
+	return true
+}
+
+// retryIssue queues a fresh attempt at an issue the operator labelled
+// status:retry: the first generation whose task is still live, creating it if
+// it does not exist. The idempotency key of a dead task is spent, so every
+// retry moves to the next generation. A 409 (the issue was edited after that
+// generation was queued) is read the same way, because editing an issue and
+// asking for a retry is the usual order of events.
+func retryIssue(ctx context.Context, queue *nulltickets.Client, repo, pipeline string, issue *gh.Issue, dryRun bool) promotion {
+	change := promotion{Issue: issue.Number, Title: issue.Title}
+	if dryRun {
+		change.Action = reconcileDryRun + ":retry"
+		return change
+	}
+
+	for generation := 1; generation <= promoteMaxGenerations; generation++ {
+		taskID, err := queue.CreateTask(ctx, generationKey(repo, issue.Number, generation), promotionRequest(repo, pipeline, issue))
+		if err != nil {
+			if strings.Contains(err.Error(), "HTTP 409") {
+				continue
+			}
+
+			change.Action, change.Reason = reconcileError, err.Error()
+
+			return change
+		}
+
+		task, err := queue.GetTask(ctx, taskID)
+		if err != nil {
+			change.Action, change.Reason = reconcileError, err.Error()
+			return change
+		}
+
+		if !taskIsLive(task) {
+			continue
+		}
+
+		change.Action, change.TaskID = "retried", taskID
+		change.Reason = fmt.Sprintf("generation %d", generation)
+
+		if err := removeIssueLabel(repo, issue.Number, issueLoopRetryLabel); err != nil {
+			change.Reason += "; label not removed: " + err.Error()
+		}
+
+		return change
+	}
+
+	change.Action, change.Reason = reconcileError, fmt.Sprintf("no live generation within %d attempts; a person needs to look", promoteMaxGenerations)
+
+	return change
+}
+
 func promotionRequest(repo, pipeline string, issue *gh.Issue) nulltickets.TaskRequest {
 	labels := make([]any, 0, len(issue.Labels))
 	for _, l := range issue.Labels {
@@ -229,12 +327,20 @@ func issueReconcileHandler(ctx context.Context, _ []string, flags map[string]any
 		return err
 	}
 
+	report := reconcileReport{StartedAt: time.Now().UTC(), Repo: repo, Pipeline: pipeline, DryRun: dryRun, Changes: []reconciliation{}}
+
+	exhausted, err := reconcileExhaustedTasks(ctx, queue, repo, pipeline, dryRun)
+	if err != nil {
+		return err
+	}
+
+	report.Changes = append(report.Changes, exhausted...)
+
 	tasks, err := queue.ListTasks(ctx, pipeline, issueLoopReviewStage)
 	if err != nil {
 		return err
 	}
 
-	report := reconcileReport{StartedAt: time.Now().UTC(), Repo: repo, Pipeline: pipeline, DryRun: dryRun, Changes: []reconciliation{}}
 	if len(tasks) == 0 {
 		return printReconcileReport(&report, flags)
 	}
@@ -249,6 +355,69 @@ func issueReconcileHandler(ctx context.Context, _ []string, flags map[string]any
 	}
 
 	return printReconcileReport(&report, flags)
+}
+
+// reconcileExhaustedTasks finds tasks that used every attempt in the work stage.
+// nulltickets parks such a task at the end of time, still in its stage, where
+// nothing claims it and nothing tells anyone; here it is withdrawn and the
+// issue is handed to a person.
+func reconcileExhaustedTasks(ctx context.Context, queue *nulltickets.Client, repo, pipeline string, dryRun bool) ([]reconciliation, error) {
+	tasks, err := queue.ListTasks(ctx, pipeline, issueLoopWorkStage)
+	if err != nil {
+		return nil, err
+	}
+
+	var changes []reconciliation
+
+	for i := range tasks {
+		task := &tasks[i]
+		if task.NextEligibleAtMs <= 0 || time.Until(time.UnixMilli(task.NextEligibleAtMs)) < exhaustedHorizon {
+			continue
+		}
+
+		change := reconciliation{TaskID: task.ID, Action: reconcileExhausted, Reason: "the task used every attempt without reaching review"}
+		if n, ok := task.Metadata["issue_number"].(float64); ok {
+			change.Issue = int(n)
+		}
+
+		if dryRun {
+			change.Action = reconcileDryRun + ":" + reconcileExhausted
+			changes = append(changes, change)
+
+			continue
+		}
+
+		if err := queue.Withdraw(ctx, task.ID, change.Reason, issueLoopAgent); err != nil {
+			change.Action, change.Reason = reconcileError, err.Error()
+			changes = append(changes, change)
+
+			continue
+		}
+
+		handOffToOperator(repo, &change, "The issue loop ran out of attempts on this without producing a pull request.")
+
+		changes = append(changes, change)
+	}
+
+	return changes, nil
+}
+
+// handOffToOperator tells a person the loop is done with an issue: a comment
+// saying why and how to run it again, and the needs-operator label.
+func handOffToOperator(repo string, change *reconciliation, headline string) {
+	if change.Issue <= 0 {
+		return
+	}
+
+	body := fmt.Sprintf("%s\n\n%s\n\nA person needs to look. Add the label `%s` to run it again; remove `%s` when you have.",
+		headline, change.Reason, issueLoopRetryLabel, issueLoopOperatorTag)
+	if err := commentOnIssue(repo, change.Issue, body); err != nil {
+		change.Reason += "; comment failed: " + err.Error()
+	}
+
+	if err := addIssueLabel(repo, change.Issue, issueLoopOperatorTag); err != nil {
+		change.Reason += "; label failed: " + err.Error()
+	}
 }
 
 // reconcileTask decides one in_review task from its PR. Round n is the n-th
@@ -327,16 +496,8 @@ func moveTask(ctx context.Context, queue *nulltickets.Client, repo, role string,
 		return *change
 	}
 
-	if change.Action == reconcileDropped && change.Issue > 0 {
-		body := fmt.Sprintf("The issue loop gave this up after %d review rounds on %s.\n\n%s\n\nA person needs to look. Remove `%s` and re-add `%s` to run it again.",
-			change.Round, where, change.Reason, issueLoopOperatorTag, issueLoopDefaultLabel)
-		if err := commentOnIssue(repo, change.Issue, body); err != nil {
-			change.Reason += "; comment failed: " + err.Error()
-		}
-
-		if err := addIssueLabel(repo, change.Issue, issueLoopOperatorTag); err != nil {
-			change.Reason += "; label failed: " + err.Error()
-		}
+	if change.Action == reconcileDropped {
+		handOffToOperator(repo, change, fmt.Sprintf("The issue loop gave this up after %d review rounds on %s.", change.Round, where))
 	}
 
 	return *change

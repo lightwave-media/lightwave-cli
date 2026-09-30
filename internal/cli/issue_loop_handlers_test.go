@@ -62,6 +62,10 @@ const (
 type fakeQueue struct {
 	created     []createdTask
 	inReview    []map[string]any
+	inDev       []map[string]any
+	withdrawn   []string
+	stages      map[string]string // task id -> stage served by GET /tasks/{id}
+	conflicts   map[string]bool   // idempotency keys answered 409
 	transitions []transitionCall
 	mu          sync.Mutex
 	claimStatus int
@@ -89,6 +93,11 @@ func (q *fakeQueue) handler() http.Handler {
 		q.created = append(q.created, createdTask{IdempotencyKey: r.Header.Get("Idempotency-Key"), Body: body})
 		q.mu.Unlock()
 
+		if q.conflicts[r.Header.Get("Idempotency-Key")] {
+			w.WriteHeader(http.StatusConflict)
+			return
+		}
+
 		if q.createCode != 0 {
 			w.WriteHeader(q.createCode)
 			return
@@ -98,12 +107,37 @@ func (q *fakeQueue) handler() http.Handler {
 		_, _ = w.Write([]byte(`{"id":"task-` + r.Header.Get("Idempotency-Key")[len(r.Header.Get("Idempotency-Key"))-2:] + `"}`))
 	})
 	mux.HandleFunc("GET /tasks", func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("stage") != issueLoopReviewStage {
+		switch r.URL.Query().Get("stage") {
+		case issueLoopReviewStage:
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": q.inReview, "next_cursor": nil})
+		case issueLoopWorkStage:
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": q.inDev, "next_cursor": nil})
+		default:
 			_, _ = w.Write([]byte(`{"items":[],"next_cursor":null}`))
+		}
+	})
+	mux.HandleFunc("GET /tasks/{id}", func(w http.ResponseWriter, r *http.Request) {
+		stage := "in_development"
+		if s, ok := q.stages[r.PathValue("id")]; ok {
+			stage = s
+		}
+
+		_ = json.NewEncoder(w).Encode(map[string]any{"id": r.PathValue("id"), "stage": stage})
+	})
+	mux.HandleFunc("POST /tasks/{id}/withdraw", func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]string
+		_ = json.NewDecoder(r.Body).Decode(&body)
+
+		if body["reason"] == "" || body["actor"] == "" {
+			w.WriteHeader(http.StatusBadRequest)
 			return
 		}
 
-		_ = json.NewEncoder(w).Encode(map[string]any{"items": q.inReview, "next_cursor": nil})
+		q.mu.Lock()
+		q.withdrawn = append(q.withdrawn, r.PathValue("id"))
+		q.mu.Unlock()
+
+		_, _ = w.Write([]byte(`{}`))
 	})
 	mux.HandleFunc("GET /pipelines/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"id":"pipe","definition":{"states":{"in_development":{"agent_role":"developer:cli"},"in_review":{"agent_role":"reviewer:cli"}}}}`))
@@ -190,11 +224,20 @@ func withIssueLoopSeams(t *testing.T, queue *fakeQueue, issues []gh.Issue, prs m
 	comments, labels, armed = &[]string{}, &[]string{}, &[]int{}
 
 	origList, origFind, origComment, origLabel, origArm := listOpenIssues, findPullRequest, commentOnIssue, addIssueLabel, armPullRequestMerge
-	listOpenIssues = func(string, string, int) ([]gh.Issue, error) { return issues, nil }
+	listOpenIssues = func(_, label string, _ int) ([]gh.Issue, error) {
+		if label == issueLoopRetryLabel {
+			return nil, nil
+		}
+
+		return issues, nil
+	}
 	findPullRequest = func(_ string, taskID string) (*gh.PullRequest, error) { return prs[taskID], nil }
 	commentOnIssue = func(_ string, n int, body string) error { *comments = append(*comments, body); return nil }
 	addIssueLabel = func(_ string, _ int, label string) error { *labels = append(*labels, label); return nil }
 	armPullRequestMerge = func(_ string, n int) error { *armed = append(*armed, n); return nil }
+	origRemove := removeIssueLabel
+	removeIssueLabel = func(string, int, string) error { return nil }
+	t.Cleanup(func() { removeIssueLabel = origRemove })
 	t.Cleanup(func() {
 		listOpenIssues, findPullRequest, commentOnIssue, addIssueLabel, armPullRequestMerge = origList, origFind, origComment, origLabel, origArm
 	})
@@ -496,4 +539,106 @@ func TestDecidePullRequestNeverArmsMergeWithNoChecks(t *testing.T) {
 	decision, trigger, _ := decidePullRequest(unjudged, 1, 3)
 	assert.Equal(t, reconcilePending, decision, "a PR nothing has judged waits; on a repo with no required checks arming auto-merge would merge it on the spot")
 	assert.Empty(t, trigger)
+}
+
+// exhaustedTask is a work-stage task nulltickets parked at the end of time
+// after its last attempt; live is one still waiting for its next attempt.
+func exhaustedTask(id string, issue int) map[string]any {
+	return map[string]any{"id": id, "pipeline_id": testPipeline, "stage": issueLoopWorkStage, "task_version": 1,
+		"next_eligible_at_ms": int64(9223372036854775807),
+		"metadata":            map[string]any{repoKey: testRepo, "issue_number": issue}}
+}
+
+func TestIssueReconcileWithdrawsAnExhaustedTaskAndHandsTheIssueToAPerson(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	live := map[string]any{"id": "live", "stage": issueLoopWorkStage, "next_eligible_at_ms": time.Now().Add(time.Minute).UnixMilli(),
+		"metadata": map[string]any{"issue_number": 8}}
+	queue := &fakeQueue{inDev: []map[string]any{exhaustedTask("dead", 7), live}}
+	comments, labels, _ := withIssueLoopSeams(t, queue, nil, nil)
+
+	_, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"dead"}, queue.withdrawn, "only the task with no attempts left is withdrawn")
+	require.Len(t, *comments, 1)
+	assert.Contains(t, (*comments)[0], issueLoopRetryLabel, "the comment must say how to run it again")
+	assert.Equal(t, []string{issueLoopOperatorTag}, *labels)
+}
+
+func TestIssueReconcileDryRunLeavesAnExhaustedTaskAlone(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	queue := &fakeQueue{inDev: []map[string]any{exhaustedTask("dead", 7)}}
+	comments, _, _ := withIssueLoopSeams(t, queue, nil, nil)
+
+	_, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline, "dry-run": true})
+	require.NoError(t, err)
+	assert.Empty(t, queue.withdrawn)
+	assert.Empty(t, *comments)
+}
+
+// withRetryIssues serves one issue under the retry label and records the label
+// removals.
+func withRetryIssues(t *testing.T, issues []gh.Issue) *[]string {
+	t.Helper()
+
+	removed := &[]string{}
+	orig, origRemove := listOpenIssues, removeIssueLabel
+	listOpenIssues = func(_, label string, _ int) ([]gh.Issue, error) {
+		if label == issueLoopRetryLabel {
+			return issues, nil
+		}
+
+		return nil, nil
+	}
+	removeIssueLabel = func(_ string, _ int, label string) error { *removed = append(*removed, label); return nil }
+	t.Cleanup(func() { listOpenIssues, removeIssueLabel = orig, origRemove })
+
+	return removed
+}
+
+func TestIssuePromoteRetryQueuesTheNextGenerationWhenTheLastIsDead(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	queue := &fakeQueue{stages: map[string]string{"task-#7": "not_doing"}}
+	withIssueLoopSeams(t, queue, nil, nil)
+	removed := withRetryIssues(t, []gh.Issue{{Number: 7, Title: "again", URL: "u"}})
+
+	_, err := runHandler(t, "issue.promote", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+	require.NoError(t, err)
+
+	require.Len(t, queue.created, 2)
+	assert.Equal(t, "github:issue:"+testRepo+"#7", queue.created[0].IdempotencyKey)
+	assert.Equal(t, "github:issue:"+testRepo+"#7:g2", queue.created[1].IdempotencyKey)
+	assert.Equal(t, []string{issueLoopRetryLabel}, *removed, "the retry label is consumed")
+}
+
+func TestIssuePromoteRetryReadsAConflictAsAnEditedIssueAndMovesOn(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	queue := &fakeQueue{conflicts: map[string]bool{"github:issue:" + testRepo + "#7": true}}
+	withIssueLoopSeams(t, queue, nil, nil)
+	removed := withRetryIssues(t, []gh.Issue{{Number: 7, Title: "edited", URL: "u"}})
+
+	_, err := runHandler(t, "issue.promote", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+	require.NoError(t, err)
+
+	require.Len(t, queue.created, 2)
+	assert.Equal(t, "github:issue:"+testRepo+"#7:g2", queue.created[1].IdempotencyKey)
+	assert.Equal(t, []string{issueLoopRetryLabel}, *removed)
+}
+
+func TestIssuePromoteRetryGivesUpAfterTheGenerationCap(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	queue := &fakeQueue{createCode: http.StatusConflict}
+	withIssueLoopSeams(t, queue, nil, nil)
+	removed := withRetryIssues(t, []gh.Issue{{Number: 7, Title: "stuck", URL: "u"}})
+
+	out, err := runHandler(t, "issue.promote", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+	require.NoError(t, err)
+	assert.Len(t, queue.created, promoteMaxGenerations)
+	assert.Empty(t, *removed, "an issue that could not be queued keeps its label")
+	assert.Contains(t, out, "needs to look")
+}
+
+func TestIssuePromoteRetryDryRunCreatesNothing(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	queue := &fakeQueue{}
+	withIssueLoopSeams(t, queue, nil, nil)
+	withRetryIssues(t, []gh.Issue{{Number: 7, Title: "x", URL: "u"}})
+
+	_, err := runHandler(t, "issue.promote", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline, "dry-run": true})
+	require.NoError(t, err)
+	assert.Empty(t, queue.created)
 }
