@@ -479,13 +479,19 @@ func reconcileOrphanedPullRequests(ctx context.Context, queue *nulltickets.Clien
 			continue
 		}
 
+		// Leaving draft can start checks of its own, so a draft is only marked
+		// ready now and judged again, as a live PR, on the next tick.
 		if pr.IsDraft {
+			change.Action = reconcileMarkedReady
+			change.Reason = "task ended after delivery; marking draft " + pr.URL + " ready for review"
+
 			if err := markPullRequestReady(repo, pr.Number); err != nil {
 				change.Action, change.Reason = reconcileError, err.Error()
-				changes = append(changes, change)
-
-				continue
 			}
+
+			changes = append(changes, change)
+
+			continue
 		}
 
 		if err := armPullRequestMerge(repo, pr.Number); err != nil {

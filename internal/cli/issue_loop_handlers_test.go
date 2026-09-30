@@ -676,13 +676,22 @@ func orphanPR(draft bool, conclusion string) *gh.PullRequest {
 
 func TestIssueReconcileMergesAGreenDeliveredPRWhoseTaskWasDropped(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
 	queue := &fakeQueue{notDoing: []map[string]any{droppedTask("t", 1, time.Hour)}}
+	_, _, armed := withIssueLoopSeams(t, queue, nil, map[string]*gh.PullRequest{"t": orphanPR(false, "SUCCESS")})
+
+	_, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+	require.NoError(t, err)
+	assert.Equal(t, []int{9}, *armed)
+}
+
+func TestIssueReconcileOnlyMarksAnOrphanedDraftReadyThenWaitsForItsChecks(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	queue := &fakeQueue{notDoing: []map[string]any{droppedTask("t", 1, time.Hour)}}
 	_, _, armed := withIssueLoopSeams(t, queue, nil, map[string]*gh.PullRequest{"t": orphanPR(true, "SUCCESS")})
 	ready := withReadySeam(t)
 
 	_, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
 	require.NoError(t, err)
-	assert.Equal(t, []int{9}, *ready, "a draft is marked ready first")
-	assert.Equal(t, []int{9}, *armed)
+	assert.Equal(t, []int{9}, *ready)
+	assert.Empty(t, *armed, "leaving draft can start new checks; the next tick judges them")
 }
 
 func TestIssueReconcileLeavesOrphanedPRsThatAreNotSafeToMerge(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
