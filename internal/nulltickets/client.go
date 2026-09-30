@@ -60,6 +60,8 @@ type Task struct {
 	Title       string         `json:"title"`
 	Description string         `json:"description"`
 	TaskVersion int            `json:"task_version"`
+	// UpdatedAtMs is when the task last changed stage, in unix milliseconds.
+	UpdatedAtMs int64 `json:"updated_at_ms"`
 }
 
 // Claim is the lease a targeted claim returns.
