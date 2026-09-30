@@ -272,7 +272,7 @@ func reconcileTask(ctx context.Context, queue *nulltickets.Client, repo, role st
 	)
 
 	if pr == nil {
-		if time.Since(time.UnixMilli(task.UpdatedAtMs)) < missingPullRequestGrace {
+		if task.UpdatedAtMs == 0 || time.Since(time.UnixMilli(task.UpdatedAtMs)) < missingPullRequestGrace {
 			change.Action, change.Reason = reconcileWaitingForPR, "no PR carries "+gh.TaskRef(task.ID)
 			return change
 		}
