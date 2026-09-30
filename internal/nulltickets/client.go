@@ -62,6 +62,41 @@ type Task struct {
 	TaskVersion int            `json:"task_version"`
 	// UpdatedAtMs is when the task last changed stage, in unix milliseconds.
 	UpdatedAtMs int64 `json:"updated_at_ms"`
+	// NextEligibleAtMs is when the task may next be claimed. A task that has
+	// used every attempt is parked at the far end of time, in its stage.
+	NextEligibleAtMs int64 `json:"next_eligible_at_ms"`
+}
+
+// GetTask reads one task by id.
+func (c *Client) GetTask(ctx context.Context, taskID string) (*Task, error) {
+	var task Task
+
+	status, err := c.do(ctx, http.MethodGet, "/tasks/"+url.PathEscape(taskID), nil, nil, c.Token, &task)
+	if err != nil {
+		return nil, err
+	}
+
+	if status != http.StatusOK {
+		return nil, fmt.Errorf("nulltickets GET /tasks/%s returned HTTP %d", taskID, status)
+	}
+
+	return &task, nil
+}
+
+// Withdraw takes a task out of the queue into the pipeline's terminal
+// not_doing stage, with the reason and actor nulltickets records. It needs no
+// lease, which matters: a task that has used every attempt cannot be claimed.
+func (c *Client) Withdraw(ctx context.Context, taskID, reason, actor string) error {
+	status, err := c.do(ctx, http.MethodPost, "/tasks/"+url.PathEscape(taskID)+"/withdraw", map[string]string{"reason": reason, "actor": actor}, nil, c.Token, nil)
+	if err != nil {
+		return err
+	}
+
+	if status != http.StatusOK {
+		return fmt.Errorf("nulltickets POST /tasks/%s/withdraw returned HTTP %d", taskID, status)
+	}
+
+	return nil
 }
 
 // Claim is the lease a targeted claim returns.

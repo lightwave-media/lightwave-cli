@@ -267,3 +267,12 @@ func AddIssueLabel(repo string, number int, label string) error {
 
 	return nil
 }
+
+// RemoveIssueLabel removes label from issue number of repo.
+func RemoveIssueLabel(repo string, number int, label string) error {
+	if out, err := exec.Command("gh", "issue", "edit", strconv.Itoa(number), "--repo", repo, "--remove-label", label).CombinedOutput(); err != nil {
+		return fmt.Errorf("gh issue edit %s#%d --remove-label %s: %w\n%s", repo, number, label, err, string(out))
+	}
+
+	return nil
+}
