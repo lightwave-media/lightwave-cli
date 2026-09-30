@@ -53,6 +53,12 @@ every current print. Do not copy `commands.yaml` into a handwritten list in
 the test; `lw check schema` is that census. Fixtures stay legal for
 handler behaviour.
 
+### The issue loop
+
+- `lw issue promote` turns each open issue labelled `status:ready` into a task on the repo's `fix-<repo>` nulltickets pipeline (idempotent per issue).
+- An executor works the task in its own git worktree; the loop commits the change, pushes the branch and opens the PR with `Refs: <task_id>` and `Closes #<n>`.
+- `lw issue reconcile` reads the PR: checks green arms auto-merge; red checks send the task back for another round (at most 3); after that the issue is labelled `needs-operator`.
+
 ### Git Discipline (READ FIRST)
 
 Before any commit, branch op, stash, cherry-pick, rebase, merge, or worktree, **load the `lightwave-git` skill** and follow it. The defaults are non-negotiable; deviating produces messes that cost full days to clean up. Critical rules at a glance:
