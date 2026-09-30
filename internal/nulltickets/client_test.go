@@ -25,7 +25,9 @@ func TestListTasksSendsTheCursorIntact(t *testing.T) {
 		got := r.URL.Query().Get("cursor")
 		seen = append(seen, got)
 
-		page := map[string]any{"tasks": []map[string]any{{"id": "t-" + got}}}
+		// The real list shape: {items, next_cursor}, with a null cursor on the
+		// last page (openapi PaginatedTasks).
+		page := map[string]any{"items": []map[string]any{{"id": "t-" + got}}, "next_cursor": nil}
 		if got == "" {
 			page["next_cursor"] = cursor
 		}

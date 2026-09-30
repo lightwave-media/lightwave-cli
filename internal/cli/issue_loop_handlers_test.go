@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -98,11 +99,11 @@ func (q *fakeQueue) handler() http.Handler {
 	})
 	mux.HandleFunc("GET /tasks", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("stage") != issueLoopReviewStage {
-			_, _ = w.Write([]byte(`{"tasks":[]}`))
+			_, _ = w.Write([]byte(`{"items":[],"next_cursor":null}`))
 			return
 		}
 
-		_ = json.NewEncoder(w).Encode(map[string]any{"tasks": q.inReview})
+		_ = json.NewEncoder(w).Encode(map[string]any{"items": q.inReview, "next_cursor": nil})
 	})
 	mux.HandleFunc("GET /pipelines/{id}", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"id":"pipe","definition":{"states":{"in_development":{"agent_role":"developer:cli"},"in_review":{"agent_role":"reviewer:cli"}}}}`))
@@ -151,9 +152,28 @@ func (q *fakeQueue) handler() http.Handler {
 	return mux
 }
 
+// reviewTask is a task that entered in_review just now.
 func reviewTask(id string, issue, version int) map[string]any {
+	return staleReviewTask(id, issue, version, 0)
+}
+
+// staleReviewTask is a task that entered in_review age ago.
+func staleReviewTask(id string, issue, version int, age time.Duration) map[string]any {
 	return map[string]any{"id": id, "pipeline_id": testPipeline, "stage": issueLoopReviewStage, "title": "t", "description": "d",
-		"task_version": version, "metadata": map[string]any{repoKey: testRepo, "issue_number": issue, "binding_key": issueBindingKey(testRepo, issue)}}
+		"task_version": version, "updated_at_ms": time.Now().Add(-age).UnixMilli(),
+		"metadata": map[string]any{repoKey: testRepo, "issue_number": issue, "binding_key": issueBindingKey(testRepo, issue)}}
+}
+
+// withReadySeam records every PR the loop takes out of draft.
+func withReadySeam(t *testing.T) *[]int {
+	t.Helper()
+
+	ready := &[]int{}
+	orig := markPullRequestReady
+	markPullRequestReady = func(_ string, n int) error { *ready = append(*ready, n); return nil }
+	t.Cleanup(func() { markPullRequestReady = orig })
+
+	return ready
 }
 
 // withIssueLoopSeams swaps every GitHub seam for the test's doubles and points
@@ -386,15 +406,87 @@ func TestDecidePullRequestRounds(t *testing.T) {
 	}
 }
 
-func TestDecidePullRequestLeavesADraftAloneWhateverItsChecksSay(t *testing.T) {
+func TestDecidePullRequestMarksADraftReadyWhateverItsChecksSay(t *testing.T) {
 	t.Parallel()
 
-	// Red CI on a draft is work in progress, not a review round: rejecting it
-	// would spend rounds toward the cap before the PR is ready.
+	// The delivery hook opens every PR as a draft. A task in review was
+	// submitted, so its draft is marked ready; red CI on it is judged on the
+	// next tick and is never a review round while it is still a draft.
 	draft := &gh.PullRequest{URL: "u", State: stateOpen, IsDraft: true, Checks: []gh.CheckOutcome{{Name: "ci", Conclusion: failure}}}
 	decision, trigger, _ := decidePullRequest(draft, 3, 3)
-	assert.Equal(t, reconcilePending, decision)
+	assert.Equal(t, reconcileMarkedReady, decision)
 	assert.Empty(t, trigger)
+}
+
+func TestDecideMissingPullRequestRejectsThenGivesUp(t *testing.T) {
+	t.Parallel()
+
+	decision, trigger, instructions := decideMissingPullRequest("task-1", 1, 3)
+	assert.Equal(t, reconcileRejected, decision)
+	assert.Equal(t, "reject", trigger)
+	assert.Contains(t, instructions, "Refs: task-1", "the next round is told the exact binding line to write")
+
+	decision, trigger, _ = decideMissingPullRequest("task-1", 3, 3)
+	assert.Equal(t, reconcileDropped, decision, "the round cap is the same as for red checks")
+	assert.Equal(t, "drop", trigger)
+}
+
+func TestIssueReconcileMarksASubmittedDraftReady(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	queue := &fakeQueue{inReview: []map[string]any{reviewTask("draft", 1, 2)}}
+	prs := map[string]*gh.PullRequest{"draft": {Number: 21, URL: "pr/21", State: stateOpen, IsDraft: true}}
+	_, _, armed := withIssueLoopSeams(t, queue, nil, prs)
+	ready := withReadySeam(t)
+
+	_, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline, jsonFlag: true})
+	require.NoError(t, err)
+
+	assert.Equal(t, []int{21}, *ready)
+	assert.Empty(t, queue.transitions, "marking ready moves nothing on the queue")
+	assert.Empty(t, *armed, "a merge is never armed on the same tick the draft is opened for review")
+}
+
+func TestIssueReconcileTreatsASubmittedTaskWithNoPRAsAFailedRound(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	unstamped := reviewTask("unstamped", 4, 2)
+	delete(unstamped, "updated_at_ms")
+
+	queue := &fakeQueue{inReview: []map[string]any{
+		reviewTask("fresh", 1, 2),
+		staleReviewTask("stale", 2, 2, missingPullRequestGrace+time.Minute),
+		staleReviewTask("stale-exhausted", 3, 6, missingPullRequestGrace+time.Minute),
+		unstamped,
+	}}
+	comments, labels, _ := withIssueLoopSeams(t, queue, nil, nil)
+	withReadySeam(t)
+
+	out, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline, jsonFlag: true})
+	require.NoError(t, err)
+
+	var report reconcileReport
+	require.NoError(t, json.Unmarshal([]byte(out), &report))
+
+	actions := map[string]string{}
+	for _, c := range report.Changes {
+		actions[c.TaskID] = c.Action
+	}
+
+	assert.Equal(t, reconcileWaitingForPR, actions["fresh"], "a task submitted a moment ago has not had time to push")
+	assert.Equal(t, reconcileWaitingForPR, actions["unstamped"], "a task whose age is unknown waits; a zero timestamp is not 1970")
+	assert.Equal(t, reconcileRejected, actions["stale"])
+	assert.Equal(t, reconcileDropped, actions["stale-exhausted"])
+
+	byTask := map[string]transitionCall{}
+	for _, tr := range queue.transitions {
+		byTask[tr.TaskID] = tr
+	}
+
+	_, freshTouched := byTask["fresh"]
+	assert.False(t, freshTouched)
+	assert.Equal(t, "reject", byTask["stale"].Trigger)
+	assert.Contains(t, byTask["stale"].Instructions, "Refs: stale")
+	assert.Equal(t, "drop", byTask["stale-exhausted"].Trigger)
+
+	assert.Len(t, *comments, 1, "only the dropped task tells a person why")
+	assert.Equal(t, []string{issueLoopOperatorTag}, *labels)
 }
 
 func TestDecidePullRequestNeverArmsMergeWithNoChecks(t *testing.T) {

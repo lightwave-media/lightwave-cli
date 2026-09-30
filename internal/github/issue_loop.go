@@ -249,6 +249,16 @@ func autoMergeSwitchedOff(ghOutput string) bool {
 	return strings.Contains(lower, "auto merge is not allowed") || strings.Contains(lower, "auto-merge is not allowed")
 }
 
+// MarkPullRequestReady takes PR number of repo out of draft. The delivery hook
+// opens every PR as a draft; the loop marks it ready once the task is submitted.
+func MarkPullRequestReady(repo string, number int) error {
+	if out, err := exec.Command("gh", "pr", "ready", strconv.Itoa(number), "--repo", repo).CombinedOutput(); err != nil {
+		return fmt.Errorf("gh pr ready %s#%d: %w\n%s", repo, number, err, string(out))
+	}
+
+	return nil
+}
+
 // AddIssueLabel adds label to issue number of repo.
 func AddIssueLabel(repo string, number int, label string) error {
 	if out, err := exec.Command("gh", "issue", "edit", strconv.Itoa(number), "--repo", repo, "--add-label", label).CombinedOutput(); err != nil {

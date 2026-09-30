@@ -31,8 +31,14 @@ const (
 	issueLoopAgent        = "lw-issue-reconcile"
 	issueLoopLeaseTTL     = 2 * time.Minute
 	issueLoopOperatorTag  = "needs-operator"
+	// How long a task may sit in in_review with no PR before that is a failed
+	// round. The push and the PR search are not instant, but a task that was
+	// submitted ten minutes ago with nothing on GitHub was not delivered: on the
+	// first live run a model reported success having pushed nothing.
+	missingPullRequestGrace = 10 * time.Minute
 
 	reconcileWaitingForPR = "waiting_for_pr"
+	reconcileMarkedReady  = "marked_ready"
 	reconcilePending      = "pending"
 	reconcileApproved     = "approved"
 	reconcileRejected     = "rejected"
@@ -50,11 +56,12 @@ const (
 
 // Seams for tests: every GitHub read and write the loop makes.
 var (
-	listOpenIssues      = gh.ListOpenIssues
-	findPullRequest     = gh.FindPullRequestForTask
-	commentOnIssue      = gh.CommentOnIssue
-	addIssueLabel       = gh.AddIssueLabel
-	armPullRequestMerge = gh.ArmAutoMerge
+	listOpenIssues       = gh.ListOpenIssues
+	findPullRequest      = gh.FindPullRequestForTask
+	commentOnIssue       = gh.CommentOnIssue
+	addIssueLabel        = gh.AddIssueLabel
+	armPullRequestMerge  = gh.ArmAutoMerge
+	markPullRequestReady = gh.MarkPullRequestReady
 )
 
 func init() {
@@ -259,14 +266,25 @@ func reconcileTask(ctx context.Context, queue *nulltickets.Client, repo, role st
 		return change
 	}
 
+	var (
+		decision, trigger, instructions string
+		where                           = "the task's branch, which has no PR"
+	)
+
 	if pr == nil {
-		change.Action, change.Reason = reconcileWaitingForPR, "no PR carries "+gh.TaskRef(task.ID)
-		return change
+		// No timestamp means unknown, not "since 1970": wait rather than fail a
+		// round on a task whose age we cannot tell.
+		if task.UpdatedAtMs <= 0 || time.Since(time.UnixMilli(task.UpdatedAtMs)) < missingPullRequestGrace {
+			change.Action, change.Reason = reconcileWaitingForPR, "no PR carries "+gh.TaskRef(task.ID)
+			return change
+		}
+
+		decision, trigger, instructions = decideMissingPullRequest(task.ID, change.Round, maxRounds)
+	} else {
+		change.PR, where = pr.URL, pr.URL
+		decision, trigger, instructions = decidePullRequest(pr, change.Round, maxRounds)
 	}
 
-	change.PR = pr.URL
-
-	decision, trigger, instructions := decidePullRequest(pr, change.Round, maxRounds)
 	change.Action, change.Reason = decision, instructions
 
 	if dryRun {
@@ -277,6 +295,12 @@ func reconcileTask(ctx context.Context, queue *nulltickets.Client, repo, role st
 	switch decision {
 	case reconcilePending, reconcileWaitingForPR:
 		return change
+	case reconcileMarkedReady:
+		if err := markPullRequestReady(repo, pr.Number); err != nil {
+			change.Action, change.Reason = reconcileError, err.Error()
+		}
+
+		return change
 	case reconcileAutoMerge:
 		if err := armPullRequestMerge(repo, pr.Number); err != nil {
 			change.Action, change.Reason = reconcileError, err.Error()
@@ -285,20 +309,27 @@ func reconcileTask(ctx context.Context, queue *nulltickets.Client, repo, role st
 		return change
 	}
 
+	return moveTask(ctx, queue, repo, role, task, &change, trigger, where)
+}
+
+// moveTask carries a decision out on the queue: the targeted claim, the
+// transition with the instructions the next round reads, and, when the task is
+// given up, the comment and label that tell a person why.
+func moveTask(ctx context.Context, queue *nulltickets.Client, repo, role string, task *nulltickets.Task, change *reconciliation, trigger, where string) reconciliation {
 	claim, err := queue.ClaimTask(ctx, issueLoopAgent, role, task.ID, issueLoopLeaseTTL)
 	if err != nil {
 		change.Action, change.Reason = reconcileError, err.Error()
-		return change
+		return *change
 	}
 
-	if err := queue.Transition(ctx, claim, trigger, instructions); err != nil {
+	if err := queue.Transition(ctx, claim, trigger, change.Reason); err != nil {
 		change.Action, change.Reason = reconcileError, err.Error()
-		return change
+		return *change
 	}
 
-	if decision == reconcileDropped && change.Issue > 0 {
+	if change.Action == reconcileDropped && change.Issue > 0 {
 		body := fmt.Sprintf("The issue loop gave this up after %d review rounds on %s.\n\n%s\n\nA person needs to look. Remove `%s` and re-add `%s` to run it again.",
-			change.Round, pr.URL, instructions, issueLoopOperatorTag, issueLoopDefaultLabel)
+			change.Round, where, change.Reason, issueLoopOperatorTag, issueLoopDefaultLabel)
 		if err := commentOnIssue(repo, change.Issue, body); err != nil {
 			change.Reason += "; comment failed: " + err.Error()
 		}
@@ -308,7 +339,21 @@ func reconcileTask(ctx context.Context, queue *nulltickets.Client, repo, role st
 		}
 	}
 
-	return change
+	return *change
+}
+
+// decideMissingPullRequest is the decision for a task that has sat in review
+// past the grace window with no PR: it was reported done and not delivered, so
+// it goes back for another round, and past the cap it is given up.
+func decideMissingPullRequest(taskID string, round, maxRounds int) (decision, trigger, instructions string) {
+	why := fmt.Sprintf("review round %d: no pull request carries %s, so nothing was delivered. Commit the work on this branch, push it, and open a pull request whose body contains the lines %q and \"Closes #<issue>\".",
+		round, gh.TaskRef(taskID), gh.TaskRef(taskID))
+
+	if round >= maxRounds {
+		return reconcileDropped, "drop", why
+	}
+
+	return reconcileRejected, "reject", why
 }
 
 // decidePullRequest maps a PR's state to the loop's decision, the nulltickets
@@ -321,10 +366,12 @@ func decidePullRequest(pr *gh.PullRequest, round, maxRounds int) (decision, trig
 		return reconcileDropped, "drop", "PR " + pr.URL + " was closed without merging"
 	}
 
-	// A draft is work in progress: red CI on it is expected, not a review
-	// round, and must not spend rounds toward the cap.
+	// The delivery hook opens every PR as a draft, because it cannot tell a
+	// finished run from a failed attempt. A task in in_review was submitted, so
+	// its draft is ready: mark it, and judge its checks on the next tick. Red CI
+	// on a draft is decided before this, never as a review round.
 	if pr.IsDraft {
-		return reconcilePending, "", "draft " + pr.URL + " is not ready for review"
+		return reconcileMarkedReady, "", "task submitted; marking draft " + pr.URL + " ready for review"
 	}
 
 	failed := pr.FailedChecks()
