@@ -631,6 +631,18 @@ func decidePullRequest(pr *gh.PullRequest, round, maxRounds int) (decision, trig
 		return reconcileDropped, "drop", "PR " + pr.URL + " was closed without merging"
 	}
 
+	// A PR that conflicts with its base gets no CI at all, so nothing ever turns
+	// red: without this it waits forever. It is a failed round, with the way out.
+	if pr.MergeState == "DIRTY" {
+		why := fmt.Sprintf("review round %d: %s conflicts with main, so no CI can run on it. origin/main has been merged into this branch for this round: resolve the conflict markers (files listed by `git diff --name-only --diff-filter=U`) and keep both sides' intent. Do not commit; delivery does.",
+			round, pr.URL)
+		if round >= maxRounds {
+			return reconcileDropped, "drop", why
+		}
+
+		return reconcileRejected, "reject", why
+	}
+
 	// The delivery hook opens every PR as a draft, because it cannot tell a
 	// finished run from a failed attempt. A task in in_review was submitted, so
 	// its draft is ready: mark it, and judge its checks on the next tick. Red CI

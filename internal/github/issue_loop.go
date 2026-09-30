@@ -82,7 +82,10 @@ type PullRequest struct {
 	BlockingReviews []string
 	IsDraft         bool
 	Body            string
-	Checks          []CheckOutcome
+	// MergeState is GitHub's mergeStateStatus; DIRTY means the PR conflicts
+	// with its base, which also means no CI runs on it.
+	MergeState string
+	Checks     []CheckOutcome
 }
 
 type ghPullRow struct {
@@ -93,6 +96,7 @@ type ghPullRow struct {
 	HeadRefOID        string `json:"headRefOid"`
 	IsDraft           bool   `json:"isDraft"`
 	Body              string `json:"body"`
+	MergeStateStatus  string `json:"mergeStateStatus"`
 	StatusCheckRollup []struct {
 		Name       string `json:"name"`
 		Context    string `json:"context"`
@@ -112,7 +116,7 @@ func TaskRef(taskID string) string { return "Refs: " + taskID }
 func FindPullRequestForTask(repo, taskID string) (*PullRequest, error) {
 	out, err := exec.Command("gh", "pr", "list", "--repo", repo, "--state", "all",
 		"--search", TaskRef(taskID)+" in:body",
-		"--json", "number,url,state,headRefName,headRefOid,isDraft,body,statusCheckRollup", "--limit", "10").Output()
+		"--json", "number,url,state,headRefName,headRefOid,isDraft,body,mergeStateStatus,statusCheckRollup", "--limit", "10").Output()
 	if err != nil {
 		return nil, fmt.Errorf("gh pr list --repo %s: %w", repo, err)
 	}
@@ -167,7 +171,7 @@ func pickPullRequest(rows []ghPullRow, taskID string) *PullRequest {
 		return nil
 	}
 
-	pr := &PullRequest{Number: best.Number, URL: best.URL, State: best.State, HeadRefName: best.HeadRefName, HeadRefOID: best.HeadRefOID, IsDraft: best.IsDraft, Body: best.Body}
+	pr := &PullRequest{Number: best.Number, URL: best.URL, State: best.State, HeadRefName: best.HeadRefName, HeadRefOID: best.HeadRefOID, IsDraft: best.IsDraft, Body: best.Body, MergeState: best.MergeStateStatus}
 	for _, c := range best.StatusCheckRollup {
 		name := c.Name
 		if name == "" {

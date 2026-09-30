@@ -52,6 +52,14 @@ func TestPickPullRequestHoldsTheBodyToTheLiteralLine(t *testing.T) {
 	assert.Nil(t, pickPullRequest(nil, "task-1"))
 }
 
+func TestPickPullRequestCarriesTheMergeState(t *testing.T) {
+	t.Parallel()
+
+	pr := pickPullRequest([]ghPullRow{{Number: 3, State: "OPEN", Body: "Refs: task-1", MergeStateStatus: "DIRTY"}}, "task-1")
+	require.NotNil(t, pr)
+	assert.Equal(t, "DIRTY", pr.MergeState)
+}
+
 func TestAutoMergeSwitchedOffMatchesOnlyTheSettingRefusal(t *testing.T) {
 	t.Parallel()
 

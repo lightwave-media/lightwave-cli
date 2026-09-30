@@ -813,3 +813,29 @@ func TestIssueReconcileReviewFindingsDryRunPreservesTheTask(t *testing.T) { //no
 	assert.Empty(t, *labels)
 	assert.Empty(t, *armed)
 }
+
+func TestDecidePullRequestRejectsAConflictedPRBeforeAnyChecksExist(t *testing.T) {
+	t.Parallel()
+
+	for _, draft := range []bool{true, false} {
+		pr := &gh.PullRequest{State: "OPEN", URL: "https://x/pr/1", IsDraft: draft, MergeState: "DIRTY"}
+
+		decision, trigger, instructions := decidePullRequest(pr, 1, 3)
+		assert.Equal(t, reconcileRejected, decision, "draft=%v: conflicted, so the round failed", draft)
+		assert.Equal(t, "reject", trigger)
+		assert.Contains(t, instructions, "conflict markers")
+
+		decision, trigger, _ = decidePullRequest(pr, 3, 3)
+		assert.Equal(t, reconcileDropped, decision, "the round cap applies")
+		assert.Equal(t, "drop", trigger)
+	}
+}
+
+func TestDecidePullRequestIgnoresAMergeableStateThatIsNotDirty(t *testing.T) {
+	t.Parallel()
+
+	pr := &gh.PullRequest{State: "OPEN", MergeState: "UNKNOWN", Checks: []gh.CheckOutcome{{Name: "ci", Conclusion: "SUCCESS"}}}
+
+	decision, _, _ := decidePullRequest(pr, 1, 3)
+	assert.Equal(t, reconcileAutoMerge, decision)
+}
