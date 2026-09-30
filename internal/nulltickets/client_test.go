@@ -40,3 +40,19 @@ func TestListTasksSendsTheCursorIntact(t *testing.T) {
 	assert.Equal(t, []string{"", cursor}, seen, "the second request must carry the cursor exactly as issued")
 	assert.Len(t, tasks, 2)
 }
+
+func TestListTasksRefusesANon200Page(t *testing.T) {
+	t.Parallel()
+
+	// A 401 or 500 is not an empty stage: reading it as one would reconcile
+	// nothing and report success.
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	tasks, err := nulltickets.New(server.URL, "bad-token").ListTasks(t.Context(), "pipe-1", "in_review")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "401")
+	assert.Empty(t, tasks)
+}
