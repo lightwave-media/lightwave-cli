@@ -60,11 +60,11 @@ esac
 	return dir
 }
 
-func TestFindPullRequestReadsAllReviewPagesAndKeepsOnlyLiveFindings(t *testing.T) { //nolint:paralleltest // fake gh uses PATH and fixture environment
+func TestFindPullRequestReadsAllReviewPagesAndKeepsUnresolvedFindings(t *testing.T) { //nolint:paralleltest // fake gh uses PATH and fixture environment
 	dir := fakeReviewGH(t)
 	threads := "[" + reviewFixturePage(`[
       {"isResolved":true,"isOutdated":false},
-      {"isResolved":false,"isOutdated":true}
+      {"isResolved":false,"isOutdated":true,"comments":{"nodes":[{"url":"pr/9#outdated-finding"}]}}
     ]`) + "," + reviewFixturePage(`[
       {"isResolved":false,"isOutdated":false,"comments":{"nodes":[{"url":"pr/9#finding"}]}}
     ]`) + "]"
@@ -77,7 +77,7 @@ func TestFindPullRequestReadsAllReviewPagesAndKeepsOnlyLiveFindings(t *testing.T
 	require.NoError(t, err)
 	require.NotNil(t, pr)
 	assert.Equal(t, reviewedHead, pr.HeadRefOID)
-	assert.Equal(t, []string{"unresolved review thread: pr/9#finding", "changes requested: pr/9#review"}, pr.BlockingReviews)
+	assert.Equal(t, []string{"unresolved review thread: pr/9#outdated-finding", "unresolved review thread: pr/9#finding", "changes requested: pr/9#review"}, pr.BlockingReviews)
 	calls, err := os.ReadFile(filepath.Join(dir, "calls"))
 	require.NoError(t, err)
 	assert.Equal(t, 2, strings.Count(string(calls), "--paginate\n--slurp"), "both review connections must be fully read")

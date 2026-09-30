@@ -34,7 +34,6 @@ type reviewNode struct {
 	State      string `json:"state"`
 	URL        string `json:"url"`
 	IsResolved bool   `json:"isResolved"`
-	IsOutdated bool   `json:"isOutdated"`
 	Comments   struct {
 		Nodes []struct {
 			URL string `json:"url"`
@@ -56,11 +55,12 @@ type reviewPage struct {
 	} `json:"data"`
 }
 
-// loadPullRequestReviews keeps unresolved current discussions as repair
+// loadPullRequestReviews keeps unresolved discussions as repair
 // instructions, including COMMENTED reviews such as Bugbot's. GitHub's review
 // decision can be null on an unprotected branch, so read each reviewer's latest
-// opinion too. Superseded/dismissed opinions and resolved/outdated threads do
-// not keep sending an already-addressed finding back to the developer.
+// opinion too. A thread becoming outdated only means its diff changed; it
+// remains a finding until resolved. Superseded/dismissed opinions do not keep
+// sending an already-addressed finding back to the developer.
 func loadPullRequestReviews(repo string, pr *PullRequest) error {
 	threads, err := pullRequestReviewNodes(repo, pr, reviewThreadsQuery)
 	if err != nil {
@@ -68,7 +68,7 @@ func loadPullRequestReviews(repo string, pr *PullRequest) error {
 	}
 
 	for _, thread := range threads {
-		if thread.IsResolved || thread.IsOutdated {
+		if thread.IsResolved {
 			continue
 		}
 
