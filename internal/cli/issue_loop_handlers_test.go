@@ -3,6 +3,7 @@ package cli //nolint:testpackage // the GitHub seams are package-private on purp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -243,7 +244,7 @@ func withIssueLoopSeams(t *testing.T, queue *fakeQueue, issues []gh.Issue, prs m
 	findPullRequest = func(_ string, taskID string) (*gh.PullRequest, error) { return prs[taskID], nil }
 	commentOnIssue = func(_ string, n int, body string) error { *comments = append(*comments, body); return nil }
 	addIssueLabel = func(_ string, _ int, label string) error { *labels = append(*labels, label); return nil }
-	armPullRequestMerge = func(_ string, n int) error { *armed = append(*armed, n); return nil }
+	armPullRequestMerge = func(_ string, n int, _ string) error { *armed = append(*armed, n); return nil }
 	origRemove := removeIssueLabel
 	removeIssueLabel = func(string, int, string) error { return nil }
 	t.Cleanup(func() { removeIssueLabel = origRemove })
@@ -717,4 +718,96 @@ func TestIssueReconcileLeavesOrphanedPRsThatAreNotSafeToMerge(t *testing.T) { //
 		require.NoError(t, err, name)
 		assert.Empty(t, *armed, name)
 	}
+}
+
+func TestIssueReconcileRoutesInlineFindingsThroughTheRoundCap(t *testing.T) { //nolint:paralleltest // handler seams and stdout are process-global
+	queue := &fakeQueue{inReview: []map[string]any{
+		reviewTask("fix", 1, 2), reviewTask("cap", 2, 6), reviewTask("green", 3, 2),
+	}}
+	fix := orphanPR(false, "SUCCESS")
+	fix.BlockingReviews = []string{"unresolved review thread: https://example.com/finding"}
+	capPR := *fix
+	capPR.Number = 10
+	green := orphanPR(false, "SUCCESS")
+	green.Number = 11
+	comments, labels, armed := withIssueLoopSeams(t, queue, nil, map[string]*gh.PullRequest{"fix": fix, "cap": &capPR, "green": green})
+
+	_, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+	require.NoError(t, err)
+	require.Len(t, queue.transitions, 2)
+	assert.Equal(t, "reject", queue.transitions[0].Trigger)
+	assert.Contains(t, queue.transitions[0].Instructions, "https://example.com/finding")
+	assert.Equal(t, "drop", queue.transitions[1].Trigger)
+	assert.Len(t, *comments, 1)
+	assert.Equal(t, []string{issueLoopOperatorTag}, *labels)
+	assert.Equal(t, []int{11}, *armed, "an independent green task still progresses")
+}
+
+func TestDecidePullRequestWaitsForRequiredReviewAndRejectsBlockingReview(t *testing.T) {
+	t.Parallel()
+
+	pr := orphanPR(false, "SUCCESS")
+	pr.ReviewDecision = "REVIEW_REQUIRED"
+	action, _, _ := decidePullRequest(pr, 1, 3)
+	assert.Equal(t, reconcilePending, action)
+	pr.ReviewDecision = "CHANGES_REQUESTED"
+	action, trigger, why := decidePullRequest(pr, 1, 3)
+	assert.Equal(t, reconcileRejected, action)
+	assert.Equal(t, "reject", trigger)
+	assert.Contains(t, why, "changes requested")
+}
+
+func TestIssueReconcileLeavesOrphanWithUnresolvedReview(t *testing.T) { //nolint:paralleltest // handler seams and stdout are process-global
+	queue := &fakeQueue{notDoing: []map[string]any{droppedTask("t", 1, time.Hour)}}
+	pr := orphanPR(false, "NEUTRAL")
+	pr.BlockingReviews = []string{"unresolved review thread: https://example.com/finding"}
+	_, _, armed := withIssueLoopSeams(t, queue, nil, map[string]*gh.PullRequest{"t": pr})
+
+	_, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+	require.NoError(t, err)
+	assert.Empty(t, *armed)
+	assert.Empty(t, queue.transitions)
+}
+
+func TestIssueReconcileReviewReadFailurePreservesBudgetAndOtherTasksProgress(t *testing.T) { //nolint:paralleltest // handler seams and stdout are process-global
+	queue := &fakeQueue{inReview: []map[string]any{reviewTask("unavailable", 1, 6), reviewTask("green", 2, 2)}}
+	green := orphanPR(false, "SUCCESS")
+	green.HeadRefOID = "reviewed-head"
+	comments, labels, _ := withIssueLoopSeams(t, queue, nil, nil)
+	findPullRequest = func(_ string, taskID string) (*gh.PullRequest, error) {
+		if taskID == "unavailable" {
+			return nil, errors.New("review API unavailable")
+		}
+
+		return green, nil
+	}
+	var heads []string
+	armPullRequestMerge = func(_ string, _ int, head string) error {
+		heads = append(heads, head)
+		return nil
+	}
+
+	out, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline, jsonFlag: true})
+	require.NoError(t, err)
+	assert.Contains(t, out, "review API unavailable")
+	assert.Empty(t, queue.transitions, "a read error at the round cap must not drop the task")
+	assert.Empty(t, *comments)
+	assert.Empty(t, *labels)
+	assert.Equal(t, []string{"reviewed-head"}, heads)
+}
+
+func TestIssueReconcileReviewFindingsDryRunPreservesTheTask(t *testing.T) { //nolint:paralleltest // handler seams and stdout are process-global
+	queue := &fakeQueue{inReview: []map[string]any{reviewTask("t", 1, 2)}}
+	pr := orphanPR(false, "SUCCESS")
+	pr.BlockingReviews = []string{"unresolved review thread: https://example.com/finding"}
+	comments, labels, armed := withIssueLoopSeams(t, queue, nil, map[string]*gh.PullRequest{"t": pr})
+
+	out, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline, "dry-run": true})
+	require.NoError(t, err)
+	assert.Contains(t, out, "dry_run:rejected")
+	assert.Contains(t, out, "https://example.com/finding")
+	assert.Empty(t, queue.transitions)
+	assert.Empty(t, *comments)
+	assert.Empty(t, *labels)
+	assert.Empty(t, *armed)
 }
