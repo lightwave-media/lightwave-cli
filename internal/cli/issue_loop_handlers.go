@@ -45,6 +45,11 @@ const (
 	// A task whose next eligible time is further away than this has no attempts
 	// left (nulltickets parks it at the end of time).
 	exhaustedHorizon = 365 * 24 * time.Hour
+	// An open, green PR the delivery hook opened is merged even when its task was
+	// dropped after delivery (issue #575); only tasks that ended within this
+	// window are looked at, so the scan costs a handful of PR lookups per tick.
+	orphanWindow   = 24 * time.Hour
+	issueLoopPRTag = "Opened by the issue loop"
 	// promoteMaxGenerations bounds how many times one issue can be re-queued.
 	promoteMaxGenerations = 5
 	// How long a task may sit in in_review with no PR before that is a failed
@@ -60,6 +65,7 @@ const (
 	reconcileRejected     = "rejected"
 	reconcileDropped      = "dropped"
 	reconcileExhausted    = "exhausted"
+	reconcileOrphanMerged = "orphan_merged"
 	reconcileAutoMerge    = "auto_merge_armed"
 	reconcileDryRun       = "dry_run"
 	reconcileError        = "error"
@@ -349,6 +355,13 @@ func issueReconcileHandler(ctx context.Context, _ []string, flags map[string]any
 
 	report.Changes = append(report.Changes, exhausted...)
 
+	orphaned, err := reconcileOrphanedPullRequests(ctx, queue, repo, pipeline, dryRun)
+	if err != nil {
+		return err
+	}
+
+	report.Changes = append(report.Changes, orphaned...)
+
 	tasks, err := queue.ListTasks(ctx, pipeline, issueLoopReviewStage)
 	if err != nil {
 		return err
@@ -408,6 +421,82 @@ func reconcileExhaustedTasks(ctx context.Context, queue *nulltickets.Client, rep
 		}
 
 		handOffToOperator(repo, &change, "The issue loop ran out of attempts on this without producing a pull request.")
+
+		changes = append(changes, change)
+	}
+
+	return changes, nil
+}
+
+// reconcileOrphanedPullRequests merges the PR of a task that ended after the
+// work was delivered. The delivery hook opens the PR on every run, but the task
+// only reaches in_review on a clean NEXT-TRIGGER; a worker that fails or answers
+// drop on a later run leaves a green PR nothing else would ever look at. Only a
+// PR the hook opened (its body says so), still open, with every check green is
+// touched; a red or pending one is left for a person.
+func reconcileOrphanedPullRequests(ctx context.Context, queue *nulltickets.Client, repo, pipeline string, dryRun bool) ([]reconciliation, error) {
+	tasks, err := queue.ListTasks(ctx, pipeline, issueLoopWithdrawnStage)
+	if err != nil {
+		return nil, err
+	}
+
+	var changes []reconciliation
+
+	for i := range tasks {
+		task := &tasks[i]
+		if task.UpdatedAtMs <= 0 || time.Since(time.UnixMilli(task.UpdatedAtMs)) > orphanWindow {
+			continue
+		}
+
+		pr, err := findPullRequest(repo, task.ID)
+		if err != nil {
+			changes = append(changes, reconciliation{TaskID: task.ID, Action: reconcileError, Reason: err.Error()})
+			continue
+		}
+
+		if pr == nil || pr.State != "OPEN" || !strings.Contains(pr.Body, issueLoopPRTag) {
+			continue
+		}
+
+		// Judge the checks as if it were not a draft: a draft is not a verdict.
+		judged := *pr
+		judged.IsDraft = false
+
+		if decision, _, _ := decidePullRequest(&judged, 0, 0); decision != reconcileAutoMerge {
+			continue
+		}
+
+		change := reconciliation{TaskID: task.ID, PR: pr.URL, Action: reconcileOrphanMerged,
+			Reason: "task ended after delivery; all checks green on " + pr.URL}
+		if n, ok := task.Metadata["issue_number"].(float64); ok {
+			change.Issue = int(n)
+		}
+
+		if dryRun {
+			change.Action = reconcileDryRun + ":" + reconcileOrphanMerged
+			changes = append(changes, change)
+
+			continue
+		}
+
+		// Leaving draft can start checks of its own, so a draft is only marked
+		// ready now and judged again, as a live PR, on the next tick.
+		if pr.IsDraft {
+			change.Action = reconcileMarkedReady
+			change.Reason = "task ended after delivery; marking draft " + pr.URL + " ready for review"
+
+			if err := markPullRequestReady(repo, pr.Number); err != nil {
+				change.Action, change.Reason = reconcileError, err.Error()
+			}
+
+			changes = append(changes, change)
+
+			continue
+		}
+
+		if err := armPullRequestMerge(repo, pr.Number); err != nil {
+			change.Action, change.Reason = reconcileError, err.Error()
+		}
 
 		changes = append(changes, change)
 	}

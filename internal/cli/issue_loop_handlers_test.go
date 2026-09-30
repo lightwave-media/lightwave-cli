@@ -63,6 +63,7 @@ type fakeQueue struct {
 	created     []createdTask
 	inReview    []map[string]any
 	inDev       []map[string]any
+	notDoing    []map[string]any
 	withdrawn   []string
 	stages      map[string]string // task id -> stage served by GET /tasks/{id}
 	conflicts   map[string]bool   // idempotency keys answered 409
@@ -113,6 +114,8 @@ func (q *fakeQueue) handler() http.Handler {
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": q.inReview, "next_cursor": nil})
 		case issueLoopWorkStage:
 			_ = json.NewEncoder(w).Encode(map[string]any{"items": q.inDev, "next_cursor": nil})
+		case issueLoopWithdrawnStage:
+			_ = json.NewEncoder(w).Encode(map[string]any{"items": q.notDoing, "next_cursor": nil})
 		default:
 			_, _ = w.Write([]byte(`{"items":[],"next_cursor":null}`))
 		}
@@ -659,4 +662,59 @@ func TestIssuePromoteRetrySkipsAParkedGenerationReconcileHasNotWithdrawnYet(t *t
 
 	require.Len(t, queue.created, 2, "the parked generation is dead, so the next one is queued")
 	assert.Equal(t, []string{issueLoopRetryLabel}, *removed)
+}
+
+func droppedTask(id string, issue int, age time.Duration) map[string]any {
+	return map[string]any{"id": id, "stage": issueLoopWithdrawnStage, "updated_at_ms": time.Now().Add(-age).UnixMilli(),
+		"metadata": map[string]any{repoKey: testRepo, "issue_number": issue}}
+}
+
+func orphanPR(draft bool, conclusion string) *gh.PullRequest {
+	return &gh.PullRequest{Number: 9, URL: "https://x/pr/9", State: "OPEN", IsDraft: draft, Body: issueLoopPRTag + " for #1.",
+		Checks: []gh.CheckOutcome{{Name: "ci", Conclusion: conclusion}}}
+}
+
+func TestIssueReconcileMergesAGreenDeliveredPRWhoseTaskWasDropped(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	queue := &fakeQueue{notDoing: []map[string]any{droppedTask("t", 1, time.Hour)}}
+	_, _, armed := withIssueLoopSeams(t, queue, nil, map[string]*gh.PullRequest{"t": orphanPR(false, "SUCCESS")})
+
+	_, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+	require.NoError(t, err)
+	assert.Equal(t, []int{9}, *armed)
+}
+
+func TestIssueReconcileOnlyMarksAnOrphanedDraftReadyThenWaitsForItsChecks(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	queue := &fakeQueue{notDoing: []map[string]any{droppedTask("t", 1, time.Hour)}}
+	_, _, armed := withIssueLoopSeams(t, queue, nil, map[string]*gh.PullRequest{"t": orphanPR(true, "SUCCESS")})
+	ready := withReadySeam(t)
+
+	_, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+	require.NoError(t, err)
+	assert.Equal(t, []int{9}, *ready)
+	assert.Empty(t, *armed, "leaving draft can start new checks; the next tick judges them")
+}
+
+func TestIssueReconcileLeavesOrphanedPRsThatAreNotSafeToMerge(t *testing.T) { //nolint:paralleltest // runHandler swaps os.Stdout
+	human := orphanPR(false, "SUCCESS")
+	human.Body = "a person's PR"
+
+	cases := map[string]struct {
+		pr  *gh.PullRequest
+		age time.Duration
+	}{
+		"red":       {orphanPR(false, "FAILURE"), time.Hour},
+		"pending":   {orphanPR(false, "PENDING"), time.Hour},
+		"not ours":  {human, time.Hour},
+		"too old":   {orphanPR(false, "SUCCESS"), 48 * time.Hour},
+		"no checks": {&gh.PullRequest{Number: 9, State: "OPEN", Body: issueLoopPRTag}, time.Hour},
+	}
+
+	for name, c := range cases {
+		queue := &fakeQueue{notDoing: []map[string]any{droppedTask("t", 1, c.age)}}
+		_, _, armed := withIssueLoopSeams(t, queue, nil, map[string]*gh.PullRequest{"t": c.pr})
+
+		_, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline})
+		require.NoError(t, err, name)
+		assert.Empty(t, *armed, name)
+	}
 }
