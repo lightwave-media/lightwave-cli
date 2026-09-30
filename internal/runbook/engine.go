@@ -38,6 +38,9 @@ type ApplyOpts struct {
 	SignoffTier string
 	Reason      string
 	Require     string
+	Slug        string
+	Repo        string
+	SHA         string
 	// AuditPath receives one audit_event row per step decision; see audit.go.
 	AuditPath string
 }
@@ -71,6 +74,15 @@ func Start(opts *StartOpts) (*Instance, error) {
 		return nil, err
 	}
 
+	fingerprint, err := editionFingerprint(opts.CoreRoot, edition)
+	if err != nil {
+		return nil, err
+	}
+
+	// A non-git or dirty catalog remains usable for ordinary development, but
+	// cannot later be upgraded into a verified published edition.
+	editionCommit, _ := cleanCommit(opts.CoreRoot)
+
 	branch, err := currentBranch(opts.Cwd)
 	if err != nil {
 		return nil, err
@@ -81,21 +93,24 @@ func Start(opts *StartOpts) (*Instance, error) {
 		id = uuid.NewString()
 	}
 
+	executionStarted := false
 	inst := &Instance{
-		InstanceID:   id,
-		RunbookSlug:  opts.Slug,
-		AgentID:      opts.Agent,
-		TaskID:       opts.Task,
-		SessionID:    opts.Session,
-		RepoSlug:     opts.Repo,
-		WorktreePath: opts.Cwd,
-		Branch:       firstNonEmpty(opts.Branch, branch),
-		Status:       StatusPending,
-		DryRun:       opts.DryRun,
-		EditionHash:  edition.Hash,
-		CreatedAt:    nowUTC(),
-		Steps:        pendingSteps(edition.Steps),
-		Vars:         opts.Vars,
+		ExecutionStarted: &executionStarted,
+		InstanceID:       id,
+		RunbookSlug:      opts.Slug,
+		AgentID:          opts.Agent,
+		TaskID:           opts.Task,
+		SessionID:        opts.Session,
+		RepoSlug:         opts.Repo,
+		WorktreePath:     opts.Cwd,
+		Branch:           firstNonEmpty(opts.Branch, branch),
+		Status:           StatusPending,
+		DryRun:           opts.DryRun,
+		EditionHash:      fingerprint,
+		EditionCommit:    editionCommit,
+		CreatedAt:        nowUTC(),
+		Steps:            pendingSteps(edition.Steps),
+		Vars:             opts.Vars,
 	}
 
 	if err := Save(opts.Cwd, inst); err != nil {
@@ -109,7 +124,8 @@ func Start(opts *StartOpts) (*Instance, error) {
 	return inst, nil
 }
 
-// Status loads the instance. --require completed fails if not completed.
+// Status loads lifecycle state. --require executed additionally verifies the
+// pinned edition and actual execution, durably invalidating observed drift.
 func Status(opts *ApplyOpts) (*Instance, error) {
 	id, err := ResolveInstanceID(opts.Cwd, opts.Task, opts.InstanceID)
 	if err != nil {
@@ -119,6 +135,10 @@ func Status(opts *ApplyOpts) (*Instance, error) {
 	inst, err := Load(opts.Cwd, opts.Task, id)
 	if err != nil {
 		return nil, err
+	}
+
+	if opts.Require == "executed" {
+		return inst, requireExecuted(opts, inst)
 	}
 
 	if opts.Require != "" && inst.Status != opts.Require {
@@ -154,30 +174,44 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 		return nil, err
 	}
 
+	if err := invalidateProvenance(opts.Cwd, inst); err != nil {
+		return inst, err
+	}
+
 	if inst.Finished() {
 		return inst, nil
 	}
 
 	index, err := LoadIndex(opts.CoreRoot)
 	if err != nil {
-		return nil, err
+		inst.Status = StatusFailed
+
+		return inst, invalidateEditionReceipt(opts.Cwd, inst, err)
 	}
 
 	entry, err := Lookup(index, inst.RunbookSlug)
 	if err != nil {
-		return nil, err
+		inst.Status = StatusFailed
+
+		return inst, invalidateEditionReceipt(opts.Cwd, inst, err)
 	}
 
 	edition, err := LoadEdition(opts.CoreRoot, entry)
 	if err != nil {
-		return nil, err
+		inst.Status = StatusFailed
+
+		return inst, invalidateEditionReceipt(opts.Cwd, inst, err)
 	}
 
-	if edition.Hash != inst.EditionHash {
+	if err := verifyEdition(opts, inst, edition); err != nil {
 		inst.Status = StatusFailed
-		_ = Save(opts.Cwd, inst)
 
-		return inst, fmt.Errorf("%w: instance %s published %s", ErrEditionMismatch, inst.EditionHash, edition.Hash)
+		inst.Commit = ""
+		if saveErr := Save(opts.Cwd, inst); saveErr != nil {
+			return inst, saveErr
+		}
+
+		return inst, err
 	}
 
 	byID := map[string]Step{}
@@ -236,7 +270,25 @@ func Apply(opts *ApplyOpts) (*Instance, error) {
 		// above a signed step must actually do its work. It once reported
 		// signed Command and Template steps completed without running them, so
 		// a runbook declaring a Template created nothing and said it had.
+		if edStep.Path != "" || edStep.Command != "" {
+			if err := recheckEdition(opts, inst, entry); err != nil {
+				return inst, err
+			}
+
+			if err := beginExecution(opts.Cwd, inst); err != nil {
+				return inst, err
+			}
+		}
+
 		res, runErr := run.run(&edStep)
+
+		if err := recheckEdition(opts, inst, entry); err != nil {
+			return inst, err
+		}
+
+		if err := invalidateProvenance(opts.Cwd, inst); err != nil {
+			return inst, err
+		}
 
 		st.Output = tailOutput(res.output)
 		st.Outputs = res.outputs
