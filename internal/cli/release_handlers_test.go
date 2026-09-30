@@ -172,15 +172,45 @@ func TestSignoffHandlerRoundTrip(t *testing.T) {
 	assert.NotContains(t, ledger.Signoffs, "lightwave-ui")
 }
 
+//nolint:paralleltest // t.Setenv pins flags and the ledger path; must not run in parallel
+func TestReleaseMergeRefusesFeaturePRs(t *testing.T) {
+	t.Setenv("LW_RELEASE_SIGNOFF", filepath.Join(t.TempDir(), "release-signoff.yaml"))
+	pinReleaseFlags(t)
+	// The retired bypass flag no longer opens anything.
+	t.Setenv("LW_FEATURE_AUTONOMOUS_RELEASE_MERGE", "1")
+
+	err := releaseMergeHandler(context.Background(), []string{"lightwave-ui"}, map[string]any{"yes": true, "pr": "12"})
+	require.ErrorIs(t, err, errFeaturePRMerge)
+	assert.Contains(t, err.Error(), "ADR-0058")
+	assert.Contains(t, err.Error(), "gh pr merge --auto --squash --delete-branch")
+}
+
 //nolint:paralleltest // t.Setenv redirects the ledger path; must not run in parallel
 func TestReleaseMergeGateClosedWithoutSignoff(t *testing.T) {
 	ledgerPath := filepath.Join(t.TempDir(), "release-signoff.yaml")
 	t.Setenv("LW_RELEASE_SIGNOFF", ledgerPath)
 	pinReleaseFlags(t)
+	t.Setenv("LW_FEATURE_AUTONOMOUS_RELEASE_PR_MERGE", "1")
+	t.Setenv("LW_FEATURE_AUTONOMOUS_RELEASE_MERGE", "1")
+	// Any gh call would fail: an empty PATH proves the gate closes before one.
+	t.Setenv("PATH", t.TempDir())
 
 	// No sign-off recorded: the gate must short-circuit before any gh call,
-	// returning nil (a closed gate is a normal outcome, not an error).
-	err := releaseMergeHandler(context.Background(), []string{"lightwave-ui"}, map[string]any{})
+	// returning nil (a closed gate is a normal outcome, not an error), even
+	// with the retired autonomous flag on.
+	err := releaseMergeHandler(context.Background(), []string{"lightwave-ui"}, map[string]any{"release-pr": true})
+	require.NoError(t, err)
+}
+
+//nolint:paralleltest // t.Setenv pins flags; must not run in parallel
+func TestReleaseMergeReleasePRFlagOff(t *testing.T) {
+	t.Setenv("LW_RELEASE_SIGNOFF", filepath.Join(t.TempDir(), "release-signoff.yaml"))
+	pinReleaseFlags(t)
+	t.Setenv("PATH", t.TempDir())
+
+	// autonomous_release_pr_merge defaults to off: the release-PR path stops
+	// before any gh call and returns nil.
+	err := releaseMergeHandler(context.Background(), []string{"lightwave-ui"}, map[string]any{"release-pr": true})
 	require.NoError(t, err)
 }
 

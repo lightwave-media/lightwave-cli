@@ -73,16 +73,9 @@ func LoadIndex(coreRepo string) (map[string]Entry, error) {
 	return out, nil
 }
 
-// Record is one catalog entry enriched for discovery: the category the registry
-// files it under, the description from its own front matter, and whether it can
-// actually be run.
-//
-// Reachable is not decoration. The registry and the filesystem disagree: on
-// lightwave-core@1426a0d, 56 slugs are indexed and 51 have a runbook.mdx. A
-// listing that reported registry membership would advertise five runbooks whose
-// `start` fails on a missing edition — the caller would go debug their checkout
-// for a runbook that was never written. So the catalog reports what can run, and
-// the five are surfaced deliberately rather than silently filtered.
+// Record is a checkout catalog entry enriched for discovery. Reachable means
+// runbook.mdx was readable; it does not validate the procedure or execute checks.
+// Execution uses its own edition resolution, independently of this listing.
 type Record struct {
 	Slug        string `json:"slug"`
 	Category    string `json:"category"`

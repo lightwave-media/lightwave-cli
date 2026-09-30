@@ -150,21 +150,9 @@ func GateVoice() error {
 	)
 }
 
-// MergeAutonomous reports whether feature PR auto-merge may skip CTO sign-off.
-func MergeAutonomous() (bool, error) {
-	hold, err := IsEnabled("release_merge_hold")
-	if err != nil {
-		return false, err
-	}
-
-	if hold {
-		return false, nil
-	}
-
-	return IsEnabled("autonomous_release_merge")
-}
-
 // ReleasePRAutonomous reports whether Release PR auto-merge is allowed.
+// Feature PRs are not merged by this CLI at all (lightwave-core ADR-0058),
+// so there is no feature-PR counterpart.
 func ReleasePRAutonomous() (bool, error) {
 	hold, err := IsEnabled("release_merge_hold")
 	if err != nil {

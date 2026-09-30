@@ -253,34 +253,30 @@ func releaseMergeHandler(ctx context.Context, args []string, flags map[string]an
 		return errors.New("usage: lw release merge <repo> [--pr N] [--yes] [--release-pr]")
 	}
 
+	if !flagBool(flags, "release-pr") {
+		return errFeaturePRMerge
+	}
+
 	repo := resolveRepo(args[0])
 	apply := flagBool(flags, "yes")
 	onlyPR := flagString(flags, "pr")
-	releasePR := flagBool(flags, "release-pr")
-
-	autonomous, err := release.MergeAutonomous()
-	if err != nil {
-		return err
-	}
 
 	releasePRAuto, err := release.ReleasePRAutonomous()
 	if err != nil {
 		return err
 	}
 
-	if releasePR && !releasePRAuto {
+	if !releasePRAuto {
 		fmt.Printf("%s autonomous_release_pr_merge is off — enable: lw release flag autonomous_release_pr_merge --on\n",
 			color.RedString("✗"))
 
 		return nil
 	}
 
-	if releasePR {
-		if err := release.RequireQaReleasePass(); err != nil {
-			fmt.Printf("%s %v\n", color.RedString("✗"), err)
+	if err := release.RequireQaReleasePass(); err != nil {
+		fmt.Printf("%s %v\n", color.RedString("✗"), err)
 
-			return nil
-		}
+		return nil
 	}
 
 	ledger, err := loadSignoffs()
@@ -289,7 +285,7 @@ func releaseMergeHandler(ctx context.Context, args []string, flags map[string]an
 	}
 
 	sign, signed := ledger.Signoffs[shortRepo(repo)]
-	if !autonomous && !signed {
+	if !signed {
 		fmt.Printf("%s no CTO sign-off for %s — run: lw release sign-off %s --by <cto>\n",
 			color.RedString("✗"), repo, shortRepo(repo))
 
@@ -304,11 +300,7 @@ func releaseMergeHandler(ctx context.Context, args []string, flags map[string]an
 	eligible := make([]prCandidate, 0, len(candidates))
 
 	for _, c := range candidates {
-		if releasePR && !strings.HasPrefix(c.Title, "chore(main): release") {
-			continue
-		}
-
-		if !releasePR && strings.HasPrefix(c.Title, "chore(main): release") {
+		if !strings.HasPrefix(c.Title, "chore(main): release") {
 			continue
 		}
 
@@ -348,30 +340,18 @@ func releaseMergeHandler(ctx context.Context, args []string, flags map[string]an
 		verb = "merged"
 	}
 
-	by := "autonomous (ADR-0035)"
-	if signed {
-		by = sign.ApprovedBy
-	}
-
 	fmt.Printf("%s %s %d PR(s) for %s (%s)\n",
-		color.CyanString("●"), verb, len(eligible), repo, by)
-
-	if apply && len(eligible) > 0 && !releasePR {
-		mainSHA, shaErr := exec.CommandContext(ctx, "gh", "api",
-			fmt.Sprintf("repos/%s/git/ref/heads/main", repo),
-			"--jq", ".object.sha",
-		).CombinedOutput()
-		if shaErr == nil {
-			_ = releasePropagateHandler(ctx, nil, map[string]any{
-				"repo":     shortRepo(repo),
-				"main-sha": strings.TrimSpace(string(mainSHA)),
-				"yes":      true,
-			})
-		}
-	}
+		color.CyanString("●"), verb, len(eligible), repo, sign.ApprovedBy)
 
 	return nil
 }
+
+// errFeaturePRMerge: feature PRs merge by GitHub auto-merge armed by the
+// author (lightwave-core ADR-0058); this verb keeps only the release-PR path.
+var errFeaturePRMerge = errors.New(
+	"lw release merge no longer merges feature PRs: they merge by GitHub auto-merge " +
+		"(lightwave-core ADR-0058). Arm yours right after opening it: " +
+		"gh pr merge --auto --squash --delete-branch <pr>. Only --release-pr is handled here")
 
 // eligibleToMerge defers to branch protection rather than re-deriving a merge
 // policy from the check rollup.
