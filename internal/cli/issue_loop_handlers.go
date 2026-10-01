@@ -349,6 +349,7 @@ func issueReconcileHandler(ctx context.Context, _ []string, flags map[string]any
 	}
 
 	report := reconcileReport{StartedAt: time.Now().UTC(), Repo: repo, Pipeline: pipeline, DryRun: dryRun, Changes: []reconciliation{}}
+	gate := &mergeGate{}
 
 	exhausted, err := reconcileExhaustedTasks(ctx, queue, repo, pipeline, dryRun)
 	if err != nil {
@@ -357,7 +358,7 @@ func issueReconcileHandler(ctx context.Context, _ []string, flags map[string]any
 
 	report.Changes = append(report.Changes, exhausted...)
 
-	orphaned, err := reconcileOrphanedPullRequests(ctx, queue, repo, pipeline, dryRun)
+	orphaned, err := reconcileOrphanedPullRequests(ctx, queue, gate, repo, pipeline, dryRun)
 	if err != nil {
 		return err
 	}
@@ -379,7 +380,7 @@ func issueReconcileHandler(ctx context.Context, _ []string, flags map[string]any
 	}
 
 	for _, task := range tasks {
-		report.Changes = append(report.Changes, reconcileTask(ctx, queue, repo, role, &task, maxRounds, dryRun))
+		report.Changes = append(report.Changes, reconcileTask(ctx, queue, gate, repo, role, &task, maxRounds, dryRun))
 	}
 
 	return printReconcileReport(&report, flags)
@@ -436,7 +437,7 @@ func reconcileExhaustedTasks(ctx context.Context, queue *nulltickets.Client, rep
 // drop on a later run leaves a green PR nothing else would ever look at. Only a
 // PR the hook opened (its body says so), still open, with every check green is
 // touched; a red or pending one is left for a person.
-func reconcileOrphanedPullRequests(ctx context.Context, queue *nulltickets.Client, repo, pipeline string, dryRun bool) ([]reconciliation, error) {
+func reconcileOrphanedPullRequests(ctx context.Context, queue *nulltickets.Client, gate *mergeGate, repo, pipeline string, dryRun bool) ([]reconciliation, error) {
 	tasks, err := queue.ListTasks(ctx, pipeline, issueLoopWithdrawnStage)
 	if err != nil {
 		return nil, err
@@ -474,10 +475,21 @@ func reconcileOrphanedPullRequests(ctx context.Context, queue *nulltickets.Clien
 			change.Issue = int(n)
 		}
 
+		if !pr.IsDraft {
+			if why := gate.hold(repo, pr); why != "" {
+				change.Action, change.Reason = reconcileHeld, why
+			}
+		}
+
 		if dryRun {
-			change.Action = reconcileDryRun + ":" + reconcileOrphanMerged
+			change.Action = reconcileDryRun + ":" + change.Action
 			changes = append(changes, change)
 
+			continue
+		}
+
+		if change.Action == reconcileHeld {
+			changes = append(changes, change)
 			continue
 		}
 
@@ -527,7 +539,7 @@ func handOffToOperator(repo string, change *reconciliation, headline string) {
 // reconcileTask decides one in_review task from its PR. Round n is the n-th
 // time the task has come up for review: every submit and every reject bumps
 // task_version by one, so the review round is task_version / 2.
-func reconcileTask(ctx context.Context, queue *nulltickets.Client, repo, role string, task *nulltickets.Task, maxRounds int, dryRun bool) reconciliation {
+func reconcileTask(ctx context.Context, queue *nulltickets.Client, gate *mergeGate, repo, role string, task *nulltickets.Task, maxRounds int, dryRun bool) reconciliation {
 	change := reconciliation{TaskID: task.ID, Round: task.TaskVersion / versionsPerReviewRound}
 	if n, ok := task.Metadata["issue_number"].(float64); ok {
 		change.Issue = int(n)
@@ -560,13 +572,23 @@ func reconcileTask(ctx context.Context, queue *nulltickets.Client, repo, role st
 
 	change.Action, change.Reason = decision, instructions
 
+	// Green is not enough to merge: the gate decides whether anything could
+	// have said no. A held PR stays open and ready, and the task stays in
+	// review, so the next tick looks again (protection may have changed).
+	if decision == reconcileAutoMerge {
+		if why := gate.hold(repo, pr); why != "" {
+			decision = reconcileHeld
+			change.Action, change.Reason = reconcileHeld, why
+		}
+	}
+
 	if dryRun {
 		change.Action = reconcileDryRun + ":" + decision
 		return change
 	}
 
 	switch decision {
-	case reconcilePending, reconcileWaitingForPR:
+	case reconcilePending, reconcileWaitingForPR, reconcileHeld:
 		return change
 	case reconcileMarkedReady:
 		if err := markPullRequestReady(repo, pr.Number); err != nil {
