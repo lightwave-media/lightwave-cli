@@ -29,9 +29,11 @@ func (f *fakeMeta) Meta(context.Context, string) (secrets.ParamMeta, error) { re
 
 type fakeWriter struct {
 	err     error
+	tags    map[string]string // set by Create only
 	caller  secrets.Caller
 	written [][]byte
 	version int64
+	created int
 }
 
 func (f *fakeWriter) Caller() secrets.Caller { return f.caller }
@@ -40,6 +42,13 @@ func (f *fakeWriter) Put(_ context.Context, _ string, value []byte) (int64, erro
 	f.written = append(f.written, bytes.Clone(value))
 
 	return f.version, f.err
+}
+
+func (f *fakeWriter) Create(ctx context.Context, path string, value []byte, tags map[string]string) (int64, error) {
+	f.created++
+	f.tags = tags
+
+	return f.Put(ctx, path, value)
 }
 
 // rig records every effect Rotate performs.

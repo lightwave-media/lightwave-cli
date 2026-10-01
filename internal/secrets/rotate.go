@@ -24,12 +24,15 @@ import (
 	"time"
 )
 
-// Exit codes of lw secret rotate.
+// Exit codes of lw secret rotate and inbox. ExitMapPending is inbox's alone:
+// the write and every consumer are fine, but the map row still says pending,
+// a fix (re-run the generator) unlike ExitPending's (refresh a consumer).
 const (
-	ExitDone    = 0
-	ExitFailed  = 1
-	ExitPending = 3
-	ExitRefused = 4
+	ExitDone       = 0
+	ExitFailed     = 1
+	ExitPending    = 3
+	ExitRefused    = 4
+	ExitMapPending = 5
 )
 
 // Every /lightwave/prod SecureString has this shape (measured 2026-09-24).
@@ -80,11 +83,16 @@ type MetaReader interface {
 	Meta(ctx context.Context, path string) (ParamMeta, error)
 }
 
-// ValueWriter writes a parameter value as the identity Caller reports.
+// ValueWriter writes a parameter value as the identity Caller reports. Put
+// overwrites an existing parameter; Create makes a new one with tags.
 type ValueWriter interface {
 	Caller() Caller
 	Put(ctx context.Context, path string, value []byte) (int64, error)
+	Create(ctx context.Context, path string, value []byte, tags map[string]string) (int64, error)
 }
+
+// ErrNotFound marks a parameter SSM does not have.
+var ErrNotFound = errors.New("does not exist")
 
 // LedgerRow is one NAME-only row of secrets-exposure.jsonl.
 type LedgerRow struct {
@@ -113,6 +121,7 @@ type RotateDeps struct {
 type Result struct {
 	Name      string
 	Session   string
+	Surface   string // the verb that wrote; empty means lw secret rotate
 	Refreshed []string
 	Probed    []string
 	Pending   []string
@@ -120,6 +129,8 @@ type Result struct {
 	From      int64
 	To        int64
 	DryRun    bool
+	// MapPending: the secret map row still says pending after a good write.
+	MapPending bool
 }
 
 // ErrorExitCode maps a Rotate error to its exit code.
@@ -131,13 +142,16 @@ func ErrorExitCode(err error) int {
 	return ExitFailed
 }
 
-// ExitCode is 1 when a follow-up failed, 3 when one is owed by someone else.
+// ExitCode is 1 when a follow-up failed, 3 when a consumer refresh is owed by
+// someone else, 5 when only the map row is still pending; in that order.
 func (r *Result) ExitCode() int {
 	switch {
 	case len(r.Failures) > 0:
 		return ExitFailed
 	case len(r.Pending) > 0:
 		return ExitPending
+	case r.MapPending:
+		return ExitMapPending
 	default:
 		return ExitDone
 	}
@@ -149,7 +163,12 @@ func (r *Result) Line() string {
 		return fmt.Sprintf("%s: dry run as %s: checks passed at v%d; nothing written", r.Name, r.Session, r.From)
 	}
 
-	parts := []string{fmt.Sprintf("%s: rotated v%d -> v%d as %s", r.Name, r.From, r.To, r.Session)}
+	verb := "rotated"
+	if r.Surface == inboxSurface {
+		verb = "written"
+	}
+
+	parts := []string{fmt.Sprintf("%s: %s v%d -> v%d as %s", r.Name, verb, r.From, r.To, r.Session)}
 	for _, part := range []struct {
 		label string
 		items []string
@@ -164,6 +183,10 @@ func (r *Result) Line() string {
 		}
 	}
 
+	if r.MapPending {
+		parts = append(parts, "secret map: still pending; set "+r.Name+" active in gen_security_instances.py and re-run it")
+	}
+
 	return strings.Join(parts, "; ")
 }
 
@@ -173,17 +196,26 @@ func CheckRecord(rec *Record) error {
 	case rec.Status != "active" && rec.Status != "dormant":
 		return refuse(rec.Name, "status "+rec.Status+"; only active or dormant keys rotate")
 	case rec.RotationMode != "generate":
-		return refuse(rec.Name, "rotation_mode "+rec.RotationMode+" is not handled by lw secret rotate yet; use the rotate-aws-secret runbook")
-	case rec.Store != "ssm":
-		return refuse(rec.Name, "store "+rec.Store+"; only SSM keys rotate")
+		return refuse(rec.Name, "rotation_mode "+rec.RotationMode+" is not handled by lw secret rotate; human_inbox keys use lw secret inbox, the rest the rotate-aws-secret runbook")
 	case rec.Generate == nil || charsets[rec.Generate.Charset] == "":
 		return refuse(rec.Name, "generate.charset must be alnum, hex or base64url")
 	case rec.Generate.Length < minLength:
 		return refuse(rec.Name, fmt.Sprintf("generate.length is under %d", minLength))
+	default:
+		return checkSingleCopy(rec)
+	}
+}
+
+// checkSingleCopy refuses a key whose value lives anywhere but its one SSM
+// parameter: a write would leave the other copies serving the old value.
+func checkSingleCopy(rec *Record) error {
+	switch {
+	case rec.Store != "ssm":
+		return refuse(rec.Name, "store "+rec.Store+"; only SSM keys are written here")
 	case len(rec.Aliases) > 0:
 		return refuse(rec.Name, "its aliases would keep serving the old value")
 	case len(rec.Mirrors) > 0:
-		return refuse(rec.Name, "it has mirrors, which lw secret rotate does not update yet")
+		return refuse(rec.Name, "it has mirrors, which lw secret does not update yet")
 	case len(rec.PeersLiteral) > 0:
 		return refuse(rec.Name, "a peer holds a literal copy (peers_literal) that would go stale; move it to SSM first")
 	default:
@@ -267,11 +299,16 @@ func writeSuccessor(ctx context.Context, deps *RotateDeps, rec *Record) (int64, 
 }
 
 func (r *Result) record(deps *RotateDeps, event string) {
+	surface := r.Surface
+	if surface == "" {
+		surface = ledgerSurface
+	}
+
 	row := LedgerRow{
 		TS:      deps.Now().UTC().Format(time.RFC3339),
 		Session: r.Session,
 		Event:   event,
-		Surface: ledgerSurface,
+		Surface: surface,
 		Detail:  r.Line(),
 		Params:  []string{r.Name},
 	}
