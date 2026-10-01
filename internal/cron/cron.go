@@ -38,6 +38,31 @@ type Job struct {
 	Command string
 	// Source is the stamp key the job was read from, for reporting.
 	Source string
+	// Persona owns the job (cron_job 1.1.0); sync refuses a job without one.
+	Persona string
+	// DaemonSecretsRef names the job's consumer record under
+	// ~/.lightwave/specs/security/daemon_secrets; sync refuses a job without one.
+	DaemonSecretsRef string
+	// SecretNames are the SSM key names the job runs with, never values.
+	SecretNames []string
+	// Dispatch is what one tick does (cron_job 1.1.0).
+	Dispatch Dispatch
+	// Enabled is false only when the stamp says `enabled: false`.
+	Enabled bool
+}
+
+// Dispatch kinds `lw cron run` executes (cron_job 1.1.0).
+const (
+	DispatchShell        = "shell_command"
+	DispatchAgentSession = "agent_session"
+)
+
+// Dispatch is cron_job's DispatchRef.
+type Dispatch struct {
+	Args           map[string]any `yaml:"args"`
+	Kind           string         `yaml:"kind"`
+	Target         string         `yaml:"target"`
+	PromptTemplate string         `yaml:"prompt_template"`
 }
 
 // Agent is one launchd agent found on this machine.
@@ -46,6 +71,10 @@ type Agent struct {
 	Label string
 	// Program is the flattened ProgramArguments, for command matching.
 	Program string
+	// LastExit and Runs come from `launchctl print` for a loaded agent; nil
+	// when launchd did not say, which is not the same as zero.
+	LastExit *int
+	Runs     *int
 	// Loaded reports whether launchctl currently lists it.
 	Loaded bool
 }
@@ -75,7 +104,10 @@ type Row struct {
 	// binary does not expose. A job can be scheduled and still do nothing,
 	// which is the worse failure because launchd reports success either way.
 	VerbMissing string `json:"verb_missing,omitempty"`
-	Loaded      bool   `json:"loaded,omitempty"`
+	// LastExit and Runs are launchd's own counters for the agent.
+	LastExit *int `json:"last_exit,omitempty"`
+	Runs     *int `json:"runs,omitempty"`
+	Loaded   bool `json:"loaded,omitempty"`
 }
 
 // Report is the whole reconciliation.
@@ -107,12 +139,10 @@ func HandlerVerb(command string) string {
 
 // Reconcile pairs declared jobs with the agents that run them.
 //
-// Matching is on the declared COMMAND appearing in an agent's program
-// arguments, not on a label convention. That is deliberate: no stamp declares
-// how a job id maps to a launchd Label — cron_job.yaml describes jobs that
-// "v_core dispatches on schedule" and predates launchd here — so a label-based
-// match would mean inventing a convention, which is a stamp-shaped decision
-// this package has no standing to make (CLAUDE.md §7).
+// Matching is first on the label cron_job 1.1.0 stamps for a rendered job,
+// com.lightwave.cron.<id>, whose agent runs `lw cron run <id>` rather than the
+// job's command. A hand-made agent predating that convention is still matched
+// on the declared COMMAND appearing in its program arguments.
 //
 // knownVerbs is the set of top-level commands this binary exposes. Pass nil to
 // skip the verb check.
@@ -134,10 +164,11 @@ func Reconcile(jobs []Job, agents []Agent, knownVerbs map[string]bool) Report {
 			report.UnrunnableJobs++
 		}
 
-		if agent, ok := agentRunning(agents, job.Command); ok {
+		if agent, ok := agentRunning(agents, &job); ok {
 			row.Verdict = VerdictScheduled
 			row.Label = agent.Label
 			row.Loaded = agent.Loaded
+			row.LastExit, row.Runs = agent.LastExit, agent.Runs
 			matchedAgent[agent.Label] = true
 		}
 
@@ -151,9 +182,11 @@ func Reconcile(jobs []Job, agents []Agent, knownVerbs map[string]bool) Report {
 		}
 
 		report.Rows = append(report.Rows, Row{
-			Verdict: VerdictAgentNotDeclared,
-			Label:   agent.Label,
-			Loaded:  agent.Loaded,
+			Verdict:  VerdictAgentNotDeclared,
+			Label:    agent.Label,
+			Loaded:   agent.Loaded,
+			LastExit: agent.LastExit,
+			Runs:     agent.Runs,
 		})
 		report.Counts[VerdictAgentNotDeclared]++
 	}
@@ -196,13 +229,19 @@ const (
 	rankUnknown
 )
 
-// agentRunning finds an agent whose program arguments contain the command.
+// agentRunning finds the agent that runs job: the rendered label, else an
+// agent whose program arguments contain the declared command.
 //
 // The declared command carries flags ("lw knowledge sync --json") and a plist
-// may add its own, so this is a containment test on the declared string rather
-// than equality.
-func agentRunning(agents []Agent, command string) (Agent, bool) {
-	needle := strings.TrimSpace(command)
+// may add its own, so that fallback is a containment test rather than equality.
+func agentRunning(agents []Agent, job *Job) (Agent, bool) {
+	for _, agent := range agents {
+		if agent.Label == LabelPrefix+job.ID {
+			return agent, true
+		}
+	}
+
+	needle := strings.TrimSpace(job.Command)
 	if needle == "" {
 		return Agent{}, false
 	}

@@ -12,6 +12,7 @@ import (
 	"github.com/lightwave-media/lightwave-cli/internal/config"
 	"github.com/lightwave-media/lightwave-cli/internal/cron"
 	"github.com/lightwave-media/lightwave-cli/internal/testutil"
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
 )
 
 // cronWorkspace points both halves of the reconciliation at throwaway trees:
@@ -40,10 +41,18 @@ func cronWorkspace(t *testing.T) (jobsDir, agentsDir string) {
 	return jobsDir, agentsDir
 }
 
+// writeJob writes one declaration and commits the stamp, because jobs are read
+// from lightwave-core at origin/main, never from its working tree.
 func writeJob(t *testing.T, dir, name, body string) {
 	t.Helper()
 
 	require.NoError(t, os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644))
+	gitfixture.CommitAsOriginMain(t, coreDirOf(dir))
+}
+
+// coreDirOf is the lightwave-core checkout a jobs directory sits in.
+func coreDirOf(jobsDir string) string {
+	return filepath.Clean(filepath.Join(jobsDir, "..", "..", "..", ".."))
 }
 
 //nolint:paralleltest // RunHandler swaps os.Stdout globally; config is a singleton
