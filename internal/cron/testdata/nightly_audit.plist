@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.lightwave.cron.nightly_audit</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/home/u/.local/bin/lw</string>
+    <string>config</string>
+    <string>exec</string>
+    <string>--only</string>
+    <string>NULLTICKETS_API_TOKEN</string>
+    <string>--</string>
+    <string>/home/u/.local/bin/lw</string>
+    <string>cron</string>
+    <string>run</string>
+    <string>nightly_audit</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>AWS_PROFILE</key>
+    <string>lightwave-agent</string>
+    <key>LW_AGENT_ID</key>
+    <string>v_scrum-manager</string>
+    <key>PATH</key>
+    <string>/home/u/.local/bin:/usr/bin:/bin</string>
+  </dict>
+  <key>StartCalendarInterval</key>
+  <array>
+    <dict>
+      <key>Hour</key>
+      <integer>3</integer>
+      <key>Minute</key>
+      <integer>0</integer>
+    </dict>
+  </array>
+  <key>StandardOutPath</key>
+  <string>/home/u/.lightwave/observability/launchd/com.lightwave.cron.nightly_audit.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>/home/u/.lightwave/observability/launchd/com.lightwave.cron.nightly_audit.stderr.log</string>
+</dict>
+</plist>

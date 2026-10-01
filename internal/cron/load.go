@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -25,51 +26,65 @@ var notAJob = map[string]bool{
 	"cron_job.yaml": true,
 }
 
-// rawJob is the on-disk shape of a job declaration.
-//
-// Note it carries `handler`, while cron_job.yaml's required_fields name
-// `dispatch`. The instances and the shape disagree; this reads what the
-// instances actually contain.
+// StampRef is the ref job declarations are read from. Never the working tree:
+// ~/dev/lightwave-core is shared by every session on this machine and may be on
+// anyone's branch, so its working tree is not a fact (CLAUDE.md §16).
+const StampRef = "origin/main"
+
+// rawJob is the on-disk shape of a job declaration, both shapes at once:
+// instances still on cron_job 1.0.0 carry `handler`; 1.1.0 instances carry
+// `dispatch`, `persona`, `daemon_secrets_ref` and `secret_names`.
 type rawJob struct {
-	ID       string `yaml:"id"`
-	Title    string `yaml:"title"`
-	Schedule string `yaml:"schedule"`
-	Handler  struct {
+	Enabled          *bool    `yaml:"enabled"`
+	ID               string   `yaml:"id"`
+	Name             string   `yaml:"name"`
+	Title            string   `yaml:"title"`
+	Schedule         string   `yaml:"schedule"`
+	Persona          string   `yaml:"persona"`
+	DaemonSecretsRef string   `yaml:"daemon_secrets_ref"`
+	SecretNames      []string `yaml:"secret_names"`
+	Handler          struct {
 		Transport string `yaml:"transport"`
 		Command   string `yaml:"command"`
 	} `yaml:"handler"`
+	Dispatch Dispatch `yaml:"dispatch"`
 }
 
-// LoadJobs reads every job declaration in the scheduled-jobs family.
+// LoadJobs reads every job declaration in the scheduled-jobs family from
+// lightwave-core at StampRef.
 //
-// Enumeration is from the lightwave-core checkout when present. A job declared
-// on core's main but absent from this binary's embedded mirror would otherwise
-// be invisible, and the mirror is pinned to a tag that lags main — so
-// enumerating from the snapshot alone would under-report the very drift this
-// verb exists to find.
-func LoadJobs(lightwaveRoot string) ([]Job, error) {
-	dir := filepath.Join(lightwaveRoot, "lightwave-core", "src", "schemas", JobsFamily)
+// Enumeration is from core rather than this binary's embedded mirror: a job
+// declared on core's main but absent from the mirror, which is pinned to a tag
+// that lags main, would be invisible, and under-report the very drift this verb
+// exists to find.
+func LoadJobs(ctx context.Context, lightwaveRoot string) ([]Job, error) {
+	core := filepath.Join(lightwaveRoot, "lightwave-core")
+	prefix := "src/schemas/" + JobsFamily + "/"
 
-	entries, err := os.ReadDir(dir)
+	names, err := gitOutput(ctx, core, "ls-tree", "--name-only", StampRef, prefix)
 	if err != nil {
-		return nil, fmt.Errorf("no scheduled-job declarations at %s: %w", dir, err)
+		return nil, fmt.Errorf("no scheduled-job declarations at %s:%s in %s (run `git fetch origin` there): %w", StampRef, prefix, core, err)
+	}
+
+	if strings.TrimSpace(names) == "" {
+		return nil, fmt.Errorf("no scheduled-job declarations at %s:%s in %s", StampRef, prefix, core)
 	}
 
 	var jobs []Job
 
-	for _, entry := range entries {
-		name := entry.Name()
-		if entry.IsDir() || !strings.HasSuffix(name, ".yaml") || notAJob[name] {
+	for _, path := range strings.Split(strings.TrimSpace(names), "\n") {
+		name := strings.TrimPrefix(path, prefix)
+		if !strings.HasSuffix(name, ".yaml") || notAJob[name] {
 			continue
 		}
 
-		data, readErr := os.ReadFile(filepath.Join(dir, name)) //nolint:gosec // a stamp path we just enumerated
+		data, readErr := gitOutput(ctx, core, "show", StampRef+":"+path)
 		if readErr != nil {
-			return nil, fmt.Errorf("read %s: %w", name, readErr)
+			return nil, fmt.Errorf("read %s at %s: %w", name, StampRef, readErr)
 		}
 
 		var raw rawJob
-		if err := yaml.Unmarshal(data, &raw); err != nil {
+		if err := yaml.Unmarshal([]byte(data), &raw); err != nil {
 			return nil, fmt.Errorf("parse %s: %w", name, err)
 		}
 
@@ -80,19 +95,56 @@ func LoadJobs(lightwaveRoot string) ([]Job, error) {
 			continue
 		}
 
-		jobs = append(jobs, Job{
-			ID:        raw.ID,
-			Title:     raw.Title,
-			Schedule:  raw.Schedule,
-			Transport: raw.Handler.Transport,
-			Command:   raw.Handler.Command,
-			Source:    JobsFamily + "/" + name,
-		})
+		jobs = append(jobs, jobFromRaw(&raw, JobsFamily+"/"+name))
 	}
 
 	sort.Slice(jobs, func(i, j int) bool { return jobs[i].ID < jobs[j].ID })
 
 	return jobs, nil
+}
+
+func jobFromRaw(raw *rawJob, source string) Job {
+	title := raw.Title
+	if title == "" {
+		title = raw.Name
+	}
+
+	job := Job{
+		ID:               raw.ID,
+		Title:            title,
+		Schedule:         raw.Schedule,
+		Transport:        raw.Handler.Transport,
+		Command:          raw.Handler.Command,
+		Source:           source,
+		Persona:          raw.Persona,
+		DaemonSecretsRef: raw.DaemonSecretsRef,
+		SecretNames:      raw.SecretNames,
+		Dispatch:         raw.Dispatch,
+		Enabled:          raw.Enabled == nil || *raw.Enabled,
+	}
+	// A 1.1.0 shell_command is the command list and reconcile match against.
+	if job.Command == "" && job.Dispatch.Kind == DispatchShell {
+		job.Command = job.Dispatch.Target
+	}
+
+	return job
+}
+
+// gitOutput runs git in dir and returns stdout; the error carries git's stderr.
+func gitOutput(ctx context.Context, dir string, args ...string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", append([]string{"-C", dir}, args...)...) //nolint:gosec // fixed git verbs over a stamp path
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+
+	var stderr strings.Builder
+
+	cmd.Stderr = &stderr
+
+	out, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
+	}
+
+	return string(out), nil
 }
 
 // AgentPrefix is the label prefix for this estate's launchd agents.
@@ -135,11 +187,16 @@ func LoadAgents(ctx context.Context, home string) ([]Agent, error) {
 			label = strings.TrimSuffix(name, ".plist")
 		}
 
-		agents = append(agents, Agent{
+		agent := Agent{
 			Label:   label,
 			Program: program,
 			Loaded:  loaded[label],
-		})
+		}
+		if agent.Loaded {
+			agent.LastExit, agent.Runs = launchdCounters(ctx, label)
+		}
+
+		agents = append(agents, agent)
 	}
 
 	sort.Slice(agents, func(i, j int) bool { return agents[i].Label < agents[j].Label })
@@ -168,6 +225,42 @@ func loadedLabels(ctx context.Context) map[string]bool {
 	}
 
 	return labels
+}
+
+// launchdCounters reads `launchctl print gui/<uid>/<label>` for the agent's
+// "last exit code" and "runs". Best-effort: a field launchd does not print is
+// nil, never 0 — "never ran" and "unknown" are different answers.
+func launchdCounters(ctx context.Context, label string) (lastExit, runs *int) {
+	out, err := exec.CommandContext(ctx, "launchctl", "print", fmt.Sprintf("gui/%d/%s", os.Getuid(), label)).Output() //nolint:gosec // label from our own enumeration
+	if err != nil {
+		return nil, nil
+	}
+
+	return parseLaunchdCounters(string(out))
+}
+
+// parseLaunchdCounters extracts the two counters from `launchctl print`.
+func parseLaunchdCounters(text string) (lastExit, runs *int) {
+	for _, line := range strings.Split(text, "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), " = ")
+		if !ok {
+			continue
+		}
+
+		n, err := strconv.Atoi(strings.Fields(value + " x")[0])
+		if err != nil {
+			continue
+		}
+
+		switch key {
+		case "last exit code":
+			lastExit = &n
+		case "runs":
+			runs = &n
+		}
+	}
+
+	return lastExit, runs
 }
 
 // parsePlist extracts the Label and a flattened program string.

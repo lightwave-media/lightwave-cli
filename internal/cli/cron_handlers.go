@@ -29,7 +29,7 @@ func cronListHandler(ctx context.Context, _ []string, flags map[string]any) erro
 		return errors.New("config not loaded")
 	}
 
-	jobs, err := cron.LoadJobs(cfg.Paths.LightwaveRoot)
+	jobs, err := cron.LoadJobs(ctx, cfg.Paths.LightwaveRoot)
 	if err != nil {
 		return err
 	}

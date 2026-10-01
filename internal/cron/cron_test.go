@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/lightwave-media/lightwave-cli/internal/testutil/gitfixture"
+
 	"github.com/lightwave-media/lightwave-cli/internal/cron"
 )
 
@@ -191,8 +193,9 @@ required_fields:
     type: str
 `)
 	write("__index.yaml", "entries: []\n")
+	gitfixture.CommitAsOriginMain(t, filepath.Join(root, "lightwave-core"))
 
-	jobs, err := cron.LoadJobs(root)
+	jobs, err := cron.LoadJobs(t.Context(), root)
 	require.NoError(t, err)
 
 	require.Len(t, jobs, 1, "only the instance is a job")
@@ -207,7 +210,7 @@ func TestLoadJobsRefusesAMissingFamily(t *testing.T) {
 
 	// Silence is the failure mode this whole verb exists to prevent, so an
 	// absent stamp must be an error rather than an empty, healthy-looking list.
-	_, err := cron.LoadJobs(t.TempDir())
+	_, err := cron.LoadJobs(t.Context(), t.TempDir())
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no scheduled-job declarations at")
 }

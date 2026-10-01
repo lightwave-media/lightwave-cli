@@ -20,7 +20,10 @@ package gitfixture
 
 import (
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"testing"
 )
 
 // Identity is the author and committer of every fixture commit. The .invalid
@@ -76,6 +79,31 @@ func Isolate() {
 		name, value, _ := strings.Cut(kv, "=")
 		_ = os.Setenv(name, value)
 	}
+}
+
+// CommitAsOriginMain makes dir a repository whose origin/main is a commit of
+// everything in dir now, for code that reads a stamp at a ref rather than from
+// a working tree. Call it again after changing files: each call commits and
+// moves origin/main.
+func CommitAsOriginMain(tb testing.TB, dir string) {
+	tb.Helper()
+
+	run := func(args ...string) {
+		cmd := exec.CommandContext(tb.Context(), "git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = Env()
+
+		if out, err := cmd.CombinedOutput(); err != nil {
+			tb.Fatalf("git %s in %s: %v\n%s", strings.Join(args, " "), dir, err, out)
+		}
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, ".git")); err != nil {
+		run("init", "-q", "-b", "main")
+	}
+
+	run("add", "-A")
+	run("commit", "-q", "--allow-empty", "-m", "stamp fixture")
+	run("update-ref", "refs/remotes/origin/main", "HEAD")
 }
 
 func isRepoSelector(kv string) bool {

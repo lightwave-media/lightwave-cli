@@ -162,6 +162,50 @@ func (c *Client) StageRole(ctx context.Context, pipelineID, stage string) (strin
 	return state.AgentRole, nil
 }
 
+// PipelineIDByName returns the id of the pipeline called name, or "" when
+// there is none.
+func (c *Client) PipelineIDByName(ctx context.Context, name string) (string, error) {
+	var raw json.RawMessage
+
+	status, err := c.do(ctx, http.MethodGet, "/pipelines", nil, nil, c.Token, &raw)
+	if err != nil {
+		return "", err
+	}
+
+	if status != http.StatusOK {
+		return "", fmt.Errorf("nulltickets GET /pipelines returned HTTP %d", status)
+	}
+
+	type pipeline struct {
+		ID   string `json:"id"`
+		Name string `json:"name"`
+	}
+
+	// The list comes bare or wrapped, depending on the server version.
+	var list []pipeline
+	if json.Unmarshal(raw, &list) != nil {
+		var wrapped struct {
+			Pipelines []pipeline `json:"pipelines"`
+			Items     []pipeline `json:"items"`
+		}
+
+		if err := json.Unmarshal(raw, &wrapped); err != nil {
+			return "", fmt.Errorf("nulltickets GET /pipelines: unreadable reply: %w", err)
+		}
+
+		list = append(list, wrapped.Pipelines...)
+		list = append(list, wrapped.Items...)
+	}
+
+	for _, p := range list {
+		if p.Name == name {
+			return p.ID, nil
+		}
+	}
+
+	return "", nil
+}
+
 // ListTasks lists every task of pipeline in stage, following the cursor.
 func (c *Client) ListTasks(ctx context.Context, pipelineID, stage string) ([]Task, error) {
 	var all []Task
