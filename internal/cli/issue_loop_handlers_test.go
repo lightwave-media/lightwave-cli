@@ -248,6 +248,7 @@ func withIssueLoopSeams(t *testing.T, queue *fakeQueue, issues []gh.Issue, prs m
 	origRemove := removeIssueLabel
 	removeIssueLabel = func(string, int, string) error { return nil }
 	t.Cleanup(func() { removeIssueLabel = origRemove })
+	withMergeGate(t, []string{"ci"}, nil, nil)
 	t.Cleanup(func() {
 		listOpenIssues, findPullRequest, commentOnIssue, addIssueLabel, armPullRequestMerge = origList, origFind, origComment, origLabel, origArm
 	})
@@ -344,6 +345,7 @@ func TestIssueReconcileDecidesEachTaskFromItsPullRequest(t *testing.T) { //nolin
 		"closed":         {Number: 16, URL: "pr/16", State: "CLOSED"},
 	}
 	comments, labels, armed := withIssueLoopSeams(t, queue, nil, prs)
+	withMergeGate(t, []string{"CI Required Gate"}, nil, nil)
 
 	out, err := runHandler(t, "issue.reconcile", map[string]any{repoKey: testRepoFlag, pipelineFlag: testPipeline, jsonFlag: true})
 	require.NoError(t, err)
