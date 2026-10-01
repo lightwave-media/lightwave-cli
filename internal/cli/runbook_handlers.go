@@ -41,9 +41,14 @@ func runbookStartHandler(ctx context.Context, _ []string, flags map[string]any) 
 }
 
 func runbookStatusHandler(ctx context.Context, _ []string, flags map[string]any) error {
+	// Status selects the caller's checkout, not a previous apply's --cwd.
+	runbookCwd = ""
 	runbookTask = flagStr(flags, "task")
 	runbookInstance = flagStr(flags, "instance")
 	runbookRequire = flagStr(flags, "require")
+	runbookSlug = flagStr(flags, "slug")
+	runbookRepo = flagStr(flags, "repo")
+	runbookSHA = flagStr(flags, "sha")
 
 	runbookStatusCmd.SetContext(ctx)
 

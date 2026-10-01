@@ -21,6 +21,7 @@ var (
 	runbookSession     string
 	runbookInstance    string
 	runbookRequire     string
+	runbookSHA         string
 	runbookCwd         string
 	runbookStep        string
 	runbookSignoffTier string
@@ -52,7 +53,7 @@ var runbookStartCmd = &cobra.Command{
 
 var runbookStatusCmd = &cobra.Command{
 	Use:          "status",
-	Short:        "Read instance state; --require completed gates done",
+	Short:        "Read instance state; --require executed verifies real execution",
 	Args:         cobra.NoArgs,
 	SilenceUsage: true,
 	RunE:         runRunbookStatus,
@@ -93,7 +94,10 @@ func init() {
 
 	runbookStatusCmd.Flags().StringVar(&runbookTask, "task", "", "Task id")
 	runbookStatusCmd.Flags().StringVar(&runbookInstance, "instance", "", "Instance id")
-	runbookStatusCmd.Flags().StringVar(&runbookRequire, "require", "", "Required status (e.g. completed)")
+	runbookStatusCmd.Flags().StringVar(&runbookRequire, "require", "", "Required lifecycle status or strict executed proof")
+	runbookStatusCmd.Flags().StringVar(&runbookSlug, "slug", "", "Expected runbook slug for executed acceptance")
+	runbookStatusCmd.Flags().StringVar(&runbookRepo, "repo", "", "Expected owner/repo for executed acceptance")
+	runbookStatusCmd.Flags().StringVar(&runbookSHA, "sha", "", "Expected full commit SHA for executed acceptance")
 
 	runbookApplyCmd.Flags().StringVar(&runbookTask, "task", "", "Task id")
 	runbookApplyCmd.Flags().StringVar(&runbookInstance, "instance", "", "Instance id")
@@ -157,10 +161,14 @@ func runRunbookStatus(cmd *cobra.Command, _ []string) error {
 	}
 
 	inst, err := runbook.Status(&runbook.ApplyOpts{
+		CoreRoot:   coreRepoPath(),
 		Cwd:        cwd,
 		Task:       runbookTask,
 		InstanceID: runbookInstance,
 		Require:    runbookRequire,
+		Slug:       runbookSlug,
+		Repo:       runbookRepo,
+		SHA:        runbookSHA,
 	})
 	if err != nil {
 		return err

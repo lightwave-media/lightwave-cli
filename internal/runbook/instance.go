@@ -42,21 +42,24 @@ type StepState struct {
 // Instance is the agent-owned print at
 // .tasks/{task_id}/runbooks/{instance_id}/instance.yaml.
 type Instance struct {
-	WorktreePath  string      `yaml:"worktree_path"`
-	EditionHash   string      `yaml:"edition_hash"`
-	AgentID       string      `yaml:"agent_id"`
-	TaskID        string      `yaml:"task_id"`
-	SessionID     string      `yaml:"session_id,omitempty"`
-	RepoSlug      string      `yaml:"repo_slug"`
-	RunbookSlug   string      `yaml:"runbook_slug"`
-	Status        string      `yaml:"status"`
-	InstanceID    string      `yaml:"instance_id"`
-	UpdatedAt     string      `yaml:"updated_at"`
-	Branch        string      `yaml:"branch"`
-	CurrentStepID string      `yaml:"current_step_id,omitempty"`
-	CreatedAt     string      `yaml:"created_at"`
-	Steps         []StepState `yaml:"steps"`
-	DryRun        bool        `yaml:"dry_run"`
+	WorktreePath     string      `yaml:"worktree_path"`
+	EditionHash      string      `yaml:"edition_hash"`
+	AgentID          string      `yaml:"agent_id"`
+	TaskID           string      `yaml:"task_id"`
+	SessionID        string      `yaml:"session_id,omitempty"`
+	RepoSlug         string      `yaml:"repo_slug"`
+	RunbookSlug      string      `yaml:"runbook_slug"`
+	Status           string      `yaml:"status"`
+	InstanceID       string      `yaml:"instance_id"`
+	UpdatedAt        string      `yaml:"updated_at"`
+	Branch           string      `yaml:"branch"`
+	CurrentStepID    string      `yaml:"current_step_id,omitempty"`
+	CreatedAt        string      `yaml:"created_at"`
+	Steps            []StepState `yaml:"steps"`
+	DryRun           bool        `yaml:"dry_run"`
+	ExecutionStarted *bool       `yaml:"execution_started,omitempty"`
+	Commit           string      `yaml:"commit,omitempty"`
+	EditionCommit    string      `yaml:"edition_commit,omitempty"`
 	// Vars are the --var values the instance was started with. Inputs are
 	// bound from them and the pinned edition's defaults on every apply.
 	Vars map[string]string `yaml:"vars,omitempty"`
@@ -86,7 +89,37 @@ func Save(cwd string, inst *Instance) error {
 		return err
 	}
 
-	return os.WriteFile(Path(cwd, inst.TaskID, inst.InstanceID), raw, filePerm)
+	file, err := os.CreateTemp(dir, ".instance-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(file.Name()) }()
+
+	if _, err := file.Write(raw); err != nil {
+		_ = file.Close()
+		return err
+	}
+
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+
+	if err := file.Close(); err != nil {
+		return err
+	}
+
+	if err := os.Rename(file.Name(), Path(cwd, inst.TaskID, inst.InstanceID)); err != nil {
+		return err
+	}
+
+	folder, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer folder.Close()
+
+	return folder.Sync()
 }
 
 // Load reads one instance print.
