@@ -39,6 +39,9 @@ func secretMap(t *testing.T, records map[string][]string) {
 	}
 }
 
+// ticketsToken is the one secret name the fixture jobs are entitled to.
+const ticketsToken = "NULLTICKETS_API_TOKEN"
+
 const sessionJob = `id: triage
 name: Backlog triage
 schedule: "0 */4 * * *"
@@ -65,7 +68,7 @@ persona: v_scrum-manager
 //nolint:paralleltest // RunHandler swaps os.Stdout globally; config is a singleton
 func TestCronSyncRendersAnEntitledJobAndRefusesTheRestWithReasons(t *testing.T) {
 	jobsDir, agentsDir := cronWorkspace(t)
-	secretMap(t, map[string][]string{"cron-triage": {"NULLTICKETS_API_TOKEN"}})
+	secretMap(t, map[string][]string{"cron-triage": {ticketsToken}})
 	writeJob(t, jobsDir, "triage.yaml", sessionJob)
 	writeJob(t, jobsDir, "legacy.yaml", legacyJob)
 
@@ -87,7 +90,7 @@ func TestCronSyncRendersAnEntitledJobAndRefusesTheRestWithReasons(t *testing.T) 
 
 	require.Len(t, result.Rendered, 1)
 	assert.Equal(t, "com.lightwave.cron.triage", result.Rendered[0].Label)
-	assert.Equal(t, []string{"NULLTICKETS_API_TOKEN"}, result.Rendered[0].SecretNames, "names, never values")
+	assert.Equal(t, []string{ticketsToken}, result.Rendered[0].SecretNames, "names, never values")
 
 	require.Len(t, result.Refused, 1)
 	assert.Equal(t, "legacy", result.Refused[0].ID)
@@ -112,7 +115,7 @@ func TestCronSyncWithNoSecretMapRefusesEveryJob(t *testing.T) {
 //nolint:paralleltest // RunHandler swaps os.Stdout globally; config is a singleton
 func TestCronSyncPrintsTheNixModuleItDoesNotWrite(t *testing.T) {
 	jobsDir, _ := cronWorkspace(t)
-	secretMap(t, map[string][]string{"cron-triage": {"NULLTICKETS_API_TOKEN"}})
+	secretMap(t, map[string][]string{"cron-triage": {ticketsToken}})
 	writeJob(t, jobsDir, "triage.yaml", sessionJob)
 
 	out, err := testutil.RunHandler(t, "cron.sync", nil, map[string]any{})
@@ -124,7 +127,7 @@ func TestCronSyncPrintsTheNixModuleItDoesNotWrite(t *testing.T) {
 //nolint:paralleltest // RunHandler swaps os.Stdout globally; config is a singleton
 func TestCronSyncOutWritesTheModuleAndBacksUpWhatItReplaces(t *testing.T) {
 	jobsDir, _ := cronWorkspace(t)
-	secretMap(t, map[string][]string{"cron-triage": {"NULLTICKETS_API_TOKEN"}})
+	secretMap(t, map[string][]string{"cron-triage": {ticketsToken}})
 	writeJob(t, jobsDir, "triage.yaml", sessionJob)
 
 	path := filepath.Join(t.TempDir(), "cron.nix")
@@ -239,14 +242,14 @@ func (q *fakeRoutineQueue) handler() http.Handler {
 //nolint:paralleltest // RunHandler swaps os.Stdout globally; config is a singleton
 func TestCronRunAgentSessionQueuesOneIdempotentTaskPerWindow(t *testing.T) {
 	jobsDir, _ := cronWorkspace(t)
-	secretMap(t, map[string][]string{"cron-triage": {"NULLTICKETS_API_TOKEN"}})
+	secretMap(t, map[string][]string{"cron-triage": {ticketsToken}})
 	writeJob(t, jobsDir, "triage.yaml", sessionJob)
 
 	queue := &fakeRoutineQueue{bodies: map[string]string{}}
 	server := httptest.NewServer(queue.handler())
 	t.Cleanup(server.Close)
 	t.Setenv("NULLTICKETS_URL", server.URL)
-	t.Setenv("NULLTICKETS_API_TOKEN", "test-bearer")
+	t.Setenv(ticketsToken, "test-bearer")
 
 	first, err := testutil.RunHandler(t, "cron.run", []string{"triage"}, map[string]any{jsonFlag: true})
 	require.NoError(t, err)
