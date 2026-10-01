@@ -232,13 +232,53 @@ func cronSyncHandler(ctx context.Context, _ []string, flags map[string]any) erro
 		return nil
 	}
 
-	// No output path is declared for sync yet, so the module goes to stdout for
-	// the operator to place in nix-config; sync writes and loads nothing.
-	fmt.Println()
-	fmt.Print(result.Module)
+	// Without --out the module goes to stdout for the operator to place in
+	// nix-config. Either way sync loads nothing; nix-darwin does.
+	out := flagStr(flags, "out")
+	if out == "" {
+		fmt.Println()
+		fmt.Print(result.Module)
+
+		return nil
+	}
+
+	return cronWriteModule(out, result.Module, flagBool(flags, "yes"))
+}
+
+// cronWriteModule writes the module to path, keeping what it replaces as
+// path.bak. An unchanged module is not rewritten.
+func cronWriteModule(path, module string, yes bool) error {
+	previous, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("read %s: %w", path, err)
+	}
+
+	if err == nil && string(previous) == module {
+		fmt.Printf("%s unchanged\n", path)
+		return nil
+	}
+
+	if !yes && !promptYesNo(fmt.Sprintf("Write the module to %s?", path)) {
+		return errors.New("cancelled: module not written")
+	}
+
+	if err == nil {
+		if err := os.WriteFile(path+".bak", previous, moduleFileMode); err != nil {
+			return fmt.Errorf("back up %s: %w", path, err)
+		}
+	}
+
+	if err := os.WriteFile(path, []byte(module), moduleFileMode); err != nil {
+		return fmt.Errorf("write %s: %w", path, err)
+	}
+
+	fmt.Printf("wrote %s\n", path)
 
 	return nil
 }
+
+// moduleFileMode is the nix module's mode: nix-config is a checked-in tree.
+const moduleFileMode = 0o644
 
 // shellMeta is what a shell would interpret. run executes a shell_command
 // target as argv, never through a shell, so a target that needs one is refused.

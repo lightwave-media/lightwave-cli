@@ -121,6 +121,33 @@ func TestCronSyncPrintsTheNixModuleItDoesNotWrite(t *testing.T) {
 	assert.Contains(t, out, `"--only" "NULLTICKETS_API_TOKEN"`)
 }
 
+//nolint:paralleltest // RunHandler swaps os.Stdout globally; config is a singleton
+func TestCronSyncOutWritesTheModuleAndBacksUpWhatItReplaces(t *testing.T) {
+	jobsDir, _ := cronWorkspace(t)
+	secretMap(t, map[string][]string{"cron-triage": {"NULLTICKETS_API_TOKEN"}})
+	writeJob(t, jobsDir, "triage.yaml", sessionJob)
+
+	path := filepath.Join(t.TempDir(), "cron.nix")
+	require.NoError(t, os.WriteFile(path, []byte("{ }\n"), 0o644))
+
+	flags := map[string]any{"out": path, "yes": true}
+	out, err := testutil.RunHandler(t, "cron.sync", nil, flags)
+	require.NoError(t, err)
+	assert.Contains(t, out, "wrote "+path)
+
+	written, err := os.ReadFile(path)
+	require.NoError(t, err)
+	assert.Contains(t, string(written), `"com.lightwave.cron.triage"`)
+
+	backup, err := os.ReadFile(path + ".bak")
+	require.NoError(t, err)
+	assert.Equal(t, "{ }\n", string(backup), "the replaced module is kept")
+
+	out, err = testutil.RunHandler(t, "cron.sync", nil, flags)
+	require.NoError(t, err)
+	assert.Contains(t, out, "unchanged", "an identical module is not rewritten")
+}
+
 const shellJob = `id: knowledge
 schedule: "@hourly"
 persona: v_scrum-manager
