@@ -147,6 +147,24 @@ func TestCronRunShellCommandRunsArgvAndRefusesAShell(t *testing.T) {
 }
 
 //nolint:paralleltest // RunHandler swaps os.Stdout globally; config is a singleton
+func TestCronRunShellCommandExpandsALeadingTildeOnly(t *testing.T) {
+	jobsDir, _ := cronWorkspace(t)
+	secretMap(t, map[string][]string{"cron-knowledge": nil})
+
+	writeJob(t, jobsDir, "knowledge.yaml", strings.Replace(shellJob, "%s", "bun ~/.lightwave/lib/x.ts ~", 1))
+	out, err := testutil.RunHandler(t, "cron.run", []string{"knowledge"}, map[string]any{dryRunFlag: true})
+	require.NoError(t, err)
+
+	home := os.Getenv("HOME")
+	assert.Contains(t, out, `["bun" "`+filepath.Join(home, ".lightwave/lib/x.ts")+`" "`+home+`"]`)
+
+	writeJob(t, jobsDir, "knowledge.yaml", strings.Replace(shellJob, "%s", "ls ~root", 1))
+	_, err = testutil.RunHandler(t, "cron.run", []string{"knowledge"}, map[string]any{dryRunFlag: true})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "needs a shell")
+}
+
+//nolint:paralleltest // RunHandler swaps os.Stdout globally; config is a singleton
 func TestCronRunRefusesAJobSyncWouldRefuse(t *testing.T) {
 	jobsDir, _ := cronWorkspace(t)
 	secretMap(t, nil)

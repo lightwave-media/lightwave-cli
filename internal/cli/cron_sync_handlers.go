@@ -242,7 +242,35 @@ func cronSyncHandler(ctx context.Context, _ []string, flags map[string]any) erro
 
 // shellMeta is what a shell would interpret. run executes a shell_command
 // target as argv, never through a shell, so a target that needs one is refused.
-var shellMeta = regexp.MustCompile("[|;&<>$`\\\\(){}*?~'\"\\n]")
+// A leading ~ is the one expansion run does itself, token by token (homeArgv).
+var shellMeta = regexp.MustCompile("[|;&<>$`\\\\(){}*?'\"\\n]")
+
+// homeArgv expands a token that is ~ or starts with ~/ to the home directory,
+// as a shell would. Any other ~ (~user, or one mid-token) is refused rather
+// than passed through literally.
+func homeArgv(tokens []string) ([]string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, err
+	}
+
+	argv := make([]string, len(tokens))
+
+	for i, token := range tokens {
+		switch {
+		case token == "~":
+			argv[i] = home
+		case strings.HasPrefix(token, "~/"):
+			argv[i] = filepath.Join(home, token[2:])
+		case strings.Contains(token, "~"):
+			return nil, fmt.Errorf("token %q needs a shell to expand its ~", token)
+		default:
+			argv[i] = token
+		}
+	}
+
+	return argv, nil
+}
 
 func cronFindJob(ctx context.Context, id string) (*cron.Job, error) {
 	cfg := config.Get()
@@ -307,7 +335,10 @@ func cronRunShell(ctx context.Context, job *cron.Job, dryRun bool) error {
 		return fmt.Errorf("job %s: target needs a shell; lw cron run executes argv only", job.ID)
 	}
 
-	argv := strings.Fields(job.Dispatch.Target)
+	argv, err := homeArgv(strings.Fields(job.Dispatch.Target))
+	if err != nil {
+		return fmt.Errorf("job %s: %w; lw cron run executes argv only", job.ID, err)
+	}
 
 	if dryRun {
 		fmt.Printf("[dry-run] %s: would run %q with secrets %s\n", job.ID, argv, strings.Join(job.SecretNames, ","))
