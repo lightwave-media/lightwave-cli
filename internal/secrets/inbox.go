@@ -87,9 +87,7 @@ func Inbox(ctx context.Context, deps *RotateDeps, m *Map, name string, value []b
 	res.record(deps, "inbox-written")
 	res.followUp(ctx, deps, rec, m.Consumers(rec))
 
-	if rec.Status == "pending" {
-		res.Pending = append(res.Pending, "secret map: "+rec.Name+" is still pending; set it active in gen_security_instances.py and re-run it")
-	}
+	res.MapPending = rec.Status == "pending"
 
 	if res.ExitCode() == ExitDone {
 		res.record(deps, "inbox-verified")

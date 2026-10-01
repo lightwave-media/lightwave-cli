@@ -76,12 +76,25 @@ func TestInboxCreatesAMissingKeyTaggedAndReportsThePendingRow(t *testing.T) {
 	assert.Equal(t, map[string]string{"app": "v_security-compliance", "managed-by": "lw secret inbox"}, r.writer.tags)
 	assert.Equal(t, int64(0), res.From)
 	assert.Equal(t, int64(1), res.To)
-	assert.Equal(t, secrets.ExitPending, res.ExitCode(), "the map row is still pending")
-	assert.Equal(t,
-		[]string{"secret map: " + notionKey + " is still pending; set it active in gen_security_instances.py and re-run it"},
-		res.Pending)
+	assert.Equal(t, secrets.ExitMapPending, res.ExitCode(), "only the map row is owed: 5, not 3")
+	assert.True(t, res.MapPending)
+	assert.Empty(t, res.Pending, "no consumer refresh is owed")
+	assert.Contains(t, res.Line(), "secret map: still pending; set "+notionKey+" active in gen_security_instances.py")
 	assert.Equal(t, []string{"inbox-written", "inbox-incomplete"}, r.events())
 	inboxLedgerHasNoValue(t, r, res.Line())
+}
+
+func TestInboxRefreshOwedOutranksAPendingMapRow(t *testing.T) {
+	t.Parallel()
+
+	r := newRig("op_joel")
+	m := inboxShape("pending")
+	m.Daemons = append(m.Daemons, daemon("site-release", "redeploy", "lightwave-media/site:release.yml", "", notionKey))
+
+	res, err := secrets.Inbox(context.Background(), r.deps, m, notionKey, []byte(notionValue))
+	require.NoError(t, err)
+	assert.True(t, res.MapPending)
+	assert.Equal(t, secrets.ExitPending, res.ExitCode(), "precedence 1 > 3 > 5")
 }
 
 func TestInboxRefusesBeforeAnyWrite(t *testing.T) {

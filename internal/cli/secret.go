@@ -139,10 +139,11 @@ recorded; output and the ledger carry names and versions.
 
 A parameter SSM does not have yet is created, tagged app and managed-by. A
 pending map row stays pending until gen_security_instances.py marks it
-active; inbox reports that as an owed follow-up.
+active; inbox exits 5 for it.
 
-Exit codes as for rotate: 0 written and verified; 1 failed; 3 written, a
-follow-up is still owed; 4 refused, nothing written. --dry-run runs every
+Exit codes: 0 written and verified; 1 failed; 3 written, a consumer refresh
+is still owed; 4 refused, nothing written; 5 written and verified, the map row
+is still pending (precedence 1 > 3 > 5). --dry-run runs every
 check except the value's and reads no stdin.`,
 	Args:         cobra.ExactArgs(1),
 	SilenceUsage: true,

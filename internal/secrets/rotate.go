@@ -24,12 +24,15 @@ import (
 	"time"
 )
 
-// Exit codes of lw secret rotate.
+// Exit codes of lw secret rotate and inbox. ExitMapPending is inbox's alone:
+// the write and every consumer are fine, but the map row still says pending,
+// a fix (re-run the generator) unlike ExitPending's (refresh a consumer).
 const (
-	ExitDone    = 0
-	ExitFailed  = 1
-	ExitPending = 3
-	ExitRefused = 4
+	ExitDone       = 0
+	ExitFailed     = 1
+	ExitPending    = 3
+	ExitRefused    = 4
+	ExitMapPending = 5
 )
 
 // Every /lightwave/prod SecureString has this shape (measured 2026-09-24).
@@ -126,6 +129,8 @@ type Result struct {
 	From      int64
 	To        int64
 	DryRun    bool
+	// MapPending: the secret map row still says pending after a good write.
+	MapPending bool
 }
 
 // ErrorExitCode maps a Rotate error to its exit code.
@@ -137,13 +142,16 @@ func ErrorExitCode(err error) int {
 	return ExitFailed
 }
 
-// ExitCode is 1 when a follow-up failed, 3 when one is owed by someone else.
+// ExitCode is 1 when a follow-up failed, 3 when a consumer refresh is owed by
+// someone else, 5 when only the map row is still pending; in that order.
 func (r *Result) ExitCode() int {
 	switch {
 	case len(r.Failures) > 0:
 		return ExitFailed
 	case len(r.Pending) > 0:
 		return ExitPending
+	case r.MapPending:
+		return ExitMapPending
 	default:
 		return ExitDone
 	}
@@ -173,6 +181,10 @@ func (r *Result) Line() string {
 		if len(part.items) > 0 {
 			parts = append(parts, part.label+": "+strings.Join(part.items, ", "))
 		}
+	}
+
+	if r.MapPending {
+		parts = append(parts, "secret map: still pending; set "+r.Name+" active in gen_security_instances.py and re-run it")
 	}
 
 	return strings.Join(parts, "; ")
