@@ -81,9 +81,12 @@ func okJob() cron.Job {
 		Schedule:         "0 3 * * *",
 		Persona:          "v_scrum-manager",
 		DaemonSecretsRef: "cron-nightly_audit",
-		SecretNames:      []string{"NULLTICKETS_API_TOKEN"},
-		Dispatch:         cron.Dispatch{Kind: cron.DispatchAgentSession, Target: "v_scrum-manager", PromptTemplate: "Triage the backlog."},
-		Enabled:          true,
+		// Two names, unsorted: the goldens pin them as ONE sorted, comma-joined
+		// --only argument. Space-separated, the second name would become the
+		// command lw config exec runs.
+		SecretNames: []string{"NULLTICKETS_API_TOKEN", "GITHUB_PACKAGES_READ_TOKEN"},
+		Dispatch:    cron.Dispatch{Kind: cron.DispatchAgentSession, Target: "v_scrum-manager", PromptTemplate: "Triage the backlog."},
+		Enabled:     true,
 	}
 }
 
@@ -145,7 +148,7 @@ func TestRenderRunsTheJobUnderItsEntitledNamesOnly(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "com.lightwave.cron.nightly_audit", agent.Label)
 	assert.Equal(t, []string{
-		opts.LwPath, "config", "exec", "--only", "NULLTICKETS_API_TOKEN", "--",
+		opts.LwPath, "config", "exec", "--only", "GITHUB_PACKAGES_READ_TOKEN,NULLTICKETS_API_TOKEN", "--",
 		opts.LwPath, "cron", "run", "nightly_audit",
 	}, agent.ProgramArguments)
 	assert.Equal(t, "v_scrum-manager", agent.Environment["LW_AGENT_ID"])

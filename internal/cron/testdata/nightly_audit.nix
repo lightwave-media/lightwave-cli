@@ -4,7 +4,7 @@
 {
   launchd.user.agents."com.lightwave.cron.nightly_audit".serviceConfig = {
     Label = "com.lightwave.cron.nightly_audit";
-    ProgramArguments = [ "/home/u/.local/bin/lw" "config" "exec" "--only" "NULLTICKETS_API_TOKEN" "--" "/home/u/.local/bin/lw" "cron" "run" "nightly_audit" ];
+    ProgramArguments = [ "/home/u/.local/bin/lw" "config" "exec" "--only" "GITHUB_PACKAGES_READ_TOKEN,NULLTICKETS_API_TOKEN" "--" "/home/u/.local/bin/lw" "cron" "run" "nightly_audit" ];
     EnvironmentVariables = {
       AWS_PROFILE = "lightwave-agent";
       LW_AGENT_ID = "v_scrum-manager";

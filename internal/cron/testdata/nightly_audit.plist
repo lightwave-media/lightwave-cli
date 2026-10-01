@@ -10,7 +10,7 @@
     <string>config</string>
     <string>exec</string>
     <string>--only</string>
-    <string>NULLTICKETS_API_TOKEN</string>
+    <string>GITHUB_PACKAGES_READ_TOKEN,NULLTICKETS_API_TOKEN</string>
     <string>--</string>
     <string>/home/u/.local/bin/lw</string>
     <string>cron</string>
