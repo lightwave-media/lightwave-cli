@@ -16,10 +16,12 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -191,7 +193,7 @@ func (s ssmMeta) Meta(ctx context.Context, path string) (ParamMeta, error) {
 		}
 
 		if out.NextToken == nil {
-			return ParamMeta{}, fmt.Errorf("%s does not exist", path)
+			return ParamMeta{}, fmt.Errorf("%s: %w", path, ErrNotFound)
 		}
 
 		in.NextToken = out.NextToken
@@ -211,6 +213,29 @@ func (w rotatorWriter) Put(ctx context.Context, path string, value []byte) (int6
 		Tier:      types.ParameterTierStandard,
 		Overwrite: aws.Bool(true),
 	})
+	if err != nil {
+		return 0, awsError(err)
+	}
+
+	return out.Version, nil
+}
+
+// Create writes value as a new Standard SecureString carrying tags. It never
+// overwrites: SSM refuses tags alongside Overwrite, and a parameter that
+// appeared since the metadata read must go through Put's checks instead.
+func (w rotatorWriter) Create(ctx context.Context, path string, value []byte, tags map[string]string) (int64, error) {
+	in := &ssm.PutParameterInput{
+		Name:      aws.String(path),
+		Value:     aws.String(string(value)),
+		Type:      types.ParameterTypeSecureString,
+		Tier:      types.ParameterTierStandard,
+		Overwrite: aws.Bool(false),
+	}
+	for _, key := range slices.Sorted(maps.Keys(tags)) {
+		in.Tags = append(in.Tags, types.Tag{Key: aws.String(key), Value: aws.String(tags[key])})
+	}
+
+	out, err := w.api.PutParameter(ctx, in)
 	if err != nil {
 		return 0, awsError(err)
 	}

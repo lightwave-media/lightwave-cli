@@ -7,9 +7,11 @@ package cli
 // Hand-wired like `config exec`; declared in lightwave-core commands.yaml.
 
 import (
+	"bytes"
 	"context"
 	"crypto/rand"
 	"fmt"
+	"io"
 	"os"
 	"slices"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	"github.com/lightwave-media/lightwave-cli/internal/secrets"
 )
@@ -44,7 +47,7 @@ var (
 
 var secretCmd = &cobra.Command{
 	Use:   "secret",
-	Short: "List and rotate SSM /lightwave/prod keys by name, never by value",
+	Short: "List, rotate and inbox SSM /lightwave/prod keys by name, never by value",
 }
 
 var secretListCmd = &cobra.Command{
@@ -119,6 +122,119 @@ func runSecretRotate(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+var secretInboxCmd = &cobra.Command{
+	Use:   "inbox NAME",
+	Short: "Write a human_inbox key's value from stdin, refresh its consumers and probe them",
+	Long: `Read NAME's value from stdin, write it to SSM as the rotator role, kickstart
+each consumer's launchd job, and probe each consumer through lw config exec.
+For a human_inbox key: a value a vendor issues only from its console.
+
+The value comes from stdin and nowhere else: never an argument, a flag or the
+environment. On a terminal the paste is hidden; piped, one trailing newline
+is dropped. It must be a single token, and must start with the vendor's
+value_prefix when the secret map records one. It is never printed, logged or
+recorded; output and the ledger carry names and versions.
+
+A parameter SSM does not have yet is created, tagged app and managed-by. A
+pending map row stays pending until gen_security_instances.py marks it
+active; inbox reports that as an owed follow-up.
+
+Exit codes as for rotate: 0 written and verified; 1 failed; 3 written, a
+follow-up is still owed; 4 refused, nothing written. --dry-run runs every
+check except the value's and reads no stdin.`,
+	Args:         cobra.ExactArgs(1),
+	SilenceUsage: true,
+	RunE:         runSecretInbox,
+}
+
+// maxSecretInboxRead bounds a piped read at twice SSM's 4 KB Standard limit,
+// so an oversized paste is refused by size rather than truncated into a valid
+// looking value.
+const maxSecretInboxRead = 8192
+
+// Seams for tests: where inbox reads the value from.
+var (
+	secretInboxIn    io.Reader = os.Stdin
+	secretIsTerminal           = term.IsTerminal
+	secretReadPrompt           = term.ReadPassword
+)
+
+func runSecretInbox(cmd *cobra.Command, args []string) error {
+	res, err := inboxSecret(cmd, args[0])
+	if err != nil {
+		return exitCodeError{err: fmt.Errorf("lw secret inbox: %w", err), code: secrets.ErrorExitCode(err)}
+	}
+
+	_, _ = fmt.Fprintln(cmd.OutOrStdout(), res.Line())
+
+	if code := res.ExitCode(); code != secrets.ExitDone {
+		return exitCodeError{err: fmt.Errorf("lw secret inbox: %s: follow-up incomplete (see the line above)", res.Name), code: code}
+	}
+
+	return nil
+}
+
+// inboxSecret refuses what the map forbids before touching AWS or reading
+// stdin, then reads the value, writes it and follows up.
+func inboxSecret(cmd *cobra.Command, name string) (*secrets.Result, error) {
+	ctx, cancel := context.WithTimeout(cmd.Context(), secretRotateTimeout)
+	defer cancel()
+
+	m, err := loadSecretMap()
+	if err != nil {
+		return nil, err
+	}
+
+	rec, err := m.Lookup(name)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := secrets.CheckInboxRecord(rec); err != nil {
+		return nil, err
+	}
+
+	deps, err := rotateDeps(ctx, rec)
+	if err != nil {
+		return nil, err
+	}
+
+	var value []byte
+	if !deps.DryRun {
+		if value, err = readInboxValue(cmd); err != nil {
+			return nil, err
+		}
+		defer clear(value)
+	}
+
+	return secrets.Inbox(ctx, deps, m, name, value)
+}
+
+// readInboxValue reads one value from stdin: hidden on a terminal, otherwise
+// up to maxSecretInboxRead bytes with one trailing newline dropped.
+func readInboxValue(cmd *cobra.Command) ([]byte, error) {
+	if f, ok := secretInboxIn.(*os.File); ok && secretIsTerminal(int(f.Fd())) {
+		_, _ = fmt.Fprint(cmd.ErrOrStderr(), "Paste the value (hidden), then press Enter: ")
+		value, err := secretReadPrompt(int(f.Fd()))
+		_, _ = fmt.Fprintln(cmd.ErrOrStderr())
+
+		if err != nil {
+			return nil, fmt.Errorf("read the value: %w", err)
+		}
+
+		return value, nil
+	}
+
+	raw, err := io.ReadAll(io.LimitReader(secretInboxIn, maxSecretInboxRead))
+	if err != nil {
+		return nil, fmt.Errorf("read the value from stdin: %w", err)
+	}
+
+	raw = bytes.TrimSuffix(raw, []byte("\n"))
+
+	return bytes.TrimSuffix(raw, []byte("\r")), nil
 }
 
 // rotateSecret refuses what the map forbids before touching AWS, then builds
@@ -196,6 +312,8 @@ func rotateDeps(ctx context.Context, rec *secrets.Record) (*secrets.RotateDeps, 
 func init() {
 	secretRotateCmd.Flags().StringVar(&secretRotateProfile, "profile", "", "operator profile that assumes the rotator role as op_* (agents leave it unset and set LW_PERSONA)")
 	secretRotateCmd.Flags().BoolVar(&secretRotateDryRun, "dry-run", false, "run every check, including the caller's identity, and write nothing")
-	secretCmd.AddCommand(secretListCmd, secretRotateCmd)
+	secretInboxCmd.Flags().StringVar(&secretRotateProfile, "profile", "", "operator profile that assumes the rotator role as op_* (agents leave it unset and set LW_PERSONA)")
+	secretInboxCmd.Flags().BoolVar(&secretRotateDryRun, "dry-run", false, "run every check but the value's, read no stdin and write nothing")
+	secretCmd.AddCommand(secretListCmd, secretRotateCmd, secretInboxCmd)
 	rootCmd.AddCommand(secretCmd)
 }

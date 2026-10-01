@@ -60,6 +60,10 @@ func (w *secretFakeWriter) Put(_ context.Context, _ string, value []byte) (int64
 	return 2, nil
 }
 
+func (w *secretFakeWriter) Create(ctx context.Context, path string, value []byte, _ map[string]string) (int64, error) {
+	return w.Put(ctx, path, value)
+}
+
 type secretRig struct {
 	writer *secretFakeWriter
 	ledger string
@@ -161,6 +165,51 @@ func TestSecretRotateRefusesAnAgentWithNoPersona(t *testing.T) {
 
 	code, _ := ExitCode(err)
 	assert.Equal(t, secrets.ExitRefused, code)
+}
+
+// withInboxStdin feeds value to inbox as piped (non-terminal) stdin.
+func withInboxStdin(t *testing.T, value string) {
+	t.Helper()
+
+	prevIn, prevTerm := secretInboxIn, secretIsTerminal
+
+	t.Cleanup(func() { secretInboxIn, secretIsTerminal = prevIn, prevTerm })
+
+	secretInboxIn = strings.NewReader(value)
+	secretIsTerminal = func(int) bool { return false }
+}
+
+//nolint:paralleltest // swaps package-level seams
+func TestSecretInboxReadsPipedStdinAndPrintsNamesAndVersionsOnly(t *testing.T) {
+	r := withSecretSeams(t, "lightwave-secret-rotator")
+	const value = "ntn_pipedFixtureValue0123456789"
+	withInboxStdin(t, value+"\n")
+	cmd, out := secretCommand()
+
+	require.NoError(t, runSecretInbox(cmd, []string{"NOTION_API_KEY"}))
+
+	assert.Equal(t, "NOTION_API_KEY: written v1 -> v2 as op_joel\n", out.String())
+	assert.Equal(t, []string{value}, r.writer.written, "one trailing newline is dropped")
+
+	ledger, err := os.ReadFile(r.ledger)
+	require.NoError(t, err)
+	assert.NotContains(t, string(ledger), value)
+	assert.NotContains(t, out.String(), value)
+}
+
+//nolint:paralleltest // swaps package-level seams
+func TestSecretInboxRefusesAGenerateKeyBeforeReadingStdin(t *testing.T) {
+	r := withSecretSeams(t, "lightwave-secret-rotator")
+	withInboxStdin(t, "should-not-be-read")
+	cmd, _ := secretCommand()
+
+	err := runSecretInbox(cmd, []string{secretFixtureKey})
+	require.ErrorIs(t, err, secrets.ErrRefused)
+
+	code, _ := ExitCode(err)
+	assert.Equal(t, secrets.ExitRefused, code)
+	assert.False(t, r.awsHit, "a refusal the map decides needs no AWS call")
+	assert.Empty(t, r.writer.written)
 }
 
 //nolint:paralleltest // swaps package-level seams
