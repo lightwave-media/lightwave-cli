@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Bootstrap lightwave-media GitHub org: Lightwave Swarm project, labels, milestones.
-# Idempotent where gh/graphql allow (--force labels, skip existing milestones).
+# Bootstrap lightwave-media GitHub org: labels, milestones.
+# Idempotent where gh allows (--force labels, skip existing milestones).
 set -euo pipefail
 
 ORG_LOGIN="${ORG_LOGIN:-lightwave-media}"
-PROJECT_TITLE="${PROJECT_TITLE:-Lightwave Swarm}"
-PROJECT_ID="${PROJECT_ID:-PVT_kwDODlnoUM4BbDql}"
 
 # The six null* standalones (nullclaw, nullhub, nullbuilder, nulltickets,
 # nullwatch, nullboiler) are NOT listed: they were folded into
@@ -94,55 +92,14 @@ apply_milestones() {
   echo "  milestones: ${repo}"
 }
 
-link_project() {
-  local repo=$1
-  local rid
-  rid=$(gh api graphql -f query="query{repository(owner:\"${ORG_LOGIN}\",name:\"${repo}\"){id}}" --jq '.data.repository.id' 2>/dev/null || true)
-  if [[ -z "$rid" || "$rid" == "null" ]]; then
-    echo "  skip link (no repo / no access): ${repo}"
-    return 0
-  fi
-  gh api graphql \
-    -f query='mutation($pid:ID!,$rid:ID!){linkProjectV2ToRepository(input:{projectId:$pid,repositoryId:$rid}){repository{name}}}' \
-    -f pid="$PROJECT_ID" -f rid="$rid" >/dev/null 2>&1 || true
-  echo "  linked: ${repo}"
-}
-
-ensure_agent_field() {
-  local pid=$1
-  local fields
-  if ! fields=$(gh api graphql -f query='query($pid:ID!){node(id:$pid){... on ProjectV2{fields(first:30){nodes{... on ProjectV2SingleSelectField{name}}}}}}' -f pid="$pid" --jq '[.data.node.fields.nodes[].name] | join(",")' 2>/dev/null); then
-    echo "warn: cannot read project fields (token lacks projects scope); skipping Agent field ensure"
-    return 0
-  fi
-  if [[ "$fields" == *"Agent"* ]]; then
-    echo "Agent field already exists"
-    return 0
-  fi
-  if ! gh api graphql -f query='mutation($pid:ID!){createProjectV2Field(input:{projectId:$pid,dataType:SINGLE_SELECT,name:"Agent",singleSelectOptions:[{name:"v_cli-developer",color:GRAY,description:"CLI developer"},{name:"v_core-package-developer",color:GRAY,description:"Core package developer"},{name:"v_platform-developer",color:GRAY,description:"Platform developer"},{name:"v_frontend-developer",color:GRAY,description:"Frontend developer"},{name:"v_sys-developer",color:GRAY,description:"Sys developer"},{name:"v_localapp-developer",color:GRAY,description:"Local app developer"},{name:"v_staff-engineer",color:GRAY,description:"Staff engineer"},{name:"v_lightwave-ai-engineer",color:GRAY,description:"Lightwave AI engineer"},{name:"unassigned",color:GRAY,description:"Not yet assigned"}]}){projectV2Field{... on ProjectV2SingleSelectField{name}}}}' -f pid="$pid"; then
-    echo "warn: could not create Agent field; continuing"
-    return 0
-  fi
-  echo "Created Agent field"
-}
-
-echo "==> Lightwave Swarm org bootstrap (${ORG_LOGIN})"
+echo "==> Org bootstrap (${ORG_LOGIN})"
 
 if [[ -n "${TARGET_REPO:-}" ]]; then
-  ensure_agent_field "$PROJECT_ID"
-  link_project "$TARGET_REPO"
   apply_labels "$TARGET_REPO"
   apply_milestones "$TARGET_REPO"
   echo "==> Done repo slice: ${TARGET_REPO}"
   exit 0
 fi
-
-ensure_agent_field "$PROJECT_ID"
-
-echo "==> Link repos to project"
-for repo in "${SWARM_REPOS[@]}"; do
-  link_project "$repo"
-done
 
 echo "==> Apply swarm labels"
 for repo in "${SWARM_REPOS[@]}"; do
@@ -154,4 +111,4 @@ for repo in lightwave-core lightwave-cli lightwave-ai lightwave-platform lightwa
   apply_milestones "$repo"
 done
 
-echo "==> Done. Project: https://github.com/orgs/${ORG_LOGIN}/projects/3"
+echo "==> Done."

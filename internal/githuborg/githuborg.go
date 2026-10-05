@@ -1,5 +1,5 @@
-// Package githuborg bootstraps lightwave-media GitHub org assets (Lightwave
-// Swarm project, swarm labels, milestones).
+// Package githuborg bootstraps lightwave-media GitHub org assets (swarm labels,
+// milestones).
 package githuborg
 
 import (
@@ -13,8 +13,7 @@ import (
 )
 
 const (
-	DefaultOrg           = github.DefaultOrg
-	DefaultProjectNodeID = "PVT_kwDODlnoUM4BbDql"
+	DefaultOrg = github.DefaultOrg
 	// The bootstrap script moved into this repo's own scripts/ as a
 	// self-checkout (#281, 2026-07-27) so the org-sync workflow no longer
 	// clones a private sibling. This constant still pointed at the old
@@ -66,10 +65,7 @@ func RunBootstrap(ctx context.Context, opts Options) error {
 	}
 
 	cmd := exec.CommandContext(ctx, "bash", script)
-	cmd.Env = append(os.Environ(),
-		"ORG_LOGIN="+opts.Org,
-		"PROJECT_ID="+DefaultProjectNodeID,
-	)
+	cmd.Env = append(os.Environ(), "ORG_LOGIN="+opts.Org)
 	if opts.TargetRepo != "" {
 		cmd.Env = append(cmd.Env, "TARGET_REPO="+opts.TargetRepo)
 	}
