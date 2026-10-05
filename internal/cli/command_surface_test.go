@@ -174,11 +174,12 @@ func TestCommandSurface_EveryExposedCommandIsAccountedFor(t *testing.T) {
 // It only counts down from 28. First decrement: 28 -> 27 on 2026-08-29,
 // `scaffold` verified end-to-end (scaffold_test.go) once the boilerplate
 // engine became a linked library and --blueprints-dir gave the render path a
-// config-free seam.
+// config-free seam. Second: 27 -> 26 on 2026-10-05, `scrum` decommissioned
+// (not verified) when the Lightwave Swarm project board it reconciled closed.
 //
 //nolint:paralleltest // reads package globals; trivial
 func TestCommandSurface_UnreviewedBacklogOnlyShrinks(t *testing.T) {
-	const backlogAtGateArming = 27
+	const backlogAtGateArming = 26
 
 	assert.LessOrEqualf(t, len(UnreviewedCommands), backlogAtGateArming,
 		"UnreviewedCommands grew to %d. It was %d when the gate was armed and is "+

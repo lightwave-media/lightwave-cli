@@ -567,7 +567,6 @@ Examples:
 			fmt.Printf("  Mark sprint %s as completed\n", sprint.ShortID)
 			if len(issuestoClose) > 0 {
 				fmt.Printf("  Close %d GitHub Issues: %v\n", len(issuestoClose), issuestoClose)
-				fmt.Printf("  Move %d Projects cards to Done\n", len(issuestoClose))
 			}
 			return nil
 		}
@@ -584,10 +583,9 @@ Examples:
 		}
 		fmt.Printf("Status: %s  End: %s\n", color.HiBlackString("completed"), color.CyanString(today))
 
-		// Close linked GitHub Issues and sync Projects board
+		// Close linked GitHub Issues
 		for _, issueNum := range issuestoClose {
 			closeLinkedIssue(issueNum)
-			syncProjectStatus(issueNum, "done")
 		}
 
 		// Move spec from active/ → done/
