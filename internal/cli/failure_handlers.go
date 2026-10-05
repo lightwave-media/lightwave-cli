@@ -175,7 +175,6 @@ func failureFileHandler(ctx context.Context, _ []string, flags map[string]any) e
 		Scope:          flagStr(flags, "scope"),
 		Labels:         append(flagStrSlice(flags, "label"), "status:triage"),
 		Origin:         flagStrOr(flags, "origin", "failureloop"),
-		ProjectNumber:  gh.DefaultProjectNum,
 		Org:            flagStrOr(flags, "org", gh.DefaultOrg),
 		DryRun:         flagBool(flags, "dry-run"),
 	}
