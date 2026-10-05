@@ -79,14 +79,7 @@ func dispatchFactoryStep(ctx context.Context, step *manifestStep, flags map[stri
 
 		return githuborg.RunBootstrap(ctx, opts)
 	case "scrum-sync", "project-board-hygiene":
-		opts := githuborg.Options{
-			Org:           stepOrg(step),
-			LightwaveRoot: lightwaveRoot(),
-			TargetRepo:    step.Repo,
-		}
-		_, err := githuborg.Sync(ctx, opts)
-
-		return err
+		return fmt.Errorf("manifest kind %q is decommissioned: the Lightwave Swarm project board it reconciled is closed", step.Kind)
 	case "create-repo", "repo-bootstrap":
 		name := step.Name
 		if name == "" {

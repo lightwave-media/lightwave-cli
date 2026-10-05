@@ -72,6 +72,7 @@ var DecommissionedCommands = map[string]string{
 	"browser":          "macOS osascript automation; flaky (audit verdict: drop)",
 	"spec":             "legacy parked tree pending schema merge",
 	"sst":              "depends on ~/.brain corpus state",
+	"scrum":            "the Lightwave Swarm project board it reconciled is closed; needs a board to reconcile and an e2e harness",
 }
 
 // UnreviewedCommands is the backlog: commands that ship today but have never
@@ -118,7 +119,6 @@ var UnreviewedCommands = map[string]string{
 	"process": "host process inventory",
 	"release": "release train and merge gate",
 	"schema":  "schema validation and codegen",
-	"scrum":   "scrum queue hygiene",
 	"session": "agent session lifecycle",
 	"sprint":  "sprint lifecycle",
 	"story":   "story lifecycle",

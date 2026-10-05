@@ -179,47 +179,6 @@ func issueNumberFromURL(url string) int {
 	return num
 }
 
-// ListProjectItems returns issue URLs already in a project (to avoid duplicates).
-func ListProjectItems(org string, projectNumber int) (map[string]bool, error) {
-	cmd := exec.Command("gh", "project", "item-list",
-		fmt.Sprintf("%d", projectNumber),
-		"--owner", org,
-		"--format", "json",
-		"--limit", "200",
-	)
-
-	out, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("gh project item-list failed: %w", err)
-	}
-
-	var result struct {
-		Items []struct {
-			Content struct {
-				Title string `json:"title"`
-				URL   string `json:"url"`
-			} `json:"content"`
-		} `json:"items"`
-	}
-
-	if err := json.Unmarshal(out, &result); err != nil {
-		return nil, fmt.Errorf("parse project items: %w", err)
-	}
-
-	urls := make(map[string]bool)
-	for _, item := range result.Items {
-		if item.Content.URL != "" {
-			urls[item.Content.URL] = true
-		}
-		// Also index by title prefix (task short ID)
-		if item.Content.Title != "" {
-			urls[item.Content.Title] = true
-		}
-	}
-
-	return urls, nil
-}
-
 func buildIssueBody(task TaskInfo) string {
 	var b strings.Builder
 	if task.Description != "" {

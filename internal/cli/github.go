@@ -186,10 +186,9 @@ func monitorExistingPR(ctx context.Context, _ interface{}, task *db.Task) error 
 					}
 				}
 
-				// Close linked GitHub Issue and sync Projects board
+				// Close linked GitHub Issue
 				if issueNum := taskIssueNumber(ctx, task); issueNum > 0 {
 					closeLinkedIssue(issueNum)
-					syncProjectStatus(issueNum, "done")
 				}
 
 				notifyJoel(fmt.Sprintf("Task %s DONE — PR #%d merged", task.ShortID, prNumber))
@@ -336,9 +335,9 @@ var githubSweepMergedDryRun bool
 
 var githubSweepMergedCmd = &cobra.Command{
 	Use:   "sweep-merged",
-	Short: "Close Issues and move Projects cards for all merged PRs",
+	Short: "Close Issues for all merged PRs",
 	Long: `Find recently merged PRs (last 7 days), resolve their linked tasks,
-and run close-issue + projects-sync for any still-open issues. Idempotent.
+and run close-issue for any still-open issues. Idempotent.
 
 Examples:
   lw github sweep-merged
@@ -400,7 +399,7 @@ func runSweepMerged(ctx context.Context, dryRun bool) error {
 		return fmt.Errorf("database: %w", err)
 	}
 
-	var closed, synced, skipped int
+	var closed, skipped int
 
 	for _, pr := range recent {
 		// Try to find linked task by PR URL or branch name
@@ -436,8 +435,6 @@ func runSweepMerged(ctx context.Context, dryRun bool) error {
 		if !dryRun {
 			closeLinkedIssue(issueNum)
 			closed++
-			syncProjectStatus(issueNum, "done")
-			synced++
 
 			// Update task status to done if not already
 			if task.Status != "done" && task.Status != "cancelled" && task.Status != "archived" {
@@ -449,16 +446,14 @@ func runSweepMerged(ctx context.Context, dryRun bool) error {
 				}
 			}
 		} else {
-			fmt.Printf("    Would close issue #%d and move Projects card to Done\n", issueNum)
+			fmt.Printf("    Would close issue #%d\n", issueNum)
 			closed++
-			synced++
 		}
 	}
 
 	fmt.Println()
 	fmt.Println(color.CyanString("Sweep Summary"))
 	fmt.Printf("  Closed:  %s\n", color.GreenString("%d", closed))
-	fmt.Printf("  Synced:  %s\n", color.GreenString("%d", synced))
 	fmt.Printf("  Skipped: %s\n", color.HiBlackString("%d", skipped))
 
 	return nil
@@ -516,10 +511,9 @@ func isIssueOpen(issueNumber int) (bool, error) {
 
 var githubCloseDoneCmd = &cobra.Command{
 	Use:   "close-done <task-id>",
-	Short: "Close GitHub Issue and move Projects card for a done task",
-	Long: `Manually trigger the post-merge actions for a task:
-  1. Close the linked GitHub Issue
-  2. Move the Projects board card to Done
+	Short: "Close GitHub Issue for a done task",
+	Long: `Manually trigger the post-merge action for a task: close the linked
+GitHub Issue.
 
 Useful when a PR was merged outside the monitor-pr workflow.
 
@@ -549,7 +543,6 @@ Examples:
 		fmt.Printf("Issue: #%d\n\n", issueNum)
 
 		closeLinkedIssue(issueNum)
-		syncProjectStatus(issueNum, "done")
 
 		// Update task status to done if not already
 		if task.Status != "done" && task.Status != "cancelled" && task.Status != "archived" {
