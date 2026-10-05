@@ -7,10 +7,7 @@ import (
 	"strings"
 )
 
-const (
-	DefaultProjectNum   = 3 // Lightwave Swarm
-	EnvIssueCreateGuard = "LW_ISSUE_CREATE"
-)
+const EnvIssueCreateGuard = "LW_ISSUE_CREATE"
 
 // IssueKind selects the GitHub issue form template shape.
 type IssueKind string
@@ -35,7 +32,7 @@ type IssueCreateOpts struct {
 	Closes         []string
 	Origin         string // owner/repo#N — upstream gap source
 	Milestone      string
-	ProjectNumber  int
+	ProjectNumber  int // org project to link the issue to; 0 links none
 	Org            string
 	DryRun         bool
 }
@@ -178,9 +175,6 @@ func CreateCompliantIssue(opts IssueCreateOpts) (IssueCreateResult, error) {
 	}
 
 	opts.Repo = QualifyRepo(opts.Repo, opts.Org)
-	if opts.ProjectNumber == 0 {
-		opts.ProjectNumber = DefaultProjectNum
-	}
 	if opts.Kind == "" {
 		opts.Kind = KindFeatureRequest
 	}
@@ -198,7 +192,9 @@ func CreateCompliantIssue(opts IssueCreateOpts) (IssueCreateResult, error) {
 		if opts.Milestone != "" {
 			fmt.Printf("milestone: %s\n", opts.Milestone)
 		}
-		fmt.Printf("project: %s#%d\n", opts.Org, opts.ProjectNumber)
+		if opts.ProjectNumber > 0 {
+			fmt.Printf("project: %s#%d\n", opts.Org, opts.ProjectNumber)
+		}
 		fmt.Println("--- body ---")
 		fmt.Print(body)
 		return IssueCreateResult{URL: "(dry-run)", Number: 0}, nil

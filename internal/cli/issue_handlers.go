@@ -31,7 +31,8 @@ func issueCreateHandler(_ context.Context, args []string, flags map[string]any) 
 		return fmt.Errorf("invalid --kind %q (want feature_request, bug_report, or tool_gap)", kind)
 	}
 
-	projectNum := gh.DefaultProjectNum
+	// No project is linked unless --project names one.
+	projectNum := 0
 
 	if ps := flagStr(flags, "project"); ps != "" {
 		n, err := strconv.Atoi(ps)
