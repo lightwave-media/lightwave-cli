@@ -2,71 +2,93 @@
   description = "lightwave-cli — `lw` toolchain (dev + CI parity)";
 
   inputs = {
-    # Same channel lightwave-core's flake uses, so the two repos resolve one
-    # package set rather than drifting into two. Pinned by flake.lock.
-    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
+    # The fleet's one nixpkgs pin (nix/fleet.nix), so every repository's dev
+    # shell and gate resolve from the same store.
+    nixpkgs.url = "github:NixOS/nixpkgs/79b35bf0bda5cd110f856aa5b5b2c5ba4460dbf5";
   };
 
   outputs = { self, nixpkgs }:
     let
       systems = [ "aarch64-darwin" "x86_64-darwin" "aarch64-linux" "x86_64-linux" ];
       forAllSystems = f: nixpkgs.lib.genAttrs systems (system: f nixpkgs.legacyPackages.${system});
+
+      # A git hook exports GIT_DIR and friends pointing at the repo that ran
+      # it; the steps below that shell out to git (golangci-lint's merge-base
+      # ratchet, the tests' fixture repos) must not inherit them.
+      unsetGit = "unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_OBJECT_DIRECTORY GIT_COMMON_DIR GIT_PREFIX GIT_CONFIG_PARAMETERS; ";
     in
-    {
-      devShells = forAllSystems (pkgs:
-        let
-          # Scoped to what the `ci` task graph ACTUALLY invokes, parsed from
-          # mise.toml rather than guessed: across fmt-check, vet, lint, build,
-          # test, codespell, tidy, schema-drift, actions-pinned,
-          # failure-digest, release-ship-destination and lw-current, the only
-          # binaries are bash, codespell, go, golangci-lint and `lw` itself
-          # (built from source by the tasks that need it). jq and git are added
-          # because dev/hooks/* require them.
-          #
-          # Versions measured 2026-09-22 against the locked rev (flake.lock,
-          # nixpkgs b6c98e9e6633):
-          #
-          #     tool            mise.toml   this shell   verdict
-          #     go              1.26.7      1.26.7       EXACT — also go.mod's
-          #     golangci-lint   v2.13.2     2.13.2       EXACT
-          #     codespell       (unpinned)  2.4.3        see below
-          #
-          # go and golangci-lint agreeing EXACTLY is what makes this repo the
-          # right place for Nix to own versions: golangci-lint is the one tool
-          # whose version changes lint verdicts, and there is no gap to close.
-          #
-          # codespell is the interesting one. The `codespell` gate runs it, but
-          # mise does NOT pin it — on this host it resolved to
-          # /opt/homebrew/bin/codespell, i.e. the gate depended on whatever
-          # Homebrew happened to have. Naming it here does not create a second
-          # owner; it creates the FIRST one.
-          common = with pkgs; [
-            go
-            golangci-lint
-            codespell
-            jq
-            git
-          ];
-        in
-        {
-          # Daily work.
-          default = pkgs.mkShell {
-            packages = common;
-            shellHook = ''
-              echo "lightwave-cli devShell — $(go version | cut -d' ' -f3), golangci-lint $(golangci-lint version --short 2>/dev/null || echo '?'), codespell $(codespell --version)"
-              echo "NOTE: mise still owns the task graph, pre-commit and goreleaser (see flake.nix)."
-            '';
-          };
-
-          # What CI enters. Identical package set today — kept as a separate
-          # output so CI can diverge (leaner, no shellHook noise) without
-          # touching the shell humans use. Same shape as lightwave-core, whose
-          # Forgejo gate runs `nix develop .#ci -c mise run ci`.
-          ci = pkgs.mkShell {
-            packages = common;
-          };
-        });
-
+    # The dev shell and the gate (`nix run .#ci`) come from the fleet's
+    # template (nix/fleet.nix, stamped from nix-config); this repo declares
+    # its tools and its gate's steps. Everything below is its own.
+    import ./nix/fleet.nix {
+      inherit nixpkgs;
+      name = "lightwave-cli";
+      # go 1.26.7 and golangci-lint 2.13.2, exactly mise.toml's pins.
+      kinds = [ "go" ];
+      # The rest of mise.toml's [tools], plus codespell (the gate runs it) and
+      # a C compiler (`go test -race` needs cgo).
+      tools = pkgs: with pkgs; [
+        codespell
+        goreleaser
+        go-junit-report
+        pre-commit
+        nodejs_24
+        python312
+        stdenv.cc
+      ];
+      # mise.toml's [tasks.ci] graph, one task per step (or two where the task
+      # runs two commands), in its `depends` order.
+      gate = [
+        # fmt-check
+        "test -z \"$(gofmt -l .)\""
+        # vet
+        "go vet ./..."
+        # lint: ratcheted to new code vs origin/main.
+        "${unsetGit}golangci-lint run --new-from-merge-base=origin/main --timeout=10m ./..."
+        # build
+        "go build ./cmd/lw"
+        # test
+        "${unsetGit}go test -race -shuffle=on ./..."
+        # codespell (reads .codespellrc)
+        "codespell"
+        # tidy: go mod tidy must be a no-op; go.mod/go.sum are restored.
+        ''
+          cp go.mod go.mod.cibak && cp go.sum go.sum.cibak
+          go mod tidy
+          status=0
+          diff -q go.mod go.mod.cibak >/dev/null || { echo "go.mod not tidy — run 'go mod tidy' and commit"; status=1; }
+          diff -q go.sum go.sum.cibak >/dev/null || { echo "go.sum not tidy — run 'go mod tidy' and commit"; status=1; }
+          mv go.mod.cibak go.mod && mv go.sum.cibak go.sum
+          exit $status
+        ''
+        # schema-drift: the CLI against lightwave-core's commands.yaml, read
+        # from a sibling checkout ($LW_STAMP_ROOT, else $LW_LIGHTWAVE_ROOT,
+        # else ~/dev). See mise.toml's [tasks.schema-drift] for why it fails
+        # rather than skips when that checkout is missing.
+        ''
+          root="''${LW_STAMP_ROOT:-''${LW_LIGHTWAVE_ROOT:-$HOME/dev}}"
+          stamp="$root/lightwave-core/src/schemas/interfaces/cli/commands.yaml"
+          if [ ! -f "$stamp" ]; then
+            echo "schema-drift: no lightwave-core stamp at $stamp"
+            echo "  clone lightwave-core beside this repo, or set LW_STAMP_ROOT."
+            exit 1
+          fi
+          go build -o ./bin/lw ./cmd/lw || exit 1
+          LW_LIGHTWAVE_ROOT="$root" LW_SURFACE_GATE_STRICT=1 go test ./internal/cli/ -run TestCommandSurface || exit 1
+          LW_LIGHTWAVE_ROOT="$root" LW_CHECK_SCHEMA_STRICT=1 ./bin/lw check schema || exit 1
+        ''
+        # actions-pinned: the proof, then the gate.
+        "bash scripts/check-actions-pinned-test.sh"
+        "bash scripts/check-actions-pinned.sh"
+        # failure-digest
+        "bash scripts/failure-digest-test.sh"
+        # release-ship-destination
+        "bash scripts/release-ship-destination-test.sh"
+        # lw-current: the proof, then the (never-blocking) notice.
+        "${unsetGit}bash scripts/lw-current-test.sh"
+        "${unsetGit}bash scripts/lw-current.sh"
+      ];
+    } // {
       # `lw` itself, built the way .goreleaser.yaml builds it (CGO off, the
       # same three ldflags), so a host can pin
       #
@@ -97,7 +119,7 @@
               "-X ${versionPkg}.Commit=${rev}"
               "-X ${versionPkg}.Date=${self.lastModifiedDate or "unknown"}"
             ];
-            # `mise run ci` is the gate and has already run the suite on the
+            # `nix run .#ci` is the gate and has already run the suite on the
             # commit being packaged; the package proves the build, not the tests.
             doCheck = false;
             meta.mainProgram = "lw";
